@@ -2120,6 +2120,7 @@ typedef enum {
 	tfxOvertime_motion_randomness,
 	tfxOvertime_uv_offset_y,
 	tfxOvertime_uv_scale_y,
+	tfxOvertime_ribbon_fixed_angle,
 	tfxOvertime_clip_offset,
 	tfxOvertime_clip_size,
 
@@ -2310,6 +2311,7 @@ typedef enum {
 	tfxRibbon_overtime_scale_index,
 	tfxRibbon_overtime_uv_offset_y_index,
 	tfxRibbon_overtime_uv_scale_y_index,
+	tfxRibbon_overtime_fixed_angle_index,
 	tfxRibbon_overtime_clip_offset_index,
 	tfxRibbon_overtime_clip_size_index,
 
@@ -2737,6 +2739,9 @@ typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
 	tfxRibbonPropertyFlags_use_path_from_another_emitter	= 1 << 0,
 	tfxRibbonPropertyFlags_static							= 1 << 1,
+	tfxRibbonPropertyFlags_always_face_camera				= 1 << 2,
+	tfxRibbonPropertyFlags_frenet_serret_frame				= 1 << 3,
+	tfxRibbonPropertyFlags_fixed_angle						= 1 << 4,
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {

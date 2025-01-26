@@ -3036,6 +3036,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].type = tfxOvertime_ribbon_fixed_angle;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index].type = tfxFactor_life;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index].type = tfxFactor_intensity;
@@ -3181,6 +3182,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxAnglePreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
@@ -5582,6 +5584,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_blue", tfxFloat);
 	names_and_types.Insert("overtime_opacity", tfxFloat);    //Legacy
 	names_and_types.Insert("overtime_blendfactor", tfxFloat);
+	names_and_types.Insert("overtime_ribbon_fixed_angle", tfxFloat);
 	names_and_types.Insert("overtime_intensity", tfxFloat);
 	names_and_types.Insert("overtime_red_hint", tfxFloat);
 	names_and_types.Insert("overtime_green_hint", tfxFloat);
@@ -5903,6 +5906,7 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "overtime_scale") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_scale_index], &n); }
 			if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_offset_y_index], &n); }
 			if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_scale_y_index], &n); }
+			if ((*values)[0] == "overtime_ribbon_fixed_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_fixed_angle_index], &n); }
 
 			if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_life_index], &n); }
 			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_size_index], &n); }
@@ -11623,7 +11627,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 			tfxParticleNoise3dLoopUnroll(7)
 #endif
 
-				noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
+			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
 			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
 			noise_z.m = tfxWideMul(lookup_velocity_turbulance, noise_z.m);
 
@@ -13132,9 +13136,9 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
 		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_pitch_last_frame);
-		const tfxWideFloat lookup_pitch_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_pitch_spin);
+		const tfxWideFloat lookup_pitch_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_pitch_spin_index].lookup.values, lookup_frame), base_pitch_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_yaw_last_frame);
-		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_yaw_spin);
+		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_yaw_spin_index].lookup.values, lookup_frame), base_yaw_spin);
 
 		//----Spin and angle Changes
 		rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideMul(lookup_pitch_spin, pm.update_time_wide));
@@ -17529,7 +17533,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	float velocity = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_velocity_index], emitter.frame) * entry->parent_spawn_controls->velocity;
 	float velocity_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_velocity_index], emitter.frame) * entry->parent_spawn_controls->velocity;
 
-	if (entry->emission_type == tfxOtherEmitter) {
+	if (entry->emission_type == tfxOtherEmitter || entry->emission_type == tfxSpawnOnRibbon) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
 	}
 
@@ -17551,6 +17555,14 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 			}
 			float max_age = entry->particle_data->max_age[index];
 			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_velocity_index], age_lerp);
+			base_velocity *= factor;
+		} else if (entry->emission_type == tfxSpawnOnRibbon) {
+			tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
+			tfx_ribbon_bucket_t &ribbon_bucket = pm.ribbon_segment_buckets[ribbon_emitter.ribbon_bucket_index];
+			int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+			float ribbon_lerp = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
+			emitter.grid_coords.x++;
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_velocity_index], ribbon_lerp);
 			base_velocity *= factor;
 		}
 
