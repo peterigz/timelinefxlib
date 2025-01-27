@@ -3036,7 +3036,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].type = tfxOvertime_ribbon_fixed_angle;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxDirectionOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].type = tfxOvertime_ribbon_fixed_angle;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index].type = tfxFactor_life;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index].type = tfxFactor_intensity;
@@ -3182,7 +3182,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxAnglePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_fixed_angle_index], 0.f, tfxDirectionOvertimePreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
@@ -5427,6 +5427,15 @@ void tfx__set_library_min_max_data(tfx_library library) {
 	library->graph_min_max[tfxOvertime_direction_turbulance] = tfx__get_min_max_graph_values(tfxPercentOvertime);
 	library->graph_min_max[tfxOvertime_velocity_adjuster] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxOvertime_direction] = tfx__get_min_max_graph_values(tfxDirectionOvertimePreset);
+	library->graph_min_max[tfxOvertime_uv_offset_y] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOvertime_uv_scale_y] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOvertime_ribbon_fixed_angle] = tfx__get_min_max_graph_values(tfxDirectionOvertimePreset);
+	library->graph_min_max[tfxOvertime_clip_offset] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOvertime_clip_size] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOverlength_intensity] = tfx__get_min_max_graph_values(tfxIntensityOvertimePreset);
+	library->graph_min_max[tfxOverlength_alpha_sharpness] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOverlength_curved_alpha] = tfx__get_min_max_graph_values(tfxPercentOvertime);
+	library->graph_min_max[tfxOverlength_gradient_map] = tfx__get_min_max_graph_values(tfxPercentOvertime);
 }
 
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
@@ -6584,7 +6593,7 @@ bool tfx__is_global_graph(tfx_graph_t *graph) {
 bool tfx__is_angle_graph(tfx_graph_t *graph) {
 	return (graph->type == tfxTransform_roll || graph->type == tfxTransform_pitch || graph->type == tfxTransform_yaw || graph->type == tfxProperty_emission_pitch || graph->type == tfxProperty_emission_yaw
 		|| graph->type == tfxProperty_emission_range || graph->type == tfxProperty_arc_offset || graph->type == tfxProperty_arc_size || graph->type == tfxBase_roll_spin || graph->type == tfxBase_pitch_spin || graph->type == tfxBase_yaw_spin
-		|| graph->type == tfxVariation_roll_spin || graph->type == tfxVariation_pitch_spin || graph->type == tfxVariation_yaw_spin || graph->type == tfxOvertime_direction);
+		|| graph->type == tfxVariation_roll_spin || graph->type == tfxVariation_pitch_spin || graph->type == tfxVariation_yaw_spin || graph->type == tfxOvertime_direction || graph->type == tfxOvertime_ribbon_fixed_angle);
 }
 
 bool tfx__is_translation_graph(tfx_graph_t *graph) {
@@ -7298,7 +7307,7 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };
 		break;
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 4320.f };
+		graph->min = { 0.f, -4320.f }; graph->max = { 1.f, 4320.f };
 		break;
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 20.f };
@@ -7408,7 +7417,7 @@ tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset) {
 		mm = { 0.f, -20.f, 1.f, 20.f };
 		break;
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		mm = { 0.f, 0.f, 1.f, 4320.f };
+		mm = { 0.f, -4320.f, 1.f, 4320.f };
 		break;
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 20.f };
