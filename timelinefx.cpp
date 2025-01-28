@@ -5087,7 +5087,6 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 		return library->free_ribbon_emitter_properties.pop_back();
 	}
 	tfx_ribbon_emitter_properties_t properties{};
-	properties.path_size_fraction = 1.f;
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
 }
@@ -14340,6 +14339,7 @@ void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey bucket_id, 
 	bucket.flags = tfxRibbonBucketFlags_initialised;
 	bucket.globals.ribbon_count = 1;
 	bucket.globals.index_offset = 0;
+	bucket.shader_type = bucket_info->shader_type;
 }
 
 tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation) {

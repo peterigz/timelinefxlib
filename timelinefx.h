@@ -2808,8 +2808,8 @@ typedef enum {
 } tfx_ribbon_bucket_flag_bits;
 
 typedef enum {
-	tfxRibbonShader_always_face_camera = 0,
-	tfxRibbonShader_fixed_angle = 1 << 1 
+	tfxRibbonShader_always_face_camera,
+	tfxRibbonShader_fixed_angle,
 } tfx_ribbon_compute_shader_type;
 
 typedef enum {
@@ -5646,7 +5646,6 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_vec2_t uv_offsets;
 	tfx_vec2_t uv_scale;
 	float path_start_offset;
-	float path_size_fraction;
 	tfxKey ribbon_bucket_id;
 } tfx_ribbon_emitter_properties_t;
 
@@ -6240,6 +6239,7 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t control_ribbon_queue;
 #endif
 	tfxRibbonBucketFlags flags;
+	tfxRibbonBucketComputeShaderType shader_type;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_ribbon_dispatch_s {
