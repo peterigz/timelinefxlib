@@ -2433,6 +2433,7 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	ribbon.library->shared_properties[ribbon.shared_index].emission_type = tfxOtherEmitter;
 	ribbon.library->ribbon_properties[ribbon.property_index].bucket_info.segment_count = 32;
 	ribbon.library->ribbon_properties[ribbon.property_index].bucket_info.shader_type = tfxRibbonShader_always_face_camera;
+	tfx__update_ribbon_bucket_id(&ribbon);
 	if (tfx__is_3d_effect(effect)) {
 		ribbon.shared_flags = tfxSharedEmitterPropertyFlags_effect_is_3d;
 	}
@@ -13753,15 +13754,18 @@ bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribb
 		ribbon_dispatch->ribbon_data = bucket;
 		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
 		ribbon_dispatch->index_offset = pm->last_ribbon_dispatch.index_offset;
-		ribbon_dispatch->index_count = (ribbon_count * bucket->globals.segment_count) * bucket->buffer_info.indices_per_segment - (ribbon_count * bucket->buffer_info.indices_per_segment);
+		ribbon_dispatch->vertex_offset = pm->last_ribbon_dispatch.vertex_offset;
+		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
+		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
 		ribbon_dispatch->ribbon_offset = pm->last_ribbon_dispatch.ribbon_offset;
 		bucket->globals.camera_position = pm->camera_position;
 		bucket->globals.index_offset = ribbon_dispatch->index_offset;
+		bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
 		bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
-		bucket->globals.segment_offset = ribbon_dispatch->segment_offset;
 		bucket->globals.ribbon_count = ribbon_count;
 		pm->last_ribbon_dispatch = *ribbon_dispatch;
-		pm->last_ribbon_dispatch.index_offset += bucket->buffer_info.index_count;
+		pm->last_ribbon_dispatch.index_offset += ribbon_dispatch->index_count;
+		pm->last_ribbon_dispatch.vertex_offset += ribbon_dispatch->vertex_count;
 		pm->last_ribbon_dispatch.ribbon_offset += ribbon_count;
 		pm->last_ribbon_dispatch.segment_offset += bucket->segments.current_size;
 		return true;
@@ -13793,7 +13797,8 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_
 			tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
 			memcpy((tfx_ribbon_segment_t *)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
 			memcpy((tfx_ribbon_t *)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
-			running_segment_offset += ribbon_count * bucket->globals.segment_count;
+			bucket->globals.segment_offset = running_segment_offset;
+			running_segment_offset += segment_count;
 			running_ribbon_offset += ribbon_count;
 			bucket = pm->ribbon_segment_buckets.next_item();
 		}
@@ -14321,6 +14326,7 @@ tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter
 void tfx__update_ribbon_bucket_id(tfx_effect_descriptor_t *ribbon_emitter) {
 	tfx_ribbon_emitter_properties_t *properties = tfx__get_ribbon_emitter_properties(ribbon_emitter);
 	properties->ribbon_bucket_id = tfxRibbonBucketID(properties->bucket_info);
+	int d = 0;
 }
 
 void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
@@ -15047,7 +15053,7 @@ tfxU32 tfx__spawn_particles(tfx_particle_manager pm, tfx_spawn_work_entry_t *wor
 				work_entry->amount_to_spawn = 0;
 			}
 		}
-	} else if (work_entry->emission_type == tfxSpawnOnRibbon) {
+	} else if (work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index != tfxINVALID) {
 		if (pm->ribbon_emitters[emitter.other_emitter_index].ribbon_indexes[pm->current_ebuff].current_size == 0) {
 			work_entry->amount_to_spawn = 0;
 		}
@@ -17298,7 +17304,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					);
 				}
 			}
-			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;
+			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
 			pm.cached_static_path_segments.Insert(ribbon_emitter.path_hash + ribbon_emitter.segment_count, ribbon_emitter.static_segment_start_index);
 		} else {
 			ribbon_emitter.static_segment_start_index = tfxINVALID;

@@ -6186,6 +6186,7 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 segment_count;
 	tfxU32 tessellation;  
 	tfxU32 index_offset;
+	tfxU32 vertex_offset;
 	tfxU32 ribbon_count;
 	tfxU32 ribbon_offset;
 	tfxU32 segment_offset;
@@ -6245,7 +6246,9 @@ typedef struct tfx_ribbon_bucket_s {
 typedef struct tfx_ribbon_dispatch_s {
 	tfx_ribbon_bucket_t *ribbon_data;
 	tfxU32 index_offset;
+	tfxU32 vertex_offset;
 	tfxU32 index_count;
+	tfxU32 vertex_count;
 	tfxU32 ribbon_offset;
 	tfxU32 segment_offset;
 	tfxU32 total_segments;
@@ -6803,7 +6806,7 @@ tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfx
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
 #define tfxUnFlagColorRampIDAsEdited(id) id &= ~0x80000000
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
-#define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count || ((tfxKey)bucket_info.shader_type << 16)
+#define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count | ((tfxKey)bucket_info.shader_type << 16)
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
