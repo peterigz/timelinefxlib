@@ -1460,67 +1460,31 @@ tfx_mat4_t tfx__matrix4_rotate_z(float angle) {
 }
 
 void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
-	tfxWideFloat qv_x = *x;
-	tfxWideFloat qv_y = *y;
-	tfxWideFloat qv_z = *z;
-	tfxWideFloat qv_w = tfxWideSetZero;
-
 	tfxWideFloat q_x = tfxWideSetSingle(q->x);
 	tfxWideFloat q_y = tfxWideSetSingle(q->y);
 	tfxWideFloat q_z = tfxWideSetSingle(q->z);
 	tfxWideFloat q_w = tfxWideSetSingle(q->w);
 
-	tfxWideFloat two = tfxWideSetSingle(2.0f);
+	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
+	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
+	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
 
-	tfxWideFloat t_x = tfxWideSub(tfxWideMul(q_y, qv_z), tfxWideMul(q_z, qv_y));
-	t_x = tfxWideMul(t_x, two);
-	tfxWideFloat t_y = tfxWideSub(tfxWideMul(q_z, qv_x), tfxWideMul(q_x, qv_z));
-	t_y = tfxWideMul(t_y, two);
-	tfxWideFloat t_z = tfxWideSub(tfxWideMul(q_x, qv_y), tfxWideMul(q_y, qv_x));
-	t_z = tfxWideMul(t_z, two);
-
-	tfxWideFloat qw_t_x = tfxWideMul(q_w, t_x);
-	tfxWideFloat qw_t_y = tfxWideMul(q_w, t_y);
-	tfxWideFloat qw_t_z = tfxWideMul(q_w, t_z);
-
-	tfxWideFloat t_cross_x = tfxWideSub(tfxWideMul(q_y, t_z), tfxWideMul(q_z, t_y));
-	tfxWideFloat t_cross_y = tfxWideSub(tfxWideMul(q_z, t_x), tfxWideMul(q_x, t_z));
-	tfxWideFloat t_cross_z = tfxWideSub(tfxWideMul(q_x, t_y), tfxWideMul(q_y, t_x));
-
-	*x = tfxWideAdd(tfxWideAdd(qv_x, qw_t_x), t_cross_x);
-	*y = tfxWideAdd(tfxWideAdd(qv_y, qw_t_y), t_cross_y);
-	*z = tfxWideAdd(tfxWideAdd(qv_z, qw_t_z), t_cross_z);
+	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
+	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
+	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
 void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat q_x, q_y, q_z, q_w;
 	tfx__wide_unpack8bit(*quaternion, q_x, q_y, q_z, q_w);
 
-	tfxWideFloat qv_x = *x;
-	tfxWideFloat qv_y = *y;
-	tfxWideFloat qv_z = *z;
-	tfxWideFloat qv_w = tfxWideSetZero;
+	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
+	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
+	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
 
-	tfxWideFloat two = tfxWideSetSingle(2.0f);
-
-	tfxWideFloat t_x = tfxWideSub(tfxWideMul(q_y, qv_z), tfxWideMul(q_z, qv_y));
-	t_x = tfxWideMul(t_x, two);
-	tfxWideFloat t_y = tfxWideSub(tfxWideMul(q_z, qv_x), tfxWideMul(q_x, qv_z));
-	t_y = tfxWideMul(t_y, two);
-	tfxWideFloat t_z = tfxWideSub(tfxWideMul(q_x, qv_y), tfxWideMul(q_y, qv_x));
-	t_z = tfxWideMul(t_z, two);
-
-	tfxWideFloat qw_t_x = tfxWideMul(q_w, t_x);
-	tfxWideFloat qw_t_y = tfxWideMul(q_w, t_y);
-	tfxWideFloat qw_t_z = tfxWideMul(q_w, t_z);
-
-	tfxWideFloat t_cross_x = tfxWideSub(tfxWideMul(q_y, t_z), tfxWideMul(q_z, t_y));
-	tfxWideFloat t_cross_y = tfxWideSub(tfxWideMul(q_z, t_x), tfxWideMul(q_x, t_z));
-	tfxWideFloat t_cross_z = tfxWideSub(tfxWideMul(q_x, t_y), tfxWideMul(q_y, t_x));
-
-	*x = tfxWideAdd(tfxWideAdd(qv_x, qw_t_x), t_cross_x);
-	*y = tfxWideAdd(tfxWideAdd(qv_y, qw_t_y), t_cross_y);
-	*z = tfxWideAdd(tfxWideAdd(qv_z, qw_t_z), t_cross_z);
+	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
+	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
+	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
 void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y) {
@@ -17542,11 +17506,14 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	float velocity_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_velocity_index], emitter.frame) * entry->parent_spawn_controls->velocity;
 	tfx_ribbon_bucket_t *ribbon_bucket = nullptr;
 
-	if (entry->emission_type == tfxOtherEmitter || entry->emission_type == tfxSpawnOnRibbon) {
+	if (entry->emission_type == tfxOtherEmitter) {
+		emitter.grid_coords.x = emitter.grid_coords.y;
+	} else if (entry->emission_type == tfxSpawnOnRibbon) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
 		tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 		ribbon_bucket = &pm.ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
 	}
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &base_velocity = entry->particle_data->base_velocity[index];
@@ -17719,10 +17686,12 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	float factor = 1.f;
 	tfx_ribbon_bucket_t *ribbon_bucket = nullptr;
 
-	if (entry->emission_type == tfxOtherEmitter || entry->emission_type == tfxSpawnOnRibbon) {
+	if (entry->emission_type == tfxOtherEmitter) {
+		emitter.grid_coords.x = emitter.grid_coords.y;
+	} else if (entry->emission_type == tfxSpawnOnRibbon) {
+		emitter.grid_coords.x = emitter.grid_coords.y;
 		tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 		ribbon_bucket = &pm.ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
-		emitter.grid_coords.x = emitter.grid_coords.y;
 	}
 
 	if (splatter || entry->emission_type == tfxSpawnOnRibbon) {

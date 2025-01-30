@@ -1724,6 +1724,7 @@ const tfxWideArrayi tfxWIDEONEi = tfxWideSetConst(1);
 const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
 const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
 const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
+const tfxWideArray tfxWIDETWO = tfxWideSetConst(2.f);
 const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
 const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
 const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
