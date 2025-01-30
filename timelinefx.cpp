@@ -12953,6 +12953,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_index];
 	tfx_library library = ribbon_emitter.library;
+	tfx_shared_properties_t *shared_properties = &library->shared_properties[ribbon_emitter.shared_index];
 
 	//There must be a path setup for the emitter.
 	TFX_ASSERT(ribbon_emitter.path_attributes != tfxINVALID);
@@ -12966,7 +12967,14 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		float &age = bucket->ribbons.age[ribbon_index];
 		float &max_age = bucket->ribbons.max_age[ribbon_index];
 		age += pm.frame_length;
-		if (age > max_age) {
+		if (age > max_age && ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+			tfxU32 &single_loop_count = bucket->ribbons.single_loop_count[ribbon_index];
+			single_loop_count++;
+			if (shared_properties->single_shot_limit == 0 || single_loop_count < shared_properties->single_shot_limit) {
+				age = 0.f;
+			}
+		}
+		if(age > max_age) {
 			bucket->ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
 			tfx__free_ribbon(&pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 			ribbon_emitter.active_ribbons--;
@@ -14631,7 +14639,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		ribbon_work_entry->amount_to_spawn = (tfxU32)ribbon_emitter.spawn_quantity;
 	}
 
-	if (ribbon_work_entry->shared_properties->emission_type == tfxPath && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
+	if (!(ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_single_shot_done) && ribbon_work_entry->shared_properties->emission_type == tfxPath && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
 		tfx__spawn_static_ribbons(ribbon_emitter_index, &pm->work_queue, data);
 	}
 
@@ -17346,6 +17354,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		}
 		entry->new_ribbons = actual_new_ribbons;
 	}
+
+	if (entry->amount_to_spawn > 0 && ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		ribbon_emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
+	}
 }
 
 void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
@@ -18506,6 +18518,7 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, path_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, grid_index));
+	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, single_loop_count));
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 

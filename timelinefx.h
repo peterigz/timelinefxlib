@@ -2810,6 +2810,7 @@ typedef enum {
 typedef enum {
 	tfxRibbonShader_always_face_camera,
 	tfxRibbonShader_fixed_angle,
+	tfxRibbonShader_frenet_serret_frame,
 } tfx_ribbon_compute_shader_type;
 
 typedef enum {
@@ -5815,6 +5816,7 @@ typedef struct tfx_ribbon_soa_s {
 	float *image_frame;
 	tfxU32 *path_index;
 	float *grid_index;
+	tfxU32 *single_loop_count;
 } tfx_ribbon_soa_t;
 
 typedef struct tfx_gpu_emitter_s {
