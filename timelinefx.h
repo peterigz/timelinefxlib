@@ -2118,7 +2118,6 @@ typedef enum {
 	tfxOvertime_motion_randomness,
 	tfxOvertime_uv_offset_y,
 	tfxOvertime_uv_scale_y,
-	tfxOvertime_ribbon_fixed_angle,
 	tfxOvertime_clip_offset,
 	tfxOvertime_clip_size,
 
@@ -2126,6 +2125,7 @@ typedef enum {
 	tfxOverlength_alpha_sharpness,
 	tfxOverlength_curved_alpha,
 	tfxOverlength_gradient_map,
+	tfxOverlength_ribbon_fixed_angle,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2309,7 +2309,6 @@ typedef enum {
 	tfxRibbon_overtime_scale_index,
 	tfxRibbon_overtime_uv_offset_y_index,
 	tfxRibbon_overtime_uv_scale_y_index,
-	tfxRibbon_overtime_fixed_angle_index,
 	tfxRibbon_overtime_clip_offset_index,
 	tfxRibbon_overtime_clip_size_index,
 
@@ -2317,6 +2316,7 @@ typedef enum {
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
 	tfxRibbon_overlength_gradient_map_index,
+	tfxRibbon_overlength_fixed_angle_index,
 
 	tfxRibbon_factor_life_index,
 	tfxRibbon_factor_size_index,
@@ -2335,7 +2335,7 @@ typedef enum {
 	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_size_index + 1,
 	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
-	tfxRibbon_overlength_end = tfxRibbon_overlength_gradient_map_index + 1,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_fixed_angle_index + 1,
 } tfx_ribbon_graph_index;
 
 typedef enum {
@@ -2352,7 +2352,7 @@ typedef enum {
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_blendfactor,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_gradient_map,
+	tfxOverlength_end = tfxOverlength_ribbon_fixed_angle,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -5649,6 +5649,7 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_vec2_t uv_scale;
 	float path_start_offset;
 	tfxKey ribbon_bucket_id;
+	tfx_vec3_t fixed_angle_normal;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -5826,7 +5827,7 @@ typedef struct tfx_gpu_emitter_s {
 	tfx_vec3_t captured_position;
 	tfxU32 padding1;
 	tfx_vec3_t scale;
-	tfxU32 padding2;
+	tfx_vec3_t fixed_angle_normal;
 } tfx_gpu_emitter_t;
 
 typedef struct tfx_ribbon_emitter_state_s {
@@ -5838,6 +5839,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float qty_step_size;
 	float timeout_counter;
 	float timeout;
+	float delay_spawning;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
 	tfxSharedEmitterFlags shared_flags;
@@ -7213,7 +7215,7 @@ tfxINTERNAL tfx128 tfx__dot128_xy(const tfx128 *x1, const tfx128 *y1, const tfx1
 tfxINTERNAL float tfx__length_vec4_nosqr(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__length_vec4(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__has_length_vec3(tfx_vec3_t const *v);
-tfxINTERNAL tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v);
+tfxAPI_EDITOR tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v);
 tfxINTERNAL tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v);
 tfxINTERNAL tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t *a, tfx_vec3_t *b);
 tfxINTERNAL void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, tfxWideFloat *bx, tfxWideFloat *by, tfxWideFloat *bz, tfxWideFloat *rx, tfxWideFloat *ry, tfxWideFloat *rz);
