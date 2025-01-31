@@ -5305,9 +5305,9 @@ void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, boo
 	}
 }
 
-void tfx__compile_library_color_graphs(tfx_library library, tfxU32 index) {
+bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index) {
 	tfx__compile_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
-	tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
+	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 }
 
 void tfx__set_library_min_max_data(tfx_library library) {
@@ -7779,11 +7779,12 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 	}
 }
 
-void tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
+bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
 	tfx_color_ramp_t &ramp = graph_list->color_ramps;
 	if (!tfxColorRampIsEdited(graph_list->color_ramp_bitmap_indexes)) {
 		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
 		tfxFlagColorRampIDAsEdited(graph_list->color_ramp_bitmap_indexes);
+		return true;
 	}
 	else {
 		tfxU32 layer = tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes);
@@ -7791,6 +7792,7 @@ void tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_li
 		tfx_bitmap_t &bitmap = library->color_ramps.color_ramp_bitmaps[layer];
 		tfx__plot_color_ramp(&bitmap, &ramp, index);
 	}
+	return false;
 }
 
 void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {

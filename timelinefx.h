@@ -6974,7 +6974,7 @@ tfxAPI_EDITOR void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_
 tfxAPI_EDITOR void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value);
 tfxAPI_EDITOR void tfx__compile_graph_overtime(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
-tfxAPI_EDITOR void tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
+tfxAPI_EDITOR bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
@@ -7095,7 +7095,7 @@ tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
-tfxAPI_EDITOR void tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
+tfxAPI_EDITOR bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth = 0, bool including_color_ramps = true);
 tfxAPI_EDITOR void tfx__set_library_min_max_data(tfx_library library);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
