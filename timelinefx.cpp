@@ -5487,6 +5487,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_segment_count", tfxUint);
 	names_and_types.Insert("ribbon_shader_type", tfxUint);
 	names_and_types.Insert("static_ribbon", tfxBool);
+	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
+	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
+	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
 
 	//Graphs
 	names_and_types.Insert("global_life", tfxFloat);
@@ -6204,6 +6207,11 @@ void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t
 		if (*field == "angle_offset") emitter_properties->angle_offsets.roll = value;
 		if (*field == "angle_offset_pitch") emitter_properties->angle_offsets.pitch = value;
 		if (*field == "angle_offset_yaw") emitter_properties->angle_offsets.yaw = value;
+	} else if (effect->type == tfxRibbonType) {
+		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
+		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
+		if (*field == "ribbon_fixed_angle_normal_y") ribbon_properties->fixed_angle_normal.y = value;
+		if (*field == "ribbon_fixed_angle_normal_z") ribbon_properties->fixed_angle_normal.z = value;
 	}
 }
 void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str256_t *field, bool value) {
@@ -6467,6 +6475,9 @@ void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_prope
 	file->AddLine("ribbon_segment_count=%i", ribbon_properties->bucket_info.segment_count);
 	file->AddLine("ribbon_shader_type=%i", ribbon_properties->bucket_info.shader_type);
 	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
+	file->AddLine("ribbon_fixed_angle_normal_x=%f", ribbon_properties->fixed_angle_normal.x);
+	file->AddLine("ribbon_fixed_angle_normal_y=%f", ribbon_properties->fixed_angle_normal.y);
+	file->AddLine("ribbon_fixed_angle_normal_z=%f", ribbon_properties->fixed_angle_normal.z);
 }
 
 void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file) {
