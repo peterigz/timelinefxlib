@@ -2822,12 +2822,17 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager pm, tfx_library l
 		parent_yaw = emitter.world_rotations.yaw;
 	}
 
-	float pitch = asinf(-to_handle.y);
-	float yaw = atan2f(to_handle.x, to_handle.z);
+	float sin_pitch = sinf(emission_pitch);
+	float cos_pitch = cosf(emission_pitch);
+	float sin_yaw = sinf(emission_yaw);
+	float cos_yaw = cosf(emission_yaw);
+
+	// Apply rotations directly to the original vector
 	tfx_vec3_t direction;
-	direction.z = cosf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
-	direction.y = -sinf(emission_pitch + pitch);
-	direction.x = sinf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
+	direction.x = to_handle.x * cos_yaw - to_handle.z * sin_yaw;
+	direction.z = to_handle.x * sin_yaw + to_handle.z * cos_yaw;
+	direction.y = to_handle.y * cos_pitch - direction.z * sin_pitch;
+	direction.z = to_handle.y * sin_pitch + direction.z * cos_pitch;
 	tfx_vec3_t v = direction;
 	if (range != 0) {
 		v = tfx__random_vector_in_cone(random, v, range);
@@ -5563,7 +5568,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_blue", tfxFloat);
 	names_and_types.Insert("overtime_opacity", tfxFloat);    //Legacy
 	names_and_types.Insert("overtime_blendfactor", tfxFloat);
-	names_and_types.Insert("overtime_ribbon_fixed_angle", tfxFloat);
 	names_and_types.Insert("overtime_intensity", tfxFloat);
 	names_and_types.Insert("overtime_red_hint", tfxFloat);
 	names_and_types.Insert("overtime_green_hint", tfxFloat);
@@ -5590,6 +5594,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_alpha_sharpness", tfxFloat);
 	names_and_types.Insert("overlength_curved_alpha", tfxFloat);
 	names_and_types.Insert("overlength_gradient_map", tfxFloat);
+	names_and_types.Insert("overlength_fixed_angle", tfxFloat);
 	names_and_types.Insert("overtime_clip_offset", tfxFloat);
 	names_and_types.Insert("overtime_clip_size", tfxFloat);
 
@@ -5885,7 +5890,6 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "overtime_scale") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_scale_index], &n); }
 			if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_offset_y_index], &n); }
 			if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_scale_y_index], &n); }
-			if ((*values)[0] == "overtime_ribbon_fixed_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_fixed_angle_index], &n); }
 
 			if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_life_index], &n); }
 			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_size_index], &n); }
@@ -5895,6 +5899,7 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "overlength_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], &n); }
 			if ((*values)[0] == "overlength_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_curved_alpha_index], &n); }
 			if ((*values)[0] == "overlength_gradient_map") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_gradient_map_index], &n); }
+			if ((*values)[0] == "overlength_fixed_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_fixed_angle_index], &n); }
 			if ((*values)[0] == "overtime_clip_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_offset_index], &n); }
 			if ((*values)[0] == "overtime_clip_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_size_index], &n); }
 		}
@@ -16787,19 +16792,21 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			path_offset = tfx_RandomRangeZeroToMax(&random, arc_size) + arc_offset;
 			float length_squared = point.x * point.x + point.y * point.y;
 			float radius = length_squared == 0.f ? 0.f : 1.f / tfx__quake_sqrt(length_squared);
-			float angle = atan2f(point.y, point.x) + path_offset;
-			float rx = cosf(angle);
-			float ry = sinf(angle);
+			float len = sqrtf(point.x * point.x + point.y * point.y);
+			float norm_x = point.x / len;
+			float norm_y = point.y / len;
+			float sin_path_offset = sinf(path_offset);
+			float cos_path_offset = cosf(path_offset);
+			float rx = norm_x * cos_path_offset - norm_y * sin_path_offset;
+			float ry = norm_x * sin_path_offset + norm_y * cos_path_offset;
 			local_position_x = rx * radius * emitter.emitter_size.x;
 			local_position_y = ry * radius * emitter.emitter_size.y;
 			if (properties.emission_direction == tfxPathGradient) {
 				velocity_direction = tfx__catmull_rom_spline_gradient_2d_soa(&path->node_soa.x[node], &path->node_soa.y[node], t);
 				velocity_direction = tfx__normalise_vec2(&velocity_direction);
-				rx = cosf(path_offset);
-				ry = sinf(path_offset);
 				tfx_vec2_t v = velocity_direction;
-				velocity_direction.x = v.x * rx - v.y * ry;
-				velocity_direction.y = v.x * ry + v.y * rx;
+				velocity_direction.x = v.x * cos_path_offset - v.y * sin_path_offset;
+				velocity_direction.y = v.x * sin_path_offset + v.y * cos_path_offset;
 			}
 		}
 
@@ -17159,20 +17166,22 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 			path_offset = tfx_RandomRangeZeroToMax(&random, arc_size) + arc_offset;
 			float length_squared = point.x * point.x + point.z * point.z;
 			float radius = length_squared == 0.f ? 0.f : 1.f / tfx__quake_sqrt(length_squared);
-			float angle = atan2f(point.z, point.x) + path_offset;
-			float rx = cosf(angle);
-			float rz = sinf(angle);
+			float len = sqrtf(point.x * point.x + point.z * point.z);
+			float norm_x = point.x / len;
+			float norm_z = point.z / len;
+			float sin_path_offset = sinf(path_offset);
+			float cos_path_offset = cosf(path_offset);
+			float rx = norm_x * cos_path_offset - norm_z * sin_path_offset;
+			float rz = norm_x * sin_path_offset + norm_z * cos_path_offset;
 			local_position_x = rx * radius * emitter.emitter_size.x;
 			local_position_z = rz * radius * emitter.emitter_size.z;
 			local_position_y = point.y * emitter.emitter_size.y;
 			if (properties.emission_direction == tfxPathGradient) {
 				velocity_direction = tfx__catmull_rom_spline_gradient_3d_soa(&path->node_soa.x[node], &path->node_soa.y[node], &path->node_soa.z[node], t);
 				velocity_direction = tfx__normalize_vec3_fast(&velocity_direction);
-				rx = cosf(path_offset);
-				rz = sinf(path_offset);
 				tfx_vec3_t v = velocity_direction;
-				velocity_direction.x = v.x * rx - v.z * rz;
-				velocity_direction.z = v.x * rz + v.z * rx;
+				velocity_direction.x = v.x * cos_path_offset - v.z * sin_path_offset;
+				velocity_direction.z = v.x * sin_path_offset + v.z * cos_path_offset;
 			}
 		}
 
@@ -17327,7 +17336,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				float radius = extrusion * .5f;
 				float path_offset = tfx_RandomRangeFromTo(&random, -radius, radius);
 				ribbon.position.x += path_offset;
-			}
+			} 
 			float image_frame = (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && entry->shared_properties->image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, entry->shared_properties->image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + tfxU32(image_frame));
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
