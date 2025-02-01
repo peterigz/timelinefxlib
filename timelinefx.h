@@ -5827,7 +5827,9 @@ typedef struct tfx_gpu_emitter_s {
 	tfx_vec3_t captured_position;
 	tfxU32 padding1;
 	tfx_vec3_t scale;
+	tfxU32 padding2;
 	tfx_vec3_t fixed_angle_normal;
+	tfxU32 padding3;
 } tfx_gpu_emitter_t;
 
 typedef struct tfx_ribbon_emitter_state_s {
