@@ -6053,7 +6053,7 @@ typedef struct tfx_frame_meta_s {
 	tfx_vec3_t max_corner;							//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
 	tfx_vec3_t bb_center_point;						//The center point of the bounding box. For the fastest checking against a viewing frustum, you can combine this with radius
 	float radius;									//The radius of the bounding box
-}tfx_frame_meta_t;
+} tfx_frame_meta_t;
 
 //This is the exact typedef struct to upload to the GPU for 2d instance_data, so timelinefx will prepare buffers so that they're ready to just
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the instance_data
@@ -6067,11 +6067,12 @@ typedef struct tfx_2d_instance_s {			//44 bytes + padding to 48
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
-}tfx_2d_instance_t;
+} tfx_2d_instance_t;
 
-typedef struct tfx_3d_instance_s {		//56 bytes + padding to 64
-	tfx_vec4_t position;							//The position of the billboard
-	tfx_vec3_t rotations;				            //Rotations of the billboard with stretch in w
+typedef struct tfx_3d_instance_s {		//60 bytes + padding to 64
+	tfx_vec4_t position;							//The position of the billboard with stretch in w
+	tfx_vec3_t rotations;				            //Rotation of the billboard 
+	//tfxU32 quaternion;				            //Rotation of the billboard stored as a quaternion
 	tfx_float8x4_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
@@ -6080,7 +6081,7 @@ typedef struct tfx_3d_instance_s {		//56 bytes + padding to 64
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
 	tfxU32 padding;
-}tfx_3d_instance_t;
+} tfx_3d_instance_t;
 
 //This typedef struct of arrays is used for both 2d and 3d instance_data, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 //InitSprite3dSoA is called to initialise 3d instance_data and InitSprite2dArray for 2d instance_data. This is all managed internally by the particle manager. It's convenient to have both 2d and

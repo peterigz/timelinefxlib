@@ -1084,15 +1084,12 @@ tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t *q, tfx_vec3_t v
 	return tfx_vec3_t(result.x, result.y, result.z);
 }
 
-// Normalize the quaternion
 tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q) {
 	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
 	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
 }
 
 tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll) {
-	// Abbreviations for the various angular functions
-
 	float cr = cosf(pitch * 0.5f);
 	float sr = sinf(pitch * 0.5f);
 	float cp = cosf(yaw * 0.5f);
