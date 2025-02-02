@@ -14590,7 +14590,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.position = ribbon_emitter.world_position;
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
 	}
-	gpu_emitter.scale = ribbon_emitter.emitter_size;
+	gpu_emitter.scale = parent_effect.overal_scale;
 
 	float step_size = 1.f / ribbon_emitter.spawn_quantity;
 	float tween = 0;
@@ -15753,18 +15753,15 @@ void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->node_count - 3);
 			t = tfx_GenerateRandom(&random);
 			path_position = (float)node + t;
-
 			tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t, &point.x);
 		}
 
-		local_position_x = point.x * ribbon_emitter.emitter_size.x;
-		local_position_y = point.y * ribbon_emitter.emitter_size.y;
-		local_position_z = point.z * ribbon_emitter.emitter_size.z;
+		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
 
-		tfx_quaternion_t q = tfx__unpack8bit_quaternion_from_gpu(ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]].quaternion);
-		entry->particle_data->quaternion[index] = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]].quaternion;
-		tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
-		rp = tfx__rotate_vector_quaternion(&q, rp);
+		tfx_quaternion_t q = tfx__unpack8bit_quaternion_from_gpu(ribbon_instance.quaternion);
+		entry->particle_data->quaternion[index] = ribbon_instance.quaternion;
+		tfx_vec3_t rp = point;
+		rp = tfx__rotate_vector_quaternion(&q, rp) + ribbon_instance.position.xyz();
 		local_position_x = rp.x;
 		local_position_y = rp.y;
 		local_position_z = rp.z;
@@ -17313,6 +17310,8 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	float arc_offset = tfx__lookup_precise(&library->graphs[ribbon_emitter.graph_list_index].graphs[tfxRibbon_property_arc_offset_index], ribbon_emitter.frame);
 	float extrusion = tfx__lookup_precise(&library->graphs[ribbon_emitter.graph_list_index].graphs[tfxRibbon_property_extrusion_index], ribbon_emitter.frame);
 
+	bool is_offset = !ribbon_emitter.emitter_size.IsNill();
+
 	if (ribbon_emitter.static_segment_start_index != tfxINVALID) {
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		tfxU32 actual_new_ribbons = 0;
@@ -17329,10 +17328,14 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			} else {
 				ribbon.position = ribbon_emitter.world_position;
 			}
-			if (path->extrusion_type == tfxExtrusionLinear) {
-				float radius = extrusion * .5f;
-				float path_offset = tfx_RandomRangeFromTo(&random, -radius, radius);
-				ribbon.position.x += path_offset;
+			if (is_offset) {
+				tfx_vec3_t half_emitter_size = ribbon_emitter.emitter_size * .5f;
+				tfx_vec3_t offset = {
+					tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x),
+					tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y),
+					tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z)
+				};
+				ribbon.position += offset;
 			} 
 			float image_frame = (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && entry->shared_properties->image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, entry->shared_properties->image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + tfxU32(image_frame));
