@@ -1057,7 +1057,7 @@ void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle) {
 	q->z = sinf(half_angle);
 }
 
-tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
+tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t *q, tfx_vec2_t v) {
 	float c = q->w;
 	float s = q->z;
 
@@ -1071,17 +1071,9 @@ tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t *q, const tfx_
 	return tfx_vec2_t(rotated_x, rotated_y);
 }
 
-//Todo: Refactor quaternions to put inline with gpu
-tfx_vec3_t tfx__gpu_rotate_with_quaternion(tfx_vec3_t point, tfx_vec4_t quat) {
-	tfx_vec3_t cross = tfx__cross_product_vec3(&point, &quat.xyz()) + (point * quat.w);
-    return point + (tfx__cross_product_vec3(&cross, &quat.xyz()) * 2.f);
-}
-
-tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
-	tfx_quaternion_t qv(0, v.x, v.y, v.z);
-	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
-	tfx_quaternion_t result = q_conjugate * qv * *q;
-	return tfx_vec3_t(result.x, result.y, result.z);
+tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t *quat, tfx_vec3_t point) {
+	tfx_vec3_t cross = tfx__cross_product_vec3(&point, &quat->xyz()) + (point * quat->w);
+    return point + (tfx__cross_product_vec3(&cross, &quat->xyz()) * 2.f);
 }
 
 tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q) {
@@ -1090,19 +1082,23 @@ tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q) {
 }
 
 tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll) {
-	float cr = cosf(pitch * 0.5f);
-	float sr = sinf(pitch * 0.5f);
-	float cp = cosf(yaw * 0.5f);
-	float sp = sinf(yaw * 0.5f);
-	float cy = cosf(roll * 0.5f);
-	float sy = sinf(roll * 0.5f);
+	float cp = cosf(pitch * 0.5f);
+	float sp = sinf(pitch * 0.5f);
+	float cy = cosf(yaw * 0.5f);
+	float sy = sinf(yaw * 0.5f);
+	float cr = cosf(roll * 0.5f);
+	float sr = sinf(roll * 0.5f);
+
+	float cpcy = cp * cy;
+	float spsy = sp * sy;
+	float spcy = sp * cy;
+	float cpsy = cp * sy;
 
 	tfx_quaternion_t q;
-	q.w = cr * cp * cy + sr * sp * sy;
-	q.x = sr * cp * cy - cr * sp * sy;
-	q.y = cr * sp * cy + sr * cp * sy;
-	q.z = cr * cp * sy - sr * sp * cy;
-
+	q.w = cr * cpcy + sr * spsy;
+	q.x = sr * cpcy - cr * spsy;
+	q.y = cr * spcy + sr * cpsy;
+	q.z = cr * cpsy - sr * spcy;
 	return q;
 }
 
@@ -1746,7 +1742,7 @@ void tfx__transform_2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotation
 	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
 }
 
-void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent) {
+void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
 	*out_q = tfx__euler_to_quaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
 	*out_scale = parent->overal_scale;
 
@@ -2898,8 +2894,8 @@ void tfx__reset_transform_graphs(tfx_effect_descriptor_t *effect, bool add_node)
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_pitch_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_pitch_index].type = tfxTransform_pitch;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_yaw_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_yaw_index].type = tfxTransform_yaw;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_x_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_x_index].type = tfxTransform_translate_x;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_y_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_x_index].type = tfxTransform_translate_y;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_x_index].type = tfxTransform_translate_z;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_y_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_y_index].type = tfxTransform_translate_y;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index].type = tfxTransform_translate_z;
 }
 
 void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
@@ -14591,6 +14587,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
 	}
 	gpu_emitter.scale = parent_effect.overal_scale;
+	gpu_emitter.quaternion = ribbon_emitter.rotation.vec4();
 
 	float step_size = 1.f / ribbon_emitter.spawn_quantity;
 	float tween = 0;

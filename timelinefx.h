@@ -4884,6 +4884,8 @@ struct tfx_quaternion_t {
 	tfx_quaternion_t() : w(0.f), x(0.f), y(0.f), z(0.f) {}
 	tfx_quaternion_t(float w, float x, float y, float z) : w(w), x(x), y(y), z(z) {}
 
+	tfx_vec3_t xyz() { return tfx_vec3_t(x, y, z); }
+	tfx_vec4_t vec4() { return tfx_vec4_t(x, y, z, w); }
 	tfx_quaternion_t operator*(const tfx_quaternion_t &q) const {
 		return tfx_quaternion_t(
 			w * q.w - x * q.x - y * q.y - z * q.z,
@@ -4922,8 +4924,8 @@ typedef struct tfx_quaternion_s {
 #endif
 
 tfxINTERNAL void tfx__to_quaternion2d(tfx_quaternion_t * q, float angle);
-tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t * q, const tfx_vec2_t v);
-tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t * q, tfx_vec3_t v);
+tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t * q, tfx_vec2_t v);
+tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t * q, tfx_vec3_t v);
 tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t * q);
 tfxINTERNAL tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
@@ -5822,6 +5824,7 @@ typedef struct tfx_ribbon_soa_s {
 } tfx_ribbon_soa_t;
 
 typedef struct tfx_gpu_emitter_s {
+	tfx_vec4_t quaternion;
 	tfx_vec3_t position;
 	tfxU32 lookup_offset;
 	tfx_vec3_t captured_position;
@@ -6899,7 +6902,7 @@ tfxAPI_EDITOR void tfx__wide_transform_quaternion_vec2(const tfx_quaternion_t *q
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_unorm(float x, float y);
 tfxAPI_EDITOR float tfx__distance_2d(float fromx, float fromy, float tox, float toy);
-tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent);
+tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__complete_particle_manager_work(tfx_particle_manager pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
