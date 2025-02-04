@@ -2387,7 +2387,19 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	ribbon.info_index = tfx__allocate_library_descriptor_info(ribbon.library);
 	ribbon.property_index = tfx__allocate_library_ribbon_emitter_properties(ribbon.library);
 	ribbon.shared_index = tfx__allocate_library_shared_properties(ribbon.library);
-	ribbon.library->shared_properties[ribbon.shared_index].emission_type = tfxOtherEmitter;
+	ribbon.path_attributes = tfx__add_emitter_path_attributes(ribbon.library);
+	tfx_emitter_path_t *path = &ribbon.library->paths[ribbon.path_attributes];
+	path->extrusion_type = tfxExtrusionLinear;
+	if (tfx__is_3d_effect(effect)) {
+		tfx__reset_path_graphs(path, tfxPathGenerator_spiral);
+		tfx__build_path_nodes_3d(path);
+	} else {
+		path->flags |= tfxPathFlags_2d;
+		tfx__reset_path_graphs(path, tfxPathGenerator_spiral);
+		tfx__build_path_nodes_2d(path);
+	}
+	ribbon.ribbon_flags |= tfxRibbonPropertyFlags_static;
+	ribbon.library->shared_properties[ribbon.shared_index].emission_type = tfxPath;
 	ribbon.library->ribbon_properties[ribbon.property_index].bucket_info.segment_count = 32;
 	ribbon.library->ribbon_properties[ribbon.property_index].bucket_info.shader_type = tfxRibbonShader_always_face_camera;
 	tfx__update_ribbon_bucket_id(&ribbon);
@@ -4412,7 +4424,7 @@ tfx_effect_descriptor_t *tfx__add_library_effect(tfx_library library, tfx_effect
 	return &library->effects.back();
 }
 
-tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
+tfx_effect_descriptor_t *tfx__add_new_library_folder(tfx_library library, tfx_str64_t *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_descriptor_t folder = tfx_NewEffect();
 	folder.info_index = tfx__allocate_library_descriptor_info(library);
@@ -4422,6 +4434,33 @@ tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_st
 	folder.library = library;
 	tfx_GetEffectInfo(&folder)->uid = ++library->uid;
 	library->effects.push_back(folder);
+	tfx__reindex_library(library);
+	tfx__update_library_effect_paths(library);
+	return &library->effects.back();
+}
+
+tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name, bool is_3d) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
+	tfx_effect_descriptor_t effect = tfx_NewEffect();
+	if (is_3d) {
+		effect.effect_flags |= tfxEffectPropertyFlags_effect_is_3d;
+		effect.shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d;
+	}
+	effect.library = library;
+	effect.type = tfxEffectType;
+	effect.info_index = tfx__allocate_library_descriptor_info(library);
+	effect.property_index = tfx__allocate_library_particle_emitter_properties(library);
+	effect.shared_index = tfx__allocate_library_shared_properties(library);
+	tfx__add_library_effect_graphs(library, &effect);
+	tfx__reset_effect_graphs(&effect, true);
+	tfx__add_library_transform_graphs(library, &effect);
+	tfx__reset_transform_graphs(&effect, true);
+	tfx__add_library_sprite_sheet_settings(library, &effect);
+	tfx__add_library_sprite_data_settings(library, &effect);
+	tfx__add_library_preview_camera_settings_effect(library, &effect);
+	tfx_GetEffectInfo(&effect)->name = *name;
+	tfx_GetEffectInfo(&effect)->uid = ++library->uid;
+	library->effects.push_back(effect);
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	return &library->effects.back();
@@ -4700,7 +4739,7 @@ tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type t
 		tfx__initialise_ribbon_graphs(&graph_list);
 		break;
 	}
-	return library->graphs.size() - 1;
+	return index;
 }
 
 void tfx__free_library_graphs(tfx_graph_list_t *graph_list) {
@@ -5041,6 +5080,7 @@ tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 		return library->free_shared_emitter_properties.pop_back();
 	}
 	tfx_shared_properties_t properties{};
+	properties.spawn_amount = 1;
 	library->shared_properties.push_back(properties);
 	return library->shared_properties.current_size - 1;
 }

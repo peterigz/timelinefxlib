@@ -5,6 +5,7 @@
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
+//#define TFX_MEMORY_TRACKING
 
 /*
 	Timeline FX C++ library
@@ -191,14 +192,26 @@ extern "C" {
 
 #define tfx__MAXIMUM_BLOCK_SIZE (TFX_ONE << TFX_MAX_SIZE_INDEX)
 
+	//Note: putting this hear as a reminder for future memory tracking/features
+	typedef struct tfx_header_meta_s {
+		struct tfx_header *prev_physical_block;
+#if defined(TFX_MEMORY_TRACKING)
+		tfx_size memory_block_type;
+#endif
+		/*    Note that the size is either 4 or 8 bytes aligned so the boundary tag (2 flags denoting
+			whether this or the previous block is free) can be stored in the first 2 least
+			significant bits    */
+		tfx_size size;
+	} tfx_header_meta_t;
+
 	enum tfx__constants {
 		tfx__MEMORY_ALIGNMENT = 1 << MEMORY_ALIGNMENT_LOG2,
 		tfx__SECOND_LEVEL_INDEX_LOG2 = 5,
 		tfx__FIRST_LEVEL_INDEX_COUNT = TFX_MAX_SIZE_INDEX,
 		tfx__SECOND_LEVEL_INDEX_COUNT = 1 << tfx__SECOND_LEVEL_INDEX_LOG2,
-		tfx__BLOCK_POINTER_OFFSET = sizeof(void *) + sizeof(tfx_size),
+		tfx__BLOCK_POINTER_OFFSET = sizeof(void *) + sizeof(tfx_size) + sizeof(tfx_size),
 		tfx__MINIMUM_BLOCK_SIZE = 16,
-		tfx__BLOCK_SIZE_OVERHEAD = sizeof(tfx_size),
+		tfx__BLOCK_SIZE_OVERHEAD = sizeof(tfx_size) + sizeof(tfx_size),
 		tfx__POINTER_SIZE = sizeof(void *),
 		tfx__SMALLEST_CATEGORY = (1 << (tfx__SECOND_LEVEL_INDEX_LOG2 + MEMORY_ALIGNMENT_LOG2))
 	};
@@ -224,6 +237,9 @@ extern "C" {
 	*/
 	typedef struct tfx_header {
 		struct tfx_header *prev_physical_block;
+#if defined(TFX_MEMORY_TRACKING)
+		tfx_size memory_block_type;
+#endif
 		/*    Note that the size is either 4 or 8 bytes aligned so the boundary tag (2 flags denoting
 			whether this or the previous block is free) can be stored in the first 2 least
 			significant bits    */
@@ -429,6 +445,11 @@ extern "C" {
 	on the size of allocations you will need
 */
 	void tfx_SetMinimumAllocationSize(tfx_allocator *allocator, tfx_size size);
+
+	/*
+	To help with debugging memory you can label a memory block with a type which gets stored in the block header.	
+	*/
+	void tfx_SetBlockMemoryType(void *allocation, tfx_size memory_type);
 
 	//--End of user functions
 
@@ -888,6 +909,13 @@ extern "C" {
 		TFX_ASSERT(allocator->minimum_allocation_size == tfx__MINIMUM_BLOCK_SIZE);        //You cannot change this once set
 		TFX_ASSERT(tfx__is_pow2(size));                                                    //Size must be a power of 2
 		allocator->minimum_allocation_size = tfx__Max(tfx__MINIMUM_BLOCK_SIZE, size);
+	}
+
+	void tfx_SetBlockMemoryType(void *allocation, tfx_size memory_type) {
+		tfx_header *block = tfx__block_from_allocation(allocation);
+#if defined(TFX_MEMORY_TRACKING)
+		block->memory_block_type = memory_type;
+#endif
 	}
 
 	tfx_pool *tfx_GetPool(tfx_allocator *allocator) {
@@ -2484,6 +2512,48 @@ typedef enum {
 	tfxEndRibbonEmitter,
 } tfx_effect_library_stream_context;
 
+typedef enum {
+	//Single object handles
+	tfx_effect_library_mb,
+	tfx_particle_manager_mb,
+	//Effect Manager storage lists
+	tfx_particle_array_buffers_mb,
+	tfx_particle_arrays_mb,
+	tfx_particle_location_buffers_mb,
+	tfx_particle_location_arrays_mb,
+	tfx_free_particle_lists_mb,
+	tfx_free_particle_location_lists_mb,
+	tfx_free_ribbon_segment_lists_mb,
+	tfx_cached_static_path_segments_mb,
+	tfx_ribbon_segment_buckets_mb,
+	tfx_sorting_work_entry_mb,
+	tfx_spawn_work_mb,
+	tfx_ribbon_work_mb,
+	tfx_control_work_mb,
+	tfx_ribbon_control_work_mb,
+	tfx_age_work_mb,
+	tfx_particle_indexes_mb,
+	tfx_free_particle_indexes_mb,
+	tfx_effects_in_use_mb,
+	tfx_control_emitter_queue_mb,
+	tfx_emitters_check_capture_mb,
+	tfx_free_effects_mb,
+	tfx_free_emitters_mb,
+	tfx_free_gpu_emitters_mb,
+	tfx_free_ribbon_emitters_mb,
+	tfx_free_path_quaternions_mb,
+	tfx_path_quaternions_mb,
+	tfx_effects_mb,
+	tfx_emitters_mb,
+	tfx_gpu_emitters_mb,
+	tfx_ribbon_emitters_mb,
+	tfx_deffered_spawn_work_mb,
+	tfx_deffered_ribbon_spawn_work_mb,
+	tfx_unique_sprite_ids_mb,
+	tfx_free_compute_controllers_mb,
+	//Effect Library Storage lists
+} tfx_memory_allocation_type;
+
 // -- [Bit_fields]
 typedef tfxU32 tfxParticleEmitterFlags;			//tfx_particle_emitter_flag_bits
 typedef tfxU32 tfxRibbonEmitterFlags;			//tfx_ribbon_emitter_flag_bits
@@ -3199,6 +3269,9 @@ struct tfx_vector_t {
 	tfxU32 capacity;
 	tfxU32 volatile locked;
 	tfxU32 alignment;
+#if defined(TFX_MEMORY_TRACKING)
+	tfx_memory_allocation_type allocation_type;
+#endif
 	T *data;
 
 	// Provide standard typedefs but we don't use them ourselves.
@@ -3255,6 +3328,9 @@ struct tfx_vector_t {
 			new_data = (T *)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
+#if defined(TFX_MEMORY_TRACKING)
+		tfx_SetBlockMemoryType(new_data, allocation_type);
+#endif
 		if (data) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(T));
 			tfxFREE(data);
@@ -7077,7 +7153,8 @@ tfxAPI_EDITOR bool tfx__library_shape_exists(tfx_library library, tfxKey image_h
 tfxAPI_EDITOR bool tfx__remove_library_shape(tfx_library library, tfxKey image_hash);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__insert_library_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *position);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_library_effect(tfx_library library, tfx_effect_descriptor_t *effect);
-tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name);
+tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_library_folder(tfx_library library, tfx_str64_t *name);
+tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name, bool is_3d);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *name);
 tfxAPI_EDITOR void tfx__update_library_effect_paths(tfx_library library);
 tfxAPI_EDITOR bool tfx__rename_library_effect(tfx_library library, tfx_effect_descriptor_t *effect, const char *new_name);
