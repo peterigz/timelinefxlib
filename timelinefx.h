@@ -2153,6 +2153,7 @@ typedef enum {
 	tfxOverlength_alpha_sharpness,
 	tfxOverlength_curved_alpha,
 	tfxOverlength_gradient_map,
+	tfxOverlength_width,
 	tfxOverlength_ribbon_fixed_angle,
 
 	tfxFactor_life,
@@ -2344,11 +2345,8 @@ typedef enum {
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
 	tfxRibbon_overlength_gradient_map_index,
+	tfxRibbon_overlength_width_index,
 	tfxRibbon_overlength_fixed_angle_index,
-
-	tfxRibbon_factor_life_index,
-	tfxRibbon_factor_size_index,
-	tfxRibbon_factor_intensity_index,
 
 	tfxRibbonGraphs_max_index,
 
@@ -2356,12 +2354,10 @@ typedef enum {
 	tfxRibbon_base_start_index = tfxRibbon_base_life_index,
 	tfxRibbon_variation_start_index = tfxRibbon_variation_life_index,
 	tfxRibbon_overtime_start_index = tfxRibbon_overtime_red_index,
-	tfxRibbon_factor_start_index = tfxRibbon_factor_life_index + 1,
 	tfxRibbon_property_end_index = tfxRibbon_property_arc_offset_index + 1,
 	tfxRibbon_base_end_index = tfxRibbon_base_width_index + 1,
 	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
 	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_size_index + 1,
-	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_end = tfxRibbon_overlength_fixed_angle_index + 1,
 } tfx_ribbon_graph_index;
@@ -7236,7 +7232,7 @@ tfxAPI_EDITOR void tfx__reset_transform_graphs(tfx_effect_descriptor_t *effect, 
 tfxAPI_EDITOR void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void tfx__add_emitter_color_overtime(tfx_effect_descriptor_t *effect, float frame, tfx_rgb_t color);
-tfxAPI_EDITOR void tfx__update_effect_max_life(tfx_effect_descriptor_t *effect);
+tfxAPI_EDITOR void tfx__update_emitter_max_life(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_graph_by_index(tfx_effect_descriptor_t *effect, tfxU32 index);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_transform_graph_by_index(tfx_effect_descriptor_t *effect, tfxU32 index);
 tfxAPI_EDITOR tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor_t *effect, tfx_graph_type type);
