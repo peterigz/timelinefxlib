@@ -2133,7 +2133,7 @@ typedef enum {
 	tfxOvertime_velocity,
 	tfxOvertime_width,
 	tfxOvertime_height,
-	tfxOvertime_scale = tfxOvertime_height,
+	tfxOvertime_scale,
 	tfxOvertime_weight,
 	tfxOvertime_pitch_spin,
 	tfxOvertime_yaw_spin,
@@ -7204,9 +7204,9 @@ tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32
 tfxINTERNAL void tfx_free_library_info(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_library destination_library);
-tfxINTERNAL tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library);
-tfxINTERNAL tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfx_ribbon_emitter_properties_t *source, tfx_library destination_library);
-tfxINTERNAL tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfx_shared_properties_t *source, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path);
 
 //Effect/Emitter functions

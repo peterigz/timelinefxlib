@@ -3206,7 +3206,8 @@ tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descripto
 }
 
 tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor_t *effect) {
-	return &effect->library->ribbon_properties[effect->property_index];
+	tfx_ribbon_emitter_properties_t *properties = &effect->library->ribbon_properties[effect->property_index];
+	return properties;
 }
 
 bool tfx__rename_sub_effector(tfx_effect_descriptor_t *emitter, const char *new_name) {
@@ -3353,15 +3354,15 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	*clone = *effect_to_clone;
 	clone->info_index = tfx__clone_library_info(clone->library, effect_to_clone->info_index, destination_library);
 	if (clone->type != tfxFolder) {
-		clone->shared_index = tfx__clone_library_shared_properties(clone->library, tfx__get_shared_emitter_properties(effect_to_clone), destination_library);
+		clone->shared_index = tfx__clone_library_shared_properties(clone->library, effect_to_clone->shared_index, destination_library);
 	}
 	switch (clone->type) {
 	case tfxEmitterType:
 	case tfxEffectType:
-		clone->property_index = tfx__clone_library_particle_emitter_properties(clone->library, tfx__get_particle_emitter_properties(effect_to_clone), destination_library);
+		clone->property_index = tfx__clone_library_particle_emitter_properties(clone->library, effect_to_clone->property_index, destination_library);
 		break;
 	case tfxRibbonType:
-		clone->property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, tfx__get_ribbon_emitter_properties(effect_to_clone), destination_library);
+		clone->property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, effect_to_clone->property_index, destination_library);
 		break;
 	}
 	clone->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
@@ -4822,21 +4823,21 @@ tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_lib
 	return index;
 }
 
-tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library) {
+tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
 	tfxU32 dst_index = tfx__allocate_library_particle_emitter_properties(destination_library);
-	tfx__copy_emitter_properties(source, &destination_library->emitter_properties[dst_index]);
+	destination_library->emitter_properties[dst_index] = library->emitter_properties[source_index];
 	return dst_index;
 }
 
-tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfx_ribbon_emitter_properties_t *source, tfx_library destination_library) {
+tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
 	tfxU32 dst_index = tfx__allocate_library_ribbon_emitter_properties(destination_library);
-	destination_library->ribbon_properties[dst_index] = *source;
+	destination_library->ribbon_properties[dst_index] = library->ribbon_properties[source_index];
 	return dst_index;
 }
 
-tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfx_shared_properties_t *source, tfx_library destination_library) {
+tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
 	tfxU32 dst_index = tfx__allocate_library_shared_properties(destination_library);
-	destination_library->shared_properties[dst_index] = *source;
+	destination_library->shared_properties[dst_index] = library->shared_properties[source_index];
 	return dst_index;
 }
 
