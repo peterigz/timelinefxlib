@@ -10335,7 +10335,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 					source_emitters.push_back({ emitter.path_hash, index, tfxEmitterType });
 					emitter.spawn_locations_index = tfx__grab_particle_location_lists(pm, e.path_hash, (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d), 100);
-				} else if (shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) {
+				} else if (shared_properties->paired_emitter_hash && shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) {
 					target_emitters.push_back({ shared_properties->paired_emitter_hash, index, tfxEmitterType });
 				}
 
@@ -15134,6 +15134,11 @@ void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_particle_manager pm = work_entry->pm;
 	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	if ((work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index == tfxINVALID)
+		|| (work_entry->emission_type == tfxOtherEmitter && emitter.spawn_locations_index == tfxINVALID)) {
+		work_entry->amount_to_spawn = 0;
+		return;
+	}
 	tfx__spawn_particle_age(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_single) {
@@ -15189,6 +15194,11 @@ void tfx__do_spawn_work_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_particle_manager pm = work_entry->pm;
 	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	if ((work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index == tfxINVALID)
+		|| (work_entry->emission_type == tfxOtherEmitter && emitter.spawn_locations_index == tfxINVALID)) {
+		work_entry->amount_to_spawn = 0;
+		return;
+	}
 	tfx__spawn_particle_age(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		tfx__spawn_particle_other_emitter_2d(&pm->work_queue, work_entry);
@@ -15736,6 +15746,12 @@ void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *
 	tfx_particle_manager_t &pm = *entry->pm;
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+
+	if (emitter.other_emitter_index == tfxINVALID) {
+		entry->amount_to_spawn = 0;
+		return;
+	}
+
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 	tfx_effect_state_t *parent = &pm.effects[entry->parent_index];
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
