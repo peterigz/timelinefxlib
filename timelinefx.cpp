@@ -10149,6 +10149,12 @@ bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_descr
 tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
+	tfx_work_queue_entry_t entry = { 0 };
+	while (pm->work_queue.entry_completion_goal != pm->work_queue.entry_completion_count) {
+		tfx__do_next_work_queue_entry(&pm->work_queue);
+	}
+	pm->work_queue.entry_completion_count = 0;
+	pm->work_queue.entry_completion_goal = 0;
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
 		return tfxINVALID;
@@ -10442,8 +10448,13 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			for (hash_index_pair_t source_pair : source_emitters) {
 				if (target_pair.hash == source_pair.hash) {
 					if (source_pair.type == tfxRibbonType) {
-						pm->emitters[target_pair.index].other_emitter_index = source_pair.index;
-						pm->emitters[target_pair.index].ribbon_bucket_id = pm->ribbon_emitters[source_pair.index].ribbon_bucket_id;
+						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[source_pair.index];
+						tfx_emitter_state_t &emitter = pm->emitters[target_pair.index];
+						emitter.other_emitter_index = source_pair.index;
+						emitter.ribbon_bucket_id = ribbon_emitter.ribbon_bucket_id;
+						if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+							emitter.state_flags |= tfxEmitterStateFlags_src_ribbon_is_also_relative;
+						}
 					} else {
 						pm->emitters[target_pair.index].spawn_locations_index = pm->emitters[source_pair.index].spawn_locations_index;
 					}
@@ -12288,7 +12299,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_3d_instance_t *sprites = tfxCastBuffer(tfx_3d_instance_t, work_entry->sprite_instances);
 
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
-	bool is_other_emission_type = emission_type == tfxOtherEmitter || emission_type == tfxSpawnOnRibbon;
+	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -12326,7 +12337,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat alignment_vector_y;
 		tfxWideFloat alignment_vector_z;
 
-		if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter) {
+		if (transform_relative) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
@@ -13914,9 +13925,9 @@ void tfx_ClearParticleManager(tfx_particle_manager pm, bool free_particle_banks,
 		emitters.ribbon_indexes[1].free();
 	}
 	for (tfx_ribbon_bucket_t &ribbon_bucket : pm->ribbon_segment_buckets.data) {
-		tfx__clear_soa_buffer(&ribbon_bucket.ribbons_buffer);
-		ribbon_bucket.segments.clear();
-		ribbon_bucket.free_ribbons.clear();
+		tfx__free_soa_buffer(&ribbon_bucket.ribbons_buffer);
+		ribbon_bucket.segments.free();
+		ribbon_bucket.free_ribbons.free();
 		ribbon_bucket.ribbon_emitter_indexes[0].free();
 		ribbon_bucket.ribbon_emitter_indexes[1].free();
 		ribbon_bucket.control_ribbon_queue.free();
@@ -15822,25 +15833,37 @@ void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *
 		qi = ribbon_emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 		TFX_ASSERT(qi < ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size);
 
-		if (!(emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+		if (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			//if ribbon emitter is relative and the particle emitter is not relative then we need to add on the emitter position to get the correct spawn
+			//location as the ribbon_instance position will not include the emitter position (as it's relative and therefore added each update.
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
-			if (properties.emission_direction == tfxPathGradient) {
-				tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
-				tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
-				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
-				if (range != 0.f) {
-					rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
-				}
-				entry->particle_data->velocity_normal[index] = tfx__pack10bit_unsigned(&rotated_normal);
-			}
-		} else if (properties.emission_direction == tfxPathGradient) {
+		} else if (!(emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			//When neither ribbon or particle emitter is relative then we don't need to add on the emitter position because the ribbon will have already been positioned
+			//in emitter space when it spawned.
+			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			local_position_x *= entry->overal_scale;
+			local_position_y *= entry->overal_scale;
+			local_position_z *= entry->overal_scale;
+		} else if(emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			//if ribbon emitter is relative and the particle emitter is not relative then we need to add on the emitter position to get the correct spawn
+			//location as the ribbon_instance position will not include the emitter position (as it's relative and therefore added each update.
+			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			local_position_x = pos.x * entry->overal_scale;
+			local_position_y = pos.y * entry->overal_scale;
+			local_position_z = pos.z * entry->overal_scale;
+		}
+
+		if (properties.emission_direction == tfxPathGradient) {
 			tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
 			tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
+			rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
 			if (range != 0.f) {
 				rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
 			}
@@ -17392,12 +17415,17 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			float image_frame = (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && entry->shared_properties->image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, entry->shared_properties->image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + tfxU32(image_frame));
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-			ribbon.quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 			ribbon.texture_indexes = texture_indexes;
 			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__lookup_precise(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.frame));
 			ribbon.position.w = 0.f;
 			ribbon.start_index = ribbon_emitter.static_segment_start_index;
 			ribbon.flags |= tfxRibbonFlags_active;
+			if (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+				ribbon.flags |= tfxRibbonFlags_relative;
+			} else {
+				q = q * ribbon_emitter.rotation;
+			}
+			ribbon.quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 			ribbon.emitter_index = ribbon_emitter.gpu_emitter_index;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
