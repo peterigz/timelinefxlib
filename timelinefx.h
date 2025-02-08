@@ -96,6 +96,17 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <string.h>
 #include <ctype.h>
 
+#if defined(_WIN32)
+#include <process.h>
+#include <SDKDDKVer.h>
+#ifndef WIN_LEAN_AND_MEAN
+#define WIN_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#else
+#include <pthread.h>
+#endif
+
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
 #define tfx__Clamp(min, max, v) (v < min) ? min : (v > max) ? max : v
@@ -186,9 +197,92 @@ typedef int tfxLONG;
 
 tfx__static_assert(TFX_MAX_SIZE_INDEX < 64);
 
+typedef struct tfx_sync_s {
+#ifdef _WIN32
+	CRITICAL_SECTION mutex;
+	CONDITION_VARIABLE empty_condition;
+	CONDITION_VARIABLE full_condition;
+#else
+	pthread_mutex_t mutex;
+	pthread_cond_t empty_condition;
+	pthread_cond_t full_condition;
+#endif
+} tfx_sync_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Initialize synchronization primitives
+tfxINTERNAL inline void tfx__sync_init(tfx_sync_t *sync) {
+#ifdef _WIN32
+	InitializeCriticalSection(&sync->mutex);
+	InitializeConditionVariable(&sync->empty_condition);
+	InitializeConditionVariable(&sync->full_condition);
+#else
+	pthread_mutex_init(&sync->mutex, NULL);
+	pthread_cond_init(&sync->empty_condition, NULL);
+	pthread_cond_init(&sync->full_condition, NULL);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_cleanup(tfx_sync_t *sync) {
+#ifdef _WIN32
+	DeleteCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_destroy(&sync->mutex);
+	pthread_cond_destroy(&sync->empty_condition);
+	pthread_cond_destroy(&sync->full_condition);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_lock(tfx_sync_t *sync) {
+#ifdef _WIN32
+	EnterCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_lock(&sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_unlock(tfx_sync_t *sync) {
+#ifdef _WIN32
+	LeaveCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_unlock(&sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_wait_empty(tfx_sync_t *sync) {
+#ifdef _WIN32
+	SleepConditionVariableCS(&sync->empty_condition, &sync->mutex, INFINITE);
+#else
+	pthread_cond_wait(&sync->empty_condition, &sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_wait_full(tfx_sync_t *sync) {
+#ifdef _WIN32
+	SleepConditionVariableCS(&sync->full_condition, &sync->mutex, INFINITE);
+#else
+	pthread_cond_wait(&sync->full_condition, &sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
+#ifdef _WIN32
+	WakeConditionVariable(&sync->empty_condition);
+#else
+	pthread_cond_signal(&sync->empty_condition);
+#endif
+}
+
+	tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
+#ifdef _WIN32
+		WakeConditionVariable(&sync->full_condition);
+#else
+		pthread_cond_signal(&sync->full_condition);
+#endif
+	}
 
 #define tfx__MAXIMUM_BLOCK_SIZE (TFX_ONE << TFX_MAX_SIZE_INDEX)
 
@@ -269,7 +363,7 @@ extern "C" {
 		//todo: just make thead safe by default and remove these conditions
 #if defined(TFX_THREAD_SAFE)
 		/* Multithreading protection*/
-		volatile tfxLONG access;
+		tfx_sync_t mutex;
 #endif
 		tfx_size minimum_allocation_size;
 		/*    Here we store all of the free block data. first_level_bitmap is either a 32bit int
@@ -583,23 +677,21 @@ extern "C" {
 		}
 	}
 
-	//Write functions
 #if defined(TFX_THREAD_SAFE)
 
-#define tfx__lock_thread_access(alloc)                                        \
-    do {                                                                    \
-    } while (0 != tfx__compare_and_exchange(&alloc->access, 1, 0));            \
-    TFX_ASSERT(alloc->access != 0);
-
-#define tfx__unlock_thread_access(alloc)  alloc->access = 0;
+#define tfx__lock_thread_access(alloc) tfx__sync_lock(&alloc->mutex);
+#define tfx__unlock_thread_access(alloc) tfx__sync_unlock(&alloc->mutex);
+#define tfx__init_allocator_mutex(alloc) tfx__sync_init(&alloc->mutex);
 
 #else
 
 #define tfx__lock_thread_access
 #define tfx__unlock_thread_access 
+#define tfx__init_allocator_mutex
 
 #endif
 
+	//Write functions
 	static inline void tfx__set_block_size(tfx_header *block, tfx_size size) {
 		tfx_size boundary_tag = block->size & (tfx__BLOCK_IS_FREE | tfx__PREV_BLOCK_IS_FREE);
 		block->size = size | boundary_tag;
@@ -822,7 +914,6 @@ extern "C" {
 		//we stick to the paper and just move on to the next class up to keep a O1 speed at the cost of some extra fragmentation
 		if (tfx__has_free_block(allocator, fli, sli) && tfx__block_size(allocator->segregated_lists[fli][sli]) >= size) {
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
-			tfx__unlock_thread_access(allocator);
 			return block;
 		}
 		if (sli == tfx__SECOND_LEVEL_INDEX_COUNT - 1) {
@@ -836,13 +927,11 @@ extern "C" {
 				sli = tfx__scan_forward(allocator->second_level_bitmaps[fli]);
 				tfx_header *block = tfx__pop_block(allocator, fli, sli);
 				tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
-				tfx__unlock_thread_access(allocator);
 				return split_block;
 			}
 		} else {
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
 			tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
-			tfx__unlock_thread_access(allocator);
 			return split_block;
 		}
 
@@ -875,6 +964,7 @@ extern "C" {
 		allocator->null_block.next_free_block = &allocator->null_block;
 		allocator->null_block.prev_free_block = &allocator->null_block;
 		allocator->minimum_allocation_size = tfx__MINIMUM_BLOCK_SIZE;
+		tfx__init_allocator_mutex(allocator);
 
 		//Point all of the segregated list array pointers to the empty block
 		for (tfx_uint i = 0; i < tfx__FIRST_LEVEL_INDEX_COUNT; i++) {
@@ -975,6 +1065,7 @@ extern "C" {
 		tfx_header *block = tfx__find_free_block(allocator, size, remote_size);
 
 		if (block) {
+			tfx__unlock_thread_access(allocator);
 			return tfx__block_user_ptr(block);
 		}
 
@@ -1146,14 +1237,6 @@ typedef tfxU64 tfxKey;
 typedef tfxU32 tfxParticleID;
 typedef short tfxShort;
 typedef unsigned short tfxUShort;
-
-#if defined(_WIN32)
-#include <SDKDDKVer.h>
-#ifndef WIN_LEAN_AND_MEAN
-#define WIN_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
-#endif
 
 //--------------------------------------------------------------
 //Macros
@@ -2854,7 +2937,8 @@ typedef enum {
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
 	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
 	tfxEmitterStateFlags_is_in_ordered_effect = 1 << 29,
-	tfxEmitterStateFlags_wrap_single_sprite = 1 << 30
+	tfxEmitterStateFlags_wrap_single_sprite = 1 << 30,
+	tfxEmitterStateFlags_src_ribbon_is_also_relative		= 1 << 31,	//Flagged when emission type is spawn on ribbon and both the emitter and ribbon emitter are relative.
 } tfx_emitter_state_flag_bits;
 
 typedef enum {
@@ -2865,8 +2949,9 @@ typedef enum {
 } tfx_ribbon_emitter_state_flag_bits;
 
 typedef enum {
-	tfxRibbonFlags_none = 0,
-	tfxRibbonFlags_active = 1 << 0
+	tfxRibbonFlags_none		= 0,
+	tfxRibbonFlags_active	= 1 << 0,
+	tfxRibbonFlags_relative = 1 << 1
 } tfx_ribbon_flag_bits;
 
 typedef enum {
@@ -4439,6 +4524,7 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 //-----------------------------------------------------------
 //Section: Global_Variables
 //-----------------------------------------------------------
+// Platform-specific synchronization wrapper
 extern const tfxU32 tfxPROFILE_COUNT;
 
 extern int tfxNumberOfThreadsInAdditionToMain;
@@ -4449,12 +4535,6 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 
 #ifndef tfxMAX_QUEUE_ENTRIES
 #define tfxMAX_QUEUE_ENTRIES 512
-#endif
-
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <pthread.h>
 #endif
 
 typedef struct tfx_work_queue_s tfx_work_queue_t;
@@ -4474,19 +4554,6 @@ typedef struct tfx_work_queue_s {
 	volatile int next_write_entry;
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 } tfx_work_queue_t;
-
-// Platform-specific synchronization wrapper
-typedef struct tfx_sync_s {
-#ifdef _WIN32
-	CRITICAL_SECTION mutex;
-	CONDITION_VARIABLE empty_condition;
-	CONDITION_VARIABLE full_condition;
-#else
-	pthread_mutex_t mutex;
-	pthread_cond_t empty_condition;
-	pthread_cond_t full_condition;
-#endif
-} tfx_sync_t;
 
 typedef struct tfx_queue_processor_s {
 	tfx_sync_t sync;
@@ -4557,77 +4624,6 @@ tfxINTERNAL inline void tfx__memory_barrier(void) {
 	MemoryBarrier();
 #else
 	__sync_synchronize();
-#endif
-}
-
-// Initialize synchronization primitives
-tfxINTERNAL inline void tfx__sync_init(tfx_sync_t *sync) {
-#ifdef _WIN32
-	InitializeCriticalSection(&sync->mutex);
-	InitializeConditionVariable(&sync->empty_condition);
-	InitializeConditionVariable(&sync->full_condition);
-#else
-	pthread_mutex_init(&sync->mutex, NULL);
-	pthread_cond_init(&sync->empty_condition, NULL);
-	pthread_cond_init(&sync->full_condition, NULL);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_cleanup(tfx_sync_t *sync) {
-#ifdef _WIN32
-	DeleteCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_destroy(&sync->mutex);
-	pthread_cond_destroy(&sync->empty_condition);
-	pthread_cond_destroy(&sync->full_condition);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_lock(tfx_sync_t *sync) {
-#ifdef _WIN32
-	EnterCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_lock(&sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_unlock(tfx_sync_t *sync) {
-#ifdef _WIN32
-	LeaveCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_unlock(&sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_wait_empty(tfx_sync_t *sync) {
-#ifdef _WIN32
-	SleepConditionVariableCS(&sync->empty_condition, &sync->mutex, INFINITE);
-#else
-	pthread_cond_wait(&sync->empty_condition, &sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_wait_full(tfx_sync_t *sync) {
-#ifdef _WIN32
-	SleepConditionVariableCS(&sync->full_condition, &sync->mutex, INFINITE);
-#else
-	pthread_cond_wait(&sync->full_condition, &sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
-#ifdef _WIN32
-	WakeConditionVariable(&sync->empty_condition);
-#else
-	pthread_cond_signal(&sync->empty_condition);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
-#ifdef _WIN32
-	WakeConditionVariable(&sync->full_condition);
-#else
-	pthread_cond_signal(&sync->full_condition);
 #endif
 }
 
@@ -6756,6 +6752,7 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 running_ribbon_vertex_count;
 
 	int mt_batch_size;
+	//We might not need these now.
 	tfx_sync_t particle_index_mutex;
 	tfx_sync_t add_effect_mutex;
 
