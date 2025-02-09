@@ -3437,7 +3437,7 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 
 void tfx__clone_effect_into_library(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	tfx__clone_effect(effect_to_clone, clone, root_parent, destination_library, flags);
-	tfx__update_library_compute_nodes(destination_library);
+	tfx__update_library_compute_nodes();
 }
 
 void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_descriptor_t *effect_emitter, const char *path) {
@@ -4658,15 +4658,13 @@ tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
 	return library->gpu_shapes;
 }
 
-float *tfx_GetLibraryGPUGraphLookupsBuffer(tfx_library library) {
-	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	TFX_ASSERT(library->compiled_lookup_values.current_size > 0);	//No data in buffer, did you load a library with this library handle?
-	return library->compiled_lookup_values.data;
+float *tfx_GetGPUGraphLookupsBuffer() {
+	TFX_ASSERT(tfxStore->compiled_lookup_values.current_size > 0);	//No data in buffer, did you load a library with this library handle?
+	return tfxStore->compiled_lookup_values.data;
 }
 
-tfxU32 tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes(tfx_library library) {
-	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	return library->compiled_lookup_values.size_in_bytes();
+tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes() {
+	return tfxStore->compiled_lookup_values.size_in_bytes();
 }
 
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
@@ -4677,10 +4675,6 @@ void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manag
 
 tfx_gpu_image_data_t *tfx_GetGPUShapesArray(tfx_gpu_shapes shapes) {
 	return shapes->list.data;
-}
-
-tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library) {
-	return library->compiled_lookup_values.size_in_bytes();
 }
 
 bool tfx__is_library_shape_used(tfx_library library, tfxKey image_hash) {
@@ -5108,8 +5102,6 @@ void tfx__init_library(tfx_library library) {
 	library->sprite_sheet_settings.init();
 	library->sprite_data_settings.init();
 	library->preview_camera_settings.init();
-	library->all_nodes.init();
-	library->compiled_lookup_values.init();
 	library->graph_min_max.init();
 	library->free_graph_lists.init();
 	library->free_animation_settings.init();
@@ -5196,8 +5188,6 @@ void tfx_FreeLibrary(tfx_library library) {
 	library->paths.free();
 	library->sprite_sheet_settings.free();
 	library->preview_camera_settings.free();
-	library->all_nodes.free();
-	library->compiled_lookup_values.free();
 	library->emitter_properties.free();
 	library->graph_min_max.free();
 	for (auto &info : library->effect_infos) {
@@ -5214,91 +5204,93 @@ void tfx_FreeLibrary(tfx_library library) {
 
 	library->uid = 0;
 	library->color_ramps.color_ramp_count = 0;
+	tfxStore->libraries.Remove((tfxKey)library);
 	tfxFREE(library);
 }
 
-void tfx__update_library_compute_nodes(tfx_library library) {
+void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor_t *, stack);
-	library->all_nodes.clear();
-	library->compiled_lookup_values.clear();
-	for (auto &effect : library->effects) {
-		if (effect.property_flags & tfxEffectPropertyFlags_history_effect) {
-			continue;
-		}
-		stack.push_back(&effect);
-		while (!stack.empty()) {
-			tfx_effect_descriptor_t *current = stack.pop_back();
-			if (current->type == tfxFolder) {
+	//tfxStore->all_graph_nodes.clear();
+	tfxStore->compiled_lookup_values.clear();
+	for (tfx_library library : tfxStore->libraries.data) {
+		for (tfx_effect_descriptor_t &effect : library->effects) {
+			if (effect.property_flags & tfxEffectPropertyFlags_history_effect) {
+				continue;
+			}
+			stack.push_back(&effect);
+			while (!stack.empty()) {
+				tfx_effect_descriptor_t *current = stack.pop_back();
+				if (current->type == tfxFolder) {
+					for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
+						stack.push_back(&sub);
+					}
+					continue;
+				}
+				if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
+
+					current->gpu_lookup_offset = tfxStore->compiled_lookup_values.current_size;
+
+					for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
+
+						if (!tfx__gpu_overtime_graph(&graph) && !tfx__is_factor_graph(&graph)) continue;
+
+						/*
+						for (tfxBucketLoop(graph.nodes, i)) {
+							tfxStore->all_graph_nodes.push_back(graph.nodes[i]);
+						}
+						*/
+
+						if (graph.lookup.values.current_size == tfxLOOKUP_TABLE_ARRAY_SIZE) {
+							for (float value : graph.lookup.values) {
+								tfxStore->compiled_lookup_values.push_back(value);
+							}
+						} else {
+							TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_TABLE_ARRAY_SIZE in size
+							for (int i = 0; i != tfxLOOKUP_TABLE_ARRAY_SIZE; ++i) {
+								tfxStore->compiled_lookup_values.push_back(graph.lookup.values[0]);
+							}
+						}
+					}
+				}
+
 				for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
 					stack.push_back(&sub);
 				}
-				continue;
-			}
-			if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
-
-				current->gpu_lookup_offset = library->compiled_lookup_values.current_size;
-
-				for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
-
-					if (!tfx__gpu_overtime_graph(&graph) && !tfx__is_factor_graph(&graph)) continue;
-
-					for (tfxBucketLoop(graph.nodes, i)) {
-						library->all_nodes.push_back(graph.nodes[i]);
-					}
-
-					if (graph.lookup.values.current_size == tfxLOOKUP_TABLE_ARRAY_SIZE) {
-						for (float value : graph.lookup.values) {
-							library->compiled_lookup_values.push_back(value);
-						}
-					} else {
-						TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_TABLE_ARRAY_SIZE in size
-						for (int i = 0; i != tfxLOOKUP_TABLE_ARRAY_SIZE; ++i) {
-							library->compiled_lookup_values.push_back(graph.lookup.values[0]);
-						}
-					}
-				}
-			}
-
-			for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
-				stack.push_back(&sub);
 			}
 		}
 	}
 	stack.free();
 }
 
-void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter) {
+void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter) {
 	if (emitter->type != tfxEmitterType && emitter->type != tfxRibbonType) {
 		return;
 	}
-	tmpStack(tfx_effect_descriptor_t *, stack);
-	stack.push_back(emitter);
+
+	tfxU32 graph_count = tfxGPU_lookup_end - tfxGPU_lookup_start;
+
 	tfxU32 running_offset = 0;
-	while (!stack.empty()) {
-		tfx_effect_descriptor_t *current = stack.pop_back();
-
-		for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
-
-			if (!tfx__gpu_overtime_graph(&graph) && !tfx__is_factor_graph(&graph)) continue;
-
-			if (graph.lookup.values.current_size == tfxLOOKUP_TABLE_ARRAY_SIZE) {
-				for (int ni = 0; ni != tfxLOOKUP_TABLE_ARRAY_SIZE; ++ni) {
-					library->compiled_lookup_values[current->gpu_lookup_offset + ni + running_offset] = graph.lookup.values[ni];
-				}
-			} else {
-				TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_TABLE_ARRAY_SIZE in size
-				for (int ni = 0; ni != tfxLOOKUP_TABLE_ARRAY_SIZE; ++ni) {
-					library->compiled_lookup_values[current->gpu_lookup_offset + ni + running_offset] = graph.lookup.values[0];
-				}
-			}
-			running_offset += tfxU32(tfxLOOKUP_TABLE_ARRAY_SIZE);
-		}
-
-		for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
-			stack.push_back(&sub);
-		}
+	if (emitter->gpu_lookup_offset + graph_count * tfxLOOKUP_TABLE_ARRAY_SIZE >= tfxStore->compiled_lookup_values.size()) {
+		tfx__update_library_compute_nodes();
+		return;
 	}
-	stack.free();
+
+	for (tfx_graph_t &graph : emitter->library->graphs[emitter->graph_list_index].graphs) {
+
+		if (!tfx__gpu_overtime_graph(&graph)) continue;
+
+		if (graph.lookup.values.current_size == tfxLOOKUP_TABLE_ARRAY_SIZE) {
+			for (int ni = 0; ni != tfxLOOKUP_TABLE_ARRAY_SIZE; ++ni) {
+				tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + ni + running_offset] = graph.lookup.values[ni];
+			}
+		} else {
+			TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_TABLE_ARRAY_SIZE in size
+			for (int ni = 0; ni != tfxLOOKUP_TABLE_ARRAY_SIZE; ++ni) {
+				tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + ni + running_offset] = graph.lookup.values[0];
+			}
+		}
+		running_offset += tfxU32(tfxLOOKUP_TABLE_ARRAY_SIZE);
+	}
 }
 
 void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth, bool include_color_ramps) {
@@ -6096,7 +6088,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
-	if (effect->type == tfxEmitterType) {
+	if (effect->type == tfxEmitterType || effect->type == tfxEffectType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
 	} else if (effect->type == tfxRibbonType) {
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
@@ -6145,7 +6137,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor_t *effect, tfx_str256_t *field, int value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
-	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
+	tfx_particle_emitter_properties_t *emitter_properties = effect->type != tfxRibbonType ? tfx__get_particle_emitter_properties(effect) : nullptr;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
 	if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
 	if (*field == "emission_type") shared_properties->emission_type = (tfx_emission_type)value;
@@ -8406,7 +8398,6 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	tfx_effect_library_stats_t stats;
 	memset(&stats, 0, sizeof(stats));
 	stats.total_effects = lib->effects.size();
-	stats.total_attribute_nodes = lib->all_nodes.size();
 	tmpStack(tfx_effect_descriptor_t, stack);
 	for (auto &effect : lib->effects) {
 		stack.push_back(effect);
@@ -8980,7 +8971,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			tfx__update_library_particle_shape_references(lib, first_shape_hash);
 		}
 		tfx__update_library_effect_paths(lib);
-		tfx__update_library_compute_nodes(lib);
+		tfx__update_library_compute_nodes();
 		tfx__build_all_library_paths(lib);
 		tfx__set_library_min_max_data(lib);
 		tfx__update_library_control_profiles(lib);
@@ -9005,6 +8996,7 @@ tfx_library tfx_CreateLibrary() {
 	memset(library, 0, sizeof(tfx_library_t));
 	library->magic = tfxINIT_MAGIC;
 	tfx__init_library(library);
+	tfxStore->libraries.Insert((tfxKey)library, library);
 	return library;
 }
 
@@ -10149,12 +10141,7 @@ bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_descr
 tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
-	tfx_work_queue_entry_t entry = { 0 };
-	while (pm->work_queue.entry_completion_goal != pm->work_queue.entry_completion_count) {
-		tfx__do_next_work_queue_entry(&pm->work_queue);
-	}
-	pm->work_queue.entry_completion_count = 0;
-	pm->work_queue.entry_completion_goal = 0;
+
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
 		return tfxINVALID;
@@ -13722,8 +13709,13 @@ tfx_ribbon_bucket_t *tfx_Get3dRibbonBuffers(tfx_particle_manager pm, tfxKey buck
 	return bucket;
 }
 
-bool tfx_HasRibbonsToDraw(tfx_particle_manager pm) {
-	return pm->flags & tfxParticleManagerFlags_has_ribbons_to_draw;
+bool tfx_HasRibbonsToDraw() {
+	for (tfx_particle_manager pm : tfxStore->particle_managers.data) {
+		if (pm->flags & tfxParticleManagerFlags_has_ribbons_to_draw) {
+			return true;
+		}
+	}
+	return false;
 }
 
 tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_particle_manager pm, tfxKey bucket_hash) {
@@ -13775,38 +13767,44 @@ bool tfx__next_ribbon_bucket(tfx_particle_manager pm, tfx_ribbon_dispatch_t *rib
 		ribbon_dispatch->ribbon_data = bucket;
 		return true;
 	}
-	pm->last_ribbon_dispatch = {};
+	*tfxStore->last_ribbon_dispatch = {};
 	return false;
 }
 
-bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
-	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
-	while (bucket) {
-		if (bucket->active_ribbons == 0) {
-			bucket = pm->ribbon_segment_buckets.next_item();
-			continue;
-		}
-		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
-		ribbon_dispatch->ribbon_data = bucket;
-		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
-		ribbon_dispatch->index_offset = pm->last_ribbon_dispatch.index_offset;
-		ribbon_dispatch->vertex_offset = pm->last_ribbon_dispatch.vertex_offset;
-		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
-		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
-		ribbon_dispatch->ribbon_offset = pm->last_ribbon_dispatch.ribbon_offset;
-		bucket->globals.camera_position = pm->camera_position;
-		bucket->globals.index_offset = ribbon_dispatch->index_offset;
-		bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
-		bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
-		bucket->globals.ribbon_count = ribbon_count;
-		pm->last_ribbon_dispatch = *ribbon_dispatch;
-		pm->last_ribbon_dispatch.index_offset += ribbon_dispatch->index_count;
-		pm->last_ribbon_dispatch.vertex_offset += ribbon_dispatch->vertex_count;
-		pm->last_ribbon_dispatch.ribbon_offset += ribbon_count;
-		pm->last_ribbon_dispatch.segment_offset += bucket->segments.current_size;
-		return true;
+bool tfx_NextRibbonDispatch(tfx_ribbon_dispatch_t *ribbon_dispatch) {
+	if (!tfxStore->current_pm) {
+		tfxStore->current_pm = tfx__next_global_particle_manager();
 	}
-	pm->last_ribbon_dispatch = {};
+	while (tfxStore->current_pm) {
+		tfx_ribbon_bucket_t *bucket = tfxStore->current_pm->ribbon_segment_buckets.next_item();
+		while (bucket) {
+			if (bucket->active_ribbons == 0) {
+				bucket = tfxStore->current_pm->ribbon_segment_buckets.next_item();
+				continue;
+			}
+			tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+			ribbon_dispatch->ribbon_data = bucket;
+			ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
+			ribbon_dispatch->index_offset = tfxStore->last_ribbon_dispatch->index_offset;
+			ribbon_dispatch->vertex_offset = tfxStore->last_ribbon_dispatch->vertex_offset;
+			ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
+			ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
+			ribbon_dispatch->ribbon_offset = tfxStore->last_ribbon_dispatch->ribbon_offset;
+			bucket->globals.camera_position = tfxStore->current_pm->camera_position;
+			bucket->globals.index_offset = ribbon_dispatch->index_offset;
+			bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
+			bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
+			bucket->globals.ribbon_count = ribbon_count;
+			*tfxStore->last_ribbon_dispatch = *ribbon_dispatch;
+			tfxStore->last_ribbon_dispatch->index_offset += ribbon_dispatch->index_count;
+			tfxStore->last_ribbon_dispatch->vertex_offset += ribbon_dispatch->vertex_count;
+			tfxStore->last_ribbon_dispatch->ribbon_offset += ribbon_count;
+			tfxStore->last_ribbon_dispatch->segment_offset += bucket->segments.current_size;
+			return true;
+		}
+		tfxStore->current_pm = tfx__next_global_particle_manager();
+	}
+	*tfxStore->last_ribbon_dispatch = {};
 	return false;
 }
 
@@ -13814,32 +13812,58 @@ void tfx_ResetRibbonDispatchIterator(tfx_particle_manager pm) {
 	pm->ribbon_segment_buckets.iterator_index = 0;
 }
 
-tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_particle_manager pm) {
-	return pm->ribbon_buffer_requirements;
+tfx_particle_manager tfx__next_global_particle_manager() {
+	tfx_particle_manager *next_pm = tfxStore->particle_managers.next_item();
+	return next_pm ? *next_pm : nullptr;
 }
 
-void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
+tfx_library tfx__next_global_library() {
+	tfx_library *next_library = tfxStore->libraries.next_item();
+	return next_library ? *next_library : nullptr;
+}
+
+tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
+	tfx_particle_manager pm = tfx__next_global_particle_manager();
+	tfxStore->ribbon_buffer_requirements->segment_buffer_size_in_bytes = 0;
+	tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes = 0;
+	tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes = 0;
+	while (pm) {
+		tfxStore->ribbon_buffer_requirements->segment_buffer_size_in_bytes += pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes;
+		tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes += pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes;
+		tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes += pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes;
+		pm = tfx__next_global_particle_manager();
+	}
+	return *tfxStore->ribbon_buffer_requirements;
+}
+
+void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst) {
 	TFX_ASSERT(emitters_dst);
 	if (segments_dst && ribbons_dst) {
+		tfx_particle_manager pm = tfx__next_global_particle_manager();
 		tfxU32 running_segment_offset = 0;
 		tfxU32 running_ribbon_offset = 0;
-		tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
-		while (bucket) {
-			if (bucket->active_ribbons == 0) {
+		tfxU32 running_emitter_offset = 0;
+		while (pm) {
+			tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
+			while (bucket) {
+				if (bucket->active_ribbons == 0) {
+					bucket = pm->ribbon_segment_buckets.next_item();
+					continue;
+				}
+				tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+				tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
+				memcpy((tfx_ribbon_segment_t *)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
+				memcpy((tfx_ribbon_t *)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
+				bucket->globals.segment_offset = running_segment_offset;
+				running_segment_offset += segment_count;
+				running_ribbon_offset += ribbon_count;
 				bucket = pm->ribbon_segment_buckets.next_item();
-				continue;
 			}
-			tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
-			tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
-			memcpy((tfx_ribbon_segment_t *)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
-			memcpy((tfx_ribbon_t *)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
-			bucket->globals.segment_offset = running_segment_offset;
-			running_segment_offset += segment_count;
-			running_ribbon_offset += ribbon_count;
-			bucket = pm->ribbon_segment_buckets.next_item();
+			memcpy((tfx_gpu_emitter_t*)emitters_dst + running_emitter_offset, pm->gpu_emitters.data, pm->gpu_emitters.size_in_bytes());
+			running_emitter_offset += pm->gpu_emitters.size();
+			pm = tfx__next_global_particle_manager();
 		}
 	}
-	memcpy(emitters_dst, pm->gpu_emitters.data, pm->gpu_emitters.size_in_bytes());
 }
 
 size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_particle_manager pm) {
@@ -18381,6 +18405,9 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->default_memory_pool_size = memory_pool_size;
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
 	tfxStore->memory_pool_count = 1;
+	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
+	tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
+	tfxStore->particle_managers.init();
 	tfx__hash_initialise(&tfxStore->hasher, 0);
 }
 
@@ -18832,6 +18859,7 @@ void tfx__init_common_particle_manager(tfx_particle_manager pm, tfxU32 max_parti
 tfx_particle_manager tfx_CreateParticleManager(tfx_particle_manager_info_t info) {
 	tfx_particle_manager pm = tfxNEW_ALIGNED(tfx_particle_manager, 16);
 	TFX_ASSERT(pm);		//Unable to allocate the particle manager, out of memory?
+	tfxStore->particle_managers.Insert((tfxKey)pm, pm);
 	memset(pm, 0, sizeof(tfx_particle_manager_t));
 	pm->particle_arrays.init();
 	pm->particle_location_arrays.init();

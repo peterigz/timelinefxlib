@@ -3140,6 +3140,8 @@ tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_particle_manager);
 tfxMAKE_HANDLE(tfx_animation_manager);
 tfxMAKE_HANDLE(tfx_effect_template);
+tfxMAKE_HANDLE(tfx_ribbon_buffer_requirements);
+tfxMAKE_HANDLE(tfx_ribbon_dispatch);
 
 //-----------------------------------------------------------
 //Section: String_Buffers
@@ -4581,6 +4583,12 @@ typedef struct tfx_storage_s {
 	tfx_color_ramp_format color_ramp_format;
 	tfx_queue_processor_t thread_queues;
 	tfx_hasher_t hasher;
+	tfx_storage_map_t<tfx_particle_manager> particle_managers;
+	tfx_storage_map_t<tfx_library> libraries;
+	tfx_vector_t<float> compiled_lookup_values;
+	tfx_ribbon_dispatch last_ribbon_dispatch;
+	tfx_particle_manager current_pm;
+	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
 	HANDLE threads[tfxMAX_THREADS];
 #else
@@ -6322,17 +6330,6 @@ typedef struct tfx_ribbon_bucket_s {
 	tfxRibbonBucketComputeShaderType shader_type;
 } tfx_ribbon_bucket_t;
 
-typedef struct tfx_ribbon_dispatch_s {
-	tfx_ribbon_bucket_t *ribbon_data;
-	tfxU32 index_offset;
-	tfxU32 vertex_offset;
-	tfxU32 index_count;
-	tfxU32 vertex_count;
-	tfxU32 ribbon_offset;
-	tfxU32 segment_offset;
-	tfxU32 total_segments;
-} tfx_ribbon_dispatch_t;
-
 typedef struct tfx_compute_fx_global_state_s {
 	tfxU32 start_index;
 	tfxU32 current_length;
@@ -6674,6 +6671,17 @@ typedef struct tfx_ribbon_buffer_requirements_s {
 	tfxU32 emitter_buffer_size_in_bytes;
 } tfx_ribbon_buffer_requirements_t;
 
+typedef struct tfx_ribbon_dispatch_s {
+	tfx_ribbon_bucket_t *ribbon_data;
+	tfxU32 index_offset;
+	tfxU32 vertex_offset;
+	tfxU32 index_count;
+	tfxU32 vertex_count;
+	tfxU32 ribbon_offset;
+	tfxU32 segment_offset;
+	tfxU32 total_segments;
+} tfx_ribbon_dispatch_t;
+
 //Use the particle manager to add multiple effects to your scene 
 #ifdef __cplusplus
 typedef struct tfx_particle_manager_s {
@@ -6741,7 +6749,6 @@ typedef struct tfx_particle_manager_s {
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position;
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
-	tfx_ribbon_dispatch_t last_ribbon_dispatch;
 	tfxU32 current_ribbon_count;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
@@ -6792,7 +6799,6 @@ typedef struct tfx_effect_library_stats_s {
 	tfxU32 total_effects;
 	tfxU32 total_sub_effects;
 	tfxU32 total_emitters;
-	tfxU32 total_attribute_nodes;
 	tfxU32 total_node_lookup_indexes;
 	tfxU32 total_shapes;
 	tfxU64 required_graph_node_memory;
@@ -6824,8 +6830,6 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_sprite_sheet_settings_t> sprite_sheet_settings;
 	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	tfx_vector_t<tfx_preview_camera_settings_t> preview_camera_settings;
-	tfx_vector_t<tfx_attribute_node_t> all_nodes;
-	tfx_vector_t<float> compiled_lookup_values;
 	//This could probably be stored globally
 	tfx_vector_t<tfx_vec4_t> graph_min_max;
 
@@ -7169,8 +7173,8 @@ tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_info(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library);
-tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
-tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter);
+tfxAPI_EDITOR void tfx__update_library_compute_nodes();
+tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
 tfxAPI_EDITOR bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
@@ -7190,7 +7194,6 @@ tfxINTERNAL void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tf
 tfxINTERNAL void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index);
 tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats_t *stats);
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager pm, bool switch_on);
-tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library);
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
@@ -7456,6 +7459,8 @@ tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t
 tfxINTERNAL void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_particle_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
 tfxINTERNAL void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index);
+tfxINTERNAL tfx_particle_manager tfx__next_global_particle_manager();
+tfxINTERNAL tfx_library tfx__next_global_library();
 
 tfxINTERNAL tfxU32 tfx__spawn_particles(tfx_particle_manager pm, tfx_spawn_work_entry_t *work_entry);
 tfxINTERNAL void tfx__spawn_particle_point_2d(tfx_work_queue_t *queue, void *data);
@@ -7903,13 +7908,13 @@ Get the gpu graph lookup data pointer in library. This lookup data can be used b
 tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes to upload to your GPU buffer.
 * @param library        A handle to a tfx_library
 */
-tfxAPI float *tfx_GetLibraryGPUGraphLookupsBuffer(tfx_library library);
+tfxAPI float *tfx_GetGPUGraphLookupsBuffer();
 
 /*
 Get the gpu graph lookup data size in bytes contained within the library you pass into the function.
 * @param library        A handle to a tfx_library
 */
-tfxAPI tfxU32 tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes(tfx_library library);
+tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes();
 
 //--------------------------------
 //Particle_Manager_functions
@@ -7992,11 +7997,10 @@ a vertex buffer for rendering.
 tfxAPI tfx_ribbon_bucket_t *tfx_Get3dRibbonBuffers(tfx_particle_manager pm, tfxKey bucket_id);
 
 /*
-Call this to determine whether or not the particle manager has ribbon_emitters to draw this frame.
-* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+Call this to determine whether or not any particle manager has ribbon_emitters to draw this frame.
 * @returns						  True or false
 */
-tfxAPI bool tfx_HasRibbonsToDraw(tfx_particle_manager pm);
+tfxAPI bool tfx_HasRibbonsToDraw();
 
 /*
 Get a struct containing the info you need to compute and render ribbon_emitters of a specific length. 
@@ -8008,13 +8012,13 @@ tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_particle_manager pm,
 
 tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch();
 
-tfxAPI bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
+tfxAPI bool tfx_NextRibbonDispatch(tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 tfxAPI void tfx_ResetRibbonDispatchIterator(tfx_particle_manager pm);
 
-tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_particle_manager pm);
+tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements();
 
-tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst, void *emitters_dst);
+tfxAPI void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst);
 
 tfxAPI size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_particle_manager pm);
 
