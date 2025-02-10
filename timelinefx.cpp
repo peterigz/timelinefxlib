@@ -5232,7 +5232,7 @@ void tfx__update_library_compute_nodes() {
 
 					for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
 
-						if (!tfx__gpu_overtime_graph(&graph) && !tfx__is_factor_graph(&graph)) continue;
+						if (!tfx__gpu_overtime_graph(&graph)) continue;
 
 						/*
 						for (tfxBucketLoop(graph.nodes, i)) {
@@ -10371,7 +10371,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				ribbon_emitter.transform_index = e.transform_index;
 				ribbon_emitter.path_attributes = e.path_attributes;
 				ribbon_emitter.seed_index = seed_index++;
-				ribbon_emitter.ribbon_property_flags |= (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d);
+				ribbon_emitter.shared_flags |= (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d);
 				ribbon_emitter.active_ribbons = 0;
 				ribbon_emitter.path_state.active_paths = 0;
 				ribbon_emitter.ribbon_indexes[0].init();
