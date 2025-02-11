@@ -3387,6 +3387,10 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 		if (flags & tfxEffectCloningFlags_history) {
 			clone->effect_flags |= tfxEffectPropertyFlags_history_effect;
 		}
+		if (tfx_GetEffectInfo(effect_to_clone)->preview_camera_settings != tfxINVALID) {
+			tfx__add_library_preview_camera_settings_effect(destination_library, clone);
+			destination_library->preview_camera_settings[tfx_GetEffectInfo(clone)->preview_camera_settings] = effect_to_clone->library->preview_camera_settings[tfx_GetEffectInfo(effect_to_clone)->preview_camera_settings];
+		}
 	} else if (effect_to_clone->type == tfxEmitterType || effect_to_clone->type == tfxRibbonType) {
 		clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : effect_to_clone->graph_list_index;
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
