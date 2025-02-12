@@ -2839,7 +2839,6 @@ typedef enum {
 	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,					//In the editor you can specify which effects you want to be included in a spritedata export
 	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,							//Keep the global particle size uniform
 	tfxEffectPropertyFlags_is_in_folder = 1 << 7,									//This effect is located inside a folder. 
-	tfxEffectPropertyFlags_effect_is_3d					= 1 << 11,					//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 	tfxEffectPropertyFlags_history_effect					= 1 << 12,				//Flagged if the effect is just a change in the editor
 } tfx_effect_property_flag_bits;
 
@@ -3801,6 +3800,10 @@ struct tfx_storage_map_t {
 			iterator_index = 0;
 		}
 		return item;
+	}
+
+	void reset_iterator() {
+		iterator_index = 0;
 	}
 
 };
@@ -5723,9 +5726,6 @@ typedef struct tfx_ribbon_bucket_info_s {
 
 typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_ribbon_bucket_info_t bucket_info;
-	tfx_vec2_t uv_offsets;
-	tfx_vec2_t uv_scale;
-	float path_start_offset;
 	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
 } tfx_ribbon_emitter_properties_t;
@@ -7038,7 +7038,7 @@ tfxAPI_EDITOR void tfx__reset_graph_nodes(tfx_graph_t *graph, float first_node_v
 tfxAPI_EDITOR void tfx__clear_graph_to_one(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void tfx__free_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
-tfxAPI_EDITOR void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to);
+tfxAPI_EDITOR void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to, tfx_effect_descriptor_type from_type, tfx_effect_descriptor_type to_type);
 tfxAPI_EDITOR void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue);
 tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__flip_graph(tfx_graph_t *graph);
