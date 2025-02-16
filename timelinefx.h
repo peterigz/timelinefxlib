@@ -1263,6 +1263,7 @@ typedef unsigned short tfxUShort;
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
 #define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
+#define tfxOSCILLATOR_SIN(time, frequency, amplitude) 1.f + sinf(time * frequency * 6.28318f) * amplitude
 #define tfxCIRCLENODES 16
 #define tfxMIN_SEGMENT_COUNT 32 
 #define tfxMAX_SEGMENT_COUNT 1024 
@@ -2469,6 +2470,12 @@ typedef enum {
 	tfxGPU_lookup_start = tfxOvertime_intensity,
 	tfxGPU_lookup_end = tfxFactor_intensity,
 } tfx_graph_ranges;
+
+typedef enum {
+	tfxOscillator_sine,
+	tfxOscillator_square,
+	tfxOscillator_sawtooth
+} tfx_oscillator_type;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 typedef enum {
@@ -5466,6 +5473,13 @@ typedef struct tfx_bitmap_s {
 	tfx_byte *data;
 } tfx_bitmap_t;
 
+typedef struct tfx_oscillator_s {
+	float frequency;
+	float amplitude;
+	float offset;
+	tfx_oscillator_type type;
+} tfx_oscillator_t;
+
 typedef struct tfx_graph_id_s {
 	tfx_graph_category category;
 	tfx_graph_type type;
@@ -5490,6 +5504,7 @@ typedef struct tfx_graph_s {
 	tfx_graph_lookup_t lookup;
 	tfxU32 index;
 	float gamma;
+	float oscillator_influence;
 } tfx_graph_t;
 
 typedef struct tfx_graph_list_s {
@@ -5717,6 +5732,8 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxKey paired_emitter_hash;
 	//Layer of the particle manager that the particle is added to
 	tfxU32 layer;
+	//Oscillator used in the emitter
+	tfx_oscillator_t oscillator;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {
