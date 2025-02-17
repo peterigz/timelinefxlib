@@ -6839,42 +6839,6 @@ void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node
 	}
 }
 
-tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
-	float ti = 1.f - t;
-	float t_ti = t * ti;
-
-	return {
-		tfx__Clamp(p0.x, p2.x, ti * ti * p0.x + 2.f * t_ti * p1.x + t * t * p2.x),
-		tfx__Clamp(ymin, ymax, ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y)
-	};
-}
-
-tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
-	float ti = 1.f - t;
-	float t2 = t * t;
-	float ti2 = ti * ti;
-	float t_ti2 = t * ti2;
-	float t2_ti = t2 * ti;
-
-	return {
-		tfx__Clamp(p0.x, p2.x, ti2 * ti * p0.x + 3.f * t_ti2 * p1.x + 3.f * t2_ti * p2.x + t2 * t * p3.x),
-		tfx__Clamp(ymin, ymax, ti2 * ti * p0.y + 3.f * t_ti2 * p1.y + 3.f * t2_ti * p2.y + t2 * t * p3.y)
-	};
-}
-
-tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t) {
-	tfx_vec3_t b;
-	float ti = 1.f - t;
-	float ti3 = ti * ti * ti;
-	float ti2 = ti * ti;
-	float t3 = t * t * t;
-	float t2 = t * t;
-	b.x = ti3 * p0->x + 3.f * t * ti2 * p1->x + 3.f * t2 * ti * p2->x + t3 * p3->x;
-	b.y = ti3 * p0->y + 3.f * t * ti2 * p1->y + 3.f * t2 * ti * p2->y + t3 * p3->y;
-	b.z = ti3 * p0->z + 3.f * t * ti2 * p1->z + 3.f * t2 * ti * p2->z + t3 * p3->z;
-	return b;
-}
-
 void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size) {
 	memset(graph, 0, sizeof(tfx_graph_t));
 	graph->nodes.init();

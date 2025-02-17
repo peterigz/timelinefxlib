@@ -5403,6 +5403,7 @@ typedef struct tfx_attribute_node_s {
 
 	tfxAttributeNodeFlags flags;
 	tfxU32 index;
+	tfxU32 uid;
 
 #ifdef __cplusplus
 	tfx_attribute_node_s() : frame(0.f), value(0.f), flags(0), index(0) { }
@@ -5496,6 +5497,7 @@ typedef struct tfx_graph_s {
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
 	tfx_effect_descriptor_t *effector;
+	tfxU32 uid_counter;
 #ifdef __cplusplus
 	tfx_bucket_array_t<tfx_attribute_node_t> nodes;
 #else
@@ -7091,9 +7093,6 @@ tfxINTERNAL void tfx__clear_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
-tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
-tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
-tfxINTERNAL tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
