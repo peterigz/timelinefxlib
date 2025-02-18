@@ -6861,6 +6861,7 @@ tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float _f
 	node.right.x = _c1x;
 	node.right.y = _c1y;
 	node.index = graph->nodes.current_size;
+	node.uid = graph->uid_counter++;
 	tfx__clamp_node(graph, &node);
 	graph->nodes.push_back(node);
 
@@ -6870,10 +6871,11 @@ tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float _f
 tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 	tfx_attribute_node_t node;
 
-	if (graph->nodes.size())
+	if (graph->nodes.size()) {
 		node.frame = _frame;
-	else
+	} else {
 		node.frame = 0.f;
+	}
 
 	node.value = _value;
 	node.flags = flags;
@@ -6881,6 +6883,7 @@ tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _fram
 	node.left.y = _c0y;
 	node.right.x = _c1x;
 	node.right.y = _c1y;
+	node.uid = graph->uid_counter++;
 	tfx__clamp_node(graph, &node);
 	graph->nodes.push_back(node);
 	tfx__sort_graph(graph);
@@ -6895,6 +6898,7 @@ void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
 			return;
 		}
 	}
+	node->uid = graph->uid_counter++;
 	graph->nodes.push_back(*node);
 	tfx__sort_graph(graph);
 	tfx__reindex_graph(graph);
@@ -6914,6 +6918,7 @@ tfx_attribute_node_t *tfx__add_graph_coord_node(tfx_graph_t *graph, float _frame
 	node.left.y = 0.f;
 	node.right.x = 0.f;
 	node.right.y = 0.f;
+	node.uid = graph->uid_counter++;
 	tfx__clamp_node(graph, &node);
 	tfx_attribute_node_t &n = graph->nodes.push_back(node);
 	if (tfx__sort_graph(graph)) {
@@ -6939,6 +6944,7 @@ tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float _frame, f
 	node.left.y = _value;
 	node.right.x = _frame;
 	node.right.y = _value;
+	node.uid = graph->uid_counter++;
 	tfx__clamp_node(graph, &node);
 
 	if (graph->nodes.size() > 1) {
@@ -7145,6 +7151,15 @@ float tfx__get_graph_last_frame(tfx_graph_t *graph, float update_frequency) {
 	}
 
 	return 0.f;
+}
+
+tfx_attribute_node_t *tfx__find_graph_node_by_uid(tfx_graph_t *graph, tfxU32 uid) {
+	for (tfx_attribute_node_t &node : graph->nodes) {
+		if (node.uid == uid) {
+			return &node;
+		}
+	}
+	return nullptr;
 }
 
 tfx_attribute_node_t *tfx__find_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *n) {

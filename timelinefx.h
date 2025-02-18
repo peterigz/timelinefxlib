@@ -7050,6 +7050,7 @@ tfxAPI_EDITOR float *tfx__link_graph_last_value(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_last_value(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__graph_value_by_index(tfx_graph_t *graph, tfxU32 index);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__find_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *n);
+tfxAPI_EDITOR tfx_attribute_node_t *tfx__find_graph_node_by_uid(tfx_graph_t *graph, tfxU32 uid);
 tfxAPI_EDITOR void tfx__validate_graph_curves(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__delete_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *n);
 tfxAPI_EDITOR void tfx__reset_graph(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true, float max_frames = 0);
