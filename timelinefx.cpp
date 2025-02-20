@@ -5439,9 +5439,8 @@ void tfx__set_library_min_max_data(tfx_library library) {
 }
 
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
-	dictionary->names_and_types = tfxALLOCATE(sizeof(tfx_storage_map_t<tfx_data_type>));
-	memset(dictionary->names_and_types, 0, sizeof(tfx_storage_map_t<tfx_data_type>));
-	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(dictionary->names_and_types);
+	dictionary->names_and_types.init();
+	tfx_storage_map_t<tfx_data_type> &names_and_types = dictionary->names_and_types;
 	names_and_types.data.reserve(300);
 	names_and_types.map.reserve(300);
 	names_and_types.Insert("name", tfxString);
@@ -5526,122 +5525,123 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
 
 	//Graphs
-	names_and_types.Insert("global_life", tfxFloat);
-	names_and_types.Insert("global_amount", tfxFloat);
-	names_and_types.Insert("global_velocity", tfxFloat);
-	names_and_types.Insert("global_noise", tfxFloat);
-	names_and_types.Insert("global_width", tfxFloat);
-	names_and_types.Insert("global_height", tfxFloat);
-	names_and_types.Insert("global_weight", tfxFloat);
-	names_and_types.Insert("global_spin", tfxFloat);
-	names_and_types.Insert("global_roll_spin", tfxFloat);
-	names_and_types.Insert("global_pitch_spin", tfxFloat);
-	names_and_types.Insert("global_yaw_spin", tfxFloat);
-	names_and_types.Insert("global_stretch", tfxFloat);
-	names_and_types.Insert("global_overal_scale", tfxFloat);
-	names_and_types.Insert("global_intensity", tfxFloat);
-	names_and_types.Insert("global_splatter", tfxFloat);
-	names_and_types.Insert("global_emitter_width", tfxFloat);
-	names_and_types.Insert("global_emitter_height", tfxFloat);
-	names_and_types.Insert("global_emitter_depth", tfxFloat);
+	names_and_types.Insert("global_life", tfxGraph);
+	names_and_types.Insert("global_amount", tfxGraph);
+	names_and_types.Insert("global_velocity", tfxGraph);
+	names_and_types.Insert("global_noise", tfxGraph);
+	names_and_types.Insert("global_width", tfxGraph);
+	names_and_types.Insert("global_height", tfxGraph);
+	names_and_types.Insert("global_weight", tfxGraph);
+	names_and_types.Insert("global_spin", tfxGraph);
+	names_and_types.Insert("global_roll_spin", tfxGraph);
+	names_and_types.Insert("global_pitch_spin", tfxGraph);
+	names_and_types.Insert("global_yaw_spin", tfxGraph);
+	names_and_types.Insert("global_stretch", tfxGraph);
+	names_and_types.Insert("global_overal_scale", tfxGraph);
+	names_and_types.Insert("global_intensity", tfxGraph);
+	names_and_types.Insert("global_splatter", tfxGraph);
+	names_and_types.Insert("global_emitter_width", tfxGraph);
+	names_and_types.Insert("global_emitter_height", tfxGraph);
+	names_and_types.Insert("global_emitter_depth", tfxGraph);
 
-	names_and_types.Insert("property_emission_pitch", tfxFloat);
-	names_and_types.Insert("property_emission_yaw", tfxFloat);
-	names_and_types.Insert("property_emission_range", tfxFloat);
-	names_and_types.Insert("property_splatter", tfxFloat);
-	names_and_types.Insert("property_emitter_width", tfxFloat);
-	names_and_types.Insert("property_emitter_height", tfxFloat);
-	names_and_types.Insert("property_emitter_depth", tfxFloat);
-	names_and_types.Insert("property_extrusion", tfxFloat);
-	names_and_types.Insert("property_arc_size", tfxFloat);
-	names_and_types.Insert("property_arc_offset", tfxFloat);
+	names_and_types.Insert("property_emission_pitch", tfxGraph);
+	names_and_types.Insert("property_emission_yaw", tfxGraph);
+	names_and_types.Insert("property_emission_range", tfxGraph);
+	names_and_types.Insert("property_splatter", tfxGraph);
+	names_and_types.Insert("property_emitter_width", tfxGraph);
+	names_and_types.Insert("property_emitter_height", tfxGraph);
+	names_and_types.Insert("property_emitter_depth", tfxGraph);
+	names_and_types.Insert("property_extrusion", tfxGraph);
+	names_and_types.Insert("property_arc_size", tfxGraph);
+	names_and_types.Insert("property_arc_offset", tfxGraph);
 
-	names_and_types.Insert("base_life", tfxFloat);
-	names_and_types.Insert("base_amount", tfxFloat);
-	names_and_types.Insert("base_velocity", tfxFloat);
-	names_and_types.Insert("base_width", tfxFloat);
-	names_and_types.Insert("base_height", tfxFloat);
-	names_and_types.Insert("base_weight", tfxFloat);
-	names_and_types.Insert("base_spin", tfxFloat);
-	names_and_types.Insert("base_roll_spin", tfxFloat);
-	names_and_types.Insert("base_pitch_spin", tfxFloat);
-	names_and_types.Insert("base_yaw_spin", tfxFloat);
-	names_and_types.Insert("base_noise_offset", tfxFloat);
+	names_and_types.Insert("base_life", tfxGraph);
+	names_and_types.Insert("base_amount", tfxGraph);
+	names_and_types.Insert("base_velocity", tfxGraph);
+	names_and_types.Insert("base_width", tfxGraph);
+	names_and_types.Insert("base_height", tfxGraph);
+	names_and_types.Insert("base_weight", tfxGraph);
+	names_and_types.Insert("base_spin", tfxGraph);
+	names_and_types.Insert("base_roll_spin", tfxGraph);
+	names_and_types.Insert("base_pitch_spin", tfxGraph);
+	names_and_types.Insert("base_yaw_spin", tfxGraph);
+	names_and_types.Insert("base_noise_offset", tfxGraph);
 
-	names_and_types.Insert("variation_life", tfxFloat);
-	names_and_types.Insert("variation_amount", tfxFloat);
-	names_and_types.Insert("variation_velocity", tfxFloat);
-	names_and_types.Insert("variation_width", tfxFloat);
-	names_and_types.Insert("variation_height", tfxFloat);
-	names_and_types.Insert("variation_weight", tfxFloat);
-	names_and_types.Insert("variation_spin", tfxFloat);
-	names_and_types.Insert("variation_roll_spin", tfxFloat);
-	names_and_types.Insert("variation_pitch_spin", tfxFloat);
-	names_and_types.Insert("variation_yaw_spin", tfxFloat);
-	names_and_types.Insert("variation_noise_offset", tfxFloat);
-	names_and_types.Insert("variation_noise_resolution", tfxFloat);
-	names_and_types.Insert("variation_motion_randomness", tfxFloat);
+	names_and_types.Insert("variation_life", tfxGraph);
+	names_and_types.Insert("variation_amount", tfxGraph);
+	names_and_types.Insert("variation_velocity", tfxGraph);
+	names_and_types.Insert("variation_width", tfxGraph);
+	names_and_types.Insert("variation_height", tfxGraph);
+	names_and_types.Insert("variation_weight", tfxGraph);
+	names_and_types.Insert("variation_spin", tfxGraph);
+	names_and_types.Insert("variation_roll_spin", tfxGraph);
+	names_and_types.Insert("variation_pitch_spin", tfxGraph);
+	names_and_types.Insert("variation_yaw_spin", tfxGraph);
+	names_and_types.Insert("variation_noise_offset", tfxGraph);
+	names_and_types.Insert("variation_noise_resolution", tfxGraph);
+	names_and_types.Insert("variation_motion_randomness", tfxGraph);
 
-	names_and_types.Insert("overtime_velocity", tfxFloat);
-	names_and_types.Insert("overtime_width", tfxFloat);
-	names_and_types.Insert("overtime_height", tfxFloat);
-	names_and_types.Insert("overtime_scale", tfxFloat);
-	names_and_types.Insert("overtime_weight", tfxFloat);
-	names_and_types.Insert("overtime_spin", tfxFloat);
-	names_and_types.Insert("overtime_roll_spin", tfxFloat);
-	names_and_types.Insert("overtime_pitch_spin", tfxFloat);
-	names_and_types.Insert("overtime_yaw_spin", tfxFloat);
-	names_and_types.Insert("overtime_stretch", tfxFloat);
-	names_and_types.Insert("overtime_red", tfxFloat);
-	names_and_types.Insert("overtime_green", tfxFloat);
-	names_and_types.Insert("overtime_blue", tfxFloat);
-	names_and_types.Insert("overtime_opacity", tfxFloat);    //Legacy
-	names_and_types.Insert("overtime_blendfactor", tfxFloat);
-	names_and_types.Insert("overtime_intensity", tfxFloat);
-	names_and_types.Insert("overtime_red_hint", tfxFloat);
-	names_and_types.Insert("overtime_green_hint", tfxFloat);
-	names_and_types.Insert("overtime_blue_hint", tfxFloat);
-	names_and_types.Insert("overtime_blendfactor_hint", tfxFloat);
-	names_and_types.Insert("overtime_alpha_sharpness", tfxFloat);
-	names_and_types.Insert("overtime_curved_alpha", tfxFloat);
-	names_and_types.Insert("overtime_gradient_mapper", tfxFloat);
-	names_and_types.Insert("overtime_velocity_turbulance", tfxFloat);
-	names_and_types.Insert("overtime_direction_turbulance", tfxFloat);
-	names_and_types.Insert("overtime_velocity_adjuster", tfxFloat);
-	names_and_types.Insert("overtime_direction", tfxFloat);
-	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
-	names_and_types.Insert("overtime_motion_randomness", tfxFloat);
-	names_and_types.Insert("overtime_uv_offset_y", tfxFloat);
-	names_and_types.Insert("overtime_uv_scale_y", tfxFloat);
+	names_and_types.Insert("overtime_velocity", tfxGraph);
+	names_and_types.Insert("overtime_width", tfxGraph);
+	names_and_types.Insert("overtime_height", tfxGraph);
+	names_and_types.Insert("overtime_scale", tfxGraph);
+	names_and_types.Insert("overtime_weight", tfxGraph);
+	names_and_types.Insert("overtime_spin", tfxGraph);
+	names_and_types.Insert("overtime_roll_spin", tfxGraph);
+	names_and_types.Insert("overtime_pitch_spin", tfxGraph);
+	names_and_types.Insert("overtime_yaw_spin", tfxGraph);
+	names_and_types.Insert("overtime_stretch", tfxGraph);
+	names_and_types.Insert("overtime_red", tfxGraph);
+	names_and_types.Insert("overtime_green", tfxGraph);
+	names_and_types.Insert("overtime_blue", tfxGraph);
+	names_and_types.Insert("overtime_opacity", tfxGraph);    //Legacy
+	names_and_types.Insert("overtime_blendfactor", tfxGraph);
+	names_and_types.Insert("overtime_intensity", tfxGraph);
+	names_and_types.Insert("overtime_red_hint", tfxGraph);
+	names_and_types.Insert("overtime_green_hint", tfxGraph);
+	names_and_types.Insert("overtime_blue_hint", tfxGraph);
+	names_and_types.Insert("overtime_blendfactor_hint", tfxGraph);
+	names_and_types.Insert("overtime_alpha_sharpness", tfxGraph);
+	names_and_types.Insert("overtime_curved_alpha", tfxGraph);
+	names_and_types.Insert("overtime_gradient_mapper", tfxGraph);
+	names_and_types.Insert("overtime_velocity_turbulance", tfxGraph);
+	names_and_types.Insert("overtime_direction_turbulance", tfxGraph);
+	names_and_types.Insert("overtime_velocity_adjuster", tfxGraph);
+	names_and_types.Insert("overtime_direction", tfxGraph);
+	names_and_types.Insert("overtime_noise_resolution", tfxGraph);
+	names_and_types.Insert("overtime_motion_randomness", tfxGraph);
+	names_and_types.Insert("overtime_uv_offset_y", tfxGraph);
+	names_and_types.Insert("overtime_uv_scale_y", tfxGraph);
 
-	names_and_types.Insert("factor_life", tfxFloat);
-	names_and_types.Insert("factor_velocity", tfxFloat);
-	names_and_types.Insert("factor_size", tfxFloat);
-	names_and_types.Insert("factor_intensity", tfxFloat);
+	names_and_types.Insert("factor_life", tfxGraph);
+	names_and_types.Insert("factor_velocity", tfxGraph);
+	names_and_types.Insert("factor_size", tfxGraph);
+	names_and_types.Insert("factor_intensity", tfxGraph);
 
-	names_and_types.Insert("overlength_intensity", tfxFloat);
-	names_and_types.Insert("overlength_alpha_sharpness", tfxFloat);
-	names_and_types.Insert("overlength_curved_alpha", tfxFloat);
-	names_and_types.Insert("overlength_gradient_map", tfxFloat);
-	names_and_types.Insert("overlength_width", tfxFloat);
-	names_and_types.Insert("overlength_fixed_angle", tfxFloat);
-	names_and_types.Insert("overtime_clip_offset", tfxFloat);
-	names_and_types.Insert("overtime_clip_size", tfxFloat);
+	names_and_types.Insert("overlength_intensity", tfxGraph);
+	names_and_types.Insert("overlength_alpha_sharpness", tfxGraph);
+	names_and_types.Insert("overlength_curved_alpha", tfxGraph);
+	names_and_types.Insert("overlength_gradient_map", tfxGraph);
+	names_and_types.Insert("overlength_width", tfxGraph);
+	names_and_types.Insert("overlength_fixed_angle", tfxGraph);
+	names_and_types.Insert("overtime_clip_offset", tfxGraph);
+	names_and_types.Insert("overtime_clip_size", tfxGraph);
 
-	names_and_types.Insert("transform_roll", tfxFloat);
-	names_and_types.Insert("transform_pitch", tfxFloat);
-	names_and_types.Insert("transform_yaw", tfxFloat);
-	names_and_types.Insert("transform_translate_x", tfxFloat);
-	names_and_types.Insert("transform_translate_y", tfxFloat);
-	names_and_types.Insert("transform_translate_z", tfxFloat);
+	names_and_types.Insert("transform_roll", tfxGraph);
+	names_and_types.Insert("transform_pitch", tfxGraph);
+	names_and_types.Insert("transform_yaw", tfxGraph);
+	names_and_types.Insert("transform_translate_x", tfxGraph);
+	names_and_types.Insert("transform_translate_y", tfxGraph);
+	names_and_types.Insert("transform_translate_z", tfxGraph);
 
-	names_and_types.Insert("path_pitch", tfxFloat);
-	names_and_types.Insert("path_yaw", tfxFloat);
-	names_and_types.Insert("path_roll", tfxFloat);
-	names_and_types.Insert("path_offset_x", tfxFloat);
-	names_and_types.Insert("path_offset_y", tfxFloat);
-	names_and_types.Insert("path_offset_z", tfxFloat);
-	names_and_types.Insert("distance", tfxFloat);
+	names_and_types.Insert("path_pitch", tfxGraph);
+	names_and_types.Insert("path_yaw", tfxGraph);
+	names_and_types.Insert("path_roll", tfxGraph);
+	names_and_types.Insert("path_offset_x", tfxGraph);
+	names_and_types.Insert("path_offset_y", tfxGraph);
+	names_and_types.Insert("path_offset_z", tfxGraph);
+	names_and_types.Insert("distance", tfxGraph);
+
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
 	names_and_types.Insert("path_node_count", tfxUint);
@@ -6043,30 +6043,129 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 		metrics->animation_flags = value;
 }
 
-void tfx__assign_property_line(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
-	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
-	switch (names_and_types.At((*pair)[0].c_str())) {
-	case tfxUInt64:
-		tfx__assign_effector_property_u64(effect, &(*pair)[0], (tfxU64)strtoull((*pair)[1].c_str(), NULL, 10), file_version);
-		break;
-	case tfxUint:
-		tfx__assign_effector_property_u32(effect, &(*pair)[0], (tfxU32)atoi((*pair)[1].c_str()), file_version);
-		break;
-	case tfxFloat:
-		tfx__assign_effector_property(effect, &(*pair)[0], (float)atof((*pair)[1].c_str()));
-		break;
-	case tfxSInt:
-		tfx__assign_effector_property_int(effect, &(*pair)[0], atoi((*pair)[1].c_str()));
-		break;
-	case tfxBool:
-		tfx__assign_effector_property_bool(effect, &(*pair)[0], (bool)(atoi((*pair)[1].c_str())));
-		break;
-	case tfxString:
-		tfx__assign_effector_property_str(effect, &(*pair)[0], (*pair)[1].c_str());
-		break;
-	default:
-		break;
+// Helper function to safely convert string to uint64
+static bool tfx__string_to_u64(const char *str, tfxU64 *result) {
+	char *endptr;
+	errno = 0;
+	unsigned long long val = strtoull(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0') {
+		return false;
 	}
+
+	*result = (tfxU64)val;
+	return true;
+}
+
+// Helper function to safely convert string to uint32
+static bool tfx__string_to_u32(const char *str, tfxU32 *result) {
+	char *endptr;
+	errno = 0;
+	unsigned long val = strtoul(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0' || val > UINT32_MAX) {
+		return false;
+	}
+
+	*result = (tfxU32)val;
+	return true;
+}
+
+// Helper function to safely convert string to float
+static bool tfx__string_to_float(const char *str, float *result) {
+	char *endptr;
+	errno = 0;
+	float val = strtof(str, &endptr);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0') {
+		return false;
+	}
+
+	*result = val;
+	return true;
+}
+
+// Helper function to safely convert string to int
+static bool tfx__string_to_int(const char *str, int *result) {
+	char *endptr;
+	errno = 0;
+	long val = strtol(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0' ||
+		val > INT_MAX || val < INT_MIN) {
+		return false;
+	}
+
+	*result = (int)val;
+	return true;
+}
+
+void tfx__assign_property_from_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name, const char *value) {
+
+	TFX_ASSERT(value);		//Must pass in a value
+	TFX_ASSERT(tfxStore->data_types.names_and_types.ValidName(property_name.c_str()));	//Property name not found
+	size_t value_len = strlen(value);
+	TFX_ASSERT(value_len <= 64);	//Value is too long. Maximum length is 64
+
+	switch (tfxStore->data_types.names_and_types.At(property_name.c_str())) {
+		case tfxUInt64: {
+			tfxU64 converted_value;
+			if (tfx__string_to_u64(value, &converted_value)) {
+				tfx__assign_effector_property_u64(effect, &property_name, converted_value, 0);
+			}
+			break;
+		}
+		case tfxUint: {
+			tfxU32 converted_value;
+			if (tfx__string_to_u32(value, &converted_value)) {
+				tfx__assign_effector_property_u32(effect, &property_name, converted_value, 0);
+			}
+			break;
+		}
+		case tfxFloat: {
+			float converted_value;
+			if (tfx__string_to_float(value, &converted_value)) {
+				tfx__assign_effector_property(effect, &property_name, converted_value);
+			}
+			break;
+		}
+		case tfxSInt: {
+			int converted_value;
+			if (tfx__string_to_int(value, &converted_value)) {
+				tfx__assign_effector_property_int(effect, &property_name, converted_value);
+			}
+			break;
+		}
+		case tfxBool: {
+			int converted_value;
+			if (tfx__string_to_int(value, &converted_value)) {
+				tfx__assign_effector_property_bool(effect, &property_name, (bool)converted_value);
+			}
+			break;
+		}
+		case tfxString: {
+			tfx__assign_effector_property_str(effect, &property_name, value);
+			break;
+		}
+		case tfxGraph: {
+			tfx_line_t line;
+			line.start = value;
+			line.length = (int)strlen(value);
+			line.end = value + line.length;
+			tfx_vector_t<tfx_str256_t> values;
+			values.push_back(property_name);
+			tfx__split_string_stack(line.start, line.length, &values);
+			tfx__assign_graph_data(effect, &values);
+			break;
+		}
+	}
+
+}
+
+void tfx__assign_property_line(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
+	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
+	tfx__assign_property_from_string(effect, (*pair)[0], (*pair)[1].c_str());
+	return;
 }
 
 void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
@@ -6091,7 +6190,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
-	if (effect->type == tfxEmitterType || effect->type == tfxEffectType) {
+	if (effect->type == tfxEmitterType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
 	} else if (effect->type == tfxRibbonType) {
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
@@ -6140,7 +6239,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor_t *effect, tfx_str256_t *field, int value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
-	tfx_particle_emitter_properties_t *emitter_properties = effect->type != tfxRibbonType ? tfx__get_particle_emitter_properties(effect) : nullptr;
+	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
 	if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
 	if (*field == "emission_type") shared_properties->emission_type = (tfx_emission_type)value;
@@ -6231,11 +6330,11 @@ void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t
 	if (*field == "path_handle_z") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->offset.z = value;
 	}
+	if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
 	if (effect->type == tfxEmitterType) {
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
 		if (*field == "image_handle_x") emitter_properties->image_handle.x = value;
 		if (*field == "image_handle_y") emitter_properties->image_handle.y = value;
-		if (*field == "noise_base_offset_range") emitter_properties->noise_base_offset_range = value < 0 ? 0.f : value;
 		if (*field == "angle_offset") emitter_properties->angle_offsets.roll = value;
 		if (*field == "angle_offset_pitch") emitter_properties->angle_offsets.pitch = value;
 		if (*field == "angle_offset_yaw") emitter_properties->angle_offsets.yaw = value;
@@ -6418,17 +6517,24 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 }
 
 void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_properties, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file) {
-	file->AddLine("image_hash=%llu", shared_properties->image_hash);
-	file->AddLine("image_handle_x=%f", properties->image_handle.x);
-	file->AddLine("image_handle_y=%f", properties->image_handle.y);
-	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
-	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
-	file->AddLine("image_frame_rate=%f", shared_properties->frame_rate);
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
 	file->AddLine("image_random_start_frame=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame));
-	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
+	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+	file->AddLine("use_color_hint=%i", (shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint));
+	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
+	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
+	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
+	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
+	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
+	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
+	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
+
+	file->AddLine("image_hash=%llu", shared_properties->image_hash);
+	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
+	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
+	file->AddLine("image_frame_rate=%f", shared_properties->frame_rate);
 	file->AddLine("paired_emitter_hash=%llu", shared_properties->paired_emitter_hash);
 	file->AddLine("spawn_amount=%i", shared_properties->spawn_amount);
 	file->AddLine("spawn_amount_variation=%i", shared_properties->spawn_amount_variation);
@@ -6442,49 +6548,53 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
-	file->AddLine("end_behaviour=%i", properties->end_behaviour);
-	file->AddLine("random_color=%i", (flags & tfxSharedEmitterPropertyFlags_random_color));
-	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
-	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
-	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
-	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
-	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
-	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
-	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
-	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
-	file->AddLine("area_open_ends=%i", (flags & tfxEmitterPropertyFlags_area_open_ends));
-	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
-	file->AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
+	file->AddLine("layer=%i", shared_properties->layer);
+
+	file->AddLine("image_handle_x=%f", properties->image_handle.x);
+	file->AddLine("image_handle_y=%f", properties->image_handle.y);
+	file->AddLine("end_behaviour=%i", properties->end_behaviour);
 	file->AddLine("angle_setting=%i", properties->angle_settings);
 	file->AddLine("angle_offset=%f", properties->angle_offsets.roll);
 	file->AddLine("angle_offset_pitch=%f", properties->angle_offsets.pitch);
 	file->AddLine("angle_offset_yaw=%f", properties->angle_offsets.yaw);
+	file->AddLine("billboard_option=%i", properties->billboard_option);
+	file->AddLine("vector_align_type=%i", properties->vector_align_type);
+
+	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
+	file->AddLine("random_color=%i", (flags & tfxSharedEmitterPropertyFlags_random_color));
+	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
+	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
+	file->AddLine("area_open_ends=%i", (flags & tfxEmitterPropertyFlags_area_open_ends));
+	file->AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
 	file->AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
 	file->AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 	file->AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
-	file->AddLine("billboard_option=%i", properties->billboard_option);
-	file->AddLine("vector_align_type=%i", properties->vector_align_type);
-	file->AddLine("layer=%i", shared_properties->layer);
 	file->AddLine("use_path_for_direction=%i", (flags & tfxEmitterPropertyFlags_use_path_for_direction));
 	file->AddLine("alt_velocity_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling));
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
-	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
-	file->AddLine("use_color_hint=%i", (shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint));
-	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
 void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
-	file->AddLine("image_hash=%llu", shared_properties->image_hash);
-	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
-	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
-	file->AddLine("image_frame_rate=%f", shared_properties->frame_rate);
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
 	file->AddLine("image_random_start_frame=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame));
+	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
+	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
+	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
+	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
+	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
+	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
+	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
+	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+
+	file->AddLine("image_hash=%llu", shared_properties->image_hash);
+	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
+	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
+	file->AddLine("image_frame_rate=%f", shared_properties->frame_rate);
 	file->AddLine("paired_emitter_hash=%llu", shared_properties->paired_emitter_hash);
 	file->AddLine("spawn_amount=%i", shared_properties->spawn_amount);
 	file->AddLine("spawn_amount_variation=%i", shared_properties->spawn_amount_variation);
@@ -6494,34 +6604,31 @@ void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_prope
 	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
-	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
-	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
-	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
-	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
-	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
-	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
-	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
 	file->AddLine("layer=%i", shared_properties->layer);
-	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+
 	file->AddLine("ribbon_segment_count=%i", ribbon_properties->bucket_info.segment_count);
 	file->AddLine("ribbon_shader_type=%i", ribbon_properties->bucket_info.shader_type);
-	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
 	file->AddLine("ribbon_fixed_angle_normal_x=%f", ribbon_properties->fixed_angle_normal.x);
 	file->AddLine("ribbon_fixed_angle_normal_y=%f", ribbon_properties->fixed_angle_normal.y);
 	file->AddLine("ribbon_fixed_angle_normal_z=%f", ribbon_properties->fixed_angle_normal.z);
+
+	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
 }
 
 void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
+
 	file->AddLine("is_3d=%i", (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d));
+
 	file->AddLine("draw_order_by_age=%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
 	file->AddLine("draw_order_by_depth=%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 	file->AddLine("guaranteed_draw_order=%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	file->AddLine("include_in_sprite_data_export=%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
+
 	file->AddLine("sort_passes=%i", effect->sort_passes);
-	file->AddLine("noise_base_offset_range=%f", emitter_properties->noise_base_offset_range);
+	file->AddLine("noise_base_offset_range=%f", effect->noise_base_offset_range);
 	file->AddLine("loop_length=%f", shared_properties->loop_length);
 	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
@@ -7239,8 +7346,7 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	}
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
-		//We have a epsilon to prevent divide by 0 here
-		graph->min = { 0.f, 0.0001f }; graph->max = { max_frames, 20.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 20.f };
 		break;
 	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 1.f };
@@ -7264,8 +7370,7 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 		graph->min = { 0.f, -4000.f }; graph->max = { max_frames, 4000.f };
 		break;
 	case tfx_graph_preset::tfxLifePreset:
-		//We have a epsilon to prevent divide by 0 here. The divide by zero occurrs in control functions (ControlParticleImageFrame3d etc.) when the current % life of the particle is calculated
-		graph->min = { 0.f, 0.0001f }; graph->max = { max_frames, 100000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 100000.f };
 		break;
 	case tfx_graph_preset::tfxAmountPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 5000.f };
@@ -8128,7 +8233,7 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 	const size_t max_line_length = 512;
 	char buffer[max_line_length];
 
-	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(data_types->names_and_types);
+	tfx_storage_map_t<tfx_data_type> &names_and_types = data_types->names_and_types;
 
 	tfx_vector_t<tfx_str256_t> pair;
 	while (fgets(buffer, max_line_length, fp)) {
@@ -8450,7 +8555,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	tfxKey first_shape_hash = 0;
 	int context = 0;
 
-	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
+	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
 	while (!data->data.EoF()) {
 		tfx_line_t line = data->data.ReadLine();
@@ -8682,7 +8787,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	tfxKey first_shape_hash = 0;
 
-	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
+	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
 	//You must call tfx_InitialiseTimelineFX() before doing anything!    
 	tmpStack(tfx_effect_descriptor_t, effect_stack);
@@ -8718,7 +8823,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
 				effect.info_index = tfx__allocate_library_descriptor_info(lib);
-				effect.property_index = tfx__allocate_library_particle_emitter_properties(lib);
 				effect.shared_index = tfx__allocate_library_shared_properties(lib);
 				if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 					tfx__add_library_effect_graphs(lib, &effect);
@@ -10143,12 +10247,11 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	new_effect.library = effect->library;
 	new_effect.parent_particle_index = tfxINVALID;
 	new_effect.info_index = effect->info_index;
-	new_effect.properties_index = effect->property_index;
 	new_effect.shared_index = effect->shared_index;
 	new_effect.timeout_counter = 0;
 	new_effect.user_data = effect->user_data;
 	new_effect.update_callback = effect->update_callback;
-	float range = properties->noise_base_offset_range;
+	float range = effect->noise_base_offset_range;
 	new_effect.noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	pm->sort_passes = tfxMax(effect->sort_passes, pm->sort_passes);
 	pm->sort_passes = tfxMin(5, pm->sort_passes);
@@ -18682,7 +18785,6 @@ void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties)
 	properties->emission_direction = tfx_emission_direction::tfxOutwards;
 	properties->end_behaviour = tfx_line_traversal_end_behaviour::tfxLoop;
 	properties->angle_settings = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
-	properties->noise_base_offset_range = 1000.f;
 	properties->animation_property_index = tfxINVALID;
 }
 

@@ -2563,7 +2563,8 @@ typedef enum {
 	tfxColor,
 	tfxUInt64,
 	tfxFloat3,
-	tfxFloat2
+	tfxFloat2,
+	tfxGraph
 } tfx_data_type;
 
 //Block designators for loading effects library and other files like animation sprite data
@@ -4576,10 +4577,30 @@ typedef struct tfx_queue_processor_s {
 
 typedef struct tfx_data_types_dictionary_s {
 	int initialised;
-	void *names_and_types;
+	tfx_storage_map_t<tfx_data_type> names_and_types;
 } tfx_data_types_dictionary_t;
 
 tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
+
+typedef enum {
+	tfxEffectProperty,
+	tfxEmitterProperty,
+	tfxRibbonProperty,
+	tfxSharedProperty,
+	tfxSharedFlag,
+	tfxEmitterFlag,
+	tfxEffectFlag,
+	tfxTransformGraph,
+	tfxEffectGraph,
+	tfxEmitterGraph,
+	tfxRibbonGraph
+} tfx_property_type;
+
+typedef struct tfx_property_lookup_s {
+	tfx_effect_descriptor_type descriptor_type;
+	tfx_property_type property_type;
+	tfx_data_type data_type;
+} tfx_property_lookup_t;
 
 //Global variables
 typedef struct tfx_storage_s {
@@ -4595,6 +4616,7 @@ typedef struct tfx_storage_s {
 	tfx_hasher_t hasher;
 	tfx_storage_map_t<tfx_particle_manager> particle_managers;
 	tfx_storage_map_t<tfx_library> libraries;
+	tfx_storage_map_t<tfx_property_lookup_t> property_types;
 	tfx_vector_t<float> compiled_lookup_values;
 	tfx_ribbon_dispatch last_ribbon_dispatch;
 	tfx_particle_manager current_pm;
@@ -5693,8 +5715,6 @@ typedef struct tfx_emitter_emitter_properties_s {
 	tfx_vec2_t image_handle;
 	//image handle packed into 16bit floats
 	tfxU32 image_handle_packed;
-	//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
-	float noise_base_offset_range;
 	//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
 	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
 	//are stored on the GPU for looking up from the sprite data
@@ -5862,7 +5882,6 @@ typedef struct tfx_effect_state_s {
 	tfxU32 graph_list_index;
 	tfxU32 transform_index;
 
-	tfxU32 properties_index;
 	tfxU32 shared_index;
 	tfxU32 info_index;
 	tfxU32 parent_particle_index;
@@ -6024,6 +6043,8 @@ typedef struct tfx_effect_descriptor_s {
 	//When not using insert sort to guarantee particle order, sort passes offers a more relaxed way of ordering particles over a number of frames.
 	//The more passes the more quickly ordered the particles will be but at a higher cost
 	tfxU32 sort_passes;
+	//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
+	float noise_base_offset_range;
 	//Custom user data, can be accessed in callback functions
 	void *user_data;
 	void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index);
@@ -6971,6 +6992,7 @@ tfxAPI_EDITOR void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, 
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
+tfxAPI_EDITOR void tfx__assign_property_from_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name, const char *value);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t *field, float value);
@@ -7084,7 +7106,7 @@ tfxINTERNAL float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx
 tfxINTERNAL tfx_attribute_node_t *tfx__get_graph_next_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL tfx_attribute_node_t *tfx__get_graph_prev_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL tfx_attribute_node_t *tfx__add_graph_coord_node(tfx_graph_t *graph, float, float);
-tfxINTERNAL float tfx__get_graph_max_value(tfx_graph_t *graph);
+tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxINTERNAL float tfx__get_graph_min_value(tfx_graph_t *graph);
 tfxINTERNAL float tfx__get_graph_last_frame(tfx_graph_t *graph, float udpate_frequence);
 tfxINTERNAL tfx_attribute_node_t *tfx__graph_node_by_index(tfx_graph_t *graph, tfxU32 index);
