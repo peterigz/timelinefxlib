@@ -2309,7 +2309,7 @@ bool tfx__is_ordered_effect(tfx_effect_descriptor_t *effect) {
 }
 
 bool tfx__is_ordered_effect_state(tfx_effect_state_t *effect) {
-	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | tfxEffectPropertyFlags_depth_draw_order;
+	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | (effect->effect_flags & tfxEffectPropertyFlags_effect_is_3d ? tfxEffectPropertyFlags_depth_draw_order : 0);
 	return (effect->effect_flags & ordered_flags) > 0;
 }
 
@@ -5444,13 +5444,13 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.data.reserve(300);
 	names_and_types.map.reserve(300);
 	names_and_types.Insert("name", tfxString);
-	names_and_types.Insert("image_index", tfxUint);
+	names_and_types.Insert("image_index", tfxUInt);
 	names_and_types.Insert("image_hash", tfxUInt64);
 	names_and_types.Insert("image_handle_x", tfxFloat);
 	names_and_types.Insert("image_handle_y", tfxFloat);
-	names_and_types.Insert("spawn_amount", tfxUint);
-	names_and_types.Insert("spawn_amount_variation", tfxUint);
-	names_and_types.Insert("single_shot_limit", tfxUint);
+	names_and_types.Insert("spawn_amount", tfxUInt);
+	names_and_types.Insert("spawn_amount_variation", tfxUInt);
+	names_and_types.Insert("single_shot_limit", tfxUInt);
 	names_and_types.Insert("blend_mode", tfxSInt);
 	names_and_types.Insert("image_start_frame", tfxFloat);
 	names_and_types.Insert("image_end_frame", tfxFloat);
@@ -5468,15 +5468,15 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("emitter_handle_y", tfxFloat);
 	names_and_types.Insert("emitter_handle_z", tfxFloat);
 	names_and_types.Insert("end_behaviour", tfxSInt);
-	names_and_types.Insert("angle_setting", tfxUint);
+	names_and_types.Insert("angle_setting", tfxUInt);
 	names_and_types.Insert("angle_offset", tfxFloat);
 	names_and_types.Insert("angle_offset_pitch", tfxFloat);
 	names_and_types.Insert("angle_offset_yaw", tfxFloat);
 	names_and_types.Insert("disable_billboard", tfxBool);
-	names_and_types.Insert("billboard_option", tfxUint);
-	names_and_types.Insert("vector_align_type", tfxUint);
+	names_and_types.Insert("billboard_option", tfxUInt);
+	names_and_types.Insert("vector_align_type", tfxUInt);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
-	names_and_types.Insert("sort_passes", tfxUint);
+	names_and_types.Insert("sort_passes", tfxUInt);
 	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
 
 	names_and_types.Insert("random_color", tfxBool);
@@ -5517,8 +5517,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
 
 	//Ribbon properties
-	names_and_types.Insert("ribbon_segment_count", tfxUint);
-	names_and_types.Insert("ribbon_shader_type", tfxUint);
+	names_and_types.Insert("ribbon_segment_count", tfxUInt);
+	names_and_types.Insert("ribbon_shader_type", tfxUInt);
 	names_and_types.Insert("static_ribbon", tfxBool);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
@@ -5644,7 +5644,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
-	names_and_types.Insert("path_node_count", tfxUint);
+	names_and_types.Insert("path_node_count", tfxUInt);
 	names_and_types.Insert("path_is_2d", tfxBool);
 	names_and_types.Insert("path_is_3d", tfxBool);    //Not used
 	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
@@ -5654,8 +5654,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_rotation_range", tfxFloat);
 	names_and_types.Insert("path_rotation_pitch", tfxFloat);
 	names_and_types.Insert("path_rotation_yaw", tfxFloat);
-	names_and_types.Insert("maximum_active_paths", tfxUint);
-	names_and_types.Insert("maximum_path_cycles", tfxUint);
+	names_and_types.Insert("maximum_active_paths", tfxUInt);
+	names_and_types.Insert("maximum_path_cycles", tfxUInt);
 	names_and_types.Insert("path_rotation_stagger", tfxFloat);
 	names_and_types.Insert("path_rotation_range_yaw_only", tfxBool);
 	names_and_types.Insert("path_handle_x", tfxFloat);
@@ -5663,54 +5663,54 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_handle_z", tfxFloat);
 
 	//Sprite data settings
-	names_and_types.Insert("start_offset", tfxUint);
-	names_and_types.Insert("frames_after_compression", tfxUint);
-	names_and_types.Insert("real_frames", tfxUint);
-	names_and_types.Insert("frame_count", tfxUint);
-	names_and_types.Insert("total_sprites", tfxUint);
-	names_and_types.Insert("total_memory_for_sprites", tfxUint);
-	names_and_types.Insert("flags", tfxUint);
-	names_and_types.Insert("animation_flags", tfxUint);
+	names_and_types.Insert("start_offset", tfxUInt);
+	names_and_types.Insert("frames_after_compression", tfxUInt);
+	names_and_types.Insert("real_frames", tfxUInt);
+	names_and_types.Insert("frame_count", tfxUInt);
+	names_and_types.Insert("total_sprites", tfxUInt);
+	names_and_types.Insert("total_memory_for_sprites", tfxUInt);
+	names_and_types.Insert("flags", tfxUInt);
+	names_and_types.Insert("animation_flags", tfxUInt);
 	names_and_types.Insert("animation_time", tfxFloat);
 	names_and_types.Insert("animation_length_in_time", tfxFloat);
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("path_hash", tfxUInt64);
 
 	//Frame meta
-	names_and_types.Insert("total_sprites", tfxUint);
+	names_and_types.Insert("total_sprites", tfxUInt);
 	names_and_types.Insert("min_corner", tfxFloat3);
 	names_and_types.Insert("max_corner", tfxFloat3);
 
 	//Sprite data emitter properties
 	names_and_types.Insert("animation_frames", tfxFloat);
 	names_and_types.Insert("handle", tfxFloat2);
-	names_and_types.Insert("start_frame_index", tfxUint);
+	names_and_types.Insert("start_frame_index", tfxUInt);
 
 	//Animation settings
 	names_and_types.Insert("playback_speed", tfxFloat);
 	names_and_types.Insert("animation_magenta_mask", tfxBool);
 	names_and_types.Insert("animation_magenta_mask_always", tfxBool);
-	names_and_types.Insert("frames", tfxUint);
-	names_and_types.Insert("current_frame", tfxUint);
-	names_and_types.Insert("frame_offset", tfxUint);
+	names_and_types.Insert("frames", tfxUInt);
+	names_and_types.Insert("current_frame", tfxUInt);
+	names_and_types.Insert("frame_offset", tfxUInt);
 	names_and_types.Insert("extra_frames_count", tfxSInt);
-	names_and_types.Insert("layer", tfxUint);
+	names_and_types.Insert("layer", tfxUInt);
 	names_and_types.Insert("position_x", tfxFloat);
 	names_and_types.Insert("position_y", tfxFloat);
 	names_and_types.Insert("position_z", tfxFloat);
 	names_and_types.Insert("frame_width", tfxFloat);
 	names_and_types.Insert("frame_height", tfxFloat);
-	names_and_types.Insert("animation_flags", tfxUint);
+	names_and_types.Insert("animation_flags", tfxUInt);
 	names_and_types.Insert("loop", tfxBool);
 	names_and_types.Insert("seamless", tfxBool);
-	names_and_types.Insert("seed", tfxUint);
+	names_and_types.Insert("seed", tfxUInt);
 	names_and_types.Insert("zoom", tfxFloat);
 	names_and_types.Insert("scale", tfxFloat);
-	names_and_types.Insert("sprite_data_seed", tfxUint);
-	names_and_types.Insert("sprite_data_flags", tfxUint);
-	names_and_types.Insert("sprite_data_frames", tfxUint);
-	names_and_types.Insert("sprite_data_frame_offset", tfxUint);
-	names_and_types.Insert("sprite_data_extra_frames_count", tfxUint);
+	names_and_types.Insert("sprite_data_seed", tfxUInt);
+	names_and_types.Insert("sprite_data_flags", tfxUInt);
+	names_and_types.Insert("sprite_data_frames", tfxUInt);
+	names_and_types.Insert("sprite_data_frame_offset", tfxUInt);
+	names_and_types.Insert("sprite_data_extra_frames_count", tfxUInt);
 	names_and_types.Insert("sprite_data_playback_speed", tfxFloat);
 	names_and_types.Insert("sprite_data_recording_frame_rate", tfxFloat);
 	names_and_types.Insert("color_option", tfxSInt);
@@ -6100,6 +6100,338 @@ static bool tfx__string_to_int(const char *str, int *result) {
 	return true;
 }
 
+tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
+	switch (graph_type) {
+	case tfxGlobal_life: return "global_life"; break;
+	case tfxGlobal_amount: return "global_amount"; break;
+	case tfxGlobal_velocity: return "global_velocity"; break;
+	case tfxGlobal_noise: return "global_noise"; break;
+	case tfxGlobal_width: return "global_width"; break;
+	case tfxGlobal_height: return "global_height"; break;
+	case tfxGlobal_weight: return "global_weight"; break;
+	case tfxGlobal_roll_spin: return "global_roll_spin"; break;
+	case tfxGlobal_pitch_spin: return "global_pitch_spin"; break;
+	case tfxGlobal_yaw_spin: return "global_yaw_spin"; break;
+	case tfxGlobal_stretch: return "global_stretch"; break;
+	case tfxGlobal_overal_scale: return "global_overal_scale"; break;
+	case tfxGlobal_intensity: return "global_intensity"; break;
+	case tfxGlobal_splatter: return "global_splatter"; break;
+	case tfxGlobal_emitter_width: return "global_emitter_width"; break;
+	case tfxGlobal_emitter_height: return "global_emitter_height"; break;
+	case tfxGlobal_emitter_depth: return "global_emitter_depth"; break;
+
+	case tfxProperty_emission_pitch: return "property_emission_pitch"; break;
+	case tfxProperty_emission_yaw: return "property_emission_yaw"; break;
+	case tfxProperty_emission_range: return "property_emission_range"; break;
+	case tfxProperty_splatter: return "property_splatter"; break;
+	case tfxProperty_emitter_width: return "property_emitter_width"; break;
+	case tfxProperty_emitter_height: return "property_emitter_height"; break;
+	case tfxProperty_emitter_depth: return "property_emitter_depth"; break;
+	case tfxProperty_extrusion: return "property_extrusion"; break;
+	case tfxProperty_arc_size: return "property_arc_size"; break;
+	case tfxProperty_arc_offset: return "property_arc_offset"; break;
+
+	case tfxBase_life: return "base_life"; break;
+	case tfxBase_amount: return "base_amount"; break;
+	case tfxBase_velocity: return "base_velocity"; break;
+	case tfxBase_width: return "base_width"; break;
+	case tfxBase_height: return "base_height"; break;
+	case tfxBase_weight: return "base_weight"; break;
+	case tfxBase_pitch_spin: return "base_pitch_spin"; break;
+	case tfxBase_yaw_spin: return "base_yaw_spin"; break;
+	case tfxBase_roll_spin: return "base_roll_spin"; break;
+	case tfxBase_noise_offset: return "base_noise_offset"; break;
+
+	case tfxVariation_life: return "variation_life"; break;
+	case tfxVariation_amount: return "variation_amount"; break;
+	case tfxVariation_velocity: return "variation_velocity"; break;
+	case tfxVariation_width: return "variation_width"; break;
+	case tfxVariation_height: return "variation_height"; break;
+	case tfxVariation_weight: return "variation_weight"; break;
+	case tfxVariation_pitch_spin: return "variation_pitch_spin"; break;
+	case tfxVariation_yaw_spin: return "variation_yaw_spin"; break;
+	case tfxVariation_roll_spin: return "variation_roll_spin"; break;
+	case tfxVariation_noise_offset: return "variation_noise_offset"; break;
+	case tfxVariation_noise_resolution: return "variation_noise_resolution"; break;
+	case tfxVariation_motion_randomness: return "variation_motion_randomness"; break;
+
+	case tfxOvertime_red: return "overtime_red"; break;
+	case tfxOvertime_green: return "overtime_green"; break;
+	case tfxOvertime_blue: return "overtime_blue"; break;
+	case tfxOvertime_blendfactor: return "overtime_blendfactor"; break;
+	case tfxOvertime_velocity_adjuster: return "overtime_velocity_adjuster"; break;
+
+	case tfxOvertime_intensity: return "overtime_intensity"; break;
+	case tfxOvertime_alpha_sharpness: return "overtime_alpha_sharpness"; break;
+	case tfxOvertime_curved_alpha: return "overtime_curved_alpha"; break;
+	case tfxOvertime_gradient_mapper: return "overtime_gradient_mapper"; break;
+	case tfxOvertime_velocity: return "overtime_velocity"; break;
+	case tfxOvertime_width: return "overtime_width"; break;
+	case tfxOvertime_height: return "overtime_height"; break;
+	case tfxOvertime_scale: return "overtime_scale"; break;
+	case tfxOvertime_weight: return "overtime_weight"; break;
+	case tfxOvertime_pitch_spin: return "overtime_pitch_spin"; break;
+	case tfxOvertime_yaw_spin: return "overtime_yaw_spin"; break;
+	case tfxOvertime_roll_spin: return "overtime_roll_spin"; break;
+	case tfxOvertime_stretch: return "overtime_stretch"; break;
+	case tfxOvertime_velocity_turbulance: return "overtime_velocity_turbulance"; break;
+	case tfxOvertime_direction_turbulance: return "overtime_direction_turbulance"; break;
+	case tfxOvertime_direction: return "overtime_direction"; break;
+	case tfxOvertime_noise_resolution: return "overtime_noise_resolution"; break;
+	case tfxOvertime_motion_randomness: return "overtime_motion_randomness"; break;
+	case tfxOvertime_uv_offset_y: return "overtime_uv_offset_y"; break;
+	case tfxOvertime_uv_scale_y: return "overtime_uv_scale_y"; break;
+	case tfxOvertime_clip_offset: return "overtime_clip_offset"; break;
+	case tfxOvertime_clip_size: return "overtime_clip_size"; break;
+
+	case tfxOverlength_intensity: return "overlength_intensity"; break;
+	case tfxOverlength_alpha_sharpness: return "overlength_alpha_sharpness"; break;
+	case tfxOverlength_curved_alpha: return "overlength_curved_alpha"; break;
+	case tfxOverlength_gradient_map: return "overlength_gradient_map"; break;
+	case tfxOverlength_width: return "overlength_width"; break;
+	case tfxOverlength_ribbon_fixed_angle: return "overlength_ribbon_fixed_angle"; break;
+
+	case tfxFactor_life: return "factor_life"; break;
+	case tfxFactor_size: return "factor_size"; break;
+	case tfxFactor_velocity: return "factor_velocity"; break;
+	case tfxFactor_intensity: return "factor_intensity"; break;
+
+	case tfxTransform_roll: return "transform_roll"; break;
+	case tfxTransform_pitch: return "transform_pitch"; break;
+	case tfxTransform_yaw: return "transform_yaw"; break;
+	case tfxTransform_translate_x: return "transform_translate_x"; break;
+	case tfxTransform_translate_y: return "transform_translate_y"; break;
+	case tfxTransform_translate_z: return "transform_translate_z"; break;
+	case tfxEmitterGraphMaxIndex: return "emitterGraphMaxIndex"; break;
+
+	case tfxPath_angle_x: return "path_angle_x"; break;
+	case tfxPath_angle_y: return "path_angle_y"; break;
+	case tfxPath_angle_z: return "path_angle_z"; break;
+	case tfxPath_offset_x: return "path_offset_x"; break;
+	case tfxPath_offset_y: return "path_offset_y"; break;
+	case tfxPath_offset_z: return "path_offset_z"; break;
+	case tfxPath_distance: return "path_distance"; break;
+	case tfxPath_rotation_range: return "path_rotation_range"; break;
+	case tfxPath_rotation_pitch: return "path_rotation_pitch"; break;
+	case tfxPath_rotation_yaw: return "path_rotation_yaw"; break;
+	}
+	return "";
+}
+
+tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor_t *effect, tfx_graph_t *graph, bool include_property_name) {
+	TFX_ASSERT(graph);	//Passed in a null graph!
+	tfx_stream_t graph_string;
+	for (tfxBucketLoop(graph->nodes, i)) {
+		if (include_property_name) {
+			tfx_str64_t property_name = tfx__graph_type_to_property_string(graph->type);
+			graph_string.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", property_name.c_str(), graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+		} else {
+			graph_string.AddLine("%f,%f,%i,%f,%f,%f,%f", graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+		}
+	}
+	return graph_string;
+}
+
+tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name) {
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
+	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
+	if (effect->type == tfxEmitterType) {
+		emitter_properties = tfx__get_particle_emitter_properties(effect);
+	} else if (effect->type == tfxRibbonType) {
+		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
+	}
+	tfx_str256_t value;
+
+	//u32 values
+	if (property_name == "spawn_amount")				value.Setf("%u", shared_properties->spawn_amount);
+	else if (property_name == "spawn_amount_variation") value.Setf("%u", shared_properties->spawn_amount_variation);
+	else if (property_name == "frames")					value.Setf("%u", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frames);
+	else if (property_name == "current_frame")			value.Setf("%u", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].current_frame);
+	else if (property_name == "seed")					value.Setf("%u", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].seed);
+	else if (property_name == "layer")					value.Setf("%u", shared_properties->layer);
+	else if (property_name == "frame_offset")			value.Setf("%u", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset);
+	else if (property_name == "single_shot_limit")		value.Setf("%u", shared_properties->single_shot_limit);
+	else if (property_name == "ribbon_segment_count")	value.Setf("%u", ribbon_properties->bucket_info.segment_count);
+	else if (property_name == "ribbon_shader_type")		value.Setf("%u", ribbon_properties->bucket_info.shader_type);
+	else if (property_name == "billboard_option") {		value.Setf("%u", emitter_properties->billboard_option);
+	}
+	else if (property_name == "vector_align_type")		value.Setf("%u", emitter_properties->vector_align_type);
+	else if (property_name == "angle_setting")			value.Setf("%u", emitter_properties->angle_settings);
+	else if (property_name == "sort_passes")			value.Setf("%u", effect->sort_passes);
+	else if (property_name == "animation_flags")		value.Setf("%u", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags & tfxAnimationFlags_needs_recording);
+	else if (property_name == "sprite_data_flags")		value.Setf("%u", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].animation_flags & tfxAnimationFlags_needs_recording);
+	else if (property_name == "sprite_data_seed")		value.Setf("%u", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].seed);
+	else if (property_name == "sprite_data_frame_offset") value.Setf("%u", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].frame_offset);
+	else if (property_name == "sprite_data_frames")		value.Setf("%u", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].real_frames);
+	else if (property_name == "sprite_data_extra_frames_count") value.Setf("%u", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count);
+	else if (property_name == "maximum_active_paths") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%u", path->maximum_active_paths);
+	} else if (property_name == "maximum_path_cycles") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%u", path->maximum_paths);
+	} else if (property_name == "path_node_count") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%u", path->node_count);
+	}
+
+	//Int values
+	if (property_name == "emission_direction") value.Setf("%i", emitter_properties->emission_direction);
+	else if (property_name == "end_behaviour") value.Setf("%i", emitter_properties->end_behaviour);
+	else if (property_name == "emission_type") value.Setf("%i", shared_properties->emission_type);
+	else if (property_name == "color_option") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].color_option);
+	else if (property_name == "export_option") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].export_option);
+	else if (property_name == "frame_offset") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset);
+	else if (property_name == "extra_frames_count") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count);
+	else if (property_name == "path_extrusion_type") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];  value.Setf("%i", path->extrusion_type);
+	} else if (property_name == "path_generator_type") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];  value.Setf("%i", path->generator_type);
+	}
+
+	//Float values
+	if (property_name == "position_x") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.x);
+	else if (property_name == "position_y") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.y);
+	else if (property_name == "position_z") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.z);
+	else if (property_name == "frame_width") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.x);
+	else if (property_name == "frame_height") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.y);
+	else if (property_name == "zoom") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].zoom);
+	else if (property_name == "scale") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].scale);
+	else if (property_name == "playback_speed") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].playback_speed);
+	else if (property_name == "camera_position_x") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.x);
+	else if (property_name == "camera_position_y") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.y);
+	else if (property_name == "camera_position_z") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.z);
+	else if (property_name == "camera_pitch") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_pitch);
+	else if (property_name == "camera_yaw") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_yaw);
+	else if (property_name == "camera_fov") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_fov);
+	else if (property_name == "camera_floor_height") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_floor_height);
+	else if (property_name == "camera_isometric_scale") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric_scale);
+	else if (property_name == "orthographic_camera_position_x") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x);
+	else if (property_name == "orthographic_camera_position_y") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y);
+	else if (property_name == "orthographic_camera_position_z") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z);
+	else if (property_name == "orthographic_camera_pitch") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch);
+	else if (property_name == "orthographic_camera_yaw") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw);
+	else if (property_name == "orthographic_camera_fov") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_fov);
+	else if (property_name == "orthographic_camera_floor_height") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height);
+	else if (property_name == "orthographic_camera_isometric_scale") value.Setf("%f", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale);
+	else if (property_name == "preview_camera_position_x") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.x);
+	else if (property_name == "preview_camera_position_y") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.y);
+	else if (property_name == "preview_camera_position_z") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.z);
+	else if (property_name == "preview_camera_pitch") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_pitch);
+	else if (property_name == "preview_camera_yaw") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_yaw);
+	else if (property_name == "preview_camera_fov") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_fov);
+	else if (property_name == "preview_camera_floor_height") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_floor_height);
+	else if (property_name == "preview_camera_isometric_scale") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric_scale);
+	else if (property_name == "preview_effect_z_offset") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].effect_z_offset);
+	else if (property_name == "preview_camera_speed") value.Setf("%f", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_speed);
+	else if (property_name == "delay_spawning") value.Setf("%f", shared_properties->delay_spawning);
+	else if (property_name == "grid_rows") value.Setf("%f", shared_properties->grid_points.x);
+	else if (property_name == "grid_columns") value.Setf("%f", shared_properties->grid_points.y);
+	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
+	else if (property_name == "loop_length") value.Setf("%f", shared_properties->loop_length);
+	else if (property_name == "emitter_handle_x") value.Setf("%f", shared_properties->emitter_handle.x);
+	else if (property_name == "emitter_handle_y") value.Setf("%f", shared_properties->emitter_handle.y);
+	else if (property_name == "emitter_handle_z") value.Setf("%f", shared_properties->emitter_handle.z);
+	else if (property_name == "image_start_frame") value.Setf("%f", shared_properties->start_frame);
+	else if (property_name == "image_end_frame") value.Setf("%f", shared_properties->end_frame);
+	else if (property_name == "image_frame_rate") value.Setf("%f", shared_properties->frame_rate);
+	else if (property_name == "sprite_data_playback_speed") value.Setf("%f", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].playback_speed);
+	else if (property_name == "sprite_data_recording_frame_rate") value.Setf("%f", effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate);
+	else if (property_name == "path_rotation_range") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_range);
+	} else if (property_name == "path_rotation_pitch") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_pitch);
+	} else if (property_name == "path_rotation_yaw") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_yaw);
+	} else if (property_name == "path_rotation_stagger") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_stagger);
+	} else if (property_name == "path_handle_x") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];  value.Setf("%f", path->offset.x);
+	} else if (property_name == "path_handle_y") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->offset.y);
+	} else if (property_name == "path_handle_z") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->offset.z);
+	} else if (property_name == "noise_base_offset_range") value.Setf("%f", effect->noise_base_offset_range);
+	if (effect->type == tfxEmitterType) {
+		if (property_name == "image_handle_x") value.Setf("%f", emitter_properties->image_handle.x);
+		else if (property_name == "image_handle_y") value.Setf("%f", emitter_properties->image_handle.y);
+		else if (property_name == "angle_offset") value.Setf("%f", emitter_properties->angle_offsets.roll);
+		else if (property_name == "angle_offset_pitch") value.Setf("%f", emitter_properties->angle_offsets.pitch);
+		else if (property_name == "angle_offset_yaw") value.Setf("%f", emitter_properties->angle_offsets.yaw);
+	} else if (effect->type == tfxRibbonType) {
+		if (property_name == "ribbon_fixed_angle_normal_x") value.Setf("%f", ribbon_properties->fixed_angle_normal.x);
+		else if (property_name == "ribbon_fixed_angle_normal_y") value.Setf("%f", ribbon_properties->fixed_angle_normal.y);
+		else if (property_name == "ribbon_fixed_angle_normal_z") value.Setf("%f", ribbon_properties->fixed_angle_normal.z);
+	}
+
+	//Bool values
+	if (property_name == "loop") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags & tfxAnimationFlags_loop);
+	else if (property_name == "seamless") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags & tfxAnimationFlags_seamless);
+	else if (property_name == "export_with_transparency") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags & tfxAnimationFlags_export_with_transparency);
+	else if (property_name == "camera_isometric") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric);
+	else if (property_name == "camera_hide_floor") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_hide_floor);
+	else if (property_name == "orthographic_camera_isometric") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric);
+	else if (property_name == "orthographic_camera_hide_floor") value.Setf("%i", effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor);
+	else if (property_name == "preview_attach_effect_to_camera") value.Setf("%i", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].attach_effect_to_camera);
+	else if (property_name == "preview_camera_hide_floor") value.Setf("%i", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor);
+	else if (property_name == "preview_camera_isometric") value.Setf("%i", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric);
+	else if (property_name == "random_color") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_random_color);
+	else if (property_name == "relative_position") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
+	else if (property_name == "relative_angle") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_relative_angle);
+	else if (property_name == "image_handle_auto_center") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_image_handle_auto_center);
+	else if (property_name == "single") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_single);
+	else if (property_name == "wrap_single_sprite") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_wrap_single_sprite);
+	else if (property_name == "spawn_on_grid") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
+	else if (property_name == "grid_spawn_clockwise") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise);
+	else if (property_name == "fill_area") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_fill_area);
+	else if (property_name == "grid_spawn_random") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
+	else if (property_name == "area_open_ends") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_area_open_ends);
+	else if (property_name == "emitter_handle_auto_center") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center);
+	else if (property_name == "edge_traversal") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_edge_traversal);
+	else if (property_name == "image_reverse_animation") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation);
+	else if (property_name == "image_play_once") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_play_once);
+	else if (property_name == "image_animate") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_animate);
+	else if (property_name == "image_random_start_frame") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame);
+	else if (property_name == "global_uniform_size") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size);
+	else if (property_name == "base_uniform_size") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_base_uniform_size);
+	else if (property_name == "lifetime_uniform_size") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size);
+	else if (property_name == "use_spawn_ratio") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_spawn_ratio);
+	else if (property_name == "is_3d") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d);
+	else if (property_name == "draw_order_by_age") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
+	else if (property_name == "draw_order_by_depth") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
+	else if (property_name == "guaranteed_draw_order") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
+	else if (property_name == "include_in_sprite_data_export") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
+	else if (property_name == "use_path_for_direction") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_path_for_direction);
+	else if (property_name == "alt_velocity_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling);
+	else if (property_name == "alt_color_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
+	else if (property_name == "alt_size_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
+	else if (property_name == "use_simple_motion_randomness") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness);
+	else if (property_name == "spawn_location_source") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
+	else if (property_name == "use_color_hint") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
+	else if (property_name == "static_ribbon") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_static);
+	else if (property_name == "path_is_2d") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_2d);
+	} else if (property_name == "path_mode_origin") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_mode_origin);
+	} else if (property_name == "path_mode_node") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_mode_node);
+	} else if (property_name == "path_space_nodes_evenly") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_space_nodes_evenly);
+	} else if (property_name == "path_rotation_range_yaw_only") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_rotation_range_yaw_only);
+	} else if (property_name == "path_reverse_direction") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->flags |= tfxPathFlags_reverse_direction);
+	}
+
+	//U64 values
+	if (property_name == "image_hash") value.Setf("%ull", tfx__get_shared_emitter_properties(effect)->image_hash);
+	else if (property_name == "paired_emitter_hash") value.Setf("%ull", tfx__get_shared_emitter_properties(effect)->paired_emitter_hash);
+
+	//String values
+	if (property_name == "name") value.Setf("%s", tfx_GetEffectInfo(effect)->name.c_str());
+
+	TFX_ASSERT(!value.empty());	//No value was set!
+	return value;
+}
+
 void tfx__assign_property_from_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name, const char *value) {
 
 	TFX_ASSERT(value);		//Must pass in a value
@@ -6115,7 +6447,7 @@ void tfx__assign_property_from_string(tfx_effect_descriptor_t *effect, tfx_str25
 			}
 			break;
 		}
-		case tfxUint: {
+		case tfxUInt: {
 			tfxU32 converted_value;
 			if (tfx__string_to_u32(value, &converted_value)) {
 				tfx__assign_effector_property_u32(effect, &property_name, converted_value, 0);
@@ -6183,7 +6515,7 @@ void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *met
 
 void tfx__assign_effector_property_u64(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
 	if (*field == "image_hash") tfx__get_shared_emitter_properties(effect)->image_hash = value;
-	if (*field == "paired_emitter_hash") tfx__get_shared_emitter_properties(effect)->paired_emitter_hash = value;
+	else if (*field == "paired_emitter_hash") tfx__get_shared_emitter_properties(effect)->paired_emitter_hash = value;
 }
 
 void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
@@ -6196,16 +6528,16 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 	}
 	if (*field == "spawn_amount") shared_properties->spawn_amount = value;
-	if (*field == "spawn_amount_variation") shared_properties->spawn_amount_variation = value;
-	if (*field == "frames") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
-	if (*field == "current_frame") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].current_frame = value;
-	if (*field == "seed") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].seed = value;
-	if (*field == "layer") shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
-	if (*field == "frame_offset") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
-	if (*field == "single_shot_limit") shared_properties->single_shot_limit = value;
-	if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
-	if (*field == "ribbon_shader_type") ribbon_properties->bucket_info.shader_type = value;
-	if (*field == "billboard_option") {
+	else if (*field == "spawn_amount_variation") shared_properties->spawn_amount_variation = value;
+	else if (*field == "frames") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
+	else if (*field == "current_frame") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].current_frame = value;
+	else if (*field == "seed") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].seed = value;
+	else if (*field == "layer") shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
+	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
+	else if (*field == "single_shot_limit") shared_properties->single_shot_limit = value;
+	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
+	else if (*field == "ribbon_shader_type") ribbon_properties->bucket_info.shader_type = value;
+	else if (*field == "billboard_option") {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
 		//libs for that. This can be removed at some point.
@@ -6218,22 +6550,20 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 		}
 		emitter_properties->billboard_option = (tfx_billboarding_option)value;
 	}
-	if (*field == "vector_align_type") emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
-	if (*field == "angle_setting") emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
-	if (*field == "sort_passes") effect->sort_passes = tfxMin(5, value);
-	if (*field == "animation_flags") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
-	if (*field == "sprite_data_flags") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
-	if (*field == "sprite_data_seed") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].seed = value;
-	if (*field == "sprite_data_frame_offset") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].frame_offset = value;
-	if (*field == "sprite_data_frames") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].real_frames = value;
-	if (*field == "sprite_data_extra_frames_count") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
-	if (*field == "maximum_active_paths") {
+	else if (*field == "vector_align_type") emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
+	else if (*field == "angle_setting") emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
+	else if (*field == "sort_passes") effect->sort_passes = tfxMin(5, value);
+	else if (*field == "animation_flags") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
+	else if (*field == "sprite_data_flags") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
+	else if (*field == "sprite_data_seed") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].seed = value;
+	else if (*field == "sprite_data_frame_offset") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].frame_offset = value;
+	else if (*field == "sprite_data_frames") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].real_frames = value;
+	else if (*field == "sprite_data_extra_frames_count") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
+	else if (*field == "maximum_active_paths") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->maximum_active_paths = value;
-	}
-	if (*field == "maximum_path_cycles") {
+	} else if (*field == "maximum_path_cycles") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->maximum_paths = value;
-	}
-	if (*field == "path_node_count") {
+	} else if (*field == "path_node_count") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->node_count = value;
 	}
 }
@@ -6241,16 +6571,15 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor_t *effect, tfx_str2
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
-	if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
-	if (*field == "emission_type") shared_properties->emission_type = (tfx_emission_type)value;
-	if (*field == "color_option") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
-	if (*field == "export_option") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
-	if (*field == "frame_offset") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
-	if (*field == "extra_frames_count") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
-	if (*field == "path_extrusion_type") {
+	else if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
+	else if (*field == "emission_type") shared_properties->emission_type = (tfx_emission_type)value;
+	else if (*field == "color_option") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
+	else if (*field == "export_option") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
+	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
+	else if (*field == "extra_frames_count") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
+	else if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->extrusion_type = (tfx_path_extrusion_type)value;
-	}
-	if (*field == "path_generator_type") {
+	} else if (*field == "path_generator_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->generator_type = (tfx_path_generator_type)value;
 	}
 }
@@ -6263,254 +6592,212 @@ void tfx__assign_effector_property_str(tfx_effect_descriptor_t *effect, tfx_str2
 void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t *field, float value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	if (*field == "position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.x = value;
-	if (*field == "position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
-	if (*field == "position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.z = value;
-	if (*field == "frame_width") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.x = value;
-	if (*field == "frame_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.y = value;
-	if (*field == "zoom") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].zoom = value;
-	if (*field == "scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].scale = value;
-	if (*field == "playback_speed") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].playback_speed = value;
-	if (*field == "camera_position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.x = value;
-	if (*field == "camera_position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.y = value;
-	if (*field == "camera_position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.z = value;
-	if (*field == "camera_pitch") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_pitch = value;
-	if (*field == "camera_yaw") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_yaw = value;
-	if (*field == "camera_fov") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_fov = value;
-	if (*field == "camera_floor_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
-	if (*field == "camera_isometric_scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
-	if (*field == "orthographic_camera_position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x = value;
-	if (*field == "orthographic_camera_position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y = value;
-	if (*field == "orthographic_camera_position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z = value;
-	if (*field == "orthographic_camera_pitch") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch = value;
-	if (*field == "orthographic_camera_yaw") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw = value;
-	if (*field == "orthographic_camera_fov") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_fov = value;
-	if (*field == "orthographic_camera_floor_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height = value;
-	if (*field == "orthographic_camera_isometric_scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale = value;
-	if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.x = value;
-	if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.y = value;
-	if (*field == "preview_camera_position_z") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.z = value;
-	if (*field == "preview_camera_pitch") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_pitch = value;
-	if (*field == "preview_camera_yaw") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_yaw = value;
-	if (*field == "preview_camera_fov") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_fov = value;
-	if (*field == "preview_camera_floor_height") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_floor_height = value;
-	if (*field == "preview_camera_isometric_scale") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
-	if (*field == "preview_effect_z_offset") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].effect_z_offset = value;
-	if (*field == "preview_camera_speed") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_speed = value;
-	if (*field == "delay_spawning") shared_properties->delay_spawning = value;
-	if (*field == "grid_rows") shared_properties->grid_points.x = value;
-	if (*field == "grid_columns") shared_properties->grid_points.y = value;
-	if (*field == "grid_depth") shared_properties->grid_points.z = value;
-	if (*field == "loop_length") shared_properties->loop_length = value < 0 ? 0.f : value;
-	if (*field == "emitter_handle_x") shared_properties->emitter_handle.x = value;
-	if (*field == "emitter_handle_y") shared_properties->emitter_handle.y = value;
-	if (*field == "emitter_handle_z") shared_properties->emitter_handle.z = value;
-	if (*field == "image_start_frame") shared_properties->start_frame = value;
-	if (*field == "image_end_frame") shared_properties->end_frame = value;
-	if (*field == "image_frame_rate") shared_properties->frame_rate = value;
-	if (*field == "sprite_data_playback_speed") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].playback_speed = value;
-	if (*field == "sprite_data_recording_frame_rate") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
-	if (*field == "path_rotation_range") {
+	else if (*field == "position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
+	else if (*field == "position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.z = value;
+	else if (*field == "frame_width") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.x = value;
+	else if (*field == "frame_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.y = value;
+	else if (*field == "zoom") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].zoom = value;
+	else if (*field == "scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].scale = value;
+	else if (*field == "playback_speed") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].playback_speed = value;
+	else if (*field == "camera_position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.x = value;
+	else if (*field == "camera_position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.y = value;
+	else if (*field == "camera_position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.z = value;
+	else if (*field == "camera_pitch") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_pitch = value;
+	else if (*field == "camera_yaw") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_yaw = value;
+	else if (*field == "camera_fov") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_fov = value;
+	else if (*field == "camera_floor_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
+	else if (*field == "camera_isometric_scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
+	else if (*field == "orthographic_camera_position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x = value;
+	else if (*field == "orthographic_camera_position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y = value;
+	else if (*field == "orthographic_camera_position_z") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z = value;
+	else if (*field == "orthographic_camera_pitch") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch = value;
+	else if (*field == "orthographic_camera_yaw") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw = value;
+	else if (*field == "orthographic_camera_fov") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_fov = value;
+	else if (*field == "orthographic_camera_floor_height") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height = value;
+	else if (*field == "orthographic_camera_isometric_scale") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale = value;
+	else if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.x = value;
+	else if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.y = value;
+	else if (*field == "preview_camera_position_z") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.z = value;
+	else if (*field == "preview_camera_pitch") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_pitch = value;
+	else if (*field == "preview_camera_yaw") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_yaw = value;
+	else if (*field == "preview_camera_fov") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_fov = value;
+	else if (*field == "preview_camera_floor_height") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_floor_height = value;
+	else if (*field == "preview_camera_isometric_scale") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
+	else if (*field == "preview_effect_z_offset") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].effect_z_offset = value;
+	else if (*field == "preview_camera_speed") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_speed = value;
+	else if (*field == "delay_spawning") shared_properties->delay_spawning = value;
+	else if (*field == "grid_rows") shared_properties->grid_points.x = value;
+	else if (*field == "grid_columns") shared_properties->grid_points.y = value;
+	else if (*field == "grid_depth") shared_properties->grid_points.z = value;
+	else if (*field == "loop_length") shared_properties->loop_length = value < 0 ? 0.f : value;
+	else if (*field == "emitter_handle_x") shared_properties->emitter_handle.x = value;
+	else if (*field == "emitter_handle_y") shared_properties->emitter_handle.y = value;
+	else if (*field == "emitter_handle_z") shared_properties->emitter_handle.z = value;
+	else if (*field == "image_start_frame") shared_properties->start_frame = value;
+	else if (*field == "image_end_frame") shared_properties->end_frame = value;
+	else if (*field == "image_frame_rate") shared_properties->frame_rate = value;
+	else if (*field == "sprite_data_playback_speed") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].playback_speed = value;
+	else if (*field == "sprite_data_recording_frame_rate") effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
+	else if (*field == "path_rotation_range") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_range = value;
 	}
-	if (*field == "path_rotation_pitch") {
+	else if (*field == "path_rotation_pitch") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_pitch = value;
 	}
-	if (*field == "path_rotation_yaw") {
+	else if (*field == "path_rotation_yaw") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_yaw = value;
 	}
-	if (*field == "path_rotation_stagger") {
+	else if (*field == "path_rotation_stagger") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_stagger = value;
 	}
-	if (*field == "path_handle_x") {
+	else if (*field == "path_handle_x") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->offset.x = value;
 	}
-	if (*field == "path_handle_y") {
+	else if (*field == "path_handle_y") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->offset.y = value;
 	}
-	if (*field == "path_handle_z") {
+	else if (*field == "path_handle_z") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->offset.z = value;
 	}
-	if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
+	else if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
 	if (effect->type == tfxEmitterType) {
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
 		if (*field == "image_handle_x") emitter_properties->image_handle.x = value;
-		if (*field == "image_handle_y") emitter_properties->image_handle.y = value;
-		if (*field == "angle_offset") emitter_properties->angle_offsets.roll = value;
-		if (*field == "angle_offset_pitch") emitter_properties->angle_offsets.pitch = value;
-		if (*field == "angle_offset_yaw") emitter_properties->angle_offsets.yaw = value;
+		else if (*field == "image_handle_y") emitter_properties->image_handle.y = value;
+		else if (*field == "angle_offset") emitter_properties->angle_offsets.roll = value;
+		else if (*field == "angle_offset_pitch") emitter_properties->angle_offsets.pitch = value;
+		else if (*field == "angle_offset_yaw") emitter_properties->angle_offsets.yaw = value;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
-		if (*field == "ribbon_fixed_angle_normal_y") ribbon_properties->fixed_angle_normal.y = value;
-		if (*field == "ribbon_fixed_angle_normal_z") ribbon_properties->fixed_angle_normal.z = value;
+		else if (*field == "ribbon_fixed_angle_normal_y") ribbon_properties->fixed_angle_normal.y = value;
+		else if (*field == "ribbon_fixed_angle_normal_z") ribbon_properties->fixed_angle_normal.z = value;
 	}
 }
 void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str256_t *field, bool value) {
 	if (*field == "loop") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
-	if (*field == "seamless") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
-	if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
-	if (*field == "camera_isometric") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric = false;
-	if (*field == "camera_hide_floor") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
-	if (*field == "orthographic_camera_isometric") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = true;
-	if (*field == "orthographic_camera_hide_floor") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
-	if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].attach_effect_to_camera = value;
-	if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
-	if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
-	if (*field == "random_color") {
+	else if (*field == "seamless") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
+	else if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
+	else if (*field == "camera_isometric") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric = false;
+	else if (*field == "camera_hide_floor") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
+	else if (*field == "orthographic_camera_isometric") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = true;
+	else if (*field == "orthographic_camera_hide_floor") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
+	else if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].attach_effect_to_camera = value;
+	else if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
+	else if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
+	else if (*field == "random_color") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_color; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_color; }
-	}
-	if (*field == "relative_position") {
+	} else if (*field == "relative_position") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_relative_position; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position; }
-	}
-	if (*field == "relative_angle") {
+	} else if (*field == "relative_angle") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
-	}
-	if (*field == "image_handle_auto_center") {
+	} else if (*field == "image_handle_auto_center") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center; }
-	}
-	if (*field == "single") {
+	} else if (*field == "single") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_single; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_single; }
-	}
-	if (*field == "wrap_single_sprite") {
+	} else if (*field == "wrap_single_sprite") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite; }
-	}
-	if (*field == "spawn_on_grid") {
+	} else if (*field == "spawn_on_grid") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_on_grid; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_on_grid; }
-	}
-	if (*field == "grid_spawn_clockwise") {
+	} else if (*field == "grid_spawn_clockwise") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; }
-	}
-	if (*field == "fill_area") {
+	} else if (*field == "fill_area") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_fill_area; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_fill_area; }
-	}
-	if (*field == "grid_spawn_random") {
+	} else if (*field == "grid_spawn_random") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_random; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_random; }
-	}
-	if (*field == "area_open_ends") {
+	} else if (*field == "area_open_ends") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_area_open_ends; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_area_open_ends; }
-	}
-	if (*field == "emitter_handle_auto_center") {
+	} else if (*field == "emitter_handle_auto_center") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; }
-	}
-	if (*field == "edge_traversal") {
+	} else if (*field == "edge_traversal") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_edge_traversal; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_edge_traversal; }
-	}
-	if (*field == "image_reverse_animation") {
+	} else if (*field == "image_reverse_animation") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_reverse_animation; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_reverse_animation; }
-	}
-	if (*field == "image_play_once") {
+	} else if (*field == "image_play_once") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_play_once; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_play_once; }
-	}
-	if (*field == "image_animate") {
+	} else if (*field == "image_animate") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_animate; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_animate; }
-	}
-	if (*field == "image_random_start_frame") {
+	} else if (*field == "image_random_start_frame") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_start_frame; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_start_frame; }
-	}
-	if (*field == "global_uniform_size") {
+	} else if (*field == "global_uniform_size") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_global_uniform_size; }
 		else { effect->property_flags &= ~tfxEffectPropertyFlags_global_uniform_size; }
-	}
-	if (*field == "base_uniform_size") {
+	} else if (*field == "base_uniform_size") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_base_uniform_size; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size; }
-	}
-	if (*field == "lifetime_uniform_size") {
+	} else if (*field == "lifetime_uniform_size") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size; }
-	}
-	if (*field == "use_spawn_ratio") {
+	} else if (*field == "use_spawn_ratio") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio; }
-	}
-	if (*field == "is_3d") {
+	} else if (*field == "is_3d") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_effect_is_3d; }
-	}
-	if (*field == "draw_order_by_age") {
+	} else if (*field == "draw_order_by_age") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
-	}
-	if (*field == "draw_order_by_depth") {
+	} else if (*field == "draw_order_by_depth") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
-	}
-	if (*field == "guaranteed_draw_order") {
+	} else if (*field == "guaranteed_draw_order") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order; }
-	}
-	if (*field == "include_in_sprite_data_export") {
+	} else if (*field == "include_in_sprite_data_export") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
-	}
-	if (*field == "use_path_for_direction") {
+	} else if (*field == "use_path_for_direction") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
-	}
-	if (*field == "alt_velocity_lifetime_sampling") {
+	} else if (*field == "alt_velocity_lifetime_sampling") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
-	}
-	if (*field == "alt_color_lifetime_sampling") {
+	} else if (*field == "alt_color_lifetime_sampling") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_color_lifetime_sampling; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_color_lifetime_sampling; }
-	}
-	if (*field == "alt_size_lifetime_sampling") {
+	} else if (*field == "alt_size_lifetime_sampling") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
-	}
-	if (*field == "use_simple_motion_randomness") {
+	} else if (*field == "use_simple_motion_randomness") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
-	}
-	if (*field == "spawn_location_source") {
+	} else if (*field == "spawn_location_source") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
-	}
-	if (*field == "use_color_hint") {
+	} else if (*field == "use_color_hint") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
-	}
-	if (*field == "static_ribbon") {
+	} else if (*field == "static_ribbon") {
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; }
 		else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
-	}
-	//if (*field == "simple_motion_smoothstep") {
-		//if (value) { effect->property_flags |= tfxEmitterPropertyFlags_simple_motion_smoothstep; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_simple_motion_smoothstep; }
-	//}
-	if (*field == "path_is_2d") {
+	} else if (*field == "path_is_2d") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_2d; }
-	}
-	if (*field == "path_mode_origin") {
+	} else if (*field == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
-	}
-	if (*field == "path_mode_node") {
+	} else if (*field == "path_mode_node") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_node; }
-	}
-	if (*field == "path_space_nodes_evenly") {
+	} else if (*field == "path_space_nodes_evenly") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; }
-	}
-	if (*field == "path_rotation_range_yaw_only") {
+	} else if (*field == "path_rotation_range_yaw_only") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_rotation_range_yaw_only; }
-	}
-	if (*field == "path_reverse_direction") {
+	} else if (*field == "path_reverse_direction") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_reverse_direction; }
 	}
 
@@ -6661,12 +6948,6 @@ void tfx__stream_path_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *
 }
 
 void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file) {
-	for (tfxBucketLoop(graph->nodes, i)) {
-		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
-	}
-}
-
-void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str512_t *file) {
 	for (tfxBucketLoop(graph->nodes, i)) {
 		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
 	}
@@ -8597,7 +8878,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			if (context == tfxStartEffectAnimationInfo) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
-					case tfxUint:
+					case tfxUInt:
 						tfx__assign_sprite_data_metrics_property_u32(&metrics_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
 					case tfxFloat:
@@ -8617,7 +8898,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			else if (context == tfxStartFrameMeta) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
-					case tfxUint:
+					case tfxUInt:
 						tfx__assign_frame_meta_property_u32(&frame_meta_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
 					case tfxFloat3:
@@ -8633,7 +8914,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			else if (context == tfxStartEmitter) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
-					case tfxUint:
+					case tfxUInt:
 						tfx__assign_animation_emitter_property_u32(&emitter_properties_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
 					case tfxFloat:
@@ -8903,7 +9184,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			} else if (context == tfxStartStage) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
-					case tfxUint:
+					case tfxUInt:
 						tfx__assign_stage_property_u32(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()));
 						break;
 					case tfxFloat:

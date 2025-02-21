@@ -2556,7 +2556,7 @@ typedef enum {
 typedef enum {
 	tfxString,
 	tfxSInt,
-	tfxUint,
+	tfxUInt,
 	tfxFloat,
 	tfxDouble,
 	tfxBool,
@@ -2847,6 +2847,7 @@ typedef enum {
 	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,					//In the editor you can specify which effects you want to be included in a spritedata export
 	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,							//Keep the global particle size uniform
 	tfxEffectPropertyFlags_is_in_folder = 1 << 7,									//This effect is located inside a folder. 
+	tfxEffectPropertyFlags_effect_is_3d					= 1 << 11,			        //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 	tfxEffectPropertyFlags_history_effect					= 1 << 12,				//Flagged if the effect is just a change in the editor
 } tfx_effect_property_flag_bits;
 
@@ -4401,7 +4402,7 @@ typedef struct tfx_stream_s {
 	void Appendv(const char *format, va_list args);
 	void SetText(const char *text);
 	inline void Append(char c) { if (size) { size--; } data[size] = c; size++; NullTerminate(); }
-	inline bool EoF() { return position >= size; }
+	inline bool EoF() { return position >= Length(); }
 	inline void AddReturn() { if (size + 1 >= capacity) { tfxU64 new_capacity = capacity * 2; Reserve(new_capacity); } Append('\n'); }
 	inline void Seek(tfxU64 offset) {
 		if (offset < size)
@@ -4582,26 +4583,6 @@ typedef struct tfx_data_types_dictionary_s {
 
 tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
 
-typedef enum {
-	tfxEffectProperty,
-	tfxEmitterProperty,
-	tfxRibbonProperty,
-	tfxSharedProperty,
-	tfxSharedFlag,
-	tfxEmitterFlag,
-	tfxEffectFlag,
-	tfxTransformGraph,
-	tfxEffectGraph,
-	tfxEmitterGraph,
-	tfxRibbonGraph
-} tfx_property_type;
-
-typedef struct tfx_property_lookup_s {
-	tfx_effect_descriptor_type descriptor_type;
-	tfx_property_type property_type;
-	tfx_data_type data_type;
-} tfx_property_lookup_t;
-
 //Global variables
 typedef struct tfx_storage_s {
 	tfxU32 memory_pool_count;
@@ -4616,7 +4597,6 @@ typedef struct tfx_storage_s {
 	tfx_hasher_t hasher;
 	tfx_storage_map_t<tfx_particle_manager> particle_managers;
 	tfx_storage_map_t<tfx_library> libraries;
-	tfx_storage_map_t<tfx_property_lookup_t> property_types;
 	tfx_vector_t<float> compiled_lookup_values;
 	tfx_ribbon_dispatch last_ribbon_dispatch;
 	tfx_particle_manager current_pm;
@@ -5869,6 +5849,7 @@ typedef struct tfx_effect_state_s {
 	tfx_vec3_t handle;
 	tfxParticleEmitterFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
+	tfxEmitterStateFlags state_flags;
 	float loop_length;
 	//Position, scale and rotation values
 	tfx_vec3_t translation;
@@ -5895,7 +5876,6 @@ typedef struct tfx_effect_state_s {
 	float noise;
 	float overal_scale;
 	float noise_base_offset;
-	tfxEmitterStateFlags state_flags;
 	tfxU32 sort_passes;
 
 	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
@@ -6988,10 +6968,12 @@ tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str512_t *line);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
+tfxAPI_EDITOR tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name);
+tfxAPI_EDITOR tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type);
+tfxAPI_EDITOR tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor_t *effect, tfx_graph_t *graph, bool include_property_name);
 tfxAPI_EDITOR void tfx__assign_property_from_string(tfx_effect_descriptor_t *effect, tfx_str256_t property_name, const char *value);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
