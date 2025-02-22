@@ -2261,9 +2261,6 @@ typedef enum {
 	tfxPath_offset_y,
 	tfxPath_offset_z,
 	tfxPath_distance,
-	tfxPath_rotation_range,
-	tfxPath_rotation_pitch,
-	tfxPath_rotation_yaw,
 
 	tfxGraphMaxIndex
 } tfx_graph_type;
@@ -2466,7 +2463,7 @@ typedef enum {
 	tfxTransform_start = tfxTransform_roll,
 	tfxTransform_end = tfxTransform_translate_z,
 	tfxPath_start = tfxPath_angle_x,
-	tfxPath_end = tfxPath_rotation_yaw,
+	tfxPath_end = tfxPath_distance,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
 	tfxGPU_lookup_end = tfxFactor_intensity,
 } tfx_graph_ranges;
@@ -7162,6 +7159,7 @@ tfxAPI_EDITOR void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_gen
 tfxAPI_EDITOR void tfx__build_path_nodes_3d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_nodes_2d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
+tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor_t *descriptor);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
 tfxAPI_EDITOR bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id);

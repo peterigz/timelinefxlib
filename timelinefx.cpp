@@ -3757,6 +3757,12 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	return library->paths.size() - 1;
 }
 
+tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor_t *descriptor) {
+	if (descriptor->path_attributes == tfxINVALID) return nullptr;
+	TFX_CHECK_HANDLE(descriptor->library);	//Not a valid library handle in effect descriptor, is it a valid effect or emitter?
+	return &descriptor->library->paths[descriptor->path_attributes];
+}
+
 float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	tfxU32 i = 0;
 	while (length > (*nodes)[i].w && i < nodes->current_size - 3) {
@@ -5780,7 +5786,7 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 		if ((*values)[0] == "global_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_height_index], &n); }
 		if ((*values)[0] == "global_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_width_index], &n); }
 		if ((*values)[0] == "global_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_life_index], &n); }
-		if ((*values)[0] == "global_opacity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_intensity_index], &n); }
+		if ((*values)[0] == "global_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_intensity_index], &n); }
 		if ((*values)[0] == "global_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_roll_spin_index], &n); }
 		if ((*values)[0] == "global_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_roll_spin_index], &n); }
 		if ((*values)[0] == "global_pitch_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_pitch_spin_index], &n); }
@@ -5799,6 +5805,12 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 		if ((*values)[0] == "global_effect_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
 		if ((*values)[0] == "global_effect_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_pitch_index], &n); }
 		if ((*values)[0] == "global_effect_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_yaw_index], &n); }
+		if ((*values)[0] == "transform_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
+		if ((*values)[0] == "transform_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_pitch_index], &n); }
+		if ((*values)[0] == "transform_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_yaw_index], &n); }
+		if ((*values)[0] == "transform_translate_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_x_index], &n); }
+		if ((*values)[0] == "transform_translate_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_y_index], &n); }
+		if ((*values)[0] == "transform_translate_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_z_index], &n); }
 
 		if (effect->type == tfxEffectType) {
 			if ((*values)[0] == "keyframe_translate_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_x_index], &n); }
@@ -6211,9 +6223,6 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxPath_offset_y: return "path_offset_y"; break;
 	case tfxPath_offset_z: return "path_offset_z"; break;
 	case tfxPath_distance: return "path_distance"; break;
-	case tfxPath_rotation_range: return "path_rotation_range"; break;
-	case tfxPath_rotation_pitch: return "path_rotation_pitch"; break;
-	case tfxPath_rotation_yaw: return "path_rotation_yaw"; break;
 	}
 	return "";
 }
@@ -6752,10 +6761,10 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_effect_is_3d; }
 	} else if (*field == "draw_order_by_age") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
 	} else if (*field == "draw_order_by_depth") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
 		else { effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
 	} else if (*field == "guaranteed_draw_order") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; }
