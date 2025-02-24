@@ -7433,7 +7433,13 @@ tfx_attribute_node_t *tfx__get_graph_prev_node(tfx_graph_t *graph, tfx_attribute
 }
 
 tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph) {
+	if (graph->nodes.current_size == 0) return nullptr;
 	return &graph->nodes.back();
+}
+
+tfx_attribute_node_t *tfx__get_graph_first_node(tfx_graph_t *graph) {
+	if (graph->nodes.current_size == 0) return nullptr;
+	return &graph->nodes.front();
 }
 
 float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *random) {

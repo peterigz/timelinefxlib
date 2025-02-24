@@ -7044,6 +7044,7 @@ tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph);
+tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_first_node(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_first_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float, float);
 tfxAPI_EDITOR float *tfx__link_graph_first_value(tfx_graph_t *graph);
