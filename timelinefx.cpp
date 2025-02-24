@@ -5489,6 +5489,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("exclude_from_global_hue", tfxBool);
 	names_and_types.Insert("relative_position", tfxBool);
 	names_and_types.Insert("relative_angle", tfxBool);
+	names_and_types.Insert("match_amount_to_grid_points", tfxBool);
 	names_and_types.Insert("image_handle_auto_center", tfxBool);
 	names_and_types.Insert("single", tfxBool);
 	names_and_types.Insert("wrap_single_sprite", tfxBool);
@@ -5660,6 +5661,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_rotation_range", tfxFloat);
 	names_and_types.Insert("path_rotation_pitch", tfxFloat);
 	names_and_types.Insert("path_rotation_yaw", tfxFloat);
+	names_and_types.Insert("path_rotation_lifetime", tfxFloat);
 	names_and_types.Insert("maximum_active_paths", tfxUInt);
 	names_and_types.Insert("maximum_path_cycles", tfxUInt);
 	names_and_types.Insert("path_rotation_stagger", tfxFloat);
@@ -6350,6 +6352,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor_t *effect, tfx_st
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_pitch);
 	} else if (property_name == "path_rotation_yaw") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_yaw);
+	} else if (property_name == "path_rotation_lifetime") {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_cycle_length);
 	} else if (property_name == "path_rotation_stagger") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%f", path->rotation_stagger);
 	} else if (property_name == "path_handle_x") {
@@ -6385,6 +6389,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor_t *effect, tfx_st
 	else if (property_name == "random_color") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_random_color);
 	else if (property_name == "relative_position") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
 	else if (property_name == "relative_angle") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_relative_angle);
+	else if (property_name == "match_amount_to_grid_points") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
 	else if (property_name == "image_handle_auto_center") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_image_handle_auto_center);
 	else if (property_name == "single") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_single);
 	else if (property_name == "wrap_single_sprite") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_wrap_single_sprite);
@@ -6659,6 +6664,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t
 	else if (*field == "path_rotation_stagger") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_stagger = value;
 	}
+	else if (*field == "path_rotation_lifetime") {
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->rotation_cycle_length = value;
+	}
 	else if (*field == "path_handle_x") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->offset.x = value;
 	}
@@ -6703,6 +6711,9 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 	} else if (*field == "relative_angle") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
+	} else if (*field == "match_amount_to_grid_points") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_match_amount_to_grid_points; }
+		else { effect->property_flags &= ~tfxEmitterPropertyFlags_match_amount_to_grid_points; }
 	} else if (*field == "image_handle_auto_center") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; }
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center; }
@@ -6797,17 +6808,17 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; }
 		else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
 	} else if (*field == "path_is_2d") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_2d; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_2d; } else { path->flags &= ~tfxPathFlags_2d; }
 	} else if (*field == "path_mode_origin") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_origin; path->flags &= ~tfxPathFlags_mode_node; } else { path->flags &= ~tfxPathFlags_mode_origin; }
 	} else if (*field == "path_mode_node") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_node; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_node; path->flags &= ~tfxPathFlags_mode_origin; } else { path->flags &= ~tfxPathFlags_mode_node; }
 	} else if (*field == "path_space_nodes_evenly") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; } else { path->flags &= ~tfxPathFlags_space_nodes_evenly; }
 	} else if (*field == "path_rotation_range_yaw_only") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_rotation_range_yaw_only; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_rotation_range_yaw_only; } else { path->flags &= ~tfxPathFlags_rotation_range_yaw_only; }
 	} else if (*field == "path_reverse_direction") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_reverse_direction; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_reverse_direction; } else { path->flags &= ~tfxPathFlags_reverse_direction; }
 	}
 
 }
@@ -6860,6 +6871,7 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 	file->AddLine("random_color=%i", (flags & tfxSharedEmitterPropertyFlags_random_color));
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
+	file->AddLine("match_amount_to_grid_points=%i", (flags & tfxEmitterPropertyFlags_match_amount_to_grid_points));
 	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
 	file->AddLine("area_open_ends=%i", (flags & tfxEmitterPropertyFlags_area_open_ends));
 	file->AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
@@ -6944,6 +6956,7 @@ void tfx__stream_path_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *
 		file->AddLine("path_rotation_range=%f", (path->rotation_range));
 		file->AddLine("path_rotation_pitch=%f", (path->rotation_pitch));
 		file->AddLine("path_rotation_yaw=%f", (path->rotation_yaw));
+		file->AddLine("path_rotation_lifetime=%f", (path->rotation_cycle_length));
 		file->AddLine("maximum_active_paths=%i", (path->maximum_active_paths));
 		file->AddLine("maximum_path_cycles=%i", (path->maximum_paths));
 		file->AddLine("path_node_count=%i", (path->node_count));
