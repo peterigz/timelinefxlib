@@ -2360,6 +2360,8 @@ float tfx__get_effect_highest_loop_length(tfx_effect_descriptor_t *effect) {
 }
 
 tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *emitter, tfx_effect_descriptor_type type) {
+	TFX_CHECK_HANDLE(emitter);	//Not a valid emitter
+	TFX_CHECK_HANDLE(effect);	//Not a valid effect
 	TFX_ASSERT(tfx_GetEffectInfo(emitter)->name.Length());                //Emitter must have a name so that a hash can be generated
 	emitter->type = type;
 	emitter->library = effect->library;
@@ -2373,12 +2375,17 @@ tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *eff
 
 tfx_effect_descriptor_t tfx__new_effect_descriptor() {
 	tfx_effect_descriptor_t effect = {};
-	effect.graph_list_index = tfxINVALID;
+	effect.magic = tfxINIT_MAGIC;
+	effect.info_index = tfxINVALID;
+	effect.property_index = tfxINVALID;
+	effect.shared_index = tfxINVALID;
 	effect.path_attributes = tfxINVALID;
+	effect.graph_list_index = tfxINVALID;
 	return effect;
 }
 
 tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name) {
+	TFX_CHECK_HANDLE(effect);	//Not a valid effect
 	TFX_ASSERT(name->Length() > 0);                //Must have a name so that a hash can be generated
 	tfx_effect_descriptor_t ribbon = tfx__new_effect_descriptor();
 	ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
@@ -2406,7 +2413,7 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	if (tfx__is_3d_effect(effect)) {
 		ribbon.shared_flags = tfxSharedEmitterPropertyFlags_effect_is_3d;
 	}
-	tfx__add_library_transform_graphs(ribbon.library, &ribbon);
+	ribbon.transform_index = tfx__add_library_transform_graphs(ribbon.library);
 	ribbon.graph_list_index = tfx__add_library_graphs(ribbon.library, tfxRibbonType);
 	tfx__reset_ribbon_graphs(&ribbon);
 	tfx__reset_transform_graphs(&ribbon);
@@ -2420,6 +2427,8 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 }
 
 tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *emitter, tfx_effect_descriptor_t *effect) {
+	TFX_CHECK_HANDLE(emitter);	//Not a valid emitter
+	TFX_CHECK_HANDLE(effect);	//Not a valid effect
 	TFX_ASSERT(tfx_GetEffectInfo(effect)->name.Length());                //Effect must have a name so that a hash can be generated
 	effect->type = tfx_effect_descriptor_type::tfxEffectType;
 	effect->library = emitter->library;
@@ -2431,27 +2440,31 @@ tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *emi
 	return &tfx_GetEffectInfo(emitter)->sub_effectors.back();
 }
 
-tfx_effect_descriptor_t *tfx__add_effect(tfx_effect_descriptor_t *e) {
+tfx_effect_descriptor_t *tfx__add_effect(tfx_effect_descriptor_t *emitter) {
+	TFX_CHECK_HANDLE(emitter);	//Not a valid emitter
+	TFX_ASSERT(emitter->type == tfxEmitterType);
 	tfx_effect_descriptor_t new_effect;
-	new_effect.library = e->library;
-	tfx_GetEffectInfo(&new_effect)->uid = ++e->library->uid;
+	new_effect.library = emitter->library;
+	tfx_GetEffectInfo(&new_effect)->uid = ++emitter->library->uid;
 	new_effect.type = tfx_effect_descriptor_type::tfxEffectType;
 	tfx_GetEffectInfo(&new_effect)->name.Set("New Effect");
-	tfx_GetEffectInfo(e)->sub_effectors.push_back(new_effect);
-	tfx__update_library_effect_paths(e->library);
-	tfx__reindex_effect(e);
-	return &tfx_GetEffectInfo(e)->sub_effectors.back();
+	tfx_GetEffectInfo(emitter)->sub_effectors.push_back(new_effect);
+	tfx__update_library_effect_paths(emitter->library);
+	tfx__reindex_effect(emitter);
+	return &tfx_GetEffectInfo(emitter)->sub_effectors.back();
 }
 
 tfxU32 tfx__count_all_effects(tfx_effect_descriptor_t *effect, tfxU32 amount) {
+	TFX_CHECK_HANDLE(effect);	//Not a valid emitter
 	for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
 		amount = tfx__count_all_effects(&sub, amount);
 	}
 	return ++amount;
 }
 
-int tfx__get_effect_depth(tfx_effect_descriptor_t *e) {
-	tfx_effect_descriptor_t *current_parent = e->parent;
+int tfx__get_effect_depth(tfx_effect_descriptor_t *effect) {
+	TFX_CHECK_HANDLE(effect);	//Not a valid emitter
+	tfx_effect_descriptor_t *current_parent = effect->parent;
 	int depth = 0;
 	while (current_parent) {
 		if (current_parent->type == tfxEmitterType) {
@@ -3330,12 +3343,16 @@ void tfx__delete_emitter_from_effect(tfx_effect_descriptor_t *emitter) {
 }
 
 void tfx__clean_up_effect(tfx_effect_descriptor_t *effect) {
-	if (tfx_GetEffectInfo(effect)->sub_effectors.size()) {
+	if (!TFX_VALID_HANDLE(effect)) {
+		return;
+	}
+	if (effect->info_index != tfxINVALID && tfx_GetEffectInfo(effect)->sub_effectors.size()) {
 		tmpStack(tfx_effect_descriptor_t, stack);
 		stack.push_back(*effect);
 		while (stack.size()) {
 			tfx_effect_descriptor_t current = stack.pop_back();
 			tfx__free_library_graph_list(effect->library, current.graph_list_index);
+			tfx__free_library_graph_list(effect->library, current.transform_index);
 			for (auto &sub : tfx_GetEffectInfo(&current)->sub_effectors) {
 				stack.push_back(sub);
 			}
@@ -3374,7 +3391,7 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	tfx_library library = effect_to_clone->library;
 
 	if (effect_to_clone->type == tfxEffectType) {
-		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : clone->transform_index = effect_to_clone->transform_index;
+		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->transform_index, destination_library) : clone->transform_index = effect_to_clone->transform_index;
 		if (root_parent == clone) {
 			clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : clone->graph_list_index = effect_to_clone->graph_list_index;
 		} else {
@@ -3393,7 +3410,7 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 		}
 	} else if (effect_to_clone->type == tfxEmitterType || effect_to_clone->type == tfxRibbonType) {
 		clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : effect_to_clone->graph_list_index;
-		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
+		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
 		tfx__update_emitter_max_life(clone);
 		if (flags & tfxEffectCloningFlags_compile_graphs) {
 			tfx__compile_library_overtime_graphs(clone->library, clone->graph_list_index, true);
@@ -3437,6 +3454,14 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 			tfx__add_effect_to_emitter(clone, &effect_copy);
 		}
 	}
+}
+
+void tfx__copy_effect(tfx_effect_descriptor_t *src, tfx_effect_descriptor_t *dst) {
+	TFX_CHECK_HANDLE(dst->library);	//The effect you're copying too much be a valid effect that already exists in the library. Use tfx__clone_effect_into_library to clone a new effect into the library.
+	bool is_root_effect = tfx__is_root_effect(dst);
+	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
+	tfx__clean_up_effect(dst);
+	tfx__clone_effect(src, dst, dst, dst->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
 }
 
 void tfx__clone_effect_into_library(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
@@ -4463,7 +4488,7 @@ tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_st
 	effect.shared_index = tfx__allocate_library_shared_properties(library);
 	tfx__add_library_effect_graphs(library, &effect);
 	tfx__reset_effect_graphs(&effect, true);
-	tfx__add_library_transform_graphs(library, &effect);
+	effect.transform_index = tfx__add_library_transform_graphs(library);
 	tfx__reset_transform_graphs(&effect, true);
 	tfx__add_library_sprite_sheet_settings(library, &effect);
 	tfx__add_library_sprite_data_settings(library, &effect);
@@ -4800,14 +4825,22 @@ void tfx__init_graph_list(tfx_graph_list_t *graph_list) {
 	}
 }
 
-tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
-	tfx_graph_list_t &dst_list = destination_library->graphs.push_back({});
+tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
 	tfx_graph_list_t &src_list = library->graphs[source_index];
-	dst_list.graphs.resize(src_list.graphs.current_size);
-	tfx__init_graph_list(&dst_list);
-	dst_list.effect_descriptor_type = src_list.effect_descriptor_type;
+	tfxU32 new_graph_index = tfx__add_library_transform_graphs(destination_library);
+	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
+	TFX_ASSERT(dst_list.graphs.current_size == src_list.graphs.current_size);	//dst and src graph list must be the same size at this point!
 	tfx__copy_graph_list_no_lookups(&src_list, &dst_list);
-	return destination_library->graphs.current_size - 1;
+	return new_graph_index;
+}
+
+tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
+	tfx_graph_list_t &src_list = library->graphs[source_index];
+	tfxU32 new_graph_index = tfx__add_library_graphs(destination_library, src_list.effect_descriptor_type);
+	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
+	TFX_ASSERT(dst_list.graphs.current_size == src_list.graphs.current_size);	//dst and src graph list must be the same size at this point!
+	tfx__copy_graph_list_no_lookups(&src_list, &dst_list);
+	return new_graph_index;
 }
 
 tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
@@ -4844,13 +4877,20 @@ tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfxU32 source_i
 	return dst_index;
 }
 
-void tfx__add_library_transform_graphs(tfx_library library, tfx_effect_descriptor_t *emitter) {
-	tfx_graph_list_t &graph_list = library->graphs.push_back({});
+tfxU32 tfx__add_library_transform_graphs(tfx_library library) {
+	tfxU32 index = tfxINVALID;
+	if (library->free_graph_lists.size()) {
+		index = library->free_graph_lists.pop_back();
+	} else {
+		library->graphs.push_back({});
+		index = library->graphs.size() - 1;
+	}
+	tfx_graph_list_t &graph_list = library->graphs[index];
 	graph_list.graphs.resize(tfxTransformGraphs_max_index);
 	for (tfx_graph_t &graph : graph_list.graphs) {
 		tfx__init_graph(&graph, 8);
 	}
-	emitter->transform_index = library->graphs.size() - 1;
+	return index;
 }
 
 void tfx__add_library_effect_graphs(tfx_library library, tfx_effect_descriptor_t *effect) {
@@ -6387,6 +6427,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor_t *effect, tfx_st
 	else if (property_name == "preview_camera_hide_floor") value.Setf("%i", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor);
 	else if (property_name == "preview_camera_isometric") value.Setf("%i", effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric);
 	else if (property_name == "random_color") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_random_color);
+	else if (property_name == "exclude_from_global_hue") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
 	else if (property_name == "relative_position") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
 	else if (property_name == "relative_angle") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_relative_angle);
 	else if (property_name == "match_amount_to_grid_points") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
@@ -6703,110 +6744,77 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 	else if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
 	else if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
 	else if (*field == "random_color") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_color; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_color; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_color; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_color; }
+	} else if (*field == "exclude_from_global_hue") {
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments; }
 	} else if (*field == "relative_position") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_relative_position; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_relative_position; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position; }
 	} else if (*field == "relative_angle") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
 	} else if (*field == "match_amount_to_grid_points") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_match_amount_to_grid_points; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_match_amount_to_grid_points; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_match_amount_to_grid_points; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_match_amount_to_grid_points; }
 	} else if (*field == "image_handle_auto_center") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center; }
 	} else if (*field == "single") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_single; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_single; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_single; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_single; }
 	} else if (*field == "wrap_single_sprite") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite; }
 	} else if (*field == "spawn_on_grid") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_on_grid; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_on_grid; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_on_grid; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_on_grid; }
 	} else if (*field == "grid_spawn_clockwise") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_clockwise; }
 	} else if (*field == "fill_area") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_fill_area; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_fill_area; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_fill_area; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_fill_area; }
 	} else if (*field == "grid_spawn_random") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_random; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_random; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_random; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_random; }
 	} else if (*field == "area_open_ends") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_area_open_ends; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_area_open_ends; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_area_open_ends; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_area_open_ends; }
 	} else if (*field == "emitter_handle_auto_center") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_emitter_handle_auto_center; }
 	} else if (*field == "edge_traversal") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_edge_traversal; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_edge_traversal; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_edge_traversal; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_edge_traversal; }
 	} else if (*field == "image_reverse_animation") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_reverse_animation; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_reverse_animation; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_reverse_animation; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_reverse_animation; }
 	} else if (*field == "image_play_once") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_play_once; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_play_once; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_play_once; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_play_once; }
 	} else if (*field == "image_animate") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_animate; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_animate; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_animate; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_animate; }
 	} else if (*field == "image_random_start_frame") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_start_frame; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_start_frame; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_start_frame; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_start_frame; }
 	} else if (*field == "global_uniform_size") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_global_uniform_size; }
-		else { effect->property_flags &= ~tfxEffectPropertyFlags_global_uniform_size; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_global_uniform_size; } else { effect->property_flags &= ~tfxEffectPropertyFlags_global_uniform_size; }
 	} else if (*field == "base_uniform_size") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_base_uniform_size; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_base_uniform_size; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size; }
 	} else if (*field == "lifetime_uniform_size") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size; }
 	} else if (*field == "use_spawn_ratio") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio; }
 	} else if (*field == "is_3d") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_effect_is_3d; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_effect_is_3d; }
 	} else if (*field == "draw_order_by_age") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
-		else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
 	} else if (*field == "draw_order_by_depth") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; }
-		else { effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; effect->effect_flags &= ~tfxEffectPropertyFlags_age_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order; }
 	} else if (*field == "guaranteed_draw_order") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; }
-		else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order; }
 	} else if (*field == "include_in_sprite_data_export") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; }
-		else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
 	} else if (*field == "use_path_for_direction") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
 	} else if (*field == "alt_velocity_lifetime_sampling") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
 	} else if (*field == "alt_color_lifetime_sampling") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_color_lifetime_sampling; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_color_lifetime_sampling; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_color_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_color_lifetime_sampling; }
 	} else if (*field == "alt_size_lifetime_sampling") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
 	} else if (*field == "use_simple_motion_randomness") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
 	} else if (*field == "spawn_location_source") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
 	} else if (*field == "use_color_hint") {
-		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; }
-		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
 	} else if (*field == "static_ribbon") {
-		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; }
-		else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
+		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
 	} else if (*field == "path_is_2d") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_2d; } else { path->flags &= ~tfxPathFlags_2d; }
 	} else if (*field == "path_mode_origin") {
@@ -6837,6 +6845,8 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
 	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
 	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
+	file->AddLine("random_color=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_color));
+	file->AddLine("exclude_from_global_hue=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_color));
 
 	file->AddLine("image_hash=%llu", shared_properties->image_hash);
 	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
@@ -6869,7 +6879,6 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("vector_align_type=%i", properties->vector_align_type);
 
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
-	file->AddLine("random_color=%i", (flags & tfxSharedEmitterPropertyFlags_random_color));
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
 	file->AddLine("match_amount_to_grid_points=%i", (flags & tfxEmitterPropertyFlags_match_amount_to_grid_points));
 	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
@@ -9114,6 +9123,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			context_set = true;
 			if (context == tfxStartFolder) {
 				tfx_effect_descriptor_t effect{};
+				effect.magic = tfxINIT_MAGIC;
 				effect.library = lib;
 				effect.type = tfx_effect_descriptor_type::tfxFolder;
 				effect.info_index = tfx__allocate_library_descriptor_info(lib);
@@ -9121,15 +9131,17 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartStage) {
 				tfx_effect_descriptor_t effect{};
+				effect.magic = tfxINIT_MAGIC;
 				effect.library = lib;
 				effect.type = tfx_effect_descriptor_type::tfxStage;
 				effect.info_index = tfx__allocate_library_descriptor_info(lib);
 				tfx__add_library_preview_camera_settings_effect(lib, &effect);
-				tfx__add_library_transform_graphs(lib, &effect);
+				effect.transform_index = tfx__add_library_transform_graphs(lib);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEffect) {
 				tfx_effect_descriptor_t effect{};
+				effect.magic = tfxINIT_MAGIC;
 				effect.library = lib;
 				effect.info_index = tfx__allocate_library_descriptor_info(lib);
 				effect.shared_index = tfx__allocate_library_shared_properties(lib);
@@ -9138,7 +9150,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 					tfx__reset_effect_graphs(&effect, false);
 					current_effect_graph_index = effect.graph_list_index;
 				}
-				tfx__add_library_transform_graphs(lib, &effect);
+				effect.transform_index = tfx__add_library_transform_graphs(lib);
 				tfx__reset_transform_graphs(&effect, false);
 				effect.type = tfx_effect_descriptor_type::tfxEffectType;
 				tfx__add_library_sprite_sheet_settings(lib, &effect);
@@ -9148,6 +9160,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEmitter) {
 				tfx_effect_descriptor_t emitter = {};
+				emitter.magic = tfxINIT_MAGIC;
 				emitter.path_attributes = tfxINVALID;
 				emitter.effect_flags = 0;
 				emitter.property_flags = 0;
@@ -9158,7 +9171,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter.property_index = tfx__allocate_library_particle_emitter_properties(lib);
 				emitter.shared_index = tfx__allocate_library_shared_properties(lib);
 				emitter.graph_list_index = tfx__add_library_graphs(lib, tfxEmitterType);
-				tfx__add_library_transform_graphs(lib, &emitter);
+				emitter.transform_index = tfx__add_library_transform_graphs(lib);
 				emitter.type = tfx_effect_descriptor_type::tfxEmitterType;
 				tfx__reset_emitter_graphs(&emitter, false, false);
 				tfx__reset_transform_graphs(&emitter, false);
@@ -9166,6 +9179,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect_stack.push_back(emitter);
 			} else if (context == tfxStartRibbonEmitter) {
 				tfx_effect_descriptor_t ribbon = {};
+				ribbon.magic = tfxINIT_MAGIC;
 				ribbon.path_attributes = tfxINVALID;
 				ribbon.effect_flags = 0;
 				ribbon.property_flags = 0;
@@ -9176,7 +9190,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				ribbon.property_index = tfx__allocate_library_ribbon_emitter_properties(lib);
 				ribbon.shared_index = tfx__allocate_library_shared_properties(lib);
 				ribbon.graph_list_index = tfx__add_library_graphs(lib, tfxRibbonType);
-				tfx__add_library_transform_graphs(lib, &ribbon);
+				ribbon.transform_index = tfx__add_library_transform_graphs(lib);
 				ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
 				tfx__reset_ribbon_graphs(&ribbon, false, false);
 				tfx__reset_transform_graphs(&ribbon, false);
