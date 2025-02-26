@@ -125,7 +125,7 @@ typedef void *tfx_pool;
 
 #define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxINIT_MAGIC)
 #define TFX_ASSERT_UNINIT(magic) TFX_ASSERT(magic != tfxINIT_MAGIC)
-#define TFX_CHECK_HANDLE(handle) TFX_ASSERT(handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
+#define TFX_ASSERT_HANDLE(handle) TFX_ASSERT(handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
 #define TFX_VALID_HANDLE(handle) (handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
 
 #define tfx__is_pow2(x) ((x) && !((x) & ((x) - 1)))
