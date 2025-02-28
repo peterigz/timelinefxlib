@@ -3270,12 +3270,6 @@ void tfx__reset_effect_parents(tfx_effect_descriptor effect) {
 	}
 }
 
-void tfx__swap_effects(tfx_effect_descriptor left, tfx_effect_descriptor right) {
-	tfx_effect_descriptor_t temp = *right;
-	*right = *left;
-	*left = temp;
-}
-
 void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right) {
 	tfx_depth_index_t temp = *right;
 	*right = *left;
@@ -3286,7 +3280,9 @@ tfx_effect_descriptor tfx__move_effect_up(tfx_effect_descriptor emitter) {
 	tfx_effect_descriptor parent = emitter->parent;
 	if (emitter->library_index > 0) {
 		tfxU32 new_index = emitter->library_index - 1;
-		tfx__swap_effects(parent->children[emitter->library_index], parent->children[new_index]);
+		tfx_effect_descriptor tmp = parent->children[emitter->library_index];
+		parent->children[emitter->library_index] = parent->children[new_index];
+		parent->children[new_index] = tmp;
 		tfx__reindex_effect(parent);
 		tfx__update_library_effect_paths(parent->library);
 		return parent->children[new_index];
@@ -3299,7 +3295,9 @@ tfx_effect_descriptor tfx__move_effect_down(tfx_effect_descriptor emitter) {
 	tfx_effect_descriptor parent = emitter->parent;
 	if (emitter->library_index < parent->children.size() - 1) {
 		tfxU32 new_index = emitter->library_index + 1;
-		tfx__swap_effects(parent->children[emitter->library_index], parent->children[new_index]);
+		tfx_effect_descriptor tmp = parent->children[emitter->library_index];
+		parent->children[emitter->library_index] = parent->children[new_index];
+		parent->children[new_index] = tmp;
 		tfx__reindex_effect(parent);
 		tfx__update_library_effect_paths(parent->library);
 		return parent->children[new_index];
@@ -4628,7 +4626,9 @@ tfx_effect_descriptor tfx__library_move_up(tfx_library library, tfx_effect_descr
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect handle
 	if (effect->library_index > 0) {
 		tfxU32 new_index = effect->library_index - 1;
-		tfx__swap_effects(library->effects[effect->library_index], library->effects[new_index]);
+		tfx_effect_descriptor tmp = library->effects[effect->library_index];
+		library->effects[effect->library_index] = library->effects[new_index];
+		library->effects[new_index] = tmp;
 		tfx__update_library_effect_paths(library);
 		tfx__reindex_library(library);
 		return library->effects[new_index];
@@ -4641,7 +4641,9 @@ tfx_effect_descriptor tfx__library_move_down(tfx_library library, tfx_effect_des
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect handle
 	if (effect->library_index < library->effects.size() - 1) {
 		tfxU32 new_index = effect->library_index + 1;
-		tfx__swap_effects(library->effects[effect->library_index], library->effects[new_index]);
+		tfx_effect_descriptor tmp = library->effects[effect->library_index];
+		library->effects[effect->library_index] = library->effects[new_index];
+		library->effects[new_index] = tmp;
 		tfx__update_library_effect_paths(library);
 		tfx__reindex_library(library);
 		return library->effects[new_index];

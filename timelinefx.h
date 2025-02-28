@@ -7267,7 +7267,6 @@ tfxAPI_EDITOR tfx_particle_manager_mode tfx__get_required_particle_manager_mode(
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
-tfxINTERNAL void tfx__swap_effects(tfx_effect_descriptor left, tfx_effect_descriptor right);
 tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__enable_emitter(tfx_effect_descriptor effect);
