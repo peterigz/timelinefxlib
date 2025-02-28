@@ -2347,11 +2347,11 @@ tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor
 }
 
 float tfx__get_effect_loop_length(tfx_effect_descriptor effect) {
-	return tfx__get_shared_emitter_properties(effect)->loop_length;
+	return effect->loop_length;
 }
 
 float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect) {
-	float loop_length = tfx__get_effect_loop_length(effect);
+	float loop_length = effect->loop_length;
 	for (tfx_effect_descriptor sub : effect->children) {
 		loop_length = tfxMax(tfx__get_effect_highest_loop_length(sub), loop_length);
 	}
@@ -6449,10 +6449,10 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "grid_rows") value.Setf("%f", shared_properties->grid_points.x);
 	else if (property_name == "grid_columns") value.Setf("%f", shared_properties->grid_points.y);
 	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
-	else if (property_name == "loop_length") value.Setf("%f", shared_properties->loop_length);
-	else if (property_name == "emitter_handle_x") value.Setf("%f", shared_properties->emitter_handle.x);
-	else if (property_name == "emitter_handle_y") value.Setf("%f", shared_properties->emitter_handle.y);
-	else if (property_name == "emitter_handle_z") value.Setf("%f", shared_properties->emitter_handle.z);
+	else if (property_name == "loop_length") value.Setf("%f", effect->loop_length);
+	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
+	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
+	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
 	else if (property_name == "image_start_frame") value.Setf("%f", shared_properties->start_frame);
 	else if (property_name == "image_end_frame") value.Setf("%f", shared_properties->end_frame);
 	else if (property_name == "image_frame_rate") value.Setf("%f", shared_properties->frame_rate);
@@ -6757,10 +6757,10 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "grid_rows") shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns") shared_properties->grid_points.y = value;
 	else if (*field == "grid_depth") shared_properties->grid_points.z = value;
-	else if (*field == "loop_length") shared_properties->loop_length = value < 0 ? 0.f : value;
-	else if (*field == "emitter_handle_x") shared_properties->emitter_handle.x = value;
-	else if (*field == "emitter_handle_y") shared_properties->emitter_handle.y = value;
-	else if (*field == "emitter_handle_z") shared_properties->emitter_handle.z = value;
+	else if (*field == "loop_length") effect->loop_length = value < 0 ? 0.f : value;
+	else if (*field == "emitter_handle_x") effect->emitter_handle.x = value;
+	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
+	else if (*field == "emitter_handle_z") effect->emitter_handle.z = value;
 	else if (*field == "image_start_frame") shared_properties->start_frame = value;
 	else if (*field == "image_end_frame") shared_properties->end_frame = value;
 	else if (*field == "image_frame_rate") shared_properties->frame_rate = value;
@@ -6906,7 +6906,7 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 
 }
 
-void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_properties, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file) {
+void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file) {
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
@@ -6936,10 +6936,10 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("grid_columns=%f", shared_properties->grid_points.y);
 	file->AddLine("grid_depth=%f", shared_properties->grid_points.z);
 	file->AddLine("delay_spawning=%f", shared_properties->delay_spawning);
-	file->AddLine("loop_length=%f", shared_properties->loop_length);
-	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
-	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
-	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
+	file->AddLine("loop_length=%f", emitter->loop_length);
+	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
+	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
+	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
@@ -6969,7 +6969,7 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
 }
 
-void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
+void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
@@ -6992,10 +6992,10 @@ void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_prope
 	file->AddLine("spawn_amount_variation=%i", shared_properties->spawn_amount_variation);
 	file->AddLine("emission_type=%i", shared_properties->emission_type);
 	file->AddLine("delay_spawning=%f", shared_properties->delay_spawning);
-	file->AddLine("loop_length=%f", shared_properties->loop_length);
-	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
-	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
-	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
+	file->AddLine("loop_length=%f", emitter->loop_length);
+	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
+	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
+	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
@@ -7021,10 +7021,10 @@ void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *f
 
 	file->AddLine("sort_passes=%i", effect->sort_passes);
 	file->AddLine("noise_base_offset_range=%f", effect->noise_base_offset_range);
-	file->AddLine("loop_length=%f", shared_properties->loop_length);
-	file->AddLine("emitter_handle_x=%f", shared_properties->emitter_handle.x);
-	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
-	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
+	file->AddLine("loop_length=%f", effect->loop_length);
+	file->AddLine("emitter_handle_x=%f", effect->emitter_handle.x);
+	file->AddLine("emitter_handle_y=%f", effect->emitter_handle.y);
+	file->AddLine("emitter_handle_z=%f", effect->emitter_handle.z);
 	file->AddLine("global_uniform_size=%i", (effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size));
 }
 
@@ -15007,7 +15007,7 @@ void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU32 parent_ind
 					tfx__transform_effector_2d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &transform, true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				}
 
-				effect.world_position += shared_properties.emitter_handle * effect.overal_scale;
+				effect.world_position += effect.source_effect->emitter_handle * effect.overal_scale;
 				if (effect.state_flags & tfxEffectStateFlags_no_tween_this_update || effect.state_flags & tfxEffectStateFlags_no_tween) {
 					effect.captured_position = effect.world_position;
 				}
@@ -15024,7 +15024,7 @@ void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU32 parent_ind
 	else {
 		if (!(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
 			effect.world_position = effect.local_position + effect.translation;
-			effect.world_position += shared_properties.emitter_handle * effect.overal_scale;
+			effect.world_position += effect.source_effect->emitter_handle * effect.overal_scale;
 			if (effect.effect_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
 				effect.world_rotations = effect.local_rotations;
 				effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
@@ -15043,8 +15043,8 @@ void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU32 parent_ind
 	effect.age += pm->frame_length;
 	effect.highest_particle_age -= pm->frame_length;
 
-	if (shared_properties.loop_length && effect.age > shared_properties.loop_length)
-		effect.age -= shared_properties.loop_length;
+	if (effect.source_effect->loop_length && effect.age > effect.source_effect->loop_length)
+		effect.age -= effect.source_effect->loop_length;
 
 	if (effect.highest_particle_age <= 0 && effect.age > pm->frame_length * 5.f) {
 		effect.timeout_counter += pm->frame_length;
@@ -15184,8 +15184,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	ribbon_emitter.age += pm->frame_length;
 
-	if (ribbon_work_entry->shared_properties->loop_length && ribbon_emitter.age > ribbon_work_entry->shared_properties->loop_length) {
-		ribbon_emitter.age -= ribbon_work_entry->shared_properties->loop_length;
+	if (ribbon_emitter.source_ribbon->loop_length && ribbon_emitter.age > ribbon_emitter.source_ribbon->loop_length) {
+		ribbon_emitter.age -= ribbon_emitter.source_ribbon->loop_length;
 	}
 
 	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size == 0 && ribbon_emitter.age > pm->frame_length * 5.f) {
@@ -15352,8 +15352,8 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		spawn_work_entry->highest_particle_age -= pm->frame_length;
 	}
 
-	if (shared_properties.loop_length && emitter.age > shared_properties.loop_length)
-		emitter.age -= shared_properties.loop_length;
+	if (emitter.source_emitter->loop_length && emitter.age > emitter.source_emitter->loop_length)
+		emitter.age -= emitter.source_emitter->loop_length;
 
 	if (emitter.highest_particle_age <= 0 && emitter.age > pm->frame_length * 5.f) {
 		emitter.timeout_counter += pm->frame_length;
@@ -18499,7 +18499,7 @@ void tfx__update_ribbon_emitter_state(tfx_particle_manager pm, tfx_ribbon_emitte
 
 	ribbon.handle = { 0 };
 	if (!(ribbon.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
-		ribbon.handle = properties.emitter_handle;
+		ribbon.handle = ribbon.source_ribbon->emitter_handle;
 	}
 
 }
@@ -18536,9 +18536,8 @@ void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emi
 
 	emitter.handle = { 0 };
 	if (!(emitter.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
-		emitter.handle = shared_properties.emitter_handle;
+		emitter.handle = emitter.source_emitter->emitter_handle;
 	}
-
 }
 
 void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index) {
@@ -19201,8 +19200,6 @@ void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->single_shot_limit = 0;
 	shared_properties->emission_type = tfx_emission_type::tfxPoint;
 	shared_properties->grid_points = { 10.f, 10.f, 10.f };
-	shared_properties->emitter_handle = { 0.f, 0.f, 0.f };
-	shared_properties->loop_length = 0.f;
 	shared_properties->layer = 0;
 	shared_properties->image_hash = 1;
 	shared_properties->start_frame = 0;

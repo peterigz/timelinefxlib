@@ -5701,8 +5701,6 @@ typedef struct tfx_emitter_emitter_properties_s {
 } tfx_particle_emitter_properties_t;
 
 typedef struct tfx_shared_emitter_properties_s {
-	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
-	float loop_length;
 	//Animation frame rate
 	float frame_rate;
 	//The final frame index of the animation
@@ -5713,8 +5711,6 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfx_image_data_t *image;
 	//Point, area, ellipse emitter etc.
 	tfx_emission_type emission_type;
-	//Offset of emitters and effects
-	tfx_vec3_t emitter_handle;
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t grid_points;
 	//Can this be removed if we're using the image hash now?
@@ -5996,9 +5992,6 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 uid;
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
 	float max_radius;
-	//Experiment: index into the lookup index data in the effect library
-	//tfxU32 lookup_node_index;
-	//tfxU32 lookup_value_index;
 	//Index to sprite sheet settings stored in the effect library. 
 	tfxU32 sprite_sheet_settings_index;
 	//Index to sprite data settings stored in the effect library. 
@@ -6007,6 +6000,10 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 preview_camera_settings;
 	//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 	float max_life;
+	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
+	float loop_length;
+	//Offset of emitters and effects
+	tfx_vec3_t emitter_handle;
 	//The current state of the effect/emitter used in the editor only at this point
 	tfxEmitterStateFlags state_flags;
 	//Property flags for emitters
@@ -6049,7 +6046,7 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 buffer_index;
 
 	//Indexes into library storage
-	tfxU32 property_index;		//this will be the index to either particle emitter, ribbon emitter or effect properties.
+	tfxU32 property_index;		//this will be the index to either particle emitter, ribbon emitter properties. Effects don't have any properties that aren't shared.
 	tfxU32 shared_index;
 	//List of sub_effects ( effects contain emitters/ribbons, emitters can contain sub effects )
 #ifdef __cplusplus
@@ -6956,8 +6953,8 @@ tfxAPI_EDITOR tfx_rgba8_t tfx__get_data_color_value(tfx_storage_map_t<tfx_data_e
 tfxAPI_EDITOR float tfx__get_data_float_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 tfxAPI_EDITOR bool tfx__save_data_file(tfx_storage_map_t<tfx_data_entry_t> *config, const char *path = "");
 tfxAPI_EDITOR bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char *path);
-tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
