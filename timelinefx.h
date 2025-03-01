@@ -7234,7 +7234,6 @@ tfxAPI_EDITOR tfx_effect_descriptor tfx__get_root_effect(tfx_effect_descriptor e
 tfxAPI_EDITOR void tfx__reindex_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__move_effect_up(tfx_effect_descriptor effect_to_move);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__move_effect_down(tfx_effect_descriptor effect_to_move);
-tfxAPI_EDITOR void tfx__delete_emitter_from_effect(tfx_effect_descriptor emitter_to_delete);
 tfxAPI_EDITOR void tfx__free_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__clear_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__reset_effect_graphs(tfx_effect_descriptor effect, bool add_node = true);
@@ -7257,8 +7256,12 @@ tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_d
 tfxAPI_EDITOR void tfx__enable_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__disable_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__hide_descriptor(tfx_effect_descriptor descriptor);
+tfxAPI_EDITOR void tfx__show_descriptor(tfx_effect_descriptor descriptor);
+tfxAPI_EDITOR bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR bool tfx__is_finite_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR bool tfx__is_finite_emitter(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR bool tfx__is_emitter_type(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__flag_effect_as_3d(tfx_effect_descriptor effect, bool flag);
 tfxAPI_EDITOR void tfx__flag_effects_as_3d(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_3d_effect(tfx_effect_descriptor effect);

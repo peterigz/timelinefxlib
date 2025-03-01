@@ -2253,6 +2253,10 @@ bool tfx__is_finite_emitter(tfx_effect_descriptor emitter) {
 	return true;
 }
 
+bool tfx__is_emitter_type(tfx_effect_descriptor emitter) {
+	return emitter->type == tfxEmitterType || emitter->type == tfxRibbonType;
+}
+
 bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	for (tfx_effect_descriptor child : effect->children) {
@@ -3305,28 +3309,6 @@ tfx_effect_descriptor tfx__move_effect_down(tfx_effect_descriptor emitter) {
 	return nullptr;
 }
 
-void tfx__delete_emitter_from_effect(tfx_effect_descriptor emitter) {
-	tfx_effect_descriptor parent = emitter->parent;
-	tfx_library library = emitter->library;
-	tmpStack(tfx_effect_descriptor, stack);
-	stack.push_back(emitter);
-	while (stack.size()) {
-		tfx_effect_descriptor current = stack.pop_back();
-		tfx__free_library_graph_list(library, current->graph_list_index);
-		tfx__free_library_properties(current);
-		for (tfx_effect_descriptor sub : current->children) {
-			stack.push_back(sub);
-		}
-	}
-	parent->children.erase(&emitter);
-
-	tfx__reindex_effect(parent);
-	if (library) {
-		tfx__update_library_effect_paths(library);
-	}
-	stack.free();
-}
-
 void tfx__clear_effect(tfx_effect_descriptor effect) {
 	if (!TFX_VALID_HANDLE(effect)) {
 		return;
@@ -3538,6 +3520,18 @@ void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_d
 			child->shared_flags &= ~tfxSharedEmitterPropertyFlags_enabled;
 		}
 	}
+}
+
+void tfx__hide_descriptor(tfx_effect_descriptor descriptor) {
+	descriptor->shared_flags |= tfxSharedEmitterPropertyFlags_hidden;
+}
+
+void tfx__show_descriptor(tfx_effect_descriptor descriptor) {
+	descriptor->shared_flags &= ~tfxSharedEmitterPropertyFlags_hidden;
+}
+
+bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor) {
+	return (descriptor->shared_flags & tfxSharedEmitterPropertyFlags_hidden) > 0;
 }
 
 tfx_graph_list_t *tfx__get_descriptor_graph_list(tfx_effect_descriptor emitter) {
