@@ -3358,6 +3358,7 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 
 void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
+	clone->children.init();
 	if (clone->type != tfxFolder) {
 		clone->shared_index = tfx__clone_library_shared_properties(clone->library, effect_to_clone->shared_index, destination_library);
 	}
@@ -3424,9 +3425,6 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		if (child->type == tfxEmitterType || child->type == tfxRibbonType) {
 			tfx_effect_descriptor emitter_copy = tfx_NewEffectDescriptor(child->type);
 			tfx__clone_effect(child, emitter_copy, root_parent, destination_library, flags);
-			if (!(flags & tfxEffectCloningFlags_keep_user_data)) {
-				emitter_copy->user_data = nullptr;
-			}
 			tfx__add_emitter_to_effect(clone, emitter_copy, child->type);
 		} else if (child->type == tfxEffectType) {
 			tfx_effect_descriptor effect_copy = tfx_NewEffectDescriptor(tfxEffectType);
@@ -3434,9 +3432,6 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 				tfx__clone_effect(child, effect_copy, effect_copy, destination_library, flags);
 			} else {
 				tfx__clone_effect(child, effect_copy, root_parent, destination_library, flags);
-			}
-			if (!(flags & tfxEffectCloningFlags_keep_user_data)) {
-				effect_copy->user_data = nullptr;
 			}
 			tfx__add_effect_to_emitter(clone, effect_copy);
 		}
@@ -3597,17 +3592,17 @@ void tfx__initialise_path_graphs(tfx_emitter_path_t *path, bool add_node, tfxU32
 	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_x.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_x, 0.f, path->offset_x.graph_preset, add_node, 1.f);
-	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_y.nodes ,bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_y.nodes ,bucket_size);
 	path->offset_y.type = tfxPath_offset_y;
 	path->offset_y.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_y.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_y, 0.f, path->offset_y.graph_preset, add_node, 1.f);
-	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_z.nodes ,bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_z.nodes ,bucket_size);
 	path->offset_z.type = tfxPath_offset_z;
 	path->offset_z.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_z.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_z, 0.f, path->offset_z.graph_preset, add_node, 1.f);
-	 tfxInitBucketArray<tfx_attribute_node_t>(&path->distance.nodes ,bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->distance.nodes ,bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
 	path->distance.nodes.bucket_list.init();
@@ -6311,7 +6306,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOverlength_curved_alpha: return "overlength_curved_alpha"; break;
 	case tfxOverlength_gradient_map: return "overlength_gradient_map"; break;
 	case tfxOverlength_width: return "overlength_width"; break;
-	case tfxOverlength_ribbon_fixed_angle: return "overlength_ribbon_fixed_angle"; break;
+	case tfxOverlength_ribbon_fixed_angle: return "overlength_fixed_angle"; break;
 
 	case tfxFactor_life: return "factor_life"; break;
 	case tfxFactor_size: return "factor_size"; break;
