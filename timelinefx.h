@@ -5537,12 +5537,12 @@ typedef struct tfx_path_quaternion_s {
 	tfxU32 cycles;
 }tfx_path_quaternion_t;
 
-typedef struct tfx_emitter_path_s {
-	tfxKey key;
-	tfx_str32_t name;
-	int node_count;
-	tfxEmitterPathFlags flags;
-	tfx_path_generator_type generator_type;
+typedef struct tfx_path_buffers_s {
+#ifdef __cplusplus
+	tfx_vector_t<tfx_vec4_t> nodes;
+#else
+	tfx_vector_t nodes;
+#endif
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
 	tfx_graph_t angle_z;
@@ -5550,6 +5550,16 @@ typedef struct tfx_emitter_path_s {
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
+	tfx_soa_buffer_t node_buffer;
+	tfx_path_nodes_soa_t node_soa;
+} tfx_path_buffers_t;
+
+typedef struct tfx_path_settings_s {
+	tfxKey key;
+	tfx_str32_t name;
+	int node_count;
+	tfxEmitterPathFlags flags;
+	tfx_path_generator_type generator_type;
 	float rotation_range;
 	union {
 		float rotation_pitch;    //3d paths
@@ -5562,14 +5572,12 @@ typedef struct tfx_emitter_path_s {
 	float rotation_stagger;
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
-#ifdef __cplusplus
-	tfx_vector_t<tfx_vec4_t> nodes;
-#else
-	tfx_vector_t nodes;
-#endif
-	tfx_soa_buffer_t node_buffer;
-	tfx_path_nodes_soa_t node_soa;
 	tfx_path_extrusion_type extrusion_type;
+} tfx_path_settings_t;
+
+typedef struct tfx_emitter_path_s {
+	tfx_path_settings_t settings;
+	tfx_path_buffers_t buffers;
 } tfx_emitter_path_t;
 
 static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age_lerp);
