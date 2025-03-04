@@ -2100,21 +2100,21 @@ typedef enum {
 	tfxLifePreset,
 	tfxAmountPreset,
 	tfxVelocityPreset,
-	tfxVelocityOvertimePreset,
 	tfxWeightPreset,
 	tfxWeightVariationPreset,
 	tfxNoiseOffsetVariationPreset,
 	tfxNoiseResolutionPreset,
-	tfxWeightOvertimePreset,
 	tfxSpinPreset,
 	tfxSpinVariationPreset,
-	tfxSpinOvertimePreset,
-	tfxDirectionOvertimePreset,
 	tfxDirectionVariationPreset,
 	tfxFrameratePreset,
 	tfxVelocityTurbulancePreset,
-	tfxOpacityOvertimePreset,
 	tfxColorPreset,
+	tfxSpinOvertimePreset,
+	tfxVelocityOvertimePreset,
+	tfxWeightOvertimePreset,
+	tfxDirectionOvertimePreset,
+	tfxOpacityOvertimePreset,
 	tfxPercentOvertime,
 	tfxIntensityOvertimePreset,
 	tfxGradientMapperOvertimePreset,
@@ -5493,8 +5493,6 @@ typedef struct tfx_graph_id_s {
 
 typedef struct tfx_graph_s {
 	//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
-	tfx_vec2_t min;
-	tfx_vec2_t max;
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
 	tfx_effect_descriptor effector;
@@ -6848,8 +6846,6 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_sprite_sheet_settings_t> sprite_sheet_settings;
 	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	tfx_vector_t<tfx_preview_camera_settings_t> preview_camera_settings;
-	//This could probably be stored globally
-	tfx_vector_t<tfx_vec4_t> graph_min_max;
 
 	tfx_vector_t<tfxU32> free_graph_lists;
 	tfx_vector_t<tfxU32> free_animation_settings;
@@ -7080,6 +7076,9 @@ tfxAPI_EDITOR void tfx__compile_graph_overtime(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
 tfxAPI_EDITOR bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
+tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
+tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -7087,7 +7086,6 @@ tfxINTERNAL float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx
 tfxINTERNAL tfx_attribute_node_t *tfx__get_graph_next_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL tfx_attribute_node_t *tfx__get_graph_prev_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL tfx_attribute_node_t *tfx__add_graph_coord_node(tfx_graph_t *graph, float, float);
-tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxINTERNAL float tfx__get_graph_min_value(tfx_graph_t *graph);
 tfxINTERNAL float tfx__get_graph_last_frame(tfx_graph_t *graph, float udpate_frequence);
 tfxINTERNAL tfx_attribute_node_t *tfx__graph_node_by_index(tfx_graph_t *graph, tfxU32 index);
@@ -7096,7 +7094,6 @@ tfxINTERNAL void tfx__delete_graph_node_at_frame(tfx_graph_t *graph, float frame
 tfxINTERNAL void tfx__clear_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
-tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
@@ -7198,7 +7195,6 @@ tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
 tfxAPI_EDITOR bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor effect, tfxU32 depth = 0, bool including_color_ramps = true);
-tfxAPI_EDITOR void tfx__set_library_min_max_data(tfx_library library);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);

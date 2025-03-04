@@ -5140,7 +5140,6 @@ void tfx__init_library(tfx_library library) {
 	library->sprite_sheet_settings.init();
 	library->sprite_data_settings.init();
 	library->preview_camera_settings.init();
-	library->graph_min_max.init();
 	library->free_graph_lists.init();
 	library->free_animation_settings.init();
 	library->free_preview_camera_settings.init();
@@ -5242,7 +5241,6 @@ void tfx_FreeLibrary(tfx_library library) {
 	library->sprite_sheet_settings.free();
 	library->preview_camera_settings.free();
 	library->emitter_properties.free();
-	library->graph_min_max.free();
 	library->pre_recorded_effects.FreeAll();
 	library->free_animation_settings.free();
 	library->free_preview_camera_settings.free();
@@ -5388,99 +5386,6 @@ void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, boo
 bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index) {
 	tfx__compile_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
 	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
-}
-
-void tfx__set_library_min_max_data(tfx_library library) {
-	library->graph_min_max.clear();
-	library->graph_min_max.resize(tfxEmitterGraphMaxIndex);
-
-	library->graph_min_max[tfxGlobal_life] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_amount] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_velocity] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_noise] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_width] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_height] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_weight] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_roll_spin] = tfx__get_min_max_graph_values(tfxGlobalPercentPresetSigned);
-	library->graph_min_max[tfxGlobal_pitch_spin] = tfx__get_min_max_graph_values(tfxGlobalPercentPresetSigned);
-	library->graph_min_max[tfxGlobal_yaw_spin] = tfx__get_min_max_graph_values(tfxGlobalPercentPresetSigned);
-	library->graph_min_max[tfxGlobal_stretch] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_overal_scale] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_intensity] = tfx__get_min_max_graph_values(tfxOpacityOvertimePreset);
-	library->graph_min_max[tfxGlobal_splatter] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_emitter_width] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_emitter_height] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxGlobal_emitter_depth] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-
-	library->graph_min_max[tfxTransform_roll] = tfx__get_min_max_graph_values(tfxAnglePreset);
-	library->graph_min_max[tfxTransform_pitch] = tfx__get_min_max_graph_values(tfxAnglePreset);
-	library->graph_min_max[tfxTransform_yaw] = tfx__get_min_max_graph_values(tfxAnglePreset);
-	library->graph_min_max[tfxTransform_translate_x] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxTransform_translate_y] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxTransform_translate_z] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-
-	library->graph_min_max[tfxProperty_emission_pitch] = tfx__get_min_max_graph_values(tfxAnglePreset);
-	library->graph_min_max[tfxProperty_emission_yaw] = tfx__get_min_max_graph_values(tfxAnglePreset);
-	library->graph_min_max[tfxProperty_emission_range] = tfx__get_min_max_graph_values(tfxEmissionRangePreset);
-	library->graph_min_max[tfxProperty_splatter] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxProperty_emitter_width] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxProperty_emitter_height] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxProperty_emitter_depth] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxProperty_extrusion] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxProperty_arc_size] = tfx__get_min_max_graph_values(tfxArcPreset);
-	library->graph_min_max[tfxProperty_arc_offset] = tfx__get_min_max_graph_values(tfxArcPreset);
-
-	library->graph_min_max[tfxBase_life] = tfx__get_min_max_graph_values(tfxLifePreset);
-	library->graph_min_max[tfxBase_amount] = tfx__get_min_max_graph_values(tfxAmountPreset);
-	library->graph_min_max[tfxBase_velocity] = tfx__get_min_max_graph_values(tfxVelocityPreset);
-	library->graph_min_max[tfxBase_width] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxBase_height] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxBase_weight] = tfx__get_min_max_graph_values(tfxWeightPreset);
-	library->graph_min_max[tfxBase_roll_spin] = tfx__get_min_max_graph_values(tfxSpinPreset);
-	library->graph_min_max[tfxBase_pitch_spin] = tfx__get_min_max_graph_values(tfxSpinPreset);
-	library->graph_min_max[tfxBase_yaw_spin] = tfx__get_min_max_graph_values(tfxSpinPreset);
-	library->graph_min_max[tfxBase_noise_offset] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-
-	library->graph_min_max[tfxVariation_life] = tfx__get_min_max_graph_values(tfxLifePreset);
-	library->graph_min_max[tfxVariation_amount] = tfx__get_min_max_graph_values(tfxAmountPreset);
-	library->graph_min_max[tfxVariation_velocity] = tfx__get_min_max_graph_values(tfxVelocityPreset);
-	library->graph_min_max[tfxVariation_width] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxVariation_height] = tfx__get_min_max_graph_values(tfxDimensionsPreset);
-	library->graph_min_max[tfxVariation_weight] = tfx__get_min_max_graph_values(tfxWeightVariationPreset);
-	library->graph_min_max[tfxVariation_roll_spin] = tfx__get_min_max_graph_values(tfxSpinVariationPreset);
-	library->graph_min_max[tfxVariation_pitch_spin] = tfx__get_min_max_graph_values(tfxSpinVariationPreset);
-	library->graph_min_max[tfxVariation_yaw_spin] = tfx__get_min_max_graph_values(tfxSpinVariationPreset);
-	library->graph_min_max[tfxVariation_noise_offset] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-
-	library->graph_min_max[tfxOvertime_velocity] = tfx__get_min_max_graph_values(tfxVelocityOvertimePreset);
-	library->graph_min_max[tfxOvertime_width] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_height] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_weight] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_roll_spin] = tfx__get_min_max_graph_values(tfxSpinOvertimePreset);
-	library->graph_min_max[tfxOvertime_pitch_spin] = tfx__get_min_max_graph_values(tfxSpinOvertimePreset);
-	library->graph_min_max[tfxOvertime_yaw_spin] = tfx__get_min_max_graph_values(tfxSpinOvertimePreset);
-	library->graph_min_max[tfxOvertime_stretch] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_red] = tfx__get_min_max_graph_values(tfxColorPreset);
-	library->graph_min_max[tfxOvertime_green] = tfx__get_min_max_graph_values(tfxColorPreset);
-	library->graph_min_max[tfxOvertime_blue] = tfx__get_min_max_graph_values(tfxColorPreset);
-	library->graph_min_max[tfxOvertime_blendfactor] = tfx__get_min_max_graph_values(tfxOpacityOvertimePreset);
-	library->graph_min_max[tfxOvertime_intensity] = tfx__get_min_max_graph_values(tfxIntensityOvertimePreset);
-	library->graph_min_max[tfxOvertime_alpha_sharpness] = tfx__get_min_max_graph_values(tfxIntensityOvertimePreset);
-	library->graph_min_max[tfxOvertime_curved_alpha] = tfx__get_min_max_graph_values(tfxOpacityOvertimePreset);
-	library->graph_min_max[tfxOvertime_gradient_mapper] = tfx__get_min_max_graph_values(tfxGradientMapperOvertimePreset);
-	library->graph_min_max[tfxOvertime_velocity_turbulance] = tfx__get_min_max_graph_values(tfxFrameratePreset);
-	library->graph_min_max[tfxOvertime_direction_turbulance] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_velocity_adjuster] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
-	library->graph_min_max[tfxOvertime_direction] = tfx__get_min_max_graph_values(tfxDirectionOvertimePreset);
-	library->graph_min_max[tfxOvertime_uv_offset_y] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_uv_scale_y] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOverlength_ribbon_fixed_angle] = tfx__get_min_max_graph_values(tfxDirectionOvertimePreset);
-	library->graph_min_max[tfxOvertime_clip_offset] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOvertime_clip_size] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOverlength_intensity] = tfx__get_min_max_graph_values(tfxIntensityOvertimePreset);
-	library->graph_min_max[tfxOverlength_alpha_sharpness] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOverlength_curved_alpha] = tfx__get_min_max_graph_values(tfxPercentOvertime);
-	library->graph_min_max[tfxOverlength_gradient_map] = tfx__get_min_max_graph_values(tfxPercentOvertime);
 }
 
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
@@ -7042,8 +6947,7 @@ bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right)
 }
 
 bool tfx__is_lerp_graph(tfx_graph_t *graph) {
-	return graph->max.x == 1.f;
-	//return tfx__is_overtime_graph(graph) || tfx__is_factor_graph(graph) || tfx__is_overlength_graph(graph);
+	return graph->graph_preset >= tfxVelocityOvertimePreset;
 }
 
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
@@ -7093,8 +6997,6 @@ void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scalar) {
 }
 
 void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph) {
-	dst_graph->min = src_graph->min;
-	dst_graph->max = src_graph->max;
 	dst_graph->graph_preset = src_graph->graph_preset;
 	dst_graph->type = src_graph->type;
 	dst_graph->effector = src_graph->effector;
@@ -7164,7 +7066,7 @@ bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame,
 	node->value = *value;
 
 	if (&graph->nodes[0] == node) {
-		node->frame = graph->min.x;
+		node->frame = tfx__get_min_graph_values(graph->graph_preset).x;
 		tfx__clamp_node(graph, node);
 	}
 	else {
@@ -7244,7 +7146,7 @@ bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame,
 	node->value += value;
 
 	if (&graph->nodes[0] == node) {
-		node->frame = graph->min.x;
+		node->frame = tfx__get_min_graph_values(graph->graph_preset).x;
 		tfx__clamp_node(graph, node);
 	}
 	else {
@@ -7273,10 +7175,10 @@ bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame,
 }
 
 void tfx__clamp_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
-	if (node->value < graph->min.y) node->value = graph->min.y;
-	if (node->frame < graph->min.x) node->frame = graph->min.x;
-	if (node->value > graph->max.y) node->value = graph->max.y;
-	if (node->frame > graph->max.x) node->frame = graph->max.x;
+	if (node->value < tfx__get_min_graph_values(graph->graph_preset).y) node->value = tfx__get_min_graph_values(graph->graph_preset).y;
+	if (node->frame < tfx__get_min_graph_values(graph->graph_preset).x) node->frame = tfx__get_min_graph_values(graph->graph_preset).x;
+	if (node->value > tfx__get_max_graph_values(graph->graph_preset).y) node->value = tfx__get_max_graph_values(graph->graph_preset).y;
+	if (node->frame > tfx__get_max_graph_values(graph->graph_preset).x) node->frame = tfx__get_max_graph_values(graph->graph_preset).x;
 }
 
 void tfx__clamp_graph_nodes(tfx_graph_t *graph) {
@@ -7295,10 +7197,10 @@ void tfx__clamp_graph_nodes(tfx_graph_t *graph) {
 }
 
 void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
-	if (p->y < graph->min.y) p->y = graph->min.y;
-	if (p->x < graph->min.x) p->x = graph->min.x;
-	if (p->y > graph->max.y) p->y = graph->max.y;
-	if (p->x > graph->max.x) p->x = graph->max.x;
+	if (p->y < tfx__get_min_graph_values(graph->graph_preset).y) p->y = tfx__get_min_graph_values(graph->graph_preset).y;
+	if (p->x < tfx__get_min_graph_values(graph->graph_preset).x) p->x = tfx__get_min_graph_values(graph->graph_preset).x;
+	if (p->y > tfx__get_max_graph_values(graph->graph_preset).y) p->y = tfx__get_max_graph_values(graph->graph_preset).y;
+	if (p->x > tfx__get_max_graph_values(graph->graph_preset).x) p->x = tfx__get_max_graph_values(graph->graph_preset).x;
 
 	tfx_attribute_node_t *next = tfx__get_graph_next_node(graph, node);
 	if (next) {
@@ -7715,99 +7617,6 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	if (!max_frames) {
 		max_frames = tfxMAX_FRAME;
 	}
-	switch (preset) {
-	case tfx_graph_preset::tfxGlobalPercentPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 20.f };
-		break;
-	case tfx_graph_preset::tfxGlobalOpacityPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 1.f };
-		break;
-	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
-		graph->min = { 0.f, -20.f }; graph->max = { max_frames, 20.f };
-		break;
-	case tfx_graph_preset::tfxAnglePreset:
-		graph->min = { 0.f, -1080.f }; graph->max = { max_frames, 1080.f };
-		break;
-	case tfx_graph_preset::tfxArcPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 360.f };
-		break;
-	case tfx_graph_preset::tfxEmissionRangePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 360.f };
-		break;
-	case tfx_graph_preset::tfxDimensionsPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 4000.f };
-		break;
-	case tfx_graph_preset::tfxTranslationPreset:
-		graph->min = { 0.f, -4000.f }; graph->max = { max_frames, 4000.f };
-		break;
-	case tfx_graph_preset::tfxLifePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 100000.f };
-		break;
-	case tfx_graph_preset::tfxAmountPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 5000.f };
-		break;
-	case tfx_graph_preset::tfxVelocityPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 10000.f };
-		break;
-	case tfx_graph_preset::tfxWeightPreset:
-		graph->min = { 0.f, -10000.f }; graph->max = { max_frames, 10000.f };
-		break;
-	case tfx_graph_preset::tfxWeightVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 20000.f };
-		break;
-	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 1000.f };
-		break;
-	case tfx_graph_preset::tfxNoiseResolutionPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 10000.f };
-		break;
-	case tfx_graph_preset::tfxSpinPreset:
-		graph->min = { 0.f, -2000.f }; graph->max = { max_frames, 2000.f };
-		break;
-	case tfx_graph_preset::tfxSpinVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 2000.f };
-		break;
-	case tfx_graph_preset::tfxDirectionVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 22.5f };
-		break;
-	case tfx_graph_preset::tfxWeightOvertimePreset:
-		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };
-		break;
-	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		graph->min = { 0.f, -4320.f }; graph->max = { 1.f, 4320.f };
-		break;
-	case tfx_graph_preset::tfxSpinOvertimePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 20.f };
-		break;
-	case tfx_graph_preset::tfxVelocityOvertimePreset:
-		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };
-		break;
-	case tfx_graph_preset::tfxPercentOvertime:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 20.f };
-		break;
-	case tfx_graph_preset::tfxFrameratePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 200.f };
-		break;
-	case tfx_graph_preset::tfxVelocityTurbulancePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 2000.f };
-		break;
-	case tfx_graph_preset::tfxOpacityOvertimePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 1.f };
-		break;
-	case tfx_graph_preset::tfxColorPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 255.f };
-		break;
-	case tfx_graph_preset::tfxIntensityOvertimePreset:
-	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 10.f };
-		break;
-	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
-		graph->min = { 0.f, -4320.f }; graph->max = { 1.f, 4320.f };
-		break;
-	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
-		graph->min = { 0.f, -1000.f }; graph->max = { 1.f, 1000.f };
-		break;
-	}
 
 	if (add_node && preset == tfxWeightOvertimePreset) {
 		tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
@@ -7829,94 +7638,126 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	graph->graph_preset = preset;
 }
 
-tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset) {
-	tfx_vec4_t mm;
+tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxGlobalOpacityPreset:
-		mm = { 0.f, 0.f , tfxMAX_FRAME, 1.f };
-		break;
+		return { 0.f, 1.f };
 	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
-		mm = { 0.f, -20.f, tfxMAX_FRAME, 20.f };
-		break;
+		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxAnglePreset:
-		mm = { 0.f, -1080.f, tfxMAX_FRAME, 1080.f };
-		break;
+		return { 0.f, -1080.f };
 	case tfx_graph_preset::tfxArcPreset:
-		mm = { 0.f, 0.f , tfxMAX_FRAME, 360.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxEmissionRangePreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 360.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxDimensionsPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 4000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxTranslationPreset:
-		mm = { 0.f, -4000.f, tfxMAX_FRAME, 4000.f };
-		break;
+		return { 0.f, -4000.f };
 	case tfx_graph_preset::tfxLifePreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 100000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxAmountPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 5000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxVelocityPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 10000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxWeightPreset:
-		mm = { 0.f, -10000.f, tfxMAX_FRAME, 10000.f };
-		break;
+		return { 0.f, -10000.f };
 	case tfx_graph_preset::tfxWeightVariationPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 20000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxSpinPreset:
-		mm = { 0.f, -2000.f, tfxMAX_FRAME, 2000.f };
-		break;
+		return { 0.f, -2000.f };
 	case tfx_graph_preset::tfxSpinVariationPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 2000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxDirectionVariationPreset:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 22.5f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxWeightOvertimePreset:
-		mm = { 0.f, -20.f, 1.f, 20.f };
-		break;
+		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		mm = { 0.f, -4320.f, 1.f, 4320.f };
-		break;
+		return { 0.f, -4320.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
-		mm = { 0.f, 0.f, 1.f, 20.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
-		mm = { 0.f, -20.f, 1.f, 20.f };
-		break;
+		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxPercentOvertime:
-		mm = { 0.f, 0.f, 1.f, 20.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxFrameratePreset:
-		mm = { 0.f, 0.f, 1.f, 200.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxVelocityTurbulancePreset:
-		mm = { 0.f, 0.f, 1.f, 2000.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxOpacityOvertimePreset:
-		mm = { 0.f, 0.f, 1.f, 1.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxColorPreset:
-		mm = { 0.f, 0.f, 1.f, 255.f };
-		break;
+		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
-		mm = { 0.f, 0.f, 1.f, 10.f };
-		break;
-	default:
-		mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
-		break;
+		return { 0.f, 0.f };
+	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
+		return { 0.f, -4320.f };
+	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		return { 0.f, -1000.f };
 	}
+	return { tfxMAX_FRAME, 20.f };
+}
 
-	return mm;
+tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
+	switch (preset) {
+	case tfx_graph_preset::tfxGlobalPercentPreset:
+		return { tfxMAX_FRAME, 20.f };
+	case tfx_graph_preset::tfxGlobalOpacityPreset:
+		return { tfxMAX_FRAME, 1.f };
+	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
+		return { tfxMAX_FRAME, 20.f };
+	case tfx_graph_preset::tfxAnglePreset:
+		return { tfxMAX_FRAME, 1080.f };
+	case tfx_graph_preset::tfxArcPreset:
+		return { tfxMAX_FRAME, 360.f };
+	case tfx_graph_preset::tfxEmissionRangePreset:
+		return { tfxMAX_FRAME, 360.f };
+	case tfx_graph_preset::tfxDimensionsPreset:
+		return { tfxMAX_FRAME, 4000.f };
+	case tfx_graph_preset::tfxTranslationPreset:
+		return { tfxMAX_FRAME, 4000.f };
+	case tfx_graph_preset::tfxLifePreset:
+		return { tfxMAX_FRAME, 100000.f };
+	case tfx_graph_preset::tfxAmountPreset:
+		return { tfxMAX_FRAME, 5000.f };
+	case tfx_graph_preset::tfxVelocityPreset:
+		return { tfxMAX_FRAME, 10000.f };
+	case tfx_graph_preset::tfxWeightPreset:
+		return { tfxMAX_FRAME, 10000.f };
+	case tfx_graph_preset::tfxWeightVariationPreset:
+		return { tfxMAX_FRAME, 20000.f };
+	case tfx_graph_preset::tfxSpinPreset:
+		return { tfxMAX_FRAME, 2000.f };
+	case tfx_graph_preset::tfxSpinVariationPreset:
+		return { tfxMAX_FRAME, 2000.f };
+	case tfx_graph_preset::tfxDirectionVariationPreset:
+		return { tfxMAX_FRAME, 22.5f };
+	case tfx_graph_preset::tfxWeightOvertimePreset:
+		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
+		return { 1.f, 4320.f };
+	case tfx_graph_preset::tfxSpinOvertimePreset:
+		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
+		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxPercentOvertime:
+		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxFrameratePreset:
+		return { 1.f, 200.f };
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
+		return { 1.f, 2000.f };
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
+		return { 1.f, 1.f };
+	case tfx_graph_preset::tfxColorPreset:
+		return { 1.f, 255.f };
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
+		return { 1.f, 10.f };
+	}
+	return { tfxMAX_FRAME, 20.f };
 }
 
 void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value) {
@@ -9420,7 +9261,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		tfx__update_library_effect_paths(lib);
 		tfx__update_library_compute_nodes();
 		tfx__build_all_library_paths(lib);
-		tfx__set_library_min_max_data(lib);
 		tfx__update_library_control_profiles(lib);
 		lib->uv_lookup = uv_lookup;
 		if (uv_lookup) {
