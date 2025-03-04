@@ -5966,6 +5966,20 @@ tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
 	return name;
 }
 
+tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_sampling_type type) {
+	tfx_str32_t name;
+	switch (type) {
+	case tfxGraphSamplingType_bezier: name.Set("Bezier"); break;
+	case tfxGraphSamplingType_bezier_quarter: name.Set("Bezier Quarter-Power"); break;
+	case tfxGraphSamplingType_bezier_half: name.Set("Bezier Half-Power"); break;
+	case tfxGraphSamplingType_bezier_squared: name.Set("Bezier Squared"); break;
+	case tfxGraphSamplingType_bezier_cubed: name.Set("Bezier Cubed"); break;
+	case tfxGraphSamplingType_bezier_sigmoid: name.Set("Bezier Sigmoid"); break;
+	case tfxGraphSamplingType_linear: name.Set("Linear"); break;
+	}
+	return name;
+}
+
 void tfx__print_effect(tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(effect);
 	struct tab_effect {
@@ -7760,6 +7774,10 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	return { tfxMAX_FRAME, 20.f };
 }
 
+bool tfx__graph_uses_weight(tfx_graph_t *graph) {
+	return graph->sampling_type >= tfxGraphSamplingType_bezier_quarter && graph->sampling_type <= tfxGraphSamplingType_bezier_sigmoid;
+}
+
 void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value) {
 	switch (preset) {
 	case tfx_graph_preset::tfxOpacityOvertimePreset:
@@ -7927,6 +7945,19 @@ void tfx__compile_graph_overtime(tfx_graph_t *graph) {
 	if (graph->type == tfxOvertime_gradient_mapper || graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness) {
 		tfx__compile_graph_ramp_overtime(graph);
 		return;
+	}
+	if (graph->type == tfxOvertime_width || graph->type == tfxOvertime_height) {
+		if (graph->nodes.size() == 1) {
+			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
+			node.frame = 1.f;
+			graph->sampling_type = tfxGraphSamplingType_bezier;
+			tfx__add_graph_node(graph, &node);
+		} else if (graph->nodes.size() > 2) {
+			graph->nodes.current_size = 2;
+			graph->sampling_type = tfxGraphSamplingType_bezier;
+			graph->nodes.trim_buckets();
+		}
+		graph->nodes[1].frame = 1.f;
 	}
 	if (graph->nodes.size() > 1) {
 		graph->lookup.last_frame = tfxU32(tfxLOOKUP_TABLE_ARRAY_SIZE - 1.f);
@@ -13520,8 +13551,6 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
-	const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_width_index].lookup.last_frame);
-	const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_height_index].lookup.last_frame);
 	const tfxWideFloat overal_scale = tfxWideSetSingle(work_entry->overal_scale);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
@@ -13530,7 +13559,6 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 start_diff = work_entry->start_diff;
 
-	tfxWideArrayi lookup_frame;
 	tfxWideFloat scale_x;
 	tfxWideFloat scale_y;
 
@@ -13539,6 +13567,19 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	float packed_scale_amount = pm.flags & tfxParticleManagerFlags_3d_effects ? 256.f : 8192.f;
 
 	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling && work_entry->shared_properties->emission_type == tfxPath;
+
+	tfx_graph_t *width_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_width_index];
+	tfxWideFloat width_from = tfxWideSetSingle(tfx__get_graph_first_value(width_graph));
+	tfx_attribute_node_t node = *tfx__get_graph_last_node(width_graph);
+	tfxWideFloat width_to = tfxWideSetSingle(tfx__get_graph_last_value(width_graph));
+	tfxWideFloat width_curve1 = tfxWideSetSingle(tfx__get_graph_first_node(width_graph)->right.y);
+	tfxWideFloat width_curve2 = tfxWideSetSingle(tfx__get_graph_last_node(width_graph)->left.y);
+
+	tfx_graph_t *height_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_height_index];
+	tfxWideFloat height_from = tfxWideSetSingle(tfx__get_graph_first_value(height_graph));
+	tfxWideFloat height_to = tfxWideSetSingle(tfx__get_graph_last_value(height_graph));
+	tfxWideFloat height_curve1 = tfxWideSetSingle(tfx__get_graph_first_node(width_graph)->right.y);
+	tfxWideFloat height_curve2 = tfxWideSetSingle(tfx__get_graph_last_node(width_graph)->left.y);
 
 	if (sample_based_on_path_position) {
 		path = &library->paths[emitter.path_attributes];
@@ -13560,14 +13601,8 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideDiv(age, max_age);
 		}
 
-		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), width_last_frame);
-		const tfxWideFloat lookup_width = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_width_index].lookup.values, lookup_frame);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), height_last_frame);
-		const tfxWideFloat lookup_height = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_height_index].lookup.values, lookup_frame);
-
+		const tfxWideFloat lookup_width = tfx__sample_graph(&work_entry->graphs->graphs[tfxEmitter_overtime_width_index], width_from, width_to, width_curve1, width_curve2, life);
+		const tfxWideFloat lookup_height = tfx__sample_graph(&work_entry->graphs->graphs[tfxEmitter_overtime_height_index], height_from, height_to, height_curve1, height_curve2, life);
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 

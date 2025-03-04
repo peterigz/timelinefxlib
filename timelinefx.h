@@ -1837,6 +1837,7 @@ const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
 const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
 const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
 const tfxWideArray tfxWIDETWO = tfxWideSetConst(2.f);
+const tfxWideArray tfxWIDETHREE = tfxWideSetConst(3.f);
 const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
 const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
 const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
@@ -2642,9 +2643,9 @@ typedef enum {
 typedef tfxU32 tfxParticleEmitterFlags;			//tfx_particle_emitter_flag_bits
 typedef tfxU32 tfxRibbonEmitterFlags;			//tfx_ribbon_emitter_flag_bits
 typedef tfxU32 tfxSharedEmitterFlags;			//tfx_shared_emitter_flag_bits
-typedef tfxU32 tfxColorRampFlags;		        //tfx_color_ramp_flag_bits
+typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
+typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
-typedef tfxU32 tfxVectorFieldFlags;             //tfx_vector_field_flag_bits
 typedef tfxU32 tfxParticleFlags;                //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
@@ -2899,14 +2900,20 @@ typedef enum {
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
-	tfxEmitterPropertyExtFlags_none = 0,
-	tfxEmitterPropertyExtFlags_spawn_location_only = 0,
-} tfx_emitter_property_ext_flag_bits;
-
-typedef enum {
 	tfxColorRampFlags_none = 0,
 	tfxColorRampFlags_use_sinusoidal_ramp_generation = 1 << 0,			//Use this flag to toggle between sinusoidal color ramp generation
 } tfx_color_ramp_flag_bits;
+
+typedef enum {
+	tfxGraphSamplingType_nodes = 0,										//Multiple nodes on graph for creating base values for particles
+	tfxGraphSamplingType_bezier,									
+	tfxGraphSamplingType_bezier_quarter,	
+	tfxGraphSamplingType_bezier_half,	
+	tfxGraphSamplingType_bezier_squared,	
+	tfxGraphSamplingType_bezier_cubed,	
+	tfxGraphSamplingType_bezier_sigmoid,									
+	tfxGraphSamplingType_linear,
+} tfx_graph_sampling_type;
 
 typedef enum {
 	tfxParticleFlags_none = 0,
@@ -2982,12 +2989,6 @@ typedef enum {
 	tfxEffectStateFlags_override_size_multiplier = 1 << 10,             //Flagged when any of the effect size multipliers are overridden
 	tfxEffectStateFlags_no_tween = 1 << 20
 } tfx_effect_state_flag_bits;
-
-typedef enum {
-	tfxVectorFieldFlags_none = 0,
-	tfxVectorFieldFlags_repeat_horizontal = 1 << 0,                        //Field will repeat horizontally
-	tfxVectorFieldFlags_repeat_vertical = 1 << 1                        //Field will repeat vertically
-} tfx_vector_field_flag_bits;
 
 typedef enum {
 	tfxAttributeNodeFlags_none = 0,
@@ -4175,7 +4176,9 @@ struct tfx_bucket_array_t {
 	inline const T *end() const { return bucket_list.current_size ? (T *)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : nullptr; }
 	inline T &front() { TFX_ASSERT(current_size > 0); return bucket_list[0]->data.front(); }
 	inline const T &front() const { TFX_ASSERT(current_size > 0); return bucket_list[0]->data.front(); }
-	inline T &back() { TFX_ASSERT(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
+	inline T &back() { TFX_ASSERT(current_size > 0); 
+		tfxU32 bucket = (current_size - 1) / size_of_each_bucket; 
+		return bucket_list[bucket]->data.back(); }
 	inline const T &back() const { TFX_ASSERT(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
 	inline tfxU32        active_buckets() { return current_size == 0 ? 0 : current_size / size_of_each_bucket + 1; }
 	inline void         clear() {
@@ -4316,6 +4319,13 @@ struct tfx_bucket_array_t {
 				capacity -= size_of_each_bucket;
 			}
 			bucket_list.current_size -= bucket_list.current_size - active_buckets();
+			if (bucket_list.current_size) {
+				bucket_list.back()->data.current_size = current_size == size_of_each_bucket ? current_size : (current_size % size_of_each_bucket);
+			}
+		} else {
+			if (bucket_list.current_size) {
+				bucket_list.back()->data.current_size = current_size == size_of_each_bucket ? current_size : (current_size % size_of_each_bucket);
+			}
 		}
 	}
 
@@ -5495,6 +5505,7 @@ typedef struct tfx_graph_s {
 	//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
+	tfx_graph_sampling_type sampling_type;
 	tfx_effect_descriptor effector;
 	tfxU32 uid_counter;
 #ifdef __cplusplus
@@ -5506,6 +5517,7 @@ typedef struct tfx_graph_s {
 	tfxU32 index;
 	float gamma;
 	float oscillator_influence;
+	float weight;
 } tfx_graph_t;
 
 typedef struct tfx_graph_list_s {
@@ -7079,6 +7091,7 @@ tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
+tfxAPI_EDITOR bool tfx__graph_uses_weight(tfx_graph_t *graph);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -7299,6 +7312,7 @@ tfxINTERNAL tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str);
 //Debug output functions
 tfxAPI_EDITOR void tfx__print_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type);
+tfxAPI_EDITOR tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_sampling_type type);
 
 //--------------------------------
 //Math functions
@@ -7521,6 +7535,58 @@ tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data
 
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
+
+tfxINTERNAL inline tfxWideFloat tfx__sample_graph(tfx_graph_t *graph, tfxWideFloat from, tfxWideFloat to, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat t) {
+	switch (graph->sampling_type) {
+	case tfxGraphSamplingType_bezier: {
+		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
+		tfxWideFloat t2 = tfxWideMul(t, t);
+		tfxWideFloat ti2 = tfxWideMul(ti, ti);
+		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
+		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
+		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
+	}
+	case tfxGraphSamplingType_bezier_quarter: {
+		t = tfxWideSqrt(tfxWideSqrt(t));
+		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
+		tfxWideFloat t2 = tfxWideMul(t, t);
+		tfxWideFloat ti2 = tfxWideMul(ti, ti);
+		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
+		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
+		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
+	}
+	case tfxGraphSamplingType_bezier_half: {
+		t = tfxWideSqrt(t);
+		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
+		tfxWideFloat t2 = tfxWideMul(t, t);
+		tfxWideFloat ti2 = tfxWideMul(ti, ti);
+		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
+		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
+		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
+	}
+	case tfxGraphSamplingType_bezier_squared: {
+		t = tfxWideMul(t, t);
+		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
+		tfxWideFloat t2 = tfxWideMul(t, t);
+		tfxWideFloat ti2 = tfxWideMul(ti, ti);
+		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
+		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
+		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
+	}
+	case tfxGraphSamplingType_bezier_cubed: {
+		t = tfxWideMul(tfxWideMul(t, t), t);
+		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
+		tfxWideFloat t2 = tfxWideMul(t, t);
+		tfxWideFloat ti2 = tfxWideMul(ti, ti);
+		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
+		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
+		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
+	}
+	case tfxGraphSamplingType_linear:
+		return tfxWideAdd(tfxWideMul(to, t), tfxWideMul(from, tfxWideSub(tfxWIDEONE.m, t)));
+	}
+	return tfxWideAdd(tfxWideMul(to, t), tfxWideMul(from, tfxWideSub(tfxWIDEONE.m, t)));
+}
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
