@@ -5974,7 +5974,13 @@ tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_sampling_type type) {
 	case tfxGraphSamplingType_bezier_half: name.Set("Bezier Half-Power"); break;
 	case tfxGraphSamplingType_bezier_squared: name.Set("Bezier Squared"); break;
 	case tfxGraphSamplingType_bezier_cubed: name.Set("Bezier Cubed"); break;
-	case tfxGraphSamplingType_bezier_sigmoid: name.Set("Bezier Sigmoid"); break;
+	case tfxGraphSamplingType_constant: name.Set("Constant"); break;
+	case tfxGraphSamplingType_ease_in_quad: name.Set("Ease In Quad"); break;
+	case tfxGraphSamplingType_ease_out_quad: name.Set("Ease Out Quad"); break;
+	case tfxGraphSamplingType_ease_in_out_quad: name.Set("Ease In Out Quad"); break;
+	case tfxGraphSamplingType_ease_in_cubic: name.Set("Ease In Cubic"); break;
+	case tfxGraphSamplingType_ease_out_cubic: name.Set("Ease Out Cubic"); break;
+	case tfxGraphSamplingType_ease_in_out_cubic: name.Set("Ease In Out Cubic"); break;
 	case tfxGraphSamplingType_linear: name.Set("Linear"); break;
 	}
 	return name;
@@ -7775,7 +7781,7 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 }
 
 bool tfx__graph_uses_weight(tfx_graph_t *graph) {
-	return graph->sampling_type >= tfxGraphSamplingType_bezier_quarter && graph->sampling_type <= tfxGraphSamplingType_bezier_sigmoid;
+	return graph->sampling_type >= tfxGraphSamplingType_bezier_quarter && graph->sampling_type <= tfxGraphSamplingType_bezier_cubed;
 }
 
 void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value) {
@@ -13581,6 +13587,9 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfxWideFloat height_curve1 = tfxWideSetSingle(tfx__get_graph_first_node(width_graph)->right.y);
 	tfxWideFloat height_curve2 = tfxWideSetSingle(tfx__get_graph_last_node(width_graph)->left.y);
 
+	tfx_easing_function width_easing = tfx__get_easing_function(width_graph->sampling_type);
+	tfx_easing_function height_easing = tfx__get_easing_function(height_graph->sampling_type);
+
 	if (sample_based_on_path_position) {
 		path = &library->paths[emitter.path_attributes];
 	}
@@ -13601,8 +13610,8 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideDiv(age, max_age);
 		}
 
-		const tfxWideFloat lookup_width = tfx__sample_graph(&work_entry->graphs->graphs[tfxEmitter_overtime_width_index], width_from, width_to, width_curve1, width_curve2, life);
-		const tfxWideFloat lookup_height = tfx__sample_graph(&work_entry->graphs->graphs[tfxEmitter_overtime_height_index], height_from, height_to, height_curve1, height_curve2, life);
+		const tfxWideFloat lookup_width = tfx__sample_overtime_graph(width_from, width_to, width_easing(life));
+		const tfxWideFloat lookup_height = tfx__sample_overtime_graph(height_from, height_to, height_easing(life));
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
@@ -18603,6 +18612,159 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	if (offset) {
 		tfx__bump_soa_buffer_amount(&work_entry->pm->particle_array_buffers[emitter.particles_index], offset);
 	}
+}
+
+tfxWideFloat tfx__ease_constant(tfxWideFloat t) {
+	return tfxWideSetZero;
+}
+
+tfxWideFloat tfx__ease_linear(tfxWideFloat t) {
+	return t;
+}
+
+tfxWideFloat tfx__ease_in_quad(tfxWideFloat t) {
+	return tfxWideMul(t, t);
+}
+
+tfxWideFloat tfx__ease_out_quad(tfxWideFloat t) {
+	return tfxWideMul(t, tfxWideSub(tfxWIDETWO.m, t));
+}
+
+tfxWideFloat tfx__ease_in_out_quad(tfxWideFloat t) {
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	tfxWideFloat t_squared = tfxWideMul(t, t);
+	tfxWideFloat result_first = tfxWideMul(tfxWIDETWO.m, t_squared);
+
+	tfxWideFloat two_t = tfxWideMul(tfxWIDETWO.m, t);
+	tfxWideFloat four_minus_two_t = tfxWideSub(tfxWIDEFOUR.m, two_t);
+	tfxWideFloat result_second = tfxWideSub(tfxWideMul(t, four_minus_two_t), tfxWIDEONE.m);
+
+	tfxWideFloat masked_first = tfxWideAnd(mask, result_first);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, result_second);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfxWideFloat tfx__ease_in_cubic(tfxWideFloat t) {
+	return tfxWideMul(tfxWideMul(t, t), t);
+}
+
+tfxWideFloat tfx__ease_out_cubic(tfxWideFloat t) {
+	t = tfxWideSub(tfxWIDEONE.m, t);
+	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideMul(t, t), t));
+}
+
+tfxWideFloat tfx__ease_in_out_cubic(tfxWideFloat t) {
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	tfxWideFloat t3 = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
+	t3 = tfxWideMul(tfxWideMul(t3, t3), t3);
+	tfxWideFloat t_less_than_half = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDEFOUR.m, t), t), t);
+	tfxWideFloat t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t3, tfxWIDEHALF.m));
+
+	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfxWideFloat tfx__ease_in_quart(tfxWideFloat t) {
+	return tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t);
+}
+
+tfxWideFloat tfx__ease_out_quart(tfxWideFloat t) {
+	t = tfxWideSub(tfxWIDEONE.m, t);
+	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t));
+}
+
+tfxWideFloat tfx__ease_in_out_quart(tfxWideFloat t) {
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	tfxWideFloat t_less_than_half = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDEEIGHT.m, t), t), t), t);
+
+	tfxWideFloat t4 = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
+	t4 = tfxWideMul(tfxWideMul(tfxWideMul(t4, t4), t4), t4);
+	tfxWideFloat t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t4, tfxWIDEHALF.m));
+
+	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfxWideFloat tfx__ease_in_quint(tfxWideFloat t) {
+	return tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t), t);
+}
+
+tfxWideFloat tfx__ease_out_quint(tfxWideFloat t) {
+	t = tfxWideSub(tfxWIDEONE.m, t);
+	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t), t));
+}
+
+tfxWideFloat tfx__ease_in_out_quint(tfxWideFloat t) {
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	tfxWideFloat t_less_than_half = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDESIXTEEN.m, t), t), t), t), t);
+
+	tfxWideFloat t5 = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
+	t5 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t5, t5), t5), t5), t5);
+	tfxWideFloat t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t5, tfxWIDEHALF.m));
+
+	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfxWideFloat tfx__ease_in_circular(tfxWideFloat t) {
+	//return 1 - Math.sqrt(1 - Math.pow(t, 2));
+	t = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t, t));
+	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideRSqrt(t), t));
+}
+
+tfxWideFloat tfx__ease_out_circular(tfxWideFloat t) {
+	//return sqrt(1 - Math.pow(t - 1, 2));
+	t = tfxWideSub(t, tfxWIDEONE.m);
+	t = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t, t));
+	return tfxWideMul(tfxWideRSqrt(t), t);
+}
+
+tfxWideFloat tfx__ease_in_out_circular(tfxWideFloat t) {
+	//return x < 0.5
+	//? (1 - Math.sqrt(1 - Math.pow(2 * x, 2))) / 2
+	//: (Math.sqrt(1 - Math.pow(-2 * x + 2, 2)) + 1) / 2;
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	tfxWideFloat t_less_than_half = tfxWideMul(tfxWIDETWO.m, t);
+	t_less_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t_less_than_half, t_less_than_half));
+	t_less_than_half = tfxWideMul(tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideRSqrt(t_less_than_half), t_less_than_half)), tfxWIDEHALF.m);
+
+	tfxWideFloat t_more_than_half = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
+	t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t_more_than_half, t_more_than_half));
+	t_more_than_half = tfxWideMul(tfxWideAdd(tfxWideMul(tfxWideRSqrt(t_more_than_half), t_more_than_half), tfxWIDEONE.m), tfxWIDEHALF.m);
+
+	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type) {
+	switch (type) {
+	case tfxGraphSamplingType_constant: return tfx__ease_constant;
+	case tfxGraphSamplingType_ease_in_quad: return tfx__ease_in_quad;
+	case tfxGraphSamplingType_ease_out_quad: return tfx__ease_out_quad;
+	case tfxGraphSamplingType_ease_in_out_quad: return tfx__ease_in_out_quad;
+	case tfxGraphSamplingType_ease_in_cubic: return tfx__ease_in_cubic;
+	case tfxGraphSamplingType_ease_out_cubic: return tfx__ease_out_cubic;
+	case tfxGraphSamplingType_ease_in_out_cubic: return tfx__ease_in_out_cubic;
+	case tfxGraphSamplingType_ease_in_quart: return tfx__ease_in_quad;
+	case tfxGraphSamplingType_ease_out_quart: return tfx__ease_out_quad;
+	case tfxGraphSamplingType_ease_in_out_quart: return tfx__ease_in_out_quad;
+	case tfxGraphSamplingType_ease_in_quint: return tfx__ease_in_cubic;
+	case tfxGraphSamplingType_ease_out_quint: return tfx__ease_out_cubic;
+	case tfxGraphSamplingType_ease_in_out_quint: return tfx__ease_in_out_cubic;
+	case tfxGraphSamplingType_ease_in_circular: return tfx__ease_in_circular;
+	case tfxGraphSamplingType_ease_out_circular: return tfx__ease_out_circular;
+	case tfxGraphSamplingType_ease_in_out_circular: return tfx__ease_in_out_circular;
+	}
+	return tfx__ease_linear;
 }
 
 void tfx__control_particles(tfx_work_queue_t *queue, void *data) {

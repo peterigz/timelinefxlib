@@ -1610,7 +1610,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideGreateri _mm256_cmpgt_epi32
 #define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
 #define tfxWideLessi(v1, v2) _mm256_cmpgt_epi32(v2, v1)
-#define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
+#define tfxWideLessEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
 #define tfxWideEquals(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_EQ_OS)
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideStore _mm256_store_ps
@@ -1837,7 +1837,12 @@ const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
 const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
 const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
 const tfxWideArray tfxWIDETWO = tfxWideSetConst(2.f);
+const tfxWideArray tfxWIDEMINUSTWO = tfxWideSetConst(-2.f);
 const tfxWideArray tfxWIDETHREE = tfxWideSetConst(3.f);
+const tfxWideArray tfxWIDEFOUR = tfxWideSetConst(4.f);
+const tfxWideArray tfxWIDEEIGHT = tfxWideSetConst(8.f);
+const tfxWideArray tfxWIDESIXTEEN = tfxWideSetConst(16.f);
+const tfxWideArray tfxWIDEHALF = tfxWideSetConst(0.5f);
 const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
 const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
 const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
@@ -2906,12 +2911,27 @@ typedef enum {
 
 typedef enum {
 	tfxGraphSamplingType_nodes = 0,										//Multiple nodes on graph for creating base values for particles
+	tfxGraphSamplingType_constant,		
 	tfxGraphSamplingType_bezier,									
 	tfxGraphSamplingType_bezier_quarter,	
 	tfxGraphSamplingType_bezier_half,	
 	tfxGraphSamplingType_bezier_squared,	
 	tfxGraphSamplingType_bezier_cubed,	
-	tfxGraphSamplingType_bezier_sigmoid,									
+	tfxGraphSamplingType_ease_in_quad,									
+	tfxGraphSamplingType_ease_out_quad,									
+	tfxGraphSamplingType_ease_in_out_quad,									
+	tfxGraphSamplingType_ease_in_cubic,									
+	tfxGraphSamplingType_ease_out_cubic,									
+	tfxGraphSamplingType_ease_in_out_cubic,									
+	tfxGraphSamplingType_ease_in_quart,									
+	tfxGraphSamplingType_ease_out_quart,									
+	tfxGraphSamplingType_ease_in_out_quart,									
+	tfxGraphSamplingType_ease_in_quint,									
+	tfxGraphSamplingType_ease_out_quint,									
+	tfxGraphSamplingType_ease_in_out_quint,									
+	tfxGraphSamplingType_ease_in_circular,									
+	tfxGraphSamplingType_ease_out_circular,									
+	tfxGraphSamplingType_ease_in_out_circular,									
 	tfxGraphSamplingType_linear,
 } tfx_graph_sampling_type;
 
@@ -7536,57 +7556,31 @@ tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL inline tfxWideFloat tfx__sample_graph(tfx_graph_t *graph, tfxWideFloat from, tfxWideFloat to, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat t) {
-	switch (graph->sampling_type) {
-	case tfxGraphSamplingType_bezier: {
-		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
-		tfxWideFloat t2 = tfxWideMul(t, t);
-		tfxWideFloat ti2 = tfxWideMul(ti, ti);
-		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
-		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
-		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
-	}
-	case tfxGraphSamplingType_bezier_quarter: {
-		t = tfxWideSqrt(tfxWideSqrt(t));
-		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
-		tfxWideFloat t2 = tfxWideMul(t, t);
-		tfxWideFloat ti2 = tfxWideMul(ti, ti);
-		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
-		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
-		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
-	}
-	case tfxGraphSamplingType_bezier_half: {
-		t = tfxWideSqrt(t);
-		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
-		tfxWideFloat t2 = tfxWideMul(t, t);
-		tfxWideFloat ti2 = tfxWideMul(ti, ti);
-		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
-		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
-		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
-	}
-	case tfxGraphSamplingType_bezier_squared: {
-		t = tfxWideMul(t, t);
-		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
-		tfxWideFloat t2 = tfxWideMul(t, t);
-		tfxWideFloat ti2 = tfxWideMul(ti, ti);
-		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
-		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
-		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
-	}
-	case tfxGraphSamplingType_bezier_cubed: {
-		t = tfxWideMul(tfxWideMul(t, t), t);
-		tfxWideFloat ti = tfxWideSub(tfxWIDEONE.m, t);
-		tfxWideFloat t2 = tfxWideMul(t, t);
-		tfxWideFloat ti2 = tfxWideMul(ti, ti);
-		tfxWideFloat t_ti2 = tfxWideMul(t, ti2);
-		tfxWideFloat t2_ti = tfxWideMul(t2, ti);
-		return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideMul(ti2, ti), from), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t_ti2), curve1)), tfxWideMul(tfxWideMul(tfxWIDETHREE.m, t2_ti), curve2)), tfxWideMul(tfxWideMul(t2, t), to));
-	}
-	case tfxGraphSamplingType_linear:
-		return tfxWideAdd(tfxWideMul(to, t), tfxWideMul(from, tfxWideSub(tfxWIDEONE.m, t)));
-	}
-	return tfxWideAdd(tfxWideMul(to, t), tfxWideMul(from, tfxWideSub(tfxWIDEONE.m, t)));
+typedef tfxWideFloat(*tfx_easing_function)(tfxWideFloat);
+
+tfxINTERNAL tfxWideFloat tfx__ease_constant(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_linear(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_out_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_out_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_out_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_out_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_out_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_out_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_out_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_out_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_circular(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_out_circular(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__ease_in_out_circular(tfxWideFloat t);
+
+tfxINTERNAL inline tfxWideFloat tfx__sample_overtime_graph(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
+	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
 }
+
+tfxINTERNAL tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type);
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
