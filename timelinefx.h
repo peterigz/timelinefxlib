@@ -1263,7 +1263,8 @@ typedef unsigned short tfxUShort;
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
 #define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
-#define tfxOSCILLATOR_SIN(time, frequency, amplitude) 1.f + sinf(time * frequency * 6.28318f) * amplitude
+#define tfxOSCILLATOR_SIN(t, frequency, amplitude) 0.5f + sinf((t) * (frequency) * 6.28318f) * (amplitude)
+#define tfxOSCILLATOR_WIDE_SIN(t, frequency, amplitude) tfxWideAdd(tfxWIDEHALF.m, tfxWideMul(tfxWideSin(tfxWideMul(tfxWideMul(t, frequency), tfxWIDEPI2.m)), amplitude))
 #define tfxCIRCLENODES 16
 #define tfxMIN_SEGMENT_COUNT 32 
 #define tfxMAX_SEGMENT_COUNT 1024 
@@ -1828,28 +1829,34 @@ const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3 };
 
 #endif
 
-const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.f / 3.f);
-const tfxWideArray tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
-const tfxWideArray tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
-const tfxWideArray tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
-const tfxWideArrayi tfxWIDEONEi = tfxWideSetConst(1);
-const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
-const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
-const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
-const tfxWideArray tfxWIDETWO = tfxWideSetConst(2.f);
-const tfxWideArray tfxWIDEMINUSTWO = tfxWideSetConst(-2.f);
-const tfxWideArray tfxWIDETHREE = tfxWideSetConst(3.f);
-const tfxWideArray tfxWIDEFOUR = tfxWideSetConst(4.f);
-const tfxWideArray tfxWIDEEIGHT = tfxWideSetConst(8.f);
-const tfxWideArray tfxWIDESIXTEEN = tfxWideSetConst(16.f);
-const tfxWideArray tfxWIDEHALF = tfxWideSetConst(0.5f);
-const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
-const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
-const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
-const tfxWideArray tfxPWIDESIX = tfxWideSetConst(0.6f);
-const tfxWideArray tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
-const tfxWideArray tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
-const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
+const tfxWideArray tfxWIDEF3_4        = tfxWideSetConst(1.f / 3.f);
+const tfxWideArray tfxWIDEG3_4        = tfxWideSetConst(1.0f / 6.0f);
+const tfxWideArray tfxWIDEG32_4       = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const tfxWideArray tfxWIDEG33_4       = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const tfxWideArrayi tfxWIDEONEi       = tfxWideSetConst(1);
+const tfxWideArray tfxWIDEMINUSONE    = tfxWideSetConst(-1.f);
+const tfxWideArrayi tfxWIDEMINUSONEi  = tfxWideSetConst(-1);
+const tfxWideArray tfxWIDEONE         = tfxWideSetConst(1.f);
+const tfxWideArray tfxWIDETWO         = tfxWideSetConst(2.f);
+const tfxWideArray tfxWIDEMINUSTWO    = tfxWideSetConst(-2.f);
+const tfxWideArray tfxWIDETHREE       = tfxWideSetConst(3.f);
+const tfxWideArray tfxWIDEFOUR        = tfxWideSetConst(4.f);
+const tfxWideArray tfxWIDEEIGHT       = tfxWideSetConst(8.f);
+const tfxWideArray tfxWIDESIXTEEN     = tfxWideSetConst(16.f);
+const tfxWideArray tfxWIDEHALF        = tfxWideSetConst(0.5f);
+const tfxWideArray tfxWIDE255         = tfxWideSetConst(255.f);
+const tfxWideArray tfxWIDEZERO        = tfxWideSetConst(0.f);
+const tfxWideArray tfxWIDETHIRTYTWO   = tfxWideSetConst(32.f);
+const tfxWideArray tfxPWIDESIX        = tfxWideSetConst(0.6f);
+const tfxWideArray tfxMAXUINTf        = tfxWideSetConst((float)UINT32_MAX);
+const tfxWideArray tfxDEGREERANGEMR   = tfxWideSetConst(0.392699f);
+const tfxWideArray SIGNMASK           = tfxWideSetConst(-0.f);
+const tfxWideArray tfxWIDEPI          = tfxWideSetConst(3.14159265359f);
+const tfxWideArray tfxWIDEHALFPI      = tfxWideSetConst(1.570796f);
+const tfxWideArray tfxWIDEPI2         = tfxWideSetConst(6.283185307f);
+const tfxWideArray tfxWIDEINVTWOPI    = tfxWideSetConst(0.1591549f);
+const tfxWideArray tfxWIDETHREEHALFPI = tfxWideSetConst(4.7123889f);
+const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
 
 #ifdef tfxINTEL
 typedef __m128 tfx128;
@@ -1960,9 +1967,11 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan(tfxWideFloat x)
 	//                                      tfxQUARTERPI*x
 	//                                      - x*(fabs(x) - 1)
 	//                                      *(0.2447f+0.0663f*fabs(x));
-	return tfxWideSub(tfxWideMul(tfxWideSetSingle(tfxQUARTERPI), x),
-		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK.m, x), tfxWideSetSingle(1.f))),
-			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK.m, x))))));
+	const tfxWideFloat a = tfxWideSetSingle(0.2447f);
+	const tfxWideFloat b = tfxWideSetSingle(0.0663f);
+	return tfxWideSub(tfxWideMul(tfxWIDEQUARTERPI.m, x),
+		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK.m, x), tfxWIDEONE.m)),
+			(tfxWideAdd(a, tfxWideMul(b, tfxWideAndNot(SIGNMASK.m, x))))));
 }
 
 /*
@@ -1989,20 +1998,20 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
 		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
 	tfxWideFloat atan = tfxWideAtan(ratio);
 
-	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
-	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
+	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetZero);
+	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetZero);
 
 	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, SIGNMASK.m)); //negate atan if absx<=absy & x>0
 
-	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
-	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
+	tfxWideFloat shift = tfxWIDEPI.m;
+	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWIDEHALFPI.m)); //substract tfxHALFPI if absx<=absy
 	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK.m)); //negate shift if y<=0
 	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
 
 	return tfxWideAdd(atan, shift);
 }
 
-inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
+tfxINTERNAL inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
 {
 	const tfxWideFloat c1 = tfxWideSetSingle(0.9999932946f);
 	const tfxWideFloat c2 = tfxWideSetSingle(-0.4999124376f);
@@ -2014,56 +2023,81 @@ inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
 	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(x2, tfxWideAdd(c3, tfxWideMul(c4, x2))))));
 }
 
-inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
-	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK.m, angle));
+tfxINTERNAL inline tfxWideFloat tfxWideCos(tfxWideFloat angle) {
+	//clamp to the range 0..2pi
+
+	//take absolute value
+	angle = tfxWideAndNot(SIGNMASK.m, angle);
+	//fmod(angle,twopi)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWIDEINVTWOPI.m))), tfxWIDEPI2.m)); //simplied SSE2 fmod, must always operate on absolute value
+	//if SSE4.1 is always available, comment the line above and uncomment the line below
+	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
+
+	tfxWideFloat cosangle = angle;
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI.m, angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEPI.m), SIGNMASK.m));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDETHREEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI2.m, angle))));
+
+	tfxWideFloat result = tfxWideCos52s(cosangle);
+
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideLess(angle, tfxWIDETHREEHALFPI.m)), SIGNMASK.m));
+	return result;
+}
+
+tfxINTERNAL inline tfxWideFloat tfxWideSin(tfxWideFloat angle) {
+	return tfxWideCos(tfxWideSub(tfxWIDEHALFPI.m, angle));
+}
+
+tfxINTERNAL inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
+	tfxWideFloat anglesign = tfxWideOr(tfxWIDEONE.m, tfxWideAnd(SIGNMASK.m, angle));
 
 	//clamp to the range 0..2pi
 
 	//take absolute value
 	angle = tfxWideAndNot(SIGNMASK.m, angle);
-	//fmod(angle,tfxPI2)
-	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
+	//fmod(angle,twopi)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWIDEINVTWOPI.m))), tfxWIDEPI2.m)); //simplied SSE2 fmod, must always operate on absolute value
 	//if SSE4.1 is always available, comment the line above and uncomment the line below
 	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
 
 	tfxWideFloat cosangle = angle;
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI.m, angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEPI.m), SIGNMASK.m));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDETHREEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI2.m, angle))));
 
 	tfxWideFloat result = tfxWideCos52s(cosangle);
 
-	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK.m));
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideLess(angle, tfxWIDETHREEHALFPI.m)), SIGNMASK.m));
 	*cos = result;
 
-	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m)));
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWIDEONE.m, tfxWideAnd(tfxWideGreater(angle, tfxWIDEPI.m), SIGNMASK.m)));
 	*sin = tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
 }
 
-inline void tfxWideSinCosAdd(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
-	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK.m, angle));
+tfxINTERNAL inline void tfxWideSinCosAdd(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
+	tfxWideFloat anglesign = tfxWideOr(tfxWIDEONE.m, tfxWideAnd(SIGNMASK.m, angle));
 
 	//clamp to the range 0..2pi
 
 	//take absolute value
 	angle = tfxWideAndNot(SIGNMASK.m, angle);
-	//fmod(angle,tfxPI2)
-	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
+	//fmod(angle,twopi)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWIDEINVTWOPI.m))), tfxWIDEPI2.m)); //simplied SSE2 fmod, must always operate on absolute value
 	//if SSE4.1 is always available, comment the line above and uncomment the line below
 	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
 
 	tfxWideFloat cosangle = angle;
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI.m, angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEPI.m), SIGNMASK.m));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDETHREEHALFPI.m), tfxWideXOr(cosangle, tfxWideSub(tfxWIDEPI2.m, angle))));
 
 	tfxWideFloat result = tfxWideCos52s(cosangle);
 
-	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK.m));
-	*cos = tfxWideAdd(*cos, result);
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWIDEHALFPI.m), tfxWideLess(angle, tfxWIDETHREEHALFPI.m)), SIGNMASK.m));
+	*cos = result;
 
-	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m)));
-	*sin = tfxWideAdd(*sin, tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result)))));
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWIDEONE.m, tfxWideAnd(tfxWideGreater(angle, tfxWIDEPI.m), SIGNMASK.m)));
+	*sin = tfxWideAdd(*sin, tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWIDEONE.m, tfxWideMul(result, result)))));
 }
 /*
 End of Robin Lobel code
@@ -2910,13 +2944,13 @@ typedef enum {
 } tfx_color_ramp_flag_bits;
 
 typedef enum {
-	tfxGraphSamplingType_nodes = 0,										//Multiple nodes on graph for creating base values for particles
-	tfxGraphSamplingType_constant,		
-	tfxGraphSamplingType_bezier,									
-	tfxGraphSamplingType_bezier_quarter,	
-	tfxGraphSamplingType_bezier_half,	
-	tfxGraphSamplingType_bezier_squared,	
-	tfxGraphSamplingType_bezier_cubed,	
+	tfxGraphFlags_none = 0,
+	tfxGraphFlags_use_bezier_sampling = 1 << 0,		
+	tfxGraphFlags_multi_node_graph = 1 << 1,		
+} tfx_graph_flag_bits;
+
+typedef enum {
+	tfxGraphSamplingType_constant = 0,		
 	tfxGraphSamplingType_ease_in_quad,									
 	tfxGraphSamplingType_ease_out_quad,									
 	tfxGraphSamplingType_ease_in_out_quad,									
@@ -5508,7 +5542,8 @@ typedef struct tfx_bitmap_s {
 typedef struct tfx_oscillator_s {
 	float frequency;
 	float amplitude;
-	float offset;
+	float offset_x;
+	float offset_y;
 	tfx_oscillator_type type;
 } tfx_oscillator_t;
 
@@ -5522,7 +5557,6 @@ typedef struct tfx_graph_id_s {
 } tfx_graph_id_t;
 
 typedef struct tfx_graph_s {
-	//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
 	tfx_graph_sampling_type sampling_type;
@@ -5536,8 +5570,8 @@ typedef struct tfx_graph_s {
 	tfx_graph_lookup_t lookup;
 	tfxU32 index;
 	float gamma;
-	float oscillator_influence;
-	float weight;
+	tfx_oscillator_t oscillator;
+	tfxGraphFlags flags;
 } tfx_graph_t;
 
 typedef struct tfx_graph_list_s {
@@ -7111,7 +7145,6 @@ tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
-tfxAPI_EDITOR bool tfx__graph_uses_weight(tfx_graph_t *graph);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -7557,6 +7590,7 @@ tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
 typedef tfxWideFloat(*tfx_easing_function)(tfxWideFloat);
+typedef tfxWideFloat(*tfx_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
 
 tfxINTERNAL tfxWideFloat tfx__ease_constant(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__ease_linear(tfxWideFloat t);
@@ -7576,7 +7610,16 @@ tfxINTERNAL tfxWideFloat tfx__ease_in_circular(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__ease_out_circular(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__ease_in_out_circular(tfxWideFloat t);
 
-tfxINTERNAL inline tfxWideFloat tfx__sample_overtime_graph(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
+tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat node2, tfxWideFloat curve1, tfxWideFloat curve2) {
+	tfxWideFloat u = tfxWideSub(tfxWIDEONE.m, t);
+	tfxWideFloat w1 = tfxWideMul(tfxWideMul(u, u), u);
+	tfxWideFloat w2 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), u), t);
+	tfxWideFloat w3 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), t), t);
+	tfxWideFloat w4 = tfxWideMul(tfxWideMul(t, t), t);
+	return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(w1, node1), tfxWideMul(w2, curve1)), tfxWideMul(w3, curve2)), tfxWideMul(w4, node2));
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
 	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
 }
 

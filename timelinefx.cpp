@@ -5969,19 +5969,23 @@ tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
 tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_sampling_type type) {
 	tfx_str32_t name;
 	switch (type) {
-	case tfxGraphSamplingType_bezier: name.Set("Bezier"); break;
-	case tfxGraphSamplingType_bezier_quarter: name.Set("Bezier Quarter-Power"); break;
-	case tfxGraphSamplingType_bezier_half: name.Set("Bezier Half-Power"); break;
-	case tfxGraphSamplingType_bezier_squared: name.Set("Bezier Squared"); break;
-	case tfxGraphSamplingType_bezier_cubed: name.Set("Bezier Cubed"); break;
-	case tfxGraphSamplingType_constant: name.Set("Constant"); break;
-	case tfxGraphSamplingType_ease_in_quad: name.Set("Ease In Quad"); break;
-	case tfxGraphSamplingType_ease_out_quad: name.Set("Ease Out Quad"); break;
-	case tfxGraphSamplingType_ease_in_out_quad: name.Set("Ease In Out Quad"); break;
-	case tfxGraphSamplingType_ease_in_cubic: name.Set("Ease In Cubic"); break;
-	case tfxGraphSamplingType_ease_out_cubic: name.Set("Ease Out Cubic"); break;
-	case tfxGraphSamplingType_ease_in_out_cubic: name.Set("Ease In Out Cubic"); break;
-	case tfxGraphSamplingType_linear: name.Set("Linear"); break;
+	case tfxGraphSamplingType_constant            : name.Set("Constant"); break;
+	case tfxGraphSamplingType_ease_in_quad        : name.Set("Ease In Quad"); break;
+	case tfxGraphSamplingType_ease_out_quad       : name.Set("Ease Out Quad"); break;
+	case tfxGraphSamplingType_ease_in_out_quad    : name.Set("Ease In Out Quad"); break;
+	case tfxGraphSamplingType_ease_in_cubic       : name.Set("Ease In Cubic"); break;
+	case tfxGraphSamplingType_ease_out_cubic      : name.Set("Ease Out Cubic"); break;
+	case tfxGraphSamplingType_ease_in_out_cubic   : name.Set("Ease In Out Cubic"); break;
+	case tfxGraphSamplingType_ease_in_quart		  :	name.Set("Ease In Quart"); break;
+	case tfxGraphSamplingType_ease_out_quart      :	name.Set("Ease Out Quart"); break;
+	case tfxGraphSamplingType_ease_in_out_quart   :	name.Set("Ease In Out Quart"); break;
+	case tfxGraphSamplingType_ease_in_quint       :	name.Set("Ease In Out Quint"); break;
+	case tfxGraphSamplingType_ease_out_quint      :	name.Set("Ease In Quint"); break;
+	case tfxGraphSamplingType_ease_in_out_quint   :	name.Set("Ease Out Quint"); break;
+	case tfxGraphSamplingType_ease_in_circular    :	name.Set("Ease In Circular"); break;
+	case tfxGraphSamplingType_ease_out_circular   :	name.Set("Ease Out Circular"); break;
+	case tfxGraphSamplingType_ease_in_out_circular:	name.Set("Ease In Out Circular"); break;
+	case tfxGraphSamplingType_linear              : name.Set("Linear"); break;
 	}
 	return name;
 }
@@ -7780,10 +7784,6 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	return { tfxMAX_FRAME, 20.f };
 }
 
-bool tfx__graph_uses_weight(tfx_graph_t *graph) {
-	return graph->sampling_type >= tfxGraphSamplingType_bezier_quarter && graph->sampling_type <= tfxGraphSamplingType_bezier_cubed;
-}
-
 void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value) {
 	switch (preset) {
 	case tfx_graph_preset::tfxOpacityOvertimePreset:
@@ -7956,11 +7956,12 @@ void tfx__compile_graph_overtime(tfx_graph_t *graph) {
 		if (graph->nodes.size() == 1) {
 			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
 			node.frame = 1.f;
-			graph->sampling_type = tfxGraphSamplingType_bezier;
+			graph->flags |= tfxGraphFlags_use_bezier_sampling;
+			graph->sampling_type = tfxGraphSamplingType_linear;
 			tfx__add_graph_node(graph, &node);
 		} else if (graph->nodes.size() > 2) {
 			graph->nodes.current_size = 2;
-			graph->sampling_type = tfxGraphSamplingType_bezier;
+			graph->sampling_type = tfxGraphSamplingType_linear;
 			graph->nodes.trim_buckets();
 		}
 		graph->nodes[1].frame = 1.f;
@@ -13587,6 +13588,11 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfxWideFloat height_curve1 = tfxWideSetSingle(tfx__get_graph_first_node(width_graph)->right.y);
 	tfxWideFloat height_curve2 = tfxWideSetSingle(tfx__get_graph_last_node(width_graph)->left.y);
 
+	tfxWideFloat amplitude = tfxWideSetSingle(width_graph->oscillator.amplitude);
+	tfxWideFloat frequency = tfxWideSetSingle(width_graph->oscillator.frequency);
+	tfxWideFloat offset_x = tfxWideSetSingle(width_graph->oscillator.offset_x);
+	tfxWideFloat offset_y = tfxWideSetSingle(width_graph->oscillator.offset_y);
+
 	tfx_easing_function width_easing = tfx__get_easing_function(width_graph->sampling_type);
 	tfx_easing_function height_easing = tfx__get_easing_function(height_graph->sampling_type);
 
@@ -13594,6 +13600,12 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		path = &library->paths[emitter.path_attributes];
 	}
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
+	bool width_is_bezier_graph = width_graph->flags & tfxGraphFlags_use_bezier_sampling;
+	bool height_is_bezier_graph = height_graph->flags & tfxGraphFlags_use_bezier_sampling;
+	bool width_has_oscillator = width_graph->oscillator.amplitude != 0.f;
+	bool height_has_oscillator = width_graph->oscillator.amplitude != 0.f;
+
+	tfxWideFloat lookup_width, lookup_height;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -13610,10 +13622,22 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideDiv(age, max_age);
 		}
 
-		const tfxWideFloat lookup_width = tfx__sample_overtime_graph(width_from, width_to, width_easing(life));
-		const tfxWideFloat lookup_height = tfx__sample_overtime_graph(height_from, height_to, height_easing(life));
-		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
-		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
+		tfxWideFloat width_time = width_easing(life);
+		tfxWideFloat height_time = height_easing(life);
+
+		lookup_width = width_is_bezier_graph ? tfx__bezier_sampler(width_time, width_from, width_curve1, width_curve2, width_to) : tfx__linear_sampler(width_from, width_to, width_time);
+		lookup_height = height_is_bezier_graph ? tfx__bezier_sampler(height_time, height_from, height_curve1, height_curve2, height_to) : tfx__linear_sampler(height_from, height_to, height_time);
+
+		if (width_has_oscillator) {
+			lookup_width = tfxWideMul(tfxOSCILLATOR_WIDE_SIN(width_time, tfxWideAdd(offset_x, frequency), amplitude), lookup_width);
+		}
+
+		if (height_has_oscillator) {
+			lookup_height = tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(offset_x, frequency), amplitude), lookup_height);
+		}
+
+		tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
+		tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
 		tfx__readbarrier;
 
