@@ -2601,7 +2601,10 @@ typedef enum {
 	tfxUInt64,
 	tfxFloat3,
 	tfxFloat2,
-	tfxGraph
+	tfxAttributeGraph,
+	tfxTransformGraph,
+	tfxPathGraph,
+	tfxGraphProperty,
 } tfx_data_type;
 
 //Block designators for loading effects library and other files like animation sprite data
@@ -2634,6 +2637,8 @@ typedef enum {
 	tfxEndFrameOffsets,
 	tfxStartRibbonEmitter,
 	tfxEndRibbonEmitter,
+	tfxStartGraphProperties,
+	tfxEndGraphProperties,
 } tfx_effect_library_stream_context;
 
 typedef enum {
@@ -2946,7 +2951,8 @@ typedef enum {
 typedef enum {
 	tfxGraphFlags_none = 0,
 	tfxGraphFlags_use_bezier_sampling = 1 << 0,		
-	tfxGraphFlags_multi_node_graph = 1 << 1,		
+	tfxGraphFlags_enable_oscillator = 1 << 1,		
+	tfxGraphFlags_multi_node_graph = 1 << 2,		
 } tfx_graph_flag_bits;
 
 typedef enum {
@@ -3386,6 +3392,11 @@ struct tfx_str_t {
 #define tfx_str256_t tfx_str_t<256>
 #define tfx_str512_t tfx_str_t<512>
 #define tfx_str1024_t tfx_str_t<1024>
+
+typedef struct tfx_property_pair_s {
+	tfx_str256_t property_name;
+	tfx_str64_t property_value;
+} tfx_property_pair_t;
 
 //-----------------------------------------------------------
 //Containers_and_Memory
@@ -4645,6 +4656,7 @@ typedef struct tfx_data_types_dictionary_s {
 } tfx_data_types_dictionary_t;
 
 tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
+tfxAPI_EDITOR void tfx__initialise_graph_indexes();
 
 //Global variables
 typedef struct tfx_storage_s {
@@ -4660,6 +4672,7 @@ typedef struct tfx_storage_s {
 	tfx_hasher_t hasher;
 	tfx_storage_map_t<tfx_particle_manager> particle_managers;
 	tfx_storage_map_t<tfx_library> libraries;
+	tfx_storage_map_t<tfxU32> graph_indexes;
 	tfx_vector_t<float> compiled_lookup_values;
 	tfx_ribbon_dispatch last_ribbon_dispatch;
 	tfx_particle_manager current_pm;
@@ -7027,7 +7040,7 @@ tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_effect_descriptor
 tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
@@ -7041,7 +7054,8 @@ tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_descriptor effect, t
 tfxAPI_EDITOR void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256_t *field, bool value);
 tfxAPI_EDITOR void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value);
 tfxAPI_EDITOR void tfx__assign_effector_property_str(tfx_effect_descriptor effect, tfx_str256_t *field, const char *value);
-tfxAPI_EDITOR void tfx__assign_graph_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values);
 tfxAPI_EDITOR tfx_hsv_t tfx__rgb_to_hsv(tfx_rgb_t in);
 tfxAPI_EDITOR tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in);
 tfxAPI_EDITOR tfx_rgba8_t tfx__convert_float_color(float color_array[4]);
@@ -7610,7 +7624,7 @@ tfxINTERNAL tfxWideFloat tfx__ease_in_circular(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__ease_out_circular(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__ease_in_out_circular(tfxWideFloat t);
 
-tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat node2, tfxWideFloat curve1, tfxWideFloat curve2) {
+tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat node2) {
 	tfxWideFloat u = tfxWideSub(tfxWIDEONE.m, t);
 	tfxWideFloat w1 = tfxWideMul(tfxWideMul(u, u), u);
 	tfxWideFloat w2 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), u), t);
@@ -7621,6 +7635,14 @@ tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat
 
 tfxINTERNAL inline tfxWideFloat tfx__linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
 	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
+}
+
+tfxINTERNAL inline bool tfx__graph_can_oscillate(tfx_graph_t *graph) {
+	return graph->sampling_type != tfxGraphSamplingType_constant && graph->flags & tfxGraphFlags_enable_oscillator && graph->oscillator.amplitude != 0.f && graph->oscillator.frequency != 0.f;
+}
+
+tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
+	return graph->flags & tfxGraphFlags_use_bezier_sampling && graph->sampling_type != tfxGraphSamplingType_constant;
 }
 
 tfxINTERNAL tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type);

@@ -5388,6 +5388,221 @@ bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index) {
 	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 }
 
+void tfx__initialise_graph_indexes() {
+	TFX_ASSERT(tfxStore);	//Don't call this function directly, just call InitialseTimelineFX
+	//These are for converting properties in a save file to an index to find the right graph in a lookup table
+	tfxStore->graph_indexes.Insert("global_life", tfxEffect_global_life_index);
+	tfxStore->graph_indexes.Insert("global_amount", tfxEffect_global_amount_index);
+	tfxStore->graph_indexes.Insert("global_velocity", tfxEffect_global_velocity_index);
+	tfxStore->graph_indexes.Insert("global_noise", tfxEffect_global_noise_index);
+	tfxStore->graph_indexes.Insert("global_width", tfxEffect_global_width_index);
+	tfxStore->graph_indexes.Insert("global_height", tfxEffect_global_height_index);
+	tfxStore->graph_indexes.Insert("global_weight", tfxEffect_global_weight_index);
+	tfxStore->graph_indexes.Insert("global_spin", tfxEffect_global_roll_spin_index);
+	tfxStore->graph_indexes.Insert("global_roll_spin", tfxEffect_global_roll_spin_index);
+	tfxStore->graph_indexes.Insert("global_pitch_spin", tfxEffect_global_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("global_yaw_spin", tfxEffect_global_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("global_stretch", tfxEffect_global_stretch_index);
+	tfxStore->graph_indexes.Insert("global_overal_scale", tfxEffect_global_overal_scale_index);
+	tfxStore->graph_indexes.Insert("global_intensity", tfxEffect_global_intensity_index);
+	tfxStore->graph_indexes.Insert("global_splatter", tfxEffect_global_splatter_index);
+	tfxStore->graph_indexes.Insert("global_emitter_width", tfxEffect_global_emitter_width_index);
+	tfxStore->graph_indexes.Insert("global_emitter_height", tfxEffect_global_emitter_height_index);
+	tfxStore->graph_indexes.Insert("global_emitter_depth", tfxEffect_global_emitter_depth_index);
+
+	tfxStore->graph_indexes.Insert("emitter_property_emission_pitch", tfxEmitter_property_emission_pitch_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emission_yaw", tfxEmitter_property_emission_yaw_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emission_range", tfxEmitter_property_emission_range_index);
+	tfxStore->graph_indexes.Insert("emitter_property_splatter", tfxEmitter_property_splatter_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_width", tfxEmitter_property_width_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_height", tfxEmitter_property_height_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_depth", tfxEmitter_property_depth_index);
+	tfxStore->graph_indexes.Insert("emitter_property_extrusion", tfxEmitter_property_extrusion_index);
+	tfxStore->graph_indexes.Insert("emitter_property_arc_size", tfxEmitter_property_arc_size_index);
+	tfxStore->graph_indexes.Insert("emitter_property_arc_offset", tfxEmitter_property_arc_offset_index);
+
+	//Legacy entries before ribbons were introduced. Can be removed at some point.
+	tfxStore->graph_indexes.Insert("base_life", tfxEmitter_base_life_index);
+	tfxStore->graph_indexes.Insert("base_amount", tfxEmitter_base_amount_index);
+	tfxStore->graph_indexes.Insert("base_velocity", tfxEmitter_base_velocity_index);
+	tfxStore->graph_indexes.Insert("base_width", tfxEmitter_base_width_index);
+	tfxStore->graph_indexes.Insert("base_height", tfxEmitter_base_height_index);
+	tfxStore->graph_indexes.Insert("base_weight", tfxEmitter_base_weight_index);
+	tfxStore->graph_indexes.Insert("base_spin", tfxEmitter_base_roll_spin_index);
+	tfxStore->graph_indexes.Insert("base_roll_spin", tfxEmitter_base_roll_spin_index);
+	tfxStore->graph_indexes.Insert("base_pitch_spin", tfxEmitter_base_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("base_yaw_spin", tfxEmitter_base_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("base_noise_offset", tfxEmitter_base_noise_offset_index);
+
+	tfxStore->graph_indexes.Insert("variation_life", tfxEmitter_variation_life_index);
+	tfxStore->graph_indexes.Insert("variation_amount", tfxEmitter_variation_amount_index);
+	tfxStore->graph_indexes.Insert("variation_velocity", tfxEmitter_variation_velocity_index);
+	tfxStore->graph_indexes.Insert("variation_width", tfxEmitter_variation_width_index);
+	tfxStore->graph_indexes.Insert("variation_height", tfxEmitter_variation_height_index);
+	tfxStore->graph_indexes.Insert("variation_weight", tfxEmitter_variation_weight_index);
+	tfxStore->graph_indexes.Insert("variation_spin", tfxEmitter_variation_roll_spin_index);
+	tfxStore->graph_indexes.Insert("variation_roll_spin", tfxEmitter_variation_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("variation_pitch_spin", tfxEmitter_variation_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("variation_yaw_spin", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("variation_noise_offset", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
+	tfxStore->graph_indexes.Insert("variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
+
+	tfxStore->graph_indexes.Insert("overtime_velocity", tfxEmitter_overtime_velocity_index);
+	tfxStore->graph_indexes.Insert("overtime_width", tfxEmitter_overtime_width_index);
+	tfxStore->graph_indexes.Insert("overtime_height", tfxEmitter_overtime_height_index);
+	tfxStore->graph_indexes.Insert("overtime_scale", tfxEmitter_overtime_width_index);
+	tfxStore->graph_indexes.Insert("overtime_weight", tfxEmitter_overtime_weight_index);
+	tfxStore->graph_indexes.Insert("overtime_spin", tfxEmitter_overtime_roll_spin_index);
+	tfxStore->graph_indexes.Insert("overtime_roll_spin", tfxEmitter_overtime_roll_spin_index);
+	tfxStore->graph_indexes.Insert("overtime_pitch_spin", tfxEmitter_overtime_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("overtime_yaw_spin", tfxEmitter_overtime_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("overtime_stretch", tfxEmitter_overtime_stretch_index);
+	tfxStore->graph_indexes.Insert("overtime_red", tfxEmitter_overtime_red_index);
+	tfxStore->graph_indexes.Insert("overtime_green", tfxEmitter_overtime_green_index);
+	tfxStore->graph_indexes.Insert("overtime_blue", tfxEmitter_overtime_blue_index);
+	tfxStore->graph_indexes.Insert("overtime_opacity", tfxEmitter_overtime_blendfactor_index);    //Legacy
+	tfxStore->graph_indexes.Insert("overtime_blendfactor", tfxEmitter_overtime_blendfactor_index);
+	tfxStore->graph_indexes.Insert("overtime_intensity", tfxEmitter_overtime_intensity_index);
+	tfxStore->graph_indexes.Insert("overtime_alpha_sharpness", tfxEmitter_overtime_alpha_sharpness_index);
+	tfxStore->graph_indexes.Insert("overtime_curved_alpha", tfxEmitter_overtime_curved_alpha_index);
+	tfxStore->graph_indexes.Insert("overtime_gradient_mapper", tfxEmitter_overtime_gradient_mapper_index);
+	tfxStore->graph_indexes.Insert("overtime_velocity_turbulance", tfxEmitter_overtime_velocity_turbulance_index);
+	tfxStore->graph_indexes.Insert("overtime_direction_turbulance", tfxEmitter_overtime_direction_turbulance_index);
+	tfxStore->graph_indexes.Insert("overtime_velocity_adjuster", tfxEmitter_overtime_velocity_adjuster_index);
+	tfxStore->graph_indexes.Insert("overtime_direction", tfxEmitter_overtime_direction_index);
+	tfxStore->graph_indexes.Insert("overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
+	tfxStore->graph_indexes.Insert("overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
+
+	tfxStore->graph_indexes.Insert("factor_life", tfxEmitter_factor_life_index);
+	tfxStore->graph_indexes.Insert("factor_velocity", tfxEmitter_factor_velocity_index);
+	tfxStore->graph_indexes.Insert("factor_size", tfxEmitter_factor_size_index);
+	tfxStore->graph_indexes.Insert("factor_intensity", tfxEmitter_factor_intensity_index);
+	//End of legacy entries
+
+	tfxStore->graph_indexes.Insert("emitter_property_emission_pitch", tfxEmitter_property_emission_pitch_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emission_yaw", tfxEmitter_property_emission_yaw_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emission_range", tfxEmitter_property_emission_range_index);
+	tfxStore->graph_indexes.Insert("emitter_property_splatter", tfxEmitter_property_splatter_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_width", tfxEmitter_property_width_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_height", tfxEmitter_property_height_index);
+	tfxStore->graph_indexes.Insert("emitter_property_emitter_depth", tfxEmitter_property_depth_index);
+	tfxStore->graph_indexes.Insert("emitter_property_extrusion", tfxEmitter_property_extrusion_index);
+	tfxStore->graph_indexes.Insert("emitter_property_arc_size", tfxEmitter_property_arc_size_index);
+	tfxStore->graph_indexes.Insert("emitter_property_arc_offset", tfxEmitter_property_arc_offset_index);
+
+	tfxStore->graph_indexes.Insert("emitter_base_life", tfxEmitter_base_life_index);
+	tfxStore->graph_indexes.Insert("emitter_base_amount", tfxEmitter_base_amount_index);
+	tfxStore->graph_indexes.Insert("emitter_base_velocity", tfxEmitter_base_velocity_index);
+	tfxStore->graph_indexes.Insert("emitter_base_width", tfxEmitter_base_width_index);
+	tfxStore->graph_indexes.Insert("emitter_base_height", tfxEmitter_base_height_index);
+	tfxStore->graph_indexes.Insert("emitter_base_weight", tfxEmitter_base_weight_index);
+	tfxStore->graph_indexes.Insert("emitter_base_spin", tfxEmitter_base_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_base_roll_spin", tfxEmitter_base_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_base_pitch_spin", tfxEmitter_base_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_base_yaw_spin", tfxEmitter_base_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_base_noise_offset", tfxEmitter_base_noise_offset_index);
+
+	tfxStore->graph_indexes.Insert("emitter_variation_life", tfxEmitter_variation_life_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_amount", tfxEmitter_variation_amount_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_velocity", tfxEmitter_variation_velocity_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_width", tfxEmitter_variation_width_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_height", tfxEmitter_variation_height_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_weight", tfxEmitter_variation_weight_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_spin", tfxEmitter_variation_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_roll_spin", tfxEmitter_variation_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_pitch_spin", tfxEmitter_variation_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_yaw_spin", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_noise_offset", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
+
+	tfxStore->graph_indexes.Insert("emitter_overtime_velocity", tfxEmitter_overtime_velocity_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_width", tfxEmitter_overtime_width_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_height", tfxEmitter_overtime_height_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_scale", tfxEmitter_overtime_width_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_weight", tfxEmitter_overtime_weight_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_spin", tfxEmitter_overtime_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_roll_spin", tfxEmitter_overtime_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_pitch_spin", tfxEmitter_overtime_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_yaw_spin", tfxEmitter_overtime_yaw_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_stretch", tfxEmitter_overtime_stretch_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_red", tfxEmitter_overtime_red_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_green", tfxEmitter_overtime_green_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_blue", tfxEmitter_overtime_blue_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_opacity", tfxEmitter_overtime_blendfactor_index);    //Legacy
+	tfxStore->graph_indexes.Insert("emitter_overtime_blendfactor", tfxEmitter_overtime_blendfactor_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_intensity", tfxEmitter_overtime_intensity_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_alpha_sharpness", tfxEmitter_overtime_alpha_sharpness_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_curved_alpha", tfxEmitter_overtime_curved_alpha_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_gradient_mapper", tfxEmitter_overtime_gradient_mapper_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_velocity_turbulance", tfxEmitter_overtime_velocity_turbulance_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_direction_turbulance", tfxEmitter_overtime_direction_turbulance_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_velocity_adjuster", tfxEmitter_overtime_velocity_adjuster_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_direction", tfxEmitter_overtime_direction_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
+
+	tfxStore->graph_indexes.Insert("emitter_factor_life", tfxEmitter_factor_life_index);
+	tfxStore->graph_indexes.Insert("emitter_factor_velocity", tfxEmitter_factor_velocity_index);
+	tfxStore->graph_indexes.Insert("emitter_factor_size", tfxEmitter_factor_size_index);
+	tfxStore->graph_indexes.Insert("emitter_factor_intensity", tfxEmitter_factor_intensity_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_property_splatter", tfxRibbon_property_splatter_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_emitter_width", tfxRibbon_property_width_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_emitter_height", tfxRibbon_property_height_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_emitter_depth", tfxRibbon_property_depth_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_extrusion", tfxRibbon_property_extrusion_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_arc_size", tfxRibbon_property_arc_size_index);
+	tfxStore->graph_indexes.Insert("ribbon_property_arc_offset", tfxRibbon_property_arc_offset_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_base_life", tfxRibbon_base_life_index);
+	tfxStore->graph_indexes.Insert("ribbon_base_amount", tfxRibbon_base_amount_index);
+	tfxStore->graph_indexes.Insert("ribbon_base_width", tfxRibbon_base_width_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_variation_life", tfxRibbon_variation_life_index);
+	tfxStore->graph_indexes.Insert("ribbon_variation_amount", tfxRibbon_variation_amount_index);
+	tfxStore->graph_indexes.Insert("ribbon_variation_width", tfxRibbon_variation_width_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_overtime_width", tfxRibbon_overtime_width_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_scale", tfxRibbon_overtime_width_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_red", tfxRibbon_overtime_red_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_green", tfxRibbon_overtime_green_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_blue", tfxRibbon_overtime_blue_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_opacity", tfxRibbon_overtime_blendfactor_index);    //Legacy
+	tfxStore->graph_indexes.Insert("ribbon_overtime_blendfactor", tfxRibbon_overtime_blendfactor_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_intensity", tfxRibbon_overtime_intensity_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_alpha_sharpness", tfxRibbon_overtime_alpha_sharpness_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_curved_alpha", tfxRibbon_overtime_curved_alpha_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_gradient_mapper", tfxRibbon_overtime_gradient_mapper_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_overtime_uv_offset_y", tfxRibbon_overtime_uv_offset_y_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_uv_scale_y", tfxRibbon_overtime_uv_scale_y_index);
+
+	tfxStore->graph_indexes.Insert("ribbon_overlength_intensity", tfxRibbon_overlength_intensity_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_alpha_sharpness", tfxRibbon_overlength_alpha_sharpness_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_curved_alpha", tfxRibbon_overlength_curved_alpha_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_gradient_map", tfxRibbon_overlength_gradient_map_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_width", tfxRibbon_overlength_width_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_fixed_angle", tfxRibbon_overlength_fixed_angle_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_offset", tfxRibbon_overtime_clip_offset_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_size", tfxRibbon_overtime_clip_size_index);
+
+	tfxStore->graph_indexes.Insert("transform_roll", tfxTransform_roll_index);
+	tfxStore->graph_indexes.Insert("transform_pitch", tfxTransform_pitch_index);
+	tfxStore->graph_indexes.Insert("transform_yaw", tfxTransform_yaw_index);
+	tfxStore->graph_indexes.Insert("property_emitter_roll", tfxTransform_roll_index);
+	tfxStore->graph_indexes.Insert("property_emitter_pitch", tfxTransform_pitch_index);
+	tfxStore->graph_indexes.Insert("property_emitter_yaw", tfxTransform_yaw_index);
+	tfxStore->graph_indexes.Insert("transform_translate_x", tfxTransform_translate_x_index);
+	tfxStore->graph_indexes.Insert("transform_translate_y", tfxTransform_translate_y_index);
+	tfxStore->graph_indexes.Insert("transform_translate_z", tfxTransform_translate_z_index);
+	tfxStore->graph_indexes.Insert("keyframe_translate_x", tfxTransform_translate_x_index);
+	tfxStore->graph_indexes.Insert("keyframe_translate_y", tfxTransform_translate_y_index);
+	tfxStore->graph_indexes.Insert("keyframe_translate_z", tfxTransform_translate_z_index);
+
+}
+
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	dictionary->names_and_types.init();
 	tfx_storage_map_t<tfx_data_type> &names_and_types = dictionary->names_and_types;
@@ -5477,122 +5692,128 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
 
 	//Graphs
-	names_and_types.Insert("global_life", tfxGraph);
-	names_and_types.Insert("global_amount", tfxGraph);
-	names_and_types.Insert("global_velocity", tfxGraph);
-	names_and_types.Insert("global_noise", tfxGraph);
-	names_and_types.Insert("global_width", tfxGraph);
-	names_and_types.Insert("global_height", tfxGraph);
-	names_and_types.Insert("global_weight", tfxGraph);
-	names_and_types.Insert("global_spin", tfxGraph);
-	names_and_types.Insert("global_roll_spin", tfxGraph);
-	names_and_types.Insert("global_pitch_spin", tfxGraph);
-	names_and_types.Insert("global_yaw_spin", tfxGraph);
-	names_and_types.Insert("global_stretch", tfxGraph);
-	names_and_types.Insert("global_overal_scale", tfxGraph);
-	names_and_types.Insert("global_intensity", tfxGraph);
-	names_and_types.Insert("global_splatter", tfxGraph);
-	names_and_types.Insert("global_emitter_width", tfxGraph);
-	names_and_types.Insert("global_emitter_height", tfxGraph);
-	names_and_types.Insert("global_emitter_depth", tfxGraph);
+	names_and_types.Insert("global_life", tfxAttributeGraph);
+	names_and_types.Insert("global_amount", tfxAttributeGraph);
+	names_and_types.Insert("global_velocity", tfxAttributeGraph);
+	names_and_types.Insert("global_noise", tfxAttributeGraph);
+	names_and_types.Insert("global_width", tfxAttributeGraph);
+	names_and_types.Insert("global_height", tfxAttributeGraph);
+	names_and_types.Insert("global_weight", tfxAttributeGraph);
+	names_and_types.Insert("global_spin", tfxAttributeGraph);
+	names_and_types.Insert("global_roll_spin", tfxAttributeGraph);
+	names_and_types.Insert("global_pitch_spin", tfxAttributeGraph);
+	names_and_types.Insert("global_yaw_spin", tfxAttributeGraph);
+	names_and_types.Insert("global_stretch", tfxAttributeGraph);
+	names_and_types.Insert("global_overal_scale", tfxAttributeGraph);
+	names_and_types.Insert("global_intensity", tfxAttributeGraph);
+	names_and_types.Insert("global_splatter", tfxAttributeGraph);
+	names_and_types.Insert("global_emitter_width", tfxAttributeGraph);
+	names_and_types.Insert("global_emitter_height", tfxAttributeGraph);
+	names_and_types.Insert("global_emitter_depth", tfxAttributeGraph);
 
-	names_and_types.Insert("property_emission_pitch", tfxGraph);
-	names_and_types.Insert("property_emission_yaw", tfxGraph);
-	names_and_types.Insert("property_emission_range", tfxGraph);
-	names_and_types.Insert("property_splatter", tfxGraph);
-	names_and_types.Insert("property_emitter_width", tfxGraph);
-	names_and_types.Insert("property_emitter_height", tfxGraph);
-	names_and_types.Insert("property_emitter_depth", tfxGraph);
-	names_and_types.Insert("property_extrusion", tfxGraph);
-	names_and_types.Insert("property_arc_size", tfxGraph);
-	names_and_types.Insert("property_arc_offset", tfxGraph);
+	names_and_types.Insert("property_emission_pitch", tfxAttributeGraph);
+	names_and_types.Insert("property_emission_yaw", tfxAttributeGraph);
+	names_and_types.Insert("property_emission_range", tfxAttributeGraph);
+	names_and_types.Insert("property_splatter", tfxAttributeGraph);
+	names_and_types.Insert("property_emitter_width", tfxAttributeGraph);
+	names_and_types.Insert("property_emitter_height", tfxAttributeGraph);
+	names_and_types.Insert("property_emitter_depth", tfxAttributeGraph);
+	names_and_types.Insert("property_extrusion", tfxAttributeGraph);
+	names_and_types.Insert("property_arc_size", tfxAttributeGraph);
+	names_and_types.Insert("property_arc_offset", tfxAttributeGraph);
 
-	names_and_types.Insert("base_life", tfxGraph);
-	names_and_types.Insert("base_amount", tfxGraph);
-	names_and_types.Insert("base_velocity", tfxGraph);
-	names_and_types.Insert("base_width", tfxGraph);
-	names_and_types.Insert("base_height", tfxGraph);
-	names_and_types.Insert("base_weight", tfxGraph);
-	names_and_types.Insert("base_spin", tfxGraph);
-	names_and_types.Insert("base_roll_spin", tfxGraph);
-	names_and_types.Insert("base_pitch_spin", tfxGraph);
-	names_and_types.Insert("base_yaw_spin", tfxGraph);
-	names_and_types.Insert("base_noise_offset", tfxGraph);
+	names_and_types.Insert("base_life", tfxAttributeGraph);
+	names_and_types.Insert("base_amount", tfxAttributeGraph);
+	names_and_types.Insert("base_velocity", tfxAttributeGraph);
+	names_and_types.Insert("base_width", tfxAttributeGraph);
+	names_and_types.Insert("base_height", tfxAttributeGraph);
+	names_and_types.Insert("base_weight", tfxAttributeGraph);
+	names_and_types.Insert("base_spin", tfxAttributeGraph);
+	names_and_types.Insert("base_roll_spin", tfxAttributeGraph);
+	names_and_types.Insert("base_pitch_spin", tfxAttributeGraph);
+	names_and_types.Insert("base_yaw_spin", tfxAttributeGraph);
+	names_and_types.Insert("base_noise_offset", tfxAttributeGraph);
 
-	names_and_types.Insert("variation_life", tfxGraph);
-	names_and_types.Insert("variation_amount", tfxGraph);
-	names_and_types.Insert("variation_velocity", tfxGraph);
-	names_and_types.Insert("variation_width", tfxGraph);
-	names_and_types.Insert("variation_height", tfxGraph);
-	names_and_types.Insert("variation_weight", tfxGraph);
-	names_and_types.Insert("variation_spin", tfxGraph);
-	names_and_types.Insert("variation_roll_spin", tfxGraph);
-	names_and_types.Insert("variation_pitch_spin", tfxGraph);
-	names_and_types.Insert("variation_yaw_spin", tfxGraph);
-	names_and_types.Insert("variation_noise_offset", tfxGraph);
-	names_and_types.Insert("variation_noise_resolution", tfxGraph);
-	names_and_types.Insert("variation_motion_randomness", tfxGraph);
+	names_and_types.Insert("variation_life", tfxAttributeGraph);
+	names_and_types.Insert("variation_amount", tfxAttributeGraph);
+	names_and_types.Insert("variation_velocity", tfxAttributeGraph);
+	names_and_types.Insert("variation_width", tfxAttributeGraph);
+	names_and_types.Insert("variation_height", tfxAttributeGraph);
+	names_and_types.Insert("variation_weight", tfxAttributeGraph);
+	names_and_types.Insert("variation_spin", tfxAttributeGraph);
+	names_and_types.Insert("variation_roll_spin", tfxAttributeGraph);
+	names_and_types.Insert("variation_pitch_spin", tfxAttributeGraph);
+	names_and_types.Insert("variation_yaw_spin", tfxAttributeGraph);
+	names_and_types.Insert("variation_noise_offset", tfxAttributeGraph);
+	names_and_types.Insert("variation_noise_resolution", tfxAttributeGraph);
+	names_and_types.Insert("variation_motion_randomness", tfxAttributeGraph);
 
-	names_and_types.Insert("overtime_velocity", tfxGraph);
-	names_and_types.Insert("overtime_width", tfxGraph);
-	names_and_types.Insert("overtime_height", tfxGraph);
-	names_and_types.Insert("overtime_scale", tfxGraph);
-	names_and_types.Insert("overtime_weight", tfxGraph);
-	names_and_types.Insert("overtime_spin", tfxGraph);
-	names_and_types.Insert("overtime_roll_spin", tfxGraph);
-	names_and_types.Insert("overtime_pitch_spin", tfxGraph);
-	names_and_types.Insert("overtime_yaw_spin", tfxGraph);
-	names_and_types.Insert("overtime_stretch", tfxGraph);
-	names_and_types.Insert("overtime_red", tfxGraph);
-	names_and_types.Insert("overtime_green", tfxGraph);
-	names_and_types.Insert("overtime_blue", tfxGraph);
-	names_and_types.Insert("overtime_opacity", tfxGraph);    //Legacy
-	names_and_types.Insert("overtime_blendfactor", tfxGraph);
-	names_and_types.Insert("overtime_intensity", tfxGraph);
-	names_and_types.Insert("overtime_red_hint", tfxGraph);
-	names_and_types.Insert("overtime_green_hint", tfxGraph);
-	names_and_types.Insert("overtime_blue_hint", tfxGraph);
-	names_and_types.Insert("overtime_blendfactor_hint", tfxGraph);
-	names_and_types.Insert("overtime_alpha_sharpness", tfxGraph);
-	names_and_types.Insert("overtime_curved_alpha", tfxGraph);
-	names_and_types.Insert("overtime_gradient_mapper", tfxGraph);
-	names_and_types.Insert("overtime_velocity_turbulance", tfxGraph);
-	names_and_types.Insert("overtime_direction_turbulance", tfxGraph);
-	names_and_types.Insert("overtime_velocity_adjuster", tfxGraph);
-	names_and_types.Insert("overtime_direction", tfxGraph);
-	names_and_types.Insert("overtime_noise_resolution", tfxGraph);
-	names_and_types.Insert("overtime_motion_randomness", tfxGraph);
-	names_and_types.Insert("overtime_uv_offset_y", tfxGraph);
-	names_and_types.Insert("overtime_uv_scale_y", tfxGraph);
+	names_and_types.Insert("overtime_velocity", tfxAttributeGraph);
+	names_and_types.Insert("overtime_width", tfxAttributeGraph);
+	names_and_types.Insert("overtime_height", tfxAttributeGraph);
+	names_and_types.Insert("overtime_scale", tfxAttributeGraph);
+	names_and_types.Insert("overtime_weight", tfxAttributeGraph);
+	names_and_types.Insert("overtime_spin", tfxAttributeGraph);
+	names_and_types.Insert("overtime_roll_spin", tfxAttributeGraph);
+	names_and_types.Insert("overtime_pitch_spin", tfxAttributeGraph);
+	names_and_types.Insert("overtime_yaw_spin", tfxAttributeGraph);
+	names_and_types.Insert("overtime_stretch", tfxAttributeGraph);
+	names_and_types.Insert("overtime_red", tfxAttributeGraph);
+	names_and_types.Insert("overtime_green", tfxAttributeGraph);
+	names_and_types.Insert("overtime_blue", tfxAttributeGraph);
+	names_and_types.Insert("overtime_opacity", tfxAttributeGraph);    //Legacy
+	names_and_types.Insert("overtime_blendfactor", tfxAttributeGraph);
+	names_and_types.Insert("overtime_intensity", tfxAttributeGraph);
+	names_and_types.Insert("overtime_red_hint", tfxAttributeGraph);
+	names_and_types.Insert("overtime_green_hint", tfxAttributeGraph);
+	names_and_types.Insert("overtime_blue_hint", tfxAttributeGraph);
+	names_and_types.Insert("overtime_blendfactor_hint", tfxAttributeGraph);
+	names_and_types.Insert("overtime_alpha_sharpness", tfxAttributeGraph);
+	names_and_types.Insert("overtime_curved_alpha", tfxAttributeGraph);
+	names_and_types.Insert("overtime_gradient_mapper", tfxAttributeGraph);
+	names_and_types.Insert("overtime_velocity_turbulance", tfxAttributeGraph);
+	names_and_types.Insert("overtime_direction_turbulance", tfxAttributeGraph);
+	names_and_types.Insert("overtime_velocity_adjuster", tfxAttributeGraph);
+	names_and_types.Insert("overtime_direction", tfxAttributeGraph);
+	names_and_types.Insert("overtime_noise_resolution", tfxAttributeGraph);
+	names_and_types.Insert("overtime_motion_randomness", tfxAttributeGraph);
+	names_and_types.Insert("overtime_uv_offset_y", tfxAttributeGraph);
+	names_and_types.Insert("overtime_uv_scale_y", tfxAttributeGraph);
 
-	names_and_types.Insert("factor_life", tfxGraph);
-	names_and_types.Insert("factor_velocity", tfxGraph);
-	names_and_types.Insert("factor_size", tfxGraph);
-	names_and_types.Insert("factor_intensity", tfxGraph);
+	names_and_types.Insert("factor_life", tfxAttributeGraph);
+	names_and_types.Insert("factor_velocity", tfxAttributeGraph);
+	names_and_types.Insert("factor_size", tfxAttributeGraph);
+	names_and_types.Insert("factor_intensity", tfxAttributeGraph);
 
-	names_and_types.Insert("overlength_intensity", tfxGraph);
-	names_and_types.Insert("overlength_alpha_sharpness", tfxGraph);
-	names_and_types.Insert("overlength_curved_alpha", tfxGraph);
-	names_and_types.Insert("overlength_gradient_map", tfxGraph);
-	names_and_types.Insert("overlength_width", tfxGraph);
-	names_and_types.Insert("overlength_fixed_angle", tfxGraph);
-	names_and_types.Insert("overtime_clip_offset", tfxGraph);
-	names_and_types.Insert("overtime_clip_size", tfxGraph);
+	names_and_types.Insert("overlength_intensity", tfxAttributeGraph);
+	names_and_types.Insert("overlength_alpha_sharpness", tfxAttributeGraph);
+	names_and_types.Insert("overlength_curved_alpha", tfxAttributeGraph);
+	names_and_types.Insert("overlength_gradient_map", tfxAttributeGraph);
+	names_and_types.Insert("overlength_width", tfxAttributeGraph);
+	names_and_types.Insert("overlength_fixed_angle", tfxAttributeGraph);
+	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
+	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 
-	names_and_types.Insert("transform_roll", tfxGraph);
-	names_and_types.Insert("transform_pitch", tfxGraph);
-	names_and_types.Insert("transform_yaw", tfxGraph);
-	names_and_types.Insert("transform_translate_x", tfxGraph);
-	names_and_types.Insert("transform_translate_y", tfxGraph);
-	names_and_types.Insert("transform_translate_z", tfxGraph);
+	names_and_types.Insert("transform_roll", tfxTransformGraph);
+	names_and_types.Insert("transform_pitch", tfxTransformGraph);
+	names_and_types.Insert("transform_yaw", tfxTransformGraph);
+	names_and_types.Insert("propery_emitter_roll", tfxTransformGraph);	//legacy
+	names_and_types.Insert("propery_emitter_pitch", tfxTransformGraph);	//legacy
+	names_and_types.Insert("propery_emitter_yaw", tfxTransformGraph);	//legacy
+	names_and_types.Insert("transform_translate_x", tfxTransformGraph);
+	names_and_types.Insert("transform_translate_y", tfxTransformGraph);
+	names_and_types.Insert("transform_translate_z", tfxTransformGraph);
+	names_and_types.Insert("keyframe_translate_x", tfxTransformGraph);	//legacy
+	names_and_types.Insert("keyframe_translate_y", tfxTransformGraph);	//legacy
+	names_and_types.Insert("keyframe_translate_z", tfxTransformGraph);	//legacy
 
-	names_and_types.Insert("path_pitch", tfxGraph);
-	names_and_types.Insert("path_yaw", tfxGraph);
-	names_and_types.Insert("path_roll", tfxGraph);
-	names_and_types.Insert("path_offset_x", tfxGraph);
-	names_and_types.Insert("path_offset_y", tfxGraph);
-	names_and_types.Insert("path_offset_z", tfxGraph);
-	names_and_types.Insert("distance", tfxGraph);
+	names_and_types.Insert("path_pitch", tfxPathGraph);
+	names_and_types.Insert("path_yaw", tfxPathGraph);
+	names_and_types.Insert("path_roll", tfxPathGraph);
+	names_and_types.Insert("path_offset_x", tfxPathGraph);
+	names_and_types.Insert("path_offset_y", tfxPathGraph);
+	names_and_types.Insert("path_offset_z", tfxPathGraph);
+	names_and_types.Insert("path_distance", tfxPathGraph);
 
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
@@ -5725,185 +5946,59 @@ int tfx_ValidateEffectPackage(const char *filename) {
 	return 0;
 }
 
-void tfx__assign_graph_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
+void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
+	tfx_str256_t graph_name = (*values)[0];
+	tmpStack(tfx_str256_t, pair);
+	for (tfx_str256_t &prop : *values) {
+		tfx__split_string_stack(prop.c_str(), prop.Length(), &pair);
+		if (pair.size() != 2) continue;
+	//	if(pair[0] == "sampling_type") 
+	}
+}
+
+void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
 	if (values->size() > 0) {
-		tfxU32 graph_index = effect->graph_list_index;
+		tfxU32 graph_list_index = effect->graph_list_index;
 		tfxU32 transform_index = effect->transform_index;
-		if ((*values)[0] == "global_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_amount_index], &n); }
-		if ((*values)[0] == "global_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_height_index], &n); }
-		if ((*values)[0] == "global_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_width_index], &n); }
-		if ((*values)[0] == "global_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_life_index], &n); }
-		if ((*values)[0] == "global_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_intensity_index], &n); }
-		if ((*values)[0] == "global_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_roll_spin_index], &n); }
-		if ((*values)[0] == "global_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_roll_spin_index], &n); }
-		if ((*values)[0] == "global_pitch_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_pitch_spin_index], &n); }
-		if ((*values)[0] == "global_yaw_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_yaw_spin_index], &n); }
-		if ((*values)[0] == "global_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_splatter_index], &n); }
-		if ((*values)[0] == "global_stretch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_stretch_index], &n); }
-		if ((*values)[0] == "global_overal_scale") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_overal_scale_index], &n); }
-		if ((*values)[0] == "global_weight") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_weight_index], &n); }
-		if ((*values)[0] == "global_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_velocity_index], &n); }
-		if ((*values)[0] == "global_noise") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_noise_index], &n); }
-		if ((*values)[0] == "global_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_emitter_width_index], &n); }
-		if ((*values)[0] == "global_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_emitter_height_index], &n); }
-		if ((*values)[0] == "global_emitter_depth") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEffect_global_emitter_depth_index], &n); }
-
-		if ((*values)[0] == "global_effect_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
-		if ((*values)[0] == "global_effect_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
-		if ((*values)[0] == "global_effect_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_pitch_index], &n); }
-		if ((*values)[0] == "global_effect_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_yaw_index], &n); }
-		if ((*values)[0] == "transform_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
-		if ((*values)[0] == "transform_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_pitch_index], &n); }
-		if ((*values)[0] == "transform_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_yaw_index], &n); }
-		if ((*values)[0] == "transform_translate_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_x_index], &n); }
-		if ((*values)[0] == "transform_translate_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_y_index], &n); }
-		if ((*values)[0] == "transform_translate_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_z_index], &n); }
-
-		if (effect->type == tfxEffectType) {
-			if ((*values)[0] == "keyframe_translate_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_x_index], &n); }
-			if ((*values)[0] == "keyframe_translate_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_y_index], &n); }
-			if ((*values)[0] == "keyframe_translate_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_z_index], &n); }
+		tfx_str256_t property_name = (*values)[0];
+		if (!tfxStore->data_types.names_and_types.ValidName(property_name.c_str())) {
+			return;
+		}
+		tfx_data_type data_type = tfxStore->data_types.names_and_types.At(property_name.c_str());
+		if (data_type == tfxPathGraph) {
+			if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_x, &n); }
+			if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_y, &n); }
+			if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_z, &n); }
+			if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_x, &n); }
+			if ((*values)[0] == "path_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_y, &n); }
+			if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_z, &n); }
+			if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.distance, &n); }
 		} else {
-			if ((*values)[0] == "keyframe_translate_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_x_index], &n); }
-			if ((*values)[0] == "keyframe_translate_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_y_index], &n); }
-			if ((*values)[0] == "keyframe_translate_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_translate_z_index], &n); }
-			if ((*values)[0] == "property_emitter_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
-			if ((*values)[0] == "property_emitter_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_roll_index], &n); }
-			if ((*values)[0] == "property_emitter_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_pitch_index], &n); }
-			if ((*values)[0] == "property_emitter_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[tfxTransform_yaw_index], &n); }
+			if (data_type != tfxTransformGraph) {
+				switch (effect->type) {
+				case tfxEmitterType: property_name.Setf("emitter_%s", (*values)[0]); break;
+				case tfxRibbonType: property_name.Setf("ribbon_%s", (*values)[0]); break;
+				}
+			}
+			if (tfxStore->graph_indexes.ValidName(property_name.c_str())) {
+				tfxU32 graph_index = tfxStore->graph_indexes.At(property_name.c_str());
+				tfx_attribute_node_t n;
+				tfx__assign_node_data(&n, values);
+				switch (data_type) {
+				case tfxAttributeGraph: tfx__add_graph_node(&effect->library->graphs[graph_list_index].graphs[graph_index], &n); break;
+				case tfxTransformGraph: tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[graph_index], &n); break;
+				}
+			} else {
+				tfxPrint("%s graph index was found to be invalid.", property_name.c_str());
+			}
 		}
-
-		if (effect->type == tfxEmitterType) {
-			if ((*values)[0] == "base_arc_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_offset_index], &n); }
-			if ((*values)[0] == "base_arc_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_size_index], &n); }
-			if ((*values)[0] == "base_emission_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_pitch_index], &n); }
-			if ((*values)[0] == "base_emission_range") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_range_index], &n); }
-			if ((*values)[0] == "base_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_height_index], &n); }
-			if ((*values)[0] == "base_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_width_index], &n); }
-			if ((*values)[0] == "base_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_splatter_index], &n); }
-
-			if ((*values)[0] == "property_arc_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_offset_index], &n); }
-			if ((*values)[0] == "property_arc_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_size_index], &n); }
-			if ((*values)[0] == "property_extrusion") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_extrusion_index], &n); }
-			if ((*values)[0] == "property_emission_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_pitch_index], &n); }
-			if ((*values)[0] == "property_emission_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_pitch_index], &n); }
-			if ((*values)[0] == "property_emission_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_yaw_index], &n); }
-			if ((*values)[0] == "property_emission_range") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_emission_range_index], &n); }
-			if ((*values)[0] == "property_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_height_index], &n); }
-			if ((*values)[0] == "property_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_width_index], &n); }
-			if ((*values)[0] == "property_emitter_depth") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_depth_index], &n); }
-			if ((*values)[0] == "property_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_splatter_index], &n); }
-
-			if ((*values)[0] == "base_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_amount_index], &n); }
-			if ((*values)[0] == "base_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_life_index], &n); }
-			if ((*values)[0] == "base_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_height_index], &n); }
-			if ((*values)[0] == "base_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_width_index], &n); }
-			if ((*values)[0] == "base_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_roll_spin_index], &n); }
-			if ((*values)[0] == "base_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_roll_spin_index], &n); }
-			if ((*values)[0] == "base_pitch_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_pitch_spin_index], &n); }
-			if ((*values)[0] == "base_yaw_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_yaw_spin_index], &n); }
-			if ((*values)[0] == "base_noise_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_noise_offset_index], &n); }
-			if ((*values)[0] == "base_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_velocity_index], &n); }
-			if ((*values)[0] == "base_weight") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_weight_index], &n); }
-
-			if ((*values)[0] == "variation_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_amount_index], &n); }
-			if ((*values)[0] == "variation_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_height_index], &n); }
-			if ((*values)[0] == "variation_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_width_index], &n); }
-			if ((*values)[0] == "variation_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_life_index], &n); }
-			if ((*values)[0] == "variation_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_velocity_index], &n); }
-			if ((*values)[0] == "variation_weight") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_weight_index], &n); }
-			if ((*values)[0] == "variation_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_roll_spin_index], &n); }
-			if ((*values)[0] == "variation_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_roll_spin_index], &n); }
-			if ((*values)[0] == "variation_pitch_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_pitch_spin_index], &n); }
-			if ((*values)[0] == "variation_yaw_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_yaw_spin_index], &n); }
-			if ((*values)[0] == "variation_noise_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_noise_offset_index], &n); }
-			if ((*values)[0] == "variation_noise_resolution") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_noise_resolution_index], &n); }
-			if ((*values)[0] == "variation_motion_randomness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_motion_randomness_index], &n); }
-
-			if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_red_index], &n); }
-			if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_green_index], &n); }
-			if ((*values)[0] == "overtime_blue") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blue_index], &n); }
-			if ((*values)[0] == "overtime_blendfactor") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blendfactor_index], &n); }
-			if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blendfactor_index], &n); }    //Legacy
-			if ((*values)[0] == "overtime_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_intensity_index], &n); }
-			if ((*values)[0] == "overtime_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_alpha_sharpness_index], &n); }
-			if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_curved_alpha_index], &n); }
-			if ((*values)[0] == "overtime_gradient_mapper") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_gradient_mapper_index], &n); }
-			if ((*values)[0] == "overtime_velocity_turbulance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], &n); }
-			if ((*values)[0] == "overtime_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_roll_spin_index], &n); }
-			if ((*values)[0] == "overtime_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_roll_spin_index], &n); }
-			if ((*values)[0] == "overtime_pitch_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_pitch_spin_index], &n); }
-			if ((*values)[0] == "overtime_yaw_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_yaw_spin_index], &n); }
-			if ((*values)[0] == "overtime_stretch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_stretch_index], &n); }
-			if ((*values)[0] == "overtime_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_velocity_index], &n); }
-			if ((*values)[0] == "overtime_weight") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_weight_index], &n); }
-			if ((*values)[0] == "overtime_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_width_index], &n); }
-			if ((*values)[0] == "overtime_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_height_index], &n); }
-			if ((*values)[0] == "overtime_direction_turbulance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_direction_turbulance_index], &n); }
-			if ((*values)[0] == "overtime_direction") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_direction_index], &n); }
-			if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], &n); }
-			if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_noise_resolution_index], &n); }
-			if ((*values)[0] == "overtime_motion_randomness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_motion_randomness_index], &n); }
-
-			if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_life_index], &n); }
-			if ((*values)[0] == "factor_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_velocity_index], &n); }
-			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_size_index], &n); }
-			if ((*values)[0] == "factor_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_intensity_index], &n); }
-		} else if (effect->type == tfxRibbonType) {
-			if ((*values)[0] == "property_arc_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_arc_offset_index], &n); }
-			if ((*values)[0] == "property_arc_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_arc_size_index], &n); }
-			if ((*values)[0] == "property_extrusion") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_extrusion_index], &n); }
-			if ((*values)[0] == "property_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_height_index], &n); }
-			if ((*values)[0] == "property_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_width_index], &n); }
-			if ((*values)[0] == "property_emitter_depth") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_depth_index], &n); }
-			if ((*values)[0] == "property_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_splatter_index], &n); }
-
-			if ((*values)[0] == "base_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_amount_index], &n); }
-			if ((*values)[0] == "base_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_life_index], &n); }
-			if ((*values)[0] == "base_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_width_index], &n); }
-
-			if ((*values)[0] == "variation_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_amount_index], &n); }
-			if ((*values)[0] == "variation_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_width_index], &n); }
-			if ((*values)[0] == "variation_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_life_index], &n); }
-
-			if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_red_index], &n); }
-			if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_green_index], &n); }
-			if ((*values)[0] == "overtime_blue") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blue_index], &n); }
-			if ((*values)[0] == "overtime_blendfactor") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blendfactor_index], &n); }
-			if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blendfactor_index], &n); }    //Legacy
-			if ((*values)[0] == "overtime_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_intensity_index], &n); }
-			if ((*values)[0] == "overtime_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], &n); }
-			if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_curved_alpha_index], &n); }
-			if ((*values)[0] == "overtime_gradient_mapper") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_gradient_mapper_index], &n); }
-			if ((*values)[0] == "overtime_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_width_index], &n); }
-			if ((*values)[0] == "overtime_scale") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_scale_index], &n); }
-			if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_offset_y_index], &n); }
-			if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_scale_y_index], &n); }
-
-			if ((*values)[0] == "overlength_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_intensity_index], &n); }
-			if ((*values)[0] == "overlength_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], &n); }
-			if ((*values)[0] == "overlength_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_curved_alpha_index], &n); }
-			if ((*values)[0] == "overlength_gradient_map") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_gradient_map_index], &n); }
-			if ((*values)[0] == "overlength_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_width_index], &n); }
-			if ((*values)[0] == "overlength_fixed_angle") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_fixed_angle_index], &n); }
-			if ((*values)[0] == "overtime_clip_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_offset_index], &n); }
-			if ((*values)[0] == "overtime_clip_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_size_index], &n); }
-		}
-
-		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_x, &n); }
-		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_y, &n); }
-		if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.angle_z, &n); }
-		if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_x, &n); }
-		if ((*values)[0] == "path_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_y, &n); }
-		if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_z, &n); }
-		if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
-			tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.distance, &n); }
 	}
 }
 
@@ -6514,7 +6609,7 @@ void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t
 			tfx__assign_effector_property_str(effect, &property_name, value);
 			break;
 		}
-		case tfxGraph: {
+		case tfxAttributeGraph: {
 			tfx_line_t line;
 			line.start = value;
 			line.length = (int)strlen(value);
@@ -6522,7 +6617,7 @@ void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t
 			tfx_vector_t<tfx_str256_t> values;
 			values.push_back(property_name);
 			tfx__split_string_stack(line.start, line.length, &values);
-			tfx__assign_graph_data(effect, &values);
+			tfx__assign_graph_node_data(effect, &values);
 			break;
 		}
 	}
@@ -6960,9 +7055,46 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 	}
 }
 
-void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file) {
+void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file) {
+	tfx_str256_t property_name;
+	switch (descriptor->type) {
+	case tfxEffectType: property_name.Setf("%s", name); break;
+	case tfxEmitterType: property_name.Setf("%s_%s", "emitter", name); break;
+	case tfxRibbonType: property_name.Setf("%s_%s", "ribbon", name); break;
+	}
+	file->AddLine(
+		"%s,"
+		"sampling_type=%i,"
+		"use_bezier_sampling=%i,"
+		"multi_node=%i,"
+		"enable_oscillator=%i,"
+		"oscillator_type=%i,"
+		"oscillator_frequency=%f,"
+		"oscillator_amplitude=%f,"
+		"oscillator_offset_x=%f,"
+		"oscillator_offset_y=%f",
+		property_name.c_str(),
+		graph->sampling_type,
+		graph->flags & tfxGraphFlags_use_bezier_sampling,
+		graph->flags & tfxGraphFlags_multi_node_graph,
+		graph->flags & tfxGraphFlags_enable_oscillator,
+		graph->oscillator.type,
+		graph->oscillator.frequency,
+		graph->oscillator.amplitude,
+		graph->oscillator.offset_x,
+		graph->oscillator.offset_y
+	);
 	for (tfxBucketLoop(graph->nodes, i)) {
-		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", 
+			name, 
+			graph->nodes[i].frame, 
+			graph->nodes[i].value, 
+			(graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), 
+			graph->nodes[i].left.x, 
+			graph->nodes[i].left.y, 
+			graph->nodes[i].right.x, 
+			graph->nodes[i].right.y
+		);
 	}
 }
 
@@ -7636,6 +7768,7 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 }
 
 void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node, float max_frames) {
+	graph->sampling_type = tfxGraphSamplingType_linear;
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
 	if (!max_frames) {
@@ -7957,11 +8090,9 @@ void tfx__compile_graph_overtime(tfx_graph_t *graph) {
 			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
 			node.frame = 1.f;
 			graph->flags |= tfxGraphFlags_use_bezier_sampling;
-			graph->sampling_type = tfxGraphSamplingType_linear;
 			tfx__add_graph_node(graph, &node);
 		} else if (graph->nodes.size() > 2) {
 			graph->nodes.current_size = 2;
-			graph->sampling_type = tfxGraphSamplingType_linear;
 			graph->nodes.trim_buckets();
 		}
 		graph->nodes[1].frame = 1.f;
@@ -9145,11 +9276,12 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 					error |= tfxErrorCode_some_data_not_loaded;
 				}
 			} else if (context == tfxStartGraphs && (effect_stack.back()->type == tfxEmitterType || effect_stack.back()->type == tfxRibbonType)) {
-				tfx__assign_graph_data(effect_stack.back(), &pair);
+				tfx__assign_graph_node_data(effect_stack.back(), &pair);
 			} else if (context == tfxStartGraphs && effect_stack.back()->type == tfxEffectType) {
 				if (effect_stack.size() <= 2) {
-					tfx__assign_graph_data(effect_stack.back(), &pair);
+					tfx__assign_graph_node_data(effect_stack.back(), &pair);
 				}
+			} else if (context == tfxStartGraphProperties) {
 			} else if (context == tfxStartStage) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
@@ -13588,10 +13720,15 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfxWideFloat height_curve1 = tfxWideSetSingle(tfx__get_graph_first_node(width_graph)->right.y);
 	tfxWideFloat height_curve2 = tfxWideSetSingle(tfx__get_graph_last_node(width_graph)->left.y);
 
-	tfxWideFloat amplitude = tfxWideSetSingle(width_graph->oscillator.amplitude);
-	tfxWideFloat frequency = tfxWideSetSingle(width_graph->oscillator.frequency);
-	tfxWideFloat offset_x = tfxWideSetSingle(width_graph->oscillator.offset_x);
-	tfxWideFloat offset_y = tfxWideSetSingle(width_graph->oscillator.offset_y);
+	tfxWideFloat width_amplitude = tfxWideSetSingle(width_graph->oscillator.amplitude);
+	tfxWideFloat width_frequency = tfxWideSetSingle(width_graph->oscillator.frequency);
+	tfxWideFloat width_offset_x = tfxWideSetSingle(width_graph->oscillator.offset_x);
+	tfxWideFloat width_offset_y = tfxWideSetSingle(width_graph->oscillator.offset_y);
+
+	tfxWideFloat height_amplitude = tfxWideSetSingle(height_graph->oscillator.amplitude);
+	tfxWideFloat height_frequency = tfxWideSetSingle(height_graph->oscillator.frequency);
+	tfxWideFloat height_offset_x = tfxWideSetSingle(height_graph->oscillator.offset_x);
+	tfxWideFloat height_offset_y = tfxWideSetSingle(height_graph->oscillator.offset_y);
 
 	tfx_easing_function width_easing = tfx__get_easing_function(width_graph->sampling_type);
 	tfx_easing_function height_easing = tfx__get_easing_function(height_graph->sampling_type);
@@ -13600,10 +13737,10 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		path = &library->paths[emitter.path_attributes];
 	}
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
-	bool width_is_bezier_graph = width_graph->flags & tfxGraphFlags_use_bezier_sampling;
-	bool height_is_bezier_graph = height_graph->flags & tfxGraphFlags_use_bezier_sampling;
-	bool width_has_oscillator = width_graph->oscillator.amplitude != 0.f;
-	bool height_has_oscillator = width_graph->oscillator.amplitude != 0.f;
+	bool width_is_bezier_graph = tfx__graph_has_bezier_curves(width_graph);
+	bool height_is_bezier_graph = tfx__graph_has_bezier_curves(height_graph);
+	bool width_has_oscillator = tfx__graph_can_oscillate(width_graph);
+	bool height_has_oscillator = tfx__graph_can_oscillate(height_graph);
 
 	tfxWideFloat lookup_width, lookup_height;
 
@@ -13629,11 +13766,11 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		lookup_height = height_is_bezier_graph ? tfx__bezier_sampler(height_time, height_from, height_curve1, height_curve2, height_to) : tfx__linear_sampler(height_from, height_to, height_time);
 
 		if (width_has_oscillator) {
-			lookup_width = tfxWideMul(tfxOSCILLATOR_WIDE_SIN(width_time, tfxWideAdd(offset_x, frequency), amplitude), lookup_width);
+			lookup_width = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(width_time, tfxWideAdd(width_offset_x, width_frequency), width_amplitude), lookup_width), width_offset_y);
 		}
 
 		if (height_has_oscillator) {
-			lookup_height = tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(offset_x, frequency), amplitude), lookup_height);
+			lookup_height = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(height_offset_x, height_frequency), height_amplitude), lookup_height), height_offset_y);
 		}
 
 		tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
@@ -13646,11 +13783,13 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
 			scale_y = tfxWideMul(lookup_width, base_size_y);
-			if (emitter.property_flags & tfxEmitterPropertyFlags_base_uniform_size)
+			if (emitter.property_flags & tfxEmitterPropertyFlags_base_uniform_size) {
 				scale_y = tfxWideMin(scale_x, scale_y);
+			}
 		}
-		else
+		else {
 			scale_y = tfxWideMul(lookup_height, base_size_y);
+		}
 
 		scale_x = tfxWideMul(scale_x, overal_scale);
 		scale_y = tfxWideMul(scale_y, overal_scale);
@@ -18987,6 +19126,7 @@ void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
     
 	tfx__initialise_thread_queues(&tfxStore->thread_queues);
 	tfx_InitialiseThreads(tfxStore);
+	tfx__initialise_graph_indexes();
 }
 
 void tfx_EndTimelineFX() {
