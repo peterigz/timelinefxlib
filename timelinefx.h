@@ -7041,10 +7041,12 @@ tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor e
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
 tfxAPI_EDITOR tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name);
+tfxAPI_EDITOR tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t property_name);
 tfxAPI_EDITOR tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type);
 tfxAPI_EDITOR tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor effect, tfx_graph_t *graph, bool include_property_name);
 tfxAPI_EDITOR void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t property_name, const char *value);

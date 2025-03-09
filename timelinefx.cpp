@@ -662,6 +662,63 @@ tfx_storage_t *tfx_GetGlobals() {
 
 #endif
 
+// Helper function to safely convert string to uint64
+static bool tfx__string_to_u64(const char *str, tfxU64 *result) {
+	char *endptr;
+	errno = 0;
+	unsigned long long val = strtoull(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0') {
+		return false;
+	}
+
+	*result = (tfxU64)val;
+	return true;
+}
+
+// Helper function to safely convert string to uint32
+static bool tfx__string_to_u32(const char *str, tfxU32 *result) {
+	char *endptr;
+	errno = 0;
+	unsigned long val = strtoul(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0' || val > UINT32_MAX) {
+		return false;
+	}
+
+	*result = (tfxU32)val;
+	return true;
+}
+
+// Helper function to safely convert string to float
+static bool tfx__string_to_float(const char *str, float *result) {
+	char *endptr;
+	errno = 0;
+	float val = strtof(str, &endptr);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0') {
+		return false;
+	}
+
+	*result = val;
+	return true;
+}
+
+// Helper function to safely convert string to int
+static bool tfx__string_to_int(const char *str, int *result) {
+	char *endptr;
+	errno = 0;
+	long val = strtol(str, &endptr, 10);
+
+	if (errno == ERANGE || endptr == str || *endptr != '\0' ||
+		val > INT_MAX || val < INT_MIN) {
+		return false;
+	}
+
+	*result = (int)val;
+	return true;
+}
+
 tfx_random_t tfx_NewRandom(tfxU32 seed) {
 	tfx_random_t random;
 	memset(random.seeds, 0, sizeof(tfxU64) * 2);
@@ -5410,17 +5467,6 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("global_emitter_height", tfxEffect_global_emitter_height_index);
 	tfxStore->graph_indexes.Insert("global_emitter_depth", tfxEffect_global_emitter_depth_index);
 
-	tfxStore->graph_indexes.Insert("emitter_property_emission_pitch", tfxEmitter_property_emission_pitch_index);
-	tfxStore->graph_indexes.Insert("emitter_property_emission_yaw", tfxEmitter_property_emission_yaw_index);
-	tfxStore->graph_indexes.Insert("emitter_property_emission_range", tfxEmitter_property_emission_range_index);
-	tfxStore->graph_indexes.Insert("emitter_property_splatter", tfxEmitter_property_splatter_index);
-	tfxStore->graph_indexes.Insert("emitter_property_emitter_width", tfxEmitter_property_width_index);
-	tfxStore->graph_indexes.Insert("emitter_property_emitter_height", tfxEmitter_property_height_index);
-	tfxStore->graph_indexes.Insert("emitter_property_emitter_depth", tfxEmitter_property_depth_index);
-	tfxStore->graph_indexes.Insert("emitter_property_extrusion", tfxEmitter_property_extrusion_index);
-	tfxStore->graph_indexes.Insert("emitter_property_arc_size", tfxEmitter_property_arc_size_index);
-	tfxStore->graph_indexes.Insert("emitter_property_arc_offset", tfxEmitter_property_arc_offset_index);
-
 	//Legacy entries before ribbons were introduced. Can be removed at some point.
 	tfxStore->graph_indexes.Insert("base_life", tfxEmitter_base_life_index);
 	tfxStore->graph_indexes.Insert("base_amount", tfxEmitter_base_amount_index);
@@ -5600,14 +5646,11 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("keyframe_translate_x", tfxTransform_translate_x_index);
 	tfxStore->graph_indexes.Insert("keyframe_translate_y", tfxTransform_translate_y_index);
 	tfxStore->graph_indexes.Insert("keyframe_translate_z", tfxTransform_translate_z_index);
-
 }
 
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	dictionary->names_and_types.init();
 	tfx_storage_map_t<tfx_data_type> &names_and_types = dictionary->names_and_types;
-	names_and_types.data.reserve(300);
-	names_and_types.map.reserve(300);
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("image_index", tfxUInt);
 	names_and_types.Insert("image_hash", tfxUInt64);
@@ -5807,6 +5850,18 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("keyframe_translate_y", tfxTransformGraph);	//legacy
 	names_and_types.Insert("keyframe_translate_z", tfxTransformGraph);	//legacy
 
+	//Graph properties
+	names_and_types.Insert("sampling_type", tfxUInt);
+	names_and_types.Insert("oscillator_type", tfxUInt);
+	names_and_types.Insert("enable_oscillator", tfxBool);
+	names_and_types.Insert("multi_node", tfxBool);
+	names_and_types.Insert("use_bezier_sampling", tfxBool);
+	names_and_types.Insert("oscillator_frequency", tfxFloat);
+	names_and_types.Insert("oscillator_amplitude", tfxFloat);
+	names_and_types.Insert("oscillator_offset_x", tfxFloat);
+	names_and_types.Insert("oscillator_offset_y", tfxFloat);
+
+	//Path graphs and properties
 	names_and_types.Insert("path_pitch", tfxPathGraph);
 	names_and_types.Insert("path_yaw", tfxPathGraph);
 	names_and_types.Insert("path_roll", tfxPathGraph);
@@ -5948,12 +6003,73 @@ int tfx_ValidateEffectPackage(const char *filename) {
 
 void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
 	tfx_str256_t graph_name = (*values)[0];
+
+	tfx_str256_t graph_property_name;
+	switch (effect->type) {
+	case tfxEffectType: graph_property_name.Setf("%s", graph_name); break;
+	case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name); break;
+	case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name); break;
+	}
+
+	if (!tfxStore->graph_indexes.ValidName(graph_property_name.c_str())) {
+		tfxPrint("%s property graph index was found to be invalid.", graph_property_name.c_str());
+		return;
+	}
+
+	tfxU32 graph_index = tfxStore->graph_indexes.At(graph_property_name.c_str());
+	tfx_data_type data_type = tfxStore->data_types.names_and_types.At(graph_name.c_str());
+	tfx_graph_t *graph = nullptr;
+
+	if (effect->graph_list_index == tfxINVALID && data_type == tfxAttributeGraph) {
+		return;
+	}
+
+	switch (data_type) {
+	case tfxAttributeGraph: graph = &effect->library->graphs[effect->graph_list_index].graphs[graph_index]; break;
+	case tfxTransformGraph: graph = &effect->library->graphs[effect->transform_index].graphs[graph_index]; break;
+	}
+
 	tmpStack(tfx_str256_t, pair);
 	for (tfx_str256_t &prop : *values) {
+		pair.clear();
 		tfx__split_string_stack(prop.c_str(), prop.Length(), &pair);
 		if (pair.size() != 2) continue;
-	//	if(pair[0] == "sampling_type") 
+		tfx_data_type property_data_type = tfxStore->data_types.names_and_types.At(pair[0].c_str());
+		switch (property_data_type) {
+			case tfxUInt: {
+				tfxU32 converted_value;
+				if (tfx__string_to_u32(pair[1].c_str(), &converted_value)) {
+					if (pair[0] == "sampling_type") graph->sampling_type = (tfx_graph_sampling_type)converted_value;
+					else if (pair[0] == "oscillator_type") graph->oscillator.type = (tfx_oscillator_type)converted_value;
+				}
+			}
+			break;
+			case tfxBool: {
+				int converted_value;
+				if (tfx__string_to_int(pair[1].c_str(), &converted_value)) {
+					if (pair[0] == "use_bezier_sampling") {
+						if (converted_value) graph->flags |= tfxGraphFlags_use_bezier_sampling; else graph->flags &= ~tfxGraphFlags_use_bezier_sampling;
+					} else if (pair[0] == "multi_node") {
+						if (converted_value) graph->flags |= tfxGraphFlags_multi_node_graph; else graph->flags &= ~tfxGraphFlags_multi_node_graph;
+					} else if (pair[0] == "enable_oscillator") {
+						if (converted_value) graph->flags |= tfxGraphFlags_enable_oscillator; else graph->flags &= ~tfxGraphFlags_enable_oscillator;
+					}
+				}
+			}
+			break;
+			case tfxFloat: {
+				float converted_value;
+				if (tfx__string_to_float(pair[1].c_str(), &converted_value)) {
+					if (pair[0] == "oscillator_frequency") graph->oscillator.frequency = converted_value;
+					else if (pair[0] == "oscillator_amplitude") graph->oscillator.amplitude = converted_value;
+					else if (pair[0] == "oscillator_offset_x") graph->oscillator.offset_x = converted_value;
+					else if (pair[0] == "oscillator_offset_y") graph->oscillator.offset_y = converted_value;
+				}
+			}
+			break;
+		}
 	}
+	pair.free();
 }
 
 void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
@@ -6171,63 +6287,6 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 		metrics->animation_flags = value;
 }
 
-// Helper function to safely convert string to uint64
-static bool tfx__string_to_u64(const char *str, tfxU64 *result) {
-	char *endptr;
-	errno = 0;
-	unsigned long long val = strtoull(str, &endptr, 10);
-
-	if (errno == ERANGE || endptr == str || *endptr != '\0') {
-		return false;
-	}
-
-	*result = (tfxU64)val;
-	return true;
-}
-
-// Helper function to safely convert string to uint32
-static bool tfx__string_to_u32(const char *str, tfxU32 *result) {
-	char *endptr;
-	errno = 0;
-	unsigned long val = strtoul(str, &endptr, 10);
-
-	if (errno == ERANGE || endptr == str || *endptr != '\0' || val > UINT32_MAX) {
-		return false;
-	}
-
-	*result = (tfxU32)val;
-	return true;
-}
-
-// Helper function to safely convert string to float
-static bool tfx__string_to_float(const char *str, float *result) {
-	char *endptr;
-	errno = 0;
-	float val = strtof(str, &endptr);
-
-	if (errno == ERANGE || endptr == str || *endptr != '\0') {
-		return false;
-	}
-
-	*result = val;
-	return true;
-}
-
-// Helper function to safely convert string to int
-static bool tfx__string_to_int(const char *str, int *result) {
-	char *endptr;
-	errno = 0;
-	long val = strtol(str, &endptr, 10);
-
-	if (errno == ERANGE || endptr == str || *endptr != '\0' ||
-		val > INT_MAX || val < INT_MIN) {
-		return false;
-	}
-
-	*result = (int)val;
-	return true;
-}
-
 tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	switch (graph_type) {
 	case tfxGlobal_life: return "global_life"; break;
@@ -6355,6 +6414,20 @@ tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor effect, tfx_graph_t 
 		}
 	}
 	return graph_string;
+}
+
+tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t property_name) {
+	tfx_str256_t value;
+	if (property_name == "sampling_type"            ) value.Setf("%u", graph->sampling_type);
+	else if (property_name == "enable_oscillator"   ) value.Setf("%i", graph->flags & tfxGraphFlags_enable_oscillator);
+	else if (property_name == "use_bezier_sampling" ) value.Setf("%i", graph->flags & tfxGraphFlags_use_bezier_sampling);
+	else if (property_name == "multi_node"          ) value.Setf("%i", graph->flags & tfxGraphFlags_multi_node_graph);
+	else if (property_name == "oscillator_type"     ) value.Setf("%i", graph->oscillator.type);
+	else if (property_name == "oscillator_frequency") value.Setf("%f", graph->oscillator.frequency);
+	else if (property_name == "oscillator_amplitude") value.Setf("%f", graph->oscillator.amplitude);
+	else if (property_name == "oscillator_offset_x" ) value.Setf("%f", graph->oscillator.offset_x);
+	else if (property_name == "oscillator_offset_y" ) value.Setf("%f", graph->oscillator.offset_y);
+	return value;
 }
 
 tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name) {
@@ -7056,34 +7129,6 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 }
 
 void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file) {
-	tfx_str256_t property_name;
-	switch (descriptor->type) {
-	case tfxEffectType: property_name.Setf("%s", name); break;
-	case tfxEmitterType: property_name.Setf("%s_%s", "emitter", name); break;
-	case tfxRibbonType: property_name.Setf("%s_%s", "ribbon", name); break;
-	}
-	file->AddLine(
-		"%s,"
-		"sampling_type=%i,"
-		"use_bezier_sampling=%i,"
-		"multi_node=%i,"
-		"enable_oscillator=%i,"
-		"oscillator_type=%i,"
-		"oscillator_frequency=%f,"
-		"oscillator_amplitude=%f,"
-		"oscillator_offset_x=%f,"
-		"oscillator_offset_y=%f",
-		property_name.c_str(),
-		graph->sampling_type,
-		graph->flags & tfxGraphFlags_use_bezier_sampling,
-		graph->flags & tfxGraphFlags_multi_node_graph,
-		graph->flags & tfxGraphFlags_enable_oscillator,
-		graph->oscillator.type,
-		graph->oscillator.frequency,
-		graph->oscillator.amplitude,
-		graph->oscillator.offset_x,
-		graph->oscillator.offset_y
-	);
 	for (tfxBucketLoop(graph->nodes, i)) {
 		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", 
 			name, 
@@ -7096,6 +7141,31 @@ void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_g
 			graph->nodes[i].right.y
 		);
 	}
+}
+
+void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file) {
+	file->AddLine(
+		"%s,"
+		"sampling_type=%i,"
+		"use_bezier_sampling=%i,"
+		"multi_node=%i,"
+		"enable_oscillator=%i,"
+		"oscillator_type=%i,"
+		"oscillator_frequency=%f,"
+		"oscillator_amplitude=%f,"
+		"oscillator_offset_x=%f,"
+		"oscillator_offset_y=%f",
+		name,
+		graph->sampling_type,
+		graph->flags & tfxGraphFlags_use_bezier_sampling,
+		graph->flags & tfxGraphFlags_multi_node_graph,
+		graph->flags & tfxGraphFlags_enable_oscillator,
+		graph->oscillator.type,
+		graph->oscillator.frequency,
+		graph->oscillator.amplitude,
+		graph->oscillator.offset_x,
+		graph->oscillator.offset_y
+	);
 }
 
 bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right) {
@@ -7156,6 +7226,9 @@ void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph) 
 	dst_graph->graph_preset = src_graph->graph_preset;
 	dst_graph->type = src_graph->type;
 	dst_graph->effector = src_graph->effector;
+	dst_graph->sampling_type = src_graph->sampling_type;
+	dst_graph->oscillator = src_graph->oscillator;
+	dst_graph->flags = src_graph->flags;
 	tfxCopyBucketArray<tfx_attribute_node_t>(&dst_graph->nodes, &src_graph->nodes);
 	dst_graph->index = src_graph->index;
 	dst_graph->lookup.life = src_graph->lookup.life;
@@ -9282,6 +9355,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 					tfx__assign_graph_node_data(effect_stack.back(), &pair);
 				}
 			} else if (context == tfxStartGraphProperties) {
+				tfx__assign_graph_properties(effect_stack.back(), &pair);
 			} else if (context == tfxStartStage) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					switch (names_and_types.At(pair[0].c_str())) {
