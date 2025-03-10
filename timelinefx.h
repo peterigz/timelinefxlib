@@ -1636,11 +1636,6 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSetZeroi _mm256_setzero_si256()
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetColor(lookup, index) tfxWideSeti(lookup[index.a[7]].color, lookup[index.a[6]].color, lookup[index.a[5]].color, lookup[index.a[4]].color, lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
-#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet(lookup1[index1.a[7]].lookup2[index2.a[7]], lookup1[index1.a[6]].lookup2[index2.a[6]], lookup1[index1.a[5]].lookup2[index2.a[5]], lookup1[index1.a[4]].lookup2[index2.a[4]], lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfxWideSet(lookup[index.a[7] + offset], lookup[index.a[6] + offset], lookup[index.a[5] + offset], lookup[index.a[4] + offset], lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
 #define tfxWideSetConst(value) {value, value, value, value, value, value, value, value}
@@ -1818,11 +1813,6 @@ typedef union {
 #endif
 
 #define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetMember(lookup, member, index) tfx128Set( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfx128Seti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfx128Seti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetColor(lookup, index) tfx128Seti( lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
 const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3 };
@@ -2781,7 +2771,9 @@ typedef enum {
 	tfxEmitterControlProfile_edge_kill = 1 << 6,
 	tfxEmitterControlProfile_edge_loop = 1 << 7,
 	tfxEmitterControlProfile_stretch = 1 << 8,
-	tfxEmitterControlProfile_other_ribbon_emitter_path = 1 << 9
+	tfxEmitterControlProfile_other_ribbon_emitter_path = 1 << 9,
+	tfxEmitterControlProfile_spin3d = 1 << 10,
+	tfxEmitterControlProfile_spin = 1 << 11,
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -5560,6 +5552,20 @@ typedef struct tfx_oscillator_s {
 	tfx_oscillator_type type;
 } tfx_oscillator_t;
 
+typedef struct tfx_oscillator_wide_s {
+	tfxWideFloat frequency;
+	tfxWideFloat amplitude;
+	tfxWideFloat offset_x;
+	tfxWideFloat offset_y;
+} tfx_oscillator_wide_t;
+
+typedef struct tfx_graph_wide_s {
+	tfxWideFloat from;
+	tfxWideFloat to;
+	tfxWideFloat curve1;
+	tfxWideFloat curve2;
+} tfx_graph_wide_t;
+
 typedef struct tfx_graph_id_s {
 	tfx_graph_category category;
 	tfx_graph_type type;
@@ -5570,6 +5576,8 @@ typedef struct tfx_graph_id_s {
 } tfx_graph_id_t;
 
 typedef struct tfx_graph_s {
+	tfx_oscillator_wide_t wide_oscillator;
+	tfx_graph_wide_t wide_graph;
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
 	tfx_graph_sampling_type sampling_type;
@@ -7161,6 +7169,7 @@ tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
+tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
