@@ -5486,16 +5486,6 @@ typedef struct tfx_depth_index_s {
 	float depth;
 }tfx_depth_index_t;
 
-typedef struct tfx_graph_lookup_t {
-#ifdef __cplusplus
-	tfx_vector_t<float> values;
-#else
-	tfx_vector_t values;
-#endif
-	tfxU32 last_frame;
-	float life;
-} tfx_graph_lookup_t;
-
 //Used when a particle manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 typedef struct tfx_effect_instance_data_s {
 #ifdef __cplusplus
@@ -5588,7 +5578,6 @@ typedef struct tfx_graph_s {
 #else
 	tfx_bucket_array_t nodes;
 #endif
-	tfx_graph_lookup_t lookup;
 	tfxU32 index;
 	float gamma;
 	tfx_oscillator_t oscillator;
@@ -5664,9 +5653,6 @@ typedef struct tfx_emitter_path_s {
 	tfx_path_settings_t settings;
 	tfx_path_buffers_t buffers;
 } tfx_emitter_path_t;
-
-static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age_lerp);
-static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t * random);
 
 typedef struct tfx_base_s {
 	tfx_vec2_t size;
@@ -5876,6 +5862,7 @@ typedef struct tfx_emitter_state_s {
 	float amount_remainder;
 	float spawn_quantity;
 	float qty_step_size;
+	float max_life;
 	tfx_vec3_t handle;
 	tfxParticleEmitterFlags property_flags;
 	tfxSharedEmitterFlags shared_flags;
@@ -6026,6 +6013,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float timeout_counter;
 	float timeout;
 	float delay_spawning;
+	float max_life;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
 	tfxSharedEmitterFlags shared_flags;
@@ -7128,8 +7116,7 @@ tfxAPI_EDITOR void tfx__init_shared_properties(tfx_shared_properties_t *shared_p
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
-tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age);
-tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
+tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float t);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_first_node(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_first_value(tfx_graph_t *graph);
@@ -7146,7 +7133,7 @@ tfxAPI_EDITOR void tfx__reset_graph(tfx_graph_t *graph, float first_node_value, 
 tfxAPI_EDITOR void tfx__reset_graph_nodes(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
 tfxAPI_EDITOR void tfx__clear_graph_to_one(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void tfx__free_graph(tfx_graph_t *graph);
-tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
+tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to);
 tfxAPI_EDITOR void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to, tfx_effect_descriptor_type from_type, tfx_effect_descriptor_type to_type);
 tfxAPI_EDITOR void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue);
 tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
@@ -7187,8 +7174,6 @@ tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
-tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
-tfxINTERNAL void tfx__compile_color_overtime(tfx_graph_t *graph, float gamma = tfxGAMMA);
 tfxINTERNAL tfxKey tfx__hash_color_ramp(tfx_color_ramp_t *ramp);
 tfxINTERNAL tfx_bitmap_t tfx__create_bitmap(int width, int height, int channels);
 tfxINTERNAL void tfx__plot_bitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color);
@@ -7199,13 +7184,8 @@ tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_gr
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
-tfxAPI_EDITOR inline float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age_lerp) {
-	return graph->lookup.values[tfx__Min(tfxU32(age_lerp * tfxLOOKUP_TABLE_ARRAY_SIZE), graph->lookup.last_frame)];
-}
 tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
-tfxINTERNAL float tfx__get_random_fast(tfx_graph_t *graph, float frame, tfx_random_t *random);
-tfxINTERNAL float tfx__get_random_precise(tfx_graph_t *graph, float frame, tfx_random_t *random);
 
 //Node Manipulation
 tfxAPI_EDITOR void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index);
@@ -7280,8 +7260,6 @@ tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library l
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library);
-tfxAPI_EDITOR void tfx__update_library_compute_nodes();
-tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
 tfxAPI_EDITOR bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
@@ -7614,28 +7592,49 @@ tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
-typedef tfxWideFloat(*tfx_easing_function)(tfxWideFloat);
-typedef tfxWideFloat(*tfx_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
+typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
+typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
 
-tfxINTERNAL tfxWideFloat tfx__ease_constant(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_linear(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_quad(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_out_quad(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_out_quad(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_cubic(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_out_cubic(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_out_cubic(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_quart(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_out_quart(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_out_quart(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_quint(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_out_quint(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_out_quint(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_circular(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_out_circular(tfxWideFloat t);
-tfxINTERNAL tfxWideFloat tfx__ease_in_out_circular(tfxWideFloat t);
+typedef float(*tfx_easing_function)(float);
+typedef float(*tfx_bezier_function)(float, float, float, float, float);
 
-tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat node2) {
+tfxINTERNAL tfxWideFloat tfx__wide_ease_constant(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_linear(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_cubic(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_quart(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_quint(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_circular(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_circular(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_circular(tfxWideFloat t);
+
+tfxINTERNAL float tfx__ease_constant(float t);
+tfxINTERNAL float tfx__ease_linear(float t);
+tfxINTERNAL float tfx__ease_in_quad(float t);
+tfxINTERNAL float tfx__ease_out_quad(float t);
+tfxINTERNAL float tfx__ease_in_out_quad(float t);
+tfxINTERNAL float tfx__ease_in_cubic(float t);
+tfxINTERNAL float tfx__ease_out_cubic(float t);
+tfxINTERNAL float tfx__ease_in_out_cubic(float t);
+tfxINTERNAL float tfx__ease_in_quart(float t);
+tfxINTERNAL float tfx__ease_out_quart(float t);
+tfxINTERNAL float tfx__ease_in_out_quart(float t);
+tfxINTERNAL float tfx__ease_in_quint(float t);
+tfxINTERNAL float tfx__ease_out_quint(float t);
+tfxINTERNAL float tfx__ease_in_out_quint(float t);
+tfxINTERNAL float tfx__ease_in_circular(float t);
+tfxINTERNAL float tfx__ease_out_circular(float t);
+tfxINTERNAL float tfx__ease_in_out_circular(float t);
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat node2) {
 	tfxWideFloat u = tfxWideSub(tfxWIDEONE.m, t);
 	tfxWideFloat w1 = tfxWideMul(tfxWideMul(u, u), u);
 	tfxWideFloat w2 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), u), t);
@@ -7644,8 +7643,24 @@ tfxINTERNAL inline tfxWideFloat tfx__bezier_sampler(tfxWideFloat t, tfxWideFloat
 	return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(w1, node1), tfxWideMul(w2, curve1)), tfxWideMul(w3, curve2)), tfxWideMul(w4, node2));
 }
 
-tfxINTERNAL inline tfxWideFloat tfx__linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
+tfxINTERNAL tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_sampling_type type);
+tfxINTERNAL tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type);
+
+tfxINTERNAL inline float tfx__bezier_sampler(float t, float node1, float curve1, float curve2, float node2) {
+	float u = 1 - t;
+	float w1 = u * u * u;
+	float w2 = 3 * u * u * t;
+	float w3 = 3 * u * t * t;
+	float w4 = t * t * t;
+	return w1 * node1 + w2 * curve1 + w3 * curve2 + w4 * node2;
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
 	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
+}
+
+tfxINTERNAL inline float tfx__linear_sampler(float from, float to, float t) {
+	return from + (to - from) * t;
 }
 
 tfxINTERNAL inline bool tfx__graph_can_oscillate(tfx_graph_t *graph) {
@@ -7656,7 +7671,7 @@ tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 	return graph->flags & tfxGraphFlags_use_bezier_sampling && graph->sampling_type != tfxGraphSamplingType_constant;
 }
 
-tfxINTERNAL tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type);
+tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
