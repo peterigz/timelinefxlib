@@ -3177,12 +3177,6 @@ const float tfxMAX_DIRECTION_VARIATION = 22.5f;
 const float tfxMAX_VELOCITY_VARIATION = 30.f;
 const int tfxMOTION_VARIATION_INTERVAL = 30;
 
-static float tfxLOOKUP_TABLE_ARRAY_SIZE = 256.f;
-
-//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-//Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
-static tfxWideArray tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE = tfxWideSetConst(tfxLOOKUP_TABLE_ARRAY_SIZE);
-
 //-----------------------------------------------------------
 //Section: forward_declarations
 //-----------------------------------------------------------
@@ -7149,8 +7143,9 @@ tfxAPI_EDITOR bool tfx__is_translation_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scalar);
 tfxAPI_EDITOR void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
 tfxAPI_EDITOR void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value);
-tfxAPI_EDITOR void tfx__compile_graph_overtime(tfx_graph_t *graph);
-tfxAPI_EDITOR void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
+tfxAPI_EDITOR void tfx__update_lerp_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
 tfxAPI_EDITOR bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
@@ -7210,9 +7205,9 @@ tfxAPI_EDITOR bool tfx__has_more_than_one_key_frame(tfx_effect_descriptor e);
 tfxAPI_EDITOR bool tfx__is_node_curve(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool tfx__node_curves_are_initialised(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool tfx__set_node_curve_initialised(tfx_attribute_node_t *node);
+tfxAPI_EDITOR bool tfx__is_color_graph_type(tfx_graph_type type);
 tfxINTERNAL void tfx__clamp_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
-tfxINTERNAL bool tfx__is_color_graph_type(tfx_graph_type type);
 tfxINTERNAL bool tfx__has_key_frames(tfx_effect_descriptor e);
 tfxINTERNAL void tfx__push_translation_points(tfx_effect_descriptor e, tfx_vector_t<tfx_vec3_t> *points, float frame);
 
@@ -7260,10 +7255,8 @@ tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library l
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library);
-tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
-tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
-tfxAPI_EDITOR bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
-tfxAPI_EDITOR void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor effect, tfxU32 depth = 0, bool including_color_ramps = true);
+tfxAPI_EDITOR void tfx__update_all_library_graphs(tfx_library library);
+tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
@@ -7311,8 +7304,8 @@ tfxAPI_EDITOR void tfx__free_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__clear_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__reset_effect_graphs(tfx_effect_descriptor effect, bool add_node = true);
 tfxAPI_EDITOR void tfx__reset_transform_graphs(tfx_effect_descriptor effect, bool add_node = true);
-tfxAPI_EDITOR void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node = true);
+tfxAPI_EDITOR void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node = true);
 tfxAPI_EDITOR void tfx__add_emitter_color_overtime(tfx_effect_descriptor effect, float frame, tfx_rgb_t color);
 tfxAPI_EDITOR void tfx__update_emitter_max_life(tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_graph_by_index(tfx_effect_descriptor effect, tfxU32 index);

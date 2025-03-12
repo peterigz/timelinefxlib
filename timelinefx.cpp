@@ -2982,7 +2982,7 @@ void tfx__reset_transform_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index].type = tfxTransform_translate_z;
 }
 
-void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node, bool compile) {
+void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx_library library = effect->library;
 	tfxU32 graph_list_index = effect->graph_list_index;
 	float default_dimensions = 128.f;
@@ -3047,12 +3047,9 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node, bool
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index].type = tfxFactor_velocity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].type = tfxFactor_intensity;
-	if (compile) {
-		tfx__compile_library_overtime_graphs(library, graph_list_index);
-	}
 }
 
-void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node, bool compile) {
+void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx_library library = effect->library;
 	tfxU32 graph_list_index = effect->graph_list_index;
 	float default_dimensions = 32.f;
@@ -3464,7 +3461,6 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
 		tfx__update_emitter_max_life(clone);
 		if (flags & tfxEffectCloningFlags_compile_graphs) {
-			tfx__compile_library_overtime_graphs(clone->library, clone->graph_list_index, true);
 			if (destination_library != effect_to_clone->library) {
 				tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->graph_list_index]);
 			}
@@ -5320,52 +5316,24 @@ void tfx_FreeLibrary(tfx_library library) {
 	tfxFREE(library);
 }
 
-void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor effect, tfxU32 depth, bool include_color_ramps) {
-	if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
-		tfx__compile_library_overtime_graphs(library, effect->graph_list_index, include_color_ramps);
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__compile_library_graphs_of_effect(library, sub, ++depth, include_color_ramps);
-		}
-	}
-	else if (effect->type == tfxFolder) {
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__compile_library_graphs_of_effect(library, sub, 0, include_color_ramps);
-		}
-	}
-	if (effect->type == tfxEffectType) {
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__compile_library_graphs_of_effect(library, sub, ++depth, include_color_ramps);
-		}
-	}
-}
-
-void tfx__compile_all_library_graphs(tfx_library library) {
+void tfx__update_all_library_graphs(tfx_library library) {
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
-			if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph) || tfx__is_overlength_graph(&graph))) {
-				tfx__compile_graph_overtime(&graph);
+			if (graph.type == tfxOvertime_blendfactor) {
+				tfx__update_lerp_graph(&graph);
+			} else if (!tfx__is_color_graph_type(graph.type) && (tfx__is_lerp_graph(&graph))) {
+				tfx__update_lerp_graph(&graph);
 				tfx__update_graph_wide_oscillator(&graph);
 			} else if (tfx__is_color_graph_type(graph.type)) {
-				tfx__compile_color_ramp(&graph_list, &graph_list.color_ramps);
+				tfx__update_color_ramp(&graph_list, &graph_list.color_ramps);
 			}
 		}
 	}
 	tfx__create_color_ramp_bitmaps(library);
 }
 
-void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps) {
-	for (tfx_graph_t &graph : library->graphs[index].graphs) {
-		if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph) || tfx__is_overlength_graph(&graph))) {
-			tfx__compile_graph_overtime(&graph);
-		}
-	}
-	if (including_color_ramps) {
-		tfx__compile_library_color_graphs(library, index);
-	}
-}
-
-bool tfx__compile_library_color_graphs(tfx_library library, tfxU32 index) {
-	tfx__compile_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
+bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index) {
+	tfx__update_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
 	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 }
 
@@ -7155,6 +7123,7 @@ void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph) 
 	dst_graph->flags = src_graph->flags;
 	tfxCopyBucketArray<tfx_attribute_node_t>(&dst_graph->nodes, &src_graph->nodes);
 	dst_graph->index = src_graph->index;
+	tfx__update_graph_wide_oscillator(dst_graph);
 }
 
 bool tfx__is_node_curve(tfx_attribute_node_t *node) {
@@ -7595,7 +7564,7 @@ float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float t
 	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
 		curr = &graph->nodes[i];
 		if (t < curr->frame) {
-			float p = (t - prev_frame) / (t - prev_frame);
+			float p = (t - prev->frame) / (curr->frame - prev->frame);
 			return prev->value - p * (prev->value - curr->value);
 		}
 		prev = curr;
@@ -7765,6 +7734,8 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 		}
 	}
 
+	tfx__update_lerp_graph(graph);
+
 	graph->graph_preset = preset;
 }
 
@@ -7834,8 +7805,11 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, -4320.f };
 	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
 		return { 0.f, -1000.f };
+	case tfx_graph_preset::tfxNoiseResolutionPreset:
+	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
+		return { 0.f, 0.f };
 	}
-	return { tfxMAX_FRAME, 20.f };
+	return { 0.f, 0.f };
 }
 
 tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
@@ -7872,6 +7846,9 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { tfxMAX_FRAME, 2000.f };
 	case tfx_graph_preset::tfxDirectionVariationPreset:
 		return { tfxMAX_FRAME, 22.5f };
+	case tfx_graph_preset::tfxNoiseResolutionPreset:
+	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
+		return { tfxMAX_FRAME, 10000.f };
 	case tfx_graph_preset::tfxWeightOvertimePreset:
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
@@ -8046,17 +8023,13 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 	for (tfxBucketLoop(graph->nodes, i)) {
 		graph->nodes[i].index = index++;
 		if (!(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
-			tfx__unset_curves(graph, index - 1);
+			//tfx__unset_curves(graph, index - 1);
 		}
 	}
 }
 
-void tfx__compile_graph_overtime(tfx_graph_t *graph) {
-	//if (graph->type == tfxOvertime_gradient_mapper || graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness) {
-		//tfx__compile_graph_ramp_overtime(graph);
-		//return;
-	//}
-	if (tfx__is_lerp_graph(graph)) {
+void tfx__update_lerp_graph(tfx_graph_t *graph) {
+	if (tfx__is_lerp_graph(graph) || graph->type == tfxOvertime_blendfactor) {
 		if (graph->nodes.size() == 1) {
 			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
 			node.frame = 1.f;
@@ -8072,6 +8045,12 @@ void tfx__compile_graph_overtime(tfx_graph_t *graph) {
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
 		graph->wide_graph.curve1 = tfxWideSetSingle(graph->nodes[0].right.y);
 		graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
+	}
+}
+
+void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect) {
+	for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
+		tfx__update_lerp_graph(&graph);
 	}
 }
 
@@ -8128,12 +8107,17 @@ void tfx__free_bitmap(tfx_bitmap_t *bitmap) {
 	}
 }
 
-void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *color_ramp, float gamma) {
-	float r, g, b, a;
+void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *color_ramp, float gamma) {
+	float r, g, b, a = 0;
 	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
 	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
 	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
+
+	tfx_easing_function blendfactor_easing = tfx__get_easing_function(blendfactor->sampling_type);
+
+	bool blendfactor_is_bezier_graph = tfx__graph_has_bezier_curves(blendfactor);
+	bool blendfactor_has_oscillator = tfx__graph_can_oscillate(blendfactor);
 	if (color_ramp->flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
@@ -8141,11 +8125,22 @@ void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *col
 			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * t + color_ramp->offsets.x));
 			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * t + color_ramp->offsets.y));
 			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * t + color_ramp->offsets.z));
-			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blendfactor, t), gamma);
+			if (blendfactor->nodes.current_size == 1) {
+				a = blendfactor->nodes[0].value;
+			} else {
+				float blendfactor_time = blendfactor_easing(t);
+				a = blendfactor_is_bezier_graph ?
+					tfx__bezier_sampler(blendfactor_time, blendfactor->nodes[0].value, blendfactor->nodes[0].right.y, blendfactor->nodes[1].left.y, blendfactor->nodes[1].value) :
+					tfx__linear_sampler(blendfactor->nodes[0].value, blendfactor->nodes[1].value, blendfactor_time);
+
+				if (blendfactor_has_oscillator) {
+					a *= (tfxOSCILLATOR_SIN(blendfactor->oscillator.offset_x + blendfactor_time, blendfactor->oscillator.frequency, blendfactor->oscillator.amplitude) + blendfactor->oscillator.offset_y);
+				}
+			}
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
-			color_ramp->colors[f].a = tfxU32(a * 255.f);
+			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
 		}
 	} else {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
@@ -8153,11 +8148,22 @@ void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *col
 			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), gamma);
 			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), gamma);
 			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), gamma);
-			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blendfactor, t), gamma);
+			if (blendfactor->nodes.current_size == 1) {
+				a = blendfactor->nodes[0].value;
+			} else {
+				float blendfactor_time = blendfactor_easing(t);
+				a = blendfactor_is_bezier_graph ?
+					tfx__bezier_sampler(blendfactor_time, blendfactor->nodes[0].value, blendfactor->nodes[0].right.y, blendfactor->nodes[1].left.y, blendfactor->nodes[1].value) :
+					tfx__linear_sampler(blendfactor->nodes[0].value, blendfactor->nodes[1].value, blendfactor_time);
+
+				if (blendfactor_has_oscillator) {
+					a *= (tfxOSCILLATOR_SIN(blendfactor->oscillator.offset_x + blendfactor_time, blendfactor->oscillator.frequency, blendfactor->oscillator.amplitude) + blendfactor->oscillator.offset_y);
+				}
+			}
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
-			color_ramp->colors[f].a = tfxU32(a * 255.f);
+			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
 		}
 		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(red) * 255.f);
 		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(green) * 255.f);
@@ -9154,7 +9160,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter->graph_list_index = tfx__add_library_graphs(lib, tfxEmitterType);
 				emitter->transform_index = tfx__add_library_transform_graphs(lib);
 				emitter->type = tfx_effect_descriptor_type::tfxEmitterType;
-				tfx__reset_emitter_graphs(emitter, false, false);
+				tfx__reset_emitter_graphs(emitter, false);
 				tfx__reset_transform_graphs(emitter, false);
 				emitter->uid = uid++;
 				effect_stack.push_back(emitter);
@@ -9172,7 +9178,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				ribbon->graph_list_index = tfx__add_library_graphs(lib, tfxRibbonType);
 				ribbon->transform_index = tfx__add_library_transform_graphs(lib);
 				ribbon->type = tfx_effect_descriptor_type::tfxRibbonType;
-				tfx__reset_ribbon_graphs(ribbon, false, false);
+				tfx__reset_ribbon_graphs(ribbon, false);
 				tfx__reset_transform_graphs(ribbon, false);
 				ribbon->uid = uid++;
 				effect_stack.push_back(ribbon);
@@ -9346,7 +9352,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	if (uid >= 0) {
 		//Effects were loaded so let's compile them
-		tfx__compile_all_library_graphs(lib);
+		tfx__update_all_library_graphs(lib);
 		tfx__reindex_library(lib);
 		if (first_shape_hash != 0) {
 			tfx__update_library_particle_shape_references(lib, first_shape_hash);
@@ -11740,10 +11746,13 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			life = tfxWideDiv(age, max_age);
 		}
 
-
 		tfxWideFloat velocity_time = velocity_easing(life);
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ?	tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) : 
 																	tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 
 		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
 		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
@@ -11819,10 +11828,18 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 				tfx__wide_bezier_sampler(velocity_turbulance_time, velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.curve1, velocity_turbulance_graph->wide_graph.curve2, velocity_turbulance_graph->wide_graph.to) : 
 				tfx__wide_linear_sampler(velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time); 
 
+			if (velocity_turbulance_has_oscillator) {
+				lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);
+			}
+
 			tfxWideFloat noise_resolution_time = noise_resolution_easing(life); 
 			tfxWideFloat lookup_noise_resolution = noise_resolution_is_bezier_graph ? 
 				tfx__wide_bezier_sampler(noise_resolution_time, noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.curve1, noise_resolution_graph->wide_graph.curve2, noise_resolution_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.to, noise_resolution_time); 
+
+			if (noise_resolution_has_oscillator) {
+				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
+			}
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -11864,6 +11881,11 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			tfxWideFloat lookup_stretch = stretch_is_bezier_graph ?
 				tfx__wide_bezier_sampler(stretch_time, stretch_graph->wide_graph.from, stretch_graph->wide_graph.curve1, stretch_graph->wide_graph.curve2, stretch_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(stretch_graph->wide_graph.from, stretch_graph->wide_graph.to, stretch_time);
+
+			if (stretch_has_oscillator) {
+				lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
+			}
+			
 			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 			tfxWideFloat stretch_velocity_x;
@@ -12002,6 +12024,10 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ?	tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) : 
 																	tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
 
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
+
 		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
 		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
 
@@ -12080,10 +12106,18 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 				tfx__wide_bezier_sampler(velocity_turbulance_time, velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.curve1, velocity_turbulance_graph->wide_graph.curve2, velocity_turbulance_graph->wide_graph.to) : 
 				tfx__wide_linear_sampler(velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
 
+			if (velocity_turbulance_has_oscillator) {
+				lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);
+			}
+
 			tfxWideFloat noise_resolution_time = noise_resolution_easing(life);
 			tfxWideFloat lookup_noise_resolution = noise_resolution_is_bezier_graph ?	
 				tfx__wide_bezier_sampler(noise_resolution_time, noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.curve1, noise_resolution_graph->wide_graph.curve2, noise_resolution_graph->wide_graph.to) : 
 				tfx__wide_linear_sampler(noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.to, noise_resolution_time);
+
+			if (noise_resolution_has_oscillator) {
+				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
+			}
 
 			tfxWideArray x, y, z;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -12124,7 +12158,8 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 }
 
 //I'm not a fan of this at all, but currently it's the best I can think off to create multiple versions of the control particle function
-//without having to repeat a whole bunch of code and make it harder to maintain whilst avoiding funtion callbacks and such.
+//without having to repeat a whole bunch of code and make it harder to maintain whilst avoiding function callbacks and such. I'll probably
+//redo this and use inline functions or something, this is just too ugly for my liking.
 //This define sets up variables needed in all the control particle position (3d) functions
 #define tfxControlParticleLoopSetup    \
 tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;    \
@@ -12141,6 +12176,9 @@ tfx__readbarrier;
 tfxWideFloat weight_time = weight_easing(life);\
 tfxWideFloat lookup_weight = weight_is_bezier_graph ? tfx__wide_bezier_sampler(weight_time, weight_graph->wide_graph.from, weight_graph->wide_graph.curve1, weight_graph->wide_graph.curve2, weight_graph->wide_graph.to) :\
 tfx__wide_linear_sampler(weight_graph->wide_graph.from, weight_graph->wide_graph.to, weight_time); \
+if (weight_has_oscillator) {\
+lookup_weight = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(weight_time, tfxWideAdd(weight_graph->wide_oscillator.offset_x, weight_graph->wide_oscillator.frequency), weight_graph->wide_oscillator.amplitude), lookup_weight), weight_graph->wide_oscillator.offset_y);\
+}\
 tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE.m);    \
 current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));    \
 current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);    \
@@ -12171,10 +12209,16 @@ tfxWideFloat velocity_turbulance_time = velocity_turbulance_easing(life);\
 tfxWideFloat lookup_velocity_turbulance = velocity_turbulance_is_bezier_graph ?\
 tfx__wide_bezier_sampler(velocity_turbulance_time, velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.curve1, velocity_turbulance_graph->wide_graph.curve2, velocity_turbulance_graph->wide_graph.to) : \
 tfx__wide_linear_sampler(velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time); \
+if (velocity_turbulance_has_oscillator) {\
+lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);\
+}\
 tfxWideFloat noise_resolution_time = noise_resolution_easing(life); \
 tfxWideFloat lookup_noise_resolution = noise_resolution_is_bezier_graph ? \
 tfx__wide_bezier_sampler(noise_resolution_time, noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.curve1, noise_resolution_graph->wide_graph.curve2, noise_resolution_graph->wide_graph.to) : \
 tfx__wide_linear_sampler(noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.to, noise_resolution_time); \
+if (velocity_turbulance_has_oscillator) {\
+lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);\
+}\
 tfxWideArray x, y, z;    \
 x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);    \
 y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);    \
@@ -12208,10 +12252,13 @@ velocity_normal_z = tfxWideDiv(velocity_normal_z, l);
 tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader*)&bank.uid[index]);    \
 tfxWideInt seed = tfx__wide_seedgen_base(time_step, uid);    \
 tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);    \
-tfxWideFloat motion_randomness_time = velocity_easing(life);\
+tfxWideFloat motion_randomness_time = motion_randomness_easing(life);\
 tfxWideFloat lookup_motion_randomness = motion_randomness_is_bezier_graph ? \
 	tfx__wide_bezier_sampler(motion_randomness_time, motion_randomness_graph->wide_graph.from, motion_randomness_graph->wide_graph.curve1, motion_randomness_graph->wide_graph.curve2, motion_randomness_graph->wide_graph.to) :\
 	tfx__wide_linear_sampler(motion_randomness_graph->wide_graph.from, motion_randomness_graph->wide_graph.to, motion_randomness_time);\
+if (motion_randomness_has_oscillator) {\
+lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(motion_randomness_graph->wide_oscillator.offset_x, motion_randomness_graph->wide_oscillator.frequency), motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), motion_randomness_graph->wide_oscillator.offset_y);\
+}\
 const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), lookup_motion_randomness);    \
 tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);    \
 tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
@@ -12267,6 +12314,10 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ?
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -12338,6 +12389,10 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
 
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
+
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
 		tfxWideFloat current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
@@ -12393,8 +12448,6 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
-		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
-
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
 
@@ -12402,6 +12455,10 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ? 
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -12502,6 +12559,10 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ?	tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) : 
 																	tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
 
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
+
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
 
@@ -12545,7 +12606,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 	tfxWideFloat max_life = tfxWideSetSingle(emitter.max_life);
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], emitter.frame));
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 250.f));
@@ -12558,7 +12619,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
 
 	tfx_graph_t *motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
+	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
 	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
@@ -12584,6 +12645,10 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ? 
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -12635,7 +12700,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
 	tfxWideFloat max_life = tfxWideSetSingle(emitter.max_life);
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], emitter.frame));
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
@@ -12660,7 +12725,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
 
 	tfx_graph_t *motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
+	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
 	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
@@ -12691,6 +12756,10 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ?
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -12839,6 +12908,11 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat lookup_stretch = stretch_is_bezier_graph ?
 			tfx__wide_bezier_sampler(stretch_time, stretch_graph->wide_graph.from, stretch_graph->wide_graph.curve1, stretch_graph->wide_graph.curve2, stretch_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(stretch_graph->wide_graph.from, stretch_graph->wide_graph.to, stretch_time);
+
+		if (stretch_has_oscillator) {
+			lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
+		}
+
 		p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 		tfxWideArray position_x;
@@ -13019,7 +13093,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 	//Noise
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
 	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], emitter.frame));
 	tfxWideFloat emitter_x;
 	tfxWideFloat emitter_y;
 	tfxWideArray p_stretch;
@@ -13130,6 +13204,9 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat lookup_direction = direction_is_bezier_graph ? 
 				tfx__wide_bezier_sampler(direction_time, direction_graph->wide_graph.from, direction_graph->wide_graph.curve1, direction_graph->wide_graph.curve2, direction_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(direction_graph->wide_graph.from, direction_graph->wide_graph.to, direction_time);
+			if (direction_has_oscillator) {
+				lookup_direction = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(direction_time, tfxWideAdd(direction_graph->wide_oscillator.offset_x, direction_graph->wide_oscillator.frequency), direction_graph->wide_oscillator.amplitude), lookup_direction), direction_graph->wide_oscillator.offset_y);
+			}
 			lookup_direction = tfxWideAdd(lookup_direction, angle);
 			tfxWideSinCos(lookup_direction, &velocity_normal_x, &velocity_normal_y);
 			velocity_normal_y = tfxWideMul(velocity_normal_y, tfxWIDEMINUSONE.m);
@@ -13149,6 +13226,9 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat lookup_velocity = velocity_is_bezier_graph ? 
 			tfx__wide_bezier_sampler(velocity_time, velocity_graph->wide_graph.from, velocity_graph->wide_graph.curve1, velocity_graph->wide_graph.curve2, velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(velocity_graph->wide_graph.from, velocity_graph->wide_graph.to, velocity_time);
+		if (velocity_has_oscillator) {
+			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
+		}
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_noise) {
@@ -13168,10 +13248,18 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 				tfx__wide_bezier_sampler(velocity_turbulance_time, velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.curve1, velocity_turbulance_graph->wide_graph.curve2, velocity_turbulance_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(velocity_turbulance_graph->wide_graph.from, velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
 
+			if (velocity_turbulance_has_oscillator) {
+				lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);
+			}
+
 			tfxWideFloat noise_resolution_time = noise_resolution_easing(life);
 			tfxWideFloat lookup_noise_resolution = noise_resolution_is_bezier_graph ?
 				tfx__wide_bezier_sampler(noise_resolution_time, noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.curve1, noise_resolution_graph->wide_graph.curve2, noise_resolution_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.to, noise_resolution_time);
+
+			if (noise_resolution_has_oscillator) {
+				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
+			}
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -13211,6 +13299,9 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat lookup_motion_randomness = motion_randomness_is_bezier_graph ?
 				tfx__wide_bezier_sampler(motion_randomness_time, motion_randomness_graph->wide_graph.from, motion_randomness_graph->wide_graph.curve1, motion_randomness_graph->wide_graph.curve2, motion_randomness_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(motion_randomness_graph->wide_graph.from, motion_randomness_graph->wide_graph.to, motion_randomness_time);
+			if (motion_randomness_has_oscillator) {
+				lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(motion_randomness_graph->wide_oscillator.offset_x, motion_randomness_graph->wide_oscillator.frequency), motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), motion_randomness_graph->wide_oscillator.offset_y);
+			}
 			const tfxWideFloat influence = tfxWideMul(motion_randomness_base, lookup_motion_randomness);
 
 			tfxWideFloat speed_influence = tfxWideMul(tfxWideSetSingle(10.f), influence);
@@ -13224,6 +13315,9 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat lookup_direction = direction_is_bezier_graph ?
 				tfx__wide_bezier_sampler(direction_time, direction_graph->wide_graph.from, direction_graph->wide_graph.curve1, direction_graph->wide_graph.curve2, direction_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(direction_graph->wide_graph.from, direction_graph->wide_graph.to, direction_time);
+			if (direction_has_oscillator) {
+				lookup_direction = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(direction_time, tfxWideAdd(direction_graph->wide_oscillator.offset_x, direction_graph->wide_oscillator.frequency), direction_graph->wide_oscillator.amplitude), lookup_direction), direction_graph->wide_oscillator.offset_y);
+			}
 			lookup_direction = tfxWideAdd(lookup_direction, angle);
 			direction = tfxWideAdd(direction, random_direction);
 			if (orbit_relative + orbit_non_relative) {
@@ -13264,14 +13358,23 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat lookup_weight = weight_is_bezier_graph ? 
 			tfx__wide_bezier_sampler(weight_time, weight_graph->wide_graph.from, weight_graph->wide_graph.curve1, weight_graph->wide_graph.curve2, weight_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(weight_graph->wide_graph.from, weight_graph->wide_graph.to, weight_time); 
+		if (weight_has_oscillator) {
+			lookup_weight = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(weight_time, tfxWideAdd(weight_graph->wide_oscillator.offset_x, weight_graph->wide_oscillator.frequency), weight_graph->wide_oscillator.amplitude), lookup_weight), weight_graph->wide_oscillator.offset_y);
+		}
 		tfxWideFloat spin_time = spin_easing(life);
 		tfxWideFloat lookup_spin = spin_is_bezier_graph ?
 			tfx__wide_bezier_sampler(spin_time, spin_graph->wide_graph.from, spin_graph->wide_graph.curve1, spin_graph->wide_graph.curve2, spin_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(spin_graph->wide_graph.from, spin_graph->wide_graph.to, spin_time);
+		if (spin_has_oscillator) {
+			lookup_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_time, tfxWideAdd(spin_graph->wide_oscillator.offset_x, spin_graph->wide_oscillator.frequency), spin_graph->wide_oscillator.amplitude), lookup_spin), spin_graph->wide_oscillator.offset_y);
+		}
 		tfxWideFloat stretch_time = stretch_easing(life);
 		tfxWideFloat lookup_stretch = stretch_is_bezier_graph ?
 			tfx__wide_bezier_sampler(stretch_time, stretch_graph->wide_graph.from, stretch_graph->wide_graph.curve1, stretch_graph->wide_graph.curve2, stretch_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(stretch_graph->wide_graph.from, stretch_graph->wide_graph.to, stretch_time);
+		if (stretch_has_oscillator) {
+			lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
+		}
 		p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 		tfxWideFloat stretch_velocity_x;
@@ -13412,8 +13515,6 @@ void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data) {
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfx__readbarrier;
-		tfxWideFloat life = tfxWideDiv(age, max_age);
-		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
 
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
@@ -13703,6 +13804,9 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat lookup_roll_spin = spin_roll_is_bezier_graph ?
 				tfx__wide_bezier_sampler(spin_roll_time, spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.curve1, spin_roll_graph->wide_graph.curve2, spin_roll_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.to, spin_roll_time);
+			if (spin_roll_has_oscillator) {
+				lookup_roll_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_roll_time, tfxWideAdd(spin_roll_graph->wide_oscillator.offset_x, spin_roll_graph->wide_oscillator.frequency), spin_roll_graph->wide_oscillator.amplitude), lookup_roll_spin), spin_roll_graph->wide_oscillator.offset_y);
+			}
 
 			//----Spin and angle Changes
 			rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideMul(tfxWideMul(lookup_roll_spin, base_spin), pm.update_time_wide));
@@ -13819,15 +13923,27 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 				tfx__wide_bezier_sampler(spin_roll_time, spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.curve1, spin_roll_graph->wide_graph.curve2, spin_roll_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.to, spin_roll_time);
 
+			if (spin_roll_has_oscillator) {
+				lookup_roll_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_roll_time, tfxWideAdd(spin_roll_graph->wide_oscillator.offset_x, spin_roll_graph->wide_oscillator.frequency), spin_roll_graph->wide_oscillator.amplitude), lookup_roll_spin), spin_roll_graph->wide_oscillator.offset_y);
+			}
+
 			tfxWideFloat spin_pitch_time = spin_pitch_easing(life);
 			tfxWideFloat lookup_pitch_spin = spin_pitch_is_bezier_graph ?
 				tfx__wide_bezier_sampler(spin_pitch_time, spin_pitch_graph->wide_graph.from, spin_pitch_graph->wide_graph.curve1, spin_pitch_graph->wide_graph.curve2, spin_pitch_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(spin_pitch_graph->wide_graph.from, spin_pitch_graph->wide_graph.to, spin_pitch_time);
 
+			if (spin_pitch_has_oscillator) {
+				lookup_pitch_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_pitch_time, tfxWideAdd(spin_pitch_graph->wide_oscillator.offset_x, spin_pitch_graph->wide_oscillator.frequency), spin_pitch_graph->wide_oscillator.amplitude), lookup_pitch_spin), spin_pitch_graph->wide_oscillator.offset_y);
+			}
+
 			tfxWideFloat spin_yaw_time = spin_yaw_easing(life);
 			tfxWideFloat lookup_yaw_spin = spin_yaw_is_bezier_graph ?
 				tfx__wide_bezier_sampler(spin_yaw_time, spin_yaw_graph->wide_graph.from, spin_yaw_graph->wide_graph.curve1, spin_yaw_graph->wide_graph.curve2, spin_yaw_graph->wide_graph.to) :
 				tfx__wide_linear_sampler(spin_yaw_graph->wide_graph.from, spin_yaw_graph->wide_graph.to, spin_yaw_time);
+
+			if (spin_yaw_has_oscillator) {
+				lookup_yaw_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_yaw_time, tfxWideAdd(spin_yaw_graph->wide_oscillator.offset_x, spin_yaw_graph->wide_oscillator.frequency), spin_yaw_graph->wide_oscillator.amplitude), lookup_yaw_spin), spin_yaw_graph->wide_oscillator.offset_y);
+			}
 
 			//----Spin and angle Changes
 			rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideMul(tfxWideMul(lookup_pitch_spin, base_roll_spin), pm.update_time_wide));
@@ -13935,13 +14051,13 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		lookup_width = width_is_bezier_graph ?		tfx__wide_bezier_sampler(width_time, width_graph->wide_graph.from, width_graph->wide_graph.curve1, width_graph->wide_graph.curve2, width_graph->wide_graph.to) : 
 													tfx__wide_linear_sampler(width_graph->wide_graph.from, width_graph->wide_graph.to, width_time);
 
-		tfxWideFloat height_time = height_easing(life);
-		lookup_height = height_is_bezier_graph ?	tfx__wide_bezier_sampler(height_time, height_graph->wide_graph.from, height_graph->wide_graph.curve1, height_graph->wide_graph.curve2, height_graph->wide_graph.to) : 
-													tfx__wide_linear_sampler(height_graph->wide_graph.from, height_graph->wide_graph.to, height_time);
-
 		if (width_has_oscillator) {
 			lookup_width = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(width_time, tfxWideAdd(width_graph->wide_oscillator.offset_x, width_graph->wide_oscillator.frequency), width_graph->wide_oscillator.amplitude), lookup_width), width_graph->wide_oscillator.offset_y);
 		}
+
+		tfxWideFloat height_time = height_easing(life);
+		lookup_height = height_is_bezier_graph ?	tfx__wide_bezier_sampler(height_time, height_graph->wide_graph.from, height_graph->wide_graph.curve1, height_graph->wide_graph.curve2, height_graph->wide_graph.to) : 
+													tfx__wide_linear_sampler(height_graph->wide_graph.from, height_graph->wide_graph.to, height_time);
 
 		if (height_has_oscillator) {
 			lookup_height = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(height_graph->wide_oscillator.offset_x, height_graph->wide_oscillator.frequency), height_graph->wide_oscillator.amplitude), lookup_height), height_graph->wide_oscillator.offset_y);
@@ -14082,20 +14198,36 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 			tfx__wide_bezier_sampler(intensity_time, intensity_graph->wide_graph.from, intensity_graph->wide_graph.curve1, intensity_graph->wide_graph.curve2, intensity_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(intensity_graph->wide_graph.from, intensity_graph->wide_graph.to, intensity_time);
 
+		if (intensity_has_oscillator) {
+			lookup_intensity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(intensity_time, tfxWideAdd(intensity_graph->wide_oscillator.offset_x, intensity_graph->wide_oscillator.frequency), intensity_graph->wide_oscillator.amplitude), lookup_intensity), intensity_graph->wide_oscillator.offset_y);
+		}
+
 		tfxWideFloat curved_alpha_time = curved_alpha_easing(life);
 		tfxWideFloat lookup_curved_alpha = curved_alpha_is_bezier_graph ?	
 			tfx__wide_bezier_sampler(curved_alpha_time, curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.curve1, curved_alpha_graph->wide_graph.curve2, curved_alpha_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.to, curved_alpha_time);
+
+		if (curved_alpha_has_oscillator) {
+			lookup_curved_alpha = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(curved_alpha_time, tfxWideAdd(curved_alpha_graph->wide_oscillator.offset_x, curved_alpha_graph->wide_oscillator.frequency), curved_alpha_graph->wide_oscillator.amplitude), lookup_curved_alpha), curved_alpha_graph->wide_oscillator.offset_y);
+		}
 
 		tfxWideFloat alpha_sharpness_time = alpha_sharpness_easing(life);
 		tfxWideFloat lookup_alpha_sharpness = alpha_sharpness_is_bezier_graph ?	
 			tfx__wide_bezier_sampler(alpha_sharpness_time, alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.curve1, alpha_sharpness_graph->wide_graph.curve2, alpha_sharpness_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.to, alpha_sharpness_time);
 
+		if (alpha_sharpness_has_oscillator) {
+			lookup_alpha_sharpness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(alpha_sharpness_time, tfxWideAdd(alpha_sharpness_graph->wide_oscillator.offset_x, alpha_sharpness_graph->wide_oscillator.frequency), alpha_sharpness_graph->wide_oscillator.amplitude), lookup_alpha_sharpness), alpha_sharpness_graph->wide_oscillator.offset_y);
+		}
+
 		tfxWideFloat gradient_mapper_time = gradient_mapper_easing(life);
 		tfxWideFloat lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?		
 			tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
+
+		if (gradient_mapper_has_oscillator) {
+			lookup_gradient_mapper = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(gradient_mapper_time, tfxWideAdd(gradient_mapper_graph->wide_oscillator.offset_x, gradient_mapper_graph->wide_oscillator.frequency), gradient_mapper_graph->wide_oscillator.amplitude), lookup_gradient_mapper), gradient_mapper_graph->wide_oscillator.offset_y);
+		}
 
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
@@ -16017,6 +16149,18 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
 	}
 
+	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
+
+	tfx_graph_t *factor_life_graph = &graph_list.graphs[tfxEmitter_factor_life_index];
+	tfx_easing_function factor_life_easing = tfx__get_easing_function(factor_life_graph->sampling_type);
+	tfx_graph_t *factor_intensity_graph = &graph_list.graphs[tfxEmitter_factor_intensity_index];
+	tfx_easing_function factor_intensity_easing = tfx__get_easing_function(factor_intensity_graph->sampling_type);
+
+	bool factor_life_is_bezier_graph = tfx__graph_has_bezier_curves(factor_life_graph);
+	bool factor_life_has_oscillator = tfx__graph_can_oscillate(factor_life_graph);
+	bool factor_intensity_is_bezier_graph = tfx__graph_has_bezier_curves(factor_intensity_graph);
+	bool factor_intensity_has_oscillator = tfx__graph_can_oscillate(factor_intensity_graph);
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &age = entry->particle_data->age[index];
@@ -16048,18 +16192,6 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		single_loop_count = 0;
 
 		float alpha = 255.f * first_alpha_value;
-
-		tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
-
-		tfx_graph_t *factor_life_graph = &graph_list.graphs[tfxEmitter_factor_life_index];
-		tfx_easing_function factor_life_easing = tfx__get_easing_function(factor_life_graph->sampling_type);
-		tfx_graph_t *factor_intensity_graph = &graph_list.graphs[tfxEmitter_factor_intensity_index];
-		tfx_easing_function factor_intensity_easing = tfx__get_easing_function(factor_intensity_graph->sampling_type);
-
-		bool factor_life_is_bezier_graph = tfx__graph_has_bezier_curves(factor_life_graph);
-		bool factor_life_has_oscillator = tfx__graph_can_oscillate(factor_life_graph);
-		bool factor_intensity_is_bezier_graph = tfx__graph_has_bezier_curves(factor_intensity_graph);
-		bool factor_intensity_has_oscillator = tfx__graph_can_oscillate(factor_intensity_graph);
 
 		if ((entry->emission_type == tfxOtherEmitter && emitter.other_emitter_index == tfxINVALID) || (entry->emission_type == tfxSpawnOnRibbon)) {
 			float time = 0.f;
@@ -16096,6 +16228,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 			if (factor_intensity_has_oscillator) {
 				factor_intensity *= (tfxOSCILLATOR_SIN(factor_intensity_graph->oscillator.offset_x + factor_intensity_time, factor_intensity_graph->oscillator.frequency, factor_intensity_graph->oscillator.amplitude) + factor_intensity_graph->oscillator.offset_y);
 			}
+
 			max_age *= factor_life;
 			max_age = tfx__Max(max_age, pm.frame_length);
 			entry->particle_data->intensity_factor[index] = factor_intensity;
@@ -18189,20 +18322,36 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					tfx__wide_bezier_sampler(intensity_time, intensity_graph->wide_graph.from, intensity_graph->wide_graph.curve1, intensity_graph->wide_graph.curve2, intensity_graph->wide_graph.to) :
 					tfx__wide_linear_sampler(intensity_graph->wide_graph.from, intensity_graph->wide_graph.to, intensity_time);
 
+				if (intensity_has_oscillator) {
+					lookup_intensity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(intensity_time, tfxWideAdd(intensity_graph->wide_oscillator.offset_x, intensity_graph->wide_oscillator.frequency), intensity_graph->wide_oscillator.amplitude), lookup_intensity), intensity_graph->wide_oscillator.offset_y);
+				}
+
 				tfxWideFloat curved_alpha_time = curved_alpha_easing(ribbon_lerp);
 				tfxWideFloat lookup_curved_alpha = curved_alpha_is_bezier_graph ?
 					tfx__wide_bezier_sampler(curved_alpha_time, curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.curve1, curved_alpha_graph->wide_graph.curve2, curved_alpha_graph->wide_graph.to) :
 					tfx__wide_linear_sampler(curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.to, curved_alpha_time);
+
+				if (curved_alpha_has_oscillator) {
+					lookup_curved_alpha = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(curved_alpha_time, tfxWideAdd(curved_alpha_graph->wide_oscillator.offset_x, curved_alpha_graph->wide_oscillator.frequency), curved_alpha_graph->wide_oscillator.amplitude), lookup_curved_alpha), curved_alpha_graph->wide_oscillator.offset_y);
+				}
 
 				tfxWideFloat alpha_sharpness_time = alpha_sharpness_easing(ribbon_lerp);
 				tfxWideFloat lookup_alpha_sharpness = alpha_sharpness_is_bezier_graph ?
 					tfx__wide_bezier_sampler(alpha_sharpness_time, alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.curve1, alpha_sharpness_graph->wide_graph.curve2, alpha_sharpness_graph->wide_graph.to) :
 					tfx__wide_linear_sampler(alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.to, alpha_sharpness_time);
 
+				if (alpha_sharpness_has_oscillator) {
+					lookup_alpha_sharpness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(alpha_sharpness_time, tfxWideAdd(alpha_sharpness_graph->wide_oscillator.offset_x, alpha_sharpness_graph->wide_oscillator.frequency), alpha_sharpness_graph->wide_oscillator.amplitude), lookup_alpha_sharpness), alpha_sharpness_graph->wide_oscillator.offset_y);
+				}
+
 				tfxWideFloat gradient_mapper_time = gradient_mapper_easing(ribbon_lerp);
 				tfxWideFloat lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?
 					tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) :
 					tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
+
+				if (gradient_mapper_has_oscillator) {
+					lookup_gradient_mapper = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(gradient_mapper_time, tfxWideAdd(gradient_mapper_graph->wide_oscillator.offset_x, gradient_mapper_graph->wide_oscillator.frequency), gradient_mapper_graph->wide_oscillator.amplitude), lookup_gradient_mapper), gradient_mapper_graph->wide_oscillator.offset_y);
+				}
 
 				if (intensity_has_oscillator) {
 					lookup_intensity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(intensity_time, tfxWideAdd(intensity_graph->wide_oscillator.offset_x, intensity_graph->wide_oscillator.frequency), intensity_graph->wide_oscillator.amplitude), lookup_intensity), intensity_graph->wide_oscillator.offset_y);
