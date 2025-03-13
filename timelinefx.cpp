@@ -5379,9 +5379,9 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("variation_height", tfxEmitter_variation_height_index);
 	tfxStore->graph_indexes.Insert("variation_weight", tfxEmitter_variation_weight_index);
 	tfxStore->graph_indexes.Insert("variation_spin", tfxEmitter_variation_roll_spin_index);
-	tfxStore->graph_indexes.Insert("variation_roll_spin", tfxEmitter_variation_pitch_spin_index);
-	tfxStore->graph_indexes.Insert("variation_pitch_spin", tfxEmitter_variation_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("variation_yaw_spin", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("variation_roll_spin", tfxEmitter_variation_roll_spin_index);
+	tfxStore->graph_indexes.Insert("variation_pitch_spin", tfxEmitter_variation_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("variation_yaw_spin", tfxEmitter_variation_yaw_spin_index);
 	tfxStore->graph_indexes.Insert("variation_noise_offset", tfxEmitter_variation_noise_offset_index);
 	tfxStore->graph_indexes.Insert("variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
@@ -5448,9 +5448,9 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_variation_height", tfxEmitter_variation_height_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_weight", tfxEmitter_variation_weight_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_spin", tfxEmitter_variation_roll_spin_index);
-	tfxStore->graph_indexes.Insert("emitter_variation_roll_spin", tfxEmitter_variation_pitch_spin_index);
-	tfxStore->graph_indexes.Insert("emitter_variation_pitch_spin", tfxEmitter_variation_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("emitter_variation_yaw_spin", tfxEmitter_variation_noise_offset_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_roll_spin", tfxEmitter_variation_roll_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_pitch_spin", tfxEmitter_variation_pitch_spin_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_yaw_spin", tfxEmitter_variation_yaw_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_noise_offset", tfxEmitter_variation_noise_offset_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
@@ -7858,6 +7858,10 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
 		return { 1.f, 10.f };
+	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
+		return { 1.f, 4320.f };
+	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		return { 1.f, 1000.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
 }
@@ -9304,6 +9308,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				if (tfx__is_3d_effect(effect_stack.parent())) {
 					tfx_GetEmitterPath(effect_stack.back())->settings.flags &= ~tfxPathFlags_2d;
 				}
+			}
+			if (tfx__is_3d_effect(effect_stack.parent())) {
+				effect_stack.back()->shared_flags |= tfxSharedEmitterPropertyFlags_effect_is_3d;
 			}
 			effect_stack.parent()->children.push_back(effect_stack.back());
 			effect_stack.pop();
@@ -10916,18 +10923,18 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 		float max_pitch_spin = tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_pitch_spin_index]);
 		float max_yaw_spin = tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_yaw_spin_index]);
 		max_roll_spin *= (	tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]) +
-							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]));
+							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_variation_roll_spin_index]));
 		max_pitch_spin *= (	tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_pitch_spin_index]) +
-							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]));
+							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index]));
 		max_yaw_spin *= (	tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_yaw_spin_index]) + 
-							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]));
-		if (max_roll_spin != 0.f && max_pitch_spin != 0.f && max_yaw_spin != 0.f) {
+							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index]));
+		if (max_roll_spin != 0.f || max_pitch_spin != 0.f || max_yaw_spin != 0.f) {
 			emitter->control_profile |= tfxEmitterControlProfile_spin3d;
 		}
 	} else {
 		float max_roll_spin = tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_roll_spin_index]);
 		max_roll_spin *= (	tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]) +
-							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_base_roll_spin_index]));
+							tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_variation_roll_spin_index]));
 		if (max_roll_spin != 0.f) {
 			emitter->control_profile |= tfxEmitterControlProfile_spin;
 		}
