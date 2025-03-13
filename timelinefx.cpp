@@ -3460,10 +3460,10 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : effect_to_clone->graph_list_index;
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
 		tfx__update_emitter_max_life(clone);
-		if (flags & tfxEffectCloningFlags_compile_graphs) {
-			if (destination_library != effect_to_clone->library) {
-				tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->graph_list_index]);
-			}
+		tfx__update_lerp_graphs_of_effect(clone, false);
+		tfx__update_library_color_graphs(destination_library, clone->graph_list_index);
+		if (destination_library != effect_to_clone->library) {
+			tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->graph_list_index]);
 		}
 		if (clone->path_attributes != tfxINVALID) {
 			tfx_emitter_path_t &path_copy = destination_library->paths.push_back({});
@@ -3506,7 +3506,7 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 	}
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
-	tfx__clone_effect(src, *dst, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
+	tfx__clone_effect(src, *dst, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
 }
 
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
@@ -3762,13 +3762,13 @@ void tfx__free_path_graphs(tfx_emitter_path_t *path) {
 
 void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst) {
 	if (src == dst) return;
-	tfx__copy_graph_no_lookups(&src->buffers.angle_x, &dst->buffers.angle_x);
-	tfx__copy_graph_no_lookups(&src->buffers.angle_y, &dst->buffers.angle_y);
-	tfx__copy_graph_no_lookups(&src->buffers.angle_z, &dst->buffers.angle_z);
-	tfx__copy_graph_no_lookups(&src->buffers.offset_x, &dst->buffers.offset_x);
-	tfx__copy_graph_no_lookups(&src->buffers.offset_y, &dst->buffers.offset_y);
-	tfx__copy_graph_no_lookups(&src->buffers.offset_z, &dst->buffers.offset_z);
-	tfx__copy_graph_no_lookups(&src->buffers.distance, &dst->buffers.distance);
+	tfx__copy_graph(&src->buffers.angle_x, &dst->buffers.angle_x, false);
+	tfx__copy_graph(&src->buffers.angle_y, &dst->buffers.angle_y, false);
+	tfx__copy_graph(&src->buffers.angle_z, &dst->buffers.angle_z, false);
+	tfx__copy_graph(&src->buffers.offset_x, &dst->buffers.offset_x, false);
+	tfx__copy_graph(&src->buffers.offset_y, &dst->buffers.offset_y, false);
+	tfx__copy_graph(&src->buffers.offset_z, &dst->buffers.offset_z, false);
+	tfx__copy_graph(&src->buffers.distance, &dst->buffers.distance, false);
 }
 
 void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *dst) {
@@ -4362,7 +4362,7 @@ void tfx__copy_graph_list_no_lookups(tfx_graph_list_t *src, tfx_graph_list_t *ds
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = 0; i != src->graphs.current_size; ++i) {
-		tfx__copy_graph_no_lookups(&src->graphs[i], &dst->graphs[i]);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
 	}
 }
 
@@ -4370,7 +4370,7 @@ void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst) {
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = 0; i != src->graphs.current_size; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i]);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
 	}
 }
 
@@ -4378,7 +4378,7 @@ void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tfx_graph_list
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph_no_lookups(&src->graphs[i], &dst->graphs[i]);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
 	}
 }
 
@@ -4386,7 +4386,7 @@ void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tf
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph_no_lookups(&src->graphs[i], &dst->graphs[i]);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
 	}
 }
 
@@ -4589,7 +4589,7 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 	if (TFX_VALID_HANDLE(effect_template->effect)) {
 		tfx__free_effect(effect_template->effect);
 	}
-	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
+	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs);
 	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
 }
 
@@ -7114,18 +7114,6 @@ void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scalar) {
 	}
 }
 
-void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph) {
-	dst_graph->graph_preset = src_graph->graph_preset;
-	dst_graph->type = src_graph->type;
-	dst_graph->effector = src_graph->effector;
-	dst_graph->sampling_type = src_graph->sampling_type;
-	dst_graph->oscillator = src_graph->oscillator;
-	dst_graph->flags = src_graph->flags;
-	tfxCopyBucketArray<tfx_attribute_node_t>(&dst_graph->nodes, &src_graph->nodes);
-	dst_graph->index = src_graph->index;
-	tfx__update_graph_wide_oscillator(dst_graph);
-}
-
 bool tfx__is_node_curve(tfx_attribute_node_t *node) {
 	return node->flags & tfxAttributeNodeFlags_is_curve;
 }
@@ -7947,11 +7935,24 @@ void tfx__free_graph(tfx_graph_t *graph) {
 	graph->nodes.free();
 }
 
-void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to) {
+void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool include_types) {
 	tfx__clear_graph(to);
 	for (tfxBucketLoop(from->nodes, i)) {
 		to->nodes.push_back(from->nodes[i]);
 	}
+	to->oscillator = from->oscillator;
+	to->sampling_type = from->sampling_type;
+	to->wide_graph = from->wide_graph;
+	to->wide_oscillator = from->wide_oscillator;
+	if (include_types) {
+		to->flags = from->flags;
+		to->graph_preset = from->graph_preset;
+		to->type = from->type;
+	}
+	to->flags &= ~tfxGraphFlags_use_bezier_sampling;
+	to->flags &= ~tfxGraphFlags_enable_oscillator;
+	to->flags |= from->flags & tfxGraphFlags_use_bezier_sampling;
+	to->flags |= from->flags & tfxGraphFlags_enable_oscillator;
 }
 
 void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to, tfx_effect_descriptor_type from_type, tfx_effect_descriptor_type to_type) {
@@ -8051,11 +8052,13 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 	}
 }
 
-void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect) {
+void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect, bool include_children) {
 	for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
 		tfx__update_lerp_graph(&graph);
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__update_lerp_graphs_of_effect(sub);
+		if (include_children) {
+			for (tfx_effect_descriptor sub : effect->children) {
+				tfx__update_lerp_graphs_of_effect(sub, true);
+			}
 		}
 	}
 }
@@ -10445,7 +10448,7 @@ void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_i
 	TFX_ASSERT(graph_index < tfxEffectGraphs_max_index);
 	tfx_graph_t &graph = t->effect->library->graphs[t->effect->graph_list_index].graphs[graph_index];
 	tfx_graph_t &original_graph = t->original_effect->library->graphs[t->original_effect->graph_list_index].graphs[graph_index];
-	tfx__copy_graph(&original_graph, &graph);
+	tfx__copy_graph(&original_graph, &graph, false);
 	tfx__multiply_all_graph_values(&graph, amount);
 }
 
@@ -10458,7 +10461,7 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_pa
 	tfx_graph_t &graph = emitter->library->graphs[emitter->graph_list_index].graphs[graph_index];
 	tfx_effect_descriptor original_emitter = tfx_GetLibraryEffectPath(t->effect->library, emitter_path);
 	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->graph_list_index].graphs[graph_index];
-	tfx__copy_graph(&original_graph, &graph);
+	tfx__copy_graph(&original_graph, &graph, false);
 	tfx__multiply_all_graph_values(&graph, amount);
 }
 
@@ -12124,6 +12127,8 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 			if (noise_resolution_has_oscillator) {
 				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
 			}
+
+			lookup_noise_resolution = tfxWideMul(lookup_noise_resolution, noise_resolution);
 
 			tfxWideArray x, y, z;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);

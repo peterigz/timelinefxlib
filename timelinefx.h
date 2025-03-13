@@ -2729,8 +2729,7 @@ typedef enum {
 	tfxEffectCloningFlags_keep_user_data = 1 << 0,
 	tfxEffectCloningFlags_force_clone_global = 1 << 1,
 	tfxEffectCloningFlags_clone_graphs = 1 << 2,
-	tfxEffectCloningFlags_compile_graphs = 1 << 3,
-	tfxEffectCloningFlags_history = 1 << 4
+	tfxEffectCloningFlags_history = 1 << 3
 } tfx_effect_cloning_flag_bits;
 
 typedef enum {
@@ -7127,7 +7126,7 @@ tfxAPI_EDITOR void tfx__reset_graph(tfx_graph_t *graph, float first_node_value, 
 tfxAPI_EDITOR void tfx__reset_graph_nodes(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
 tfxAPI_EDITOR void tfx__clear_graph_to_one(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void tfx__free_graph(tfx_graph_t *graph);
-tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to);
+tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to, bool include_types);
 tfxAPI_EDITOR void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to, tfx_effect_descriptor_type from_type, tfx_effect_descriptor_type to_type);
 tfxAPI_EDITOR void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue);
 tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
@@ -7141,10 +7140,9 @@ tfxAPI_EDITOR bool tfx__is_global_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_angle_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_translation_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scalar);
-tfxAPI_EDITOR void tfx__copy_graph_no_lookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
 tfxAPI_EDITOR void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value);
 tfxAPI_EDITOR void tfx__update_lerp_graph(tfx_graph_t *graph);
-tfxAPI_EDITOR void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect, bool include_children);
 tfxAPI_EDITOR void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
 tfxAPI_EDITOR bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
