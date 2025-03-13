@@ -8045,12 +8045,18 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
 		graph->wide_graph.curve1 = tfxWideSetSingle(graph->nodes[0].right.y);
 		graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
+		graph->flags &= ~tfxGraphFlags_multi_node_graph;
+	} else {
+		graph->flags |= tfxGraphFlags_multi_node_graph;
 	}
 }
 
 void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect) {
 	for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
 		tfx__update_lerp_graph(&graph);
+		for (tfx_effect_descriptor sub : effect->children) {
+			tfx__update_lerp_graphs_of_effect(sub);
+		}
 	}
 }
 
@@ -12216,9 +12222,10 @@ tfxWideFloat noise_resolution_time = noise_resolution_easing(life); \
 tfxWideFloat lookup_noise_resolution = noise_resolution_is_bezier_graph ? \
 tfx__wide_bezier_sampler(noise_resolution_time, noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.curve1, noise_resolution_graph->wide_graph.curve2, noise_resolution_graph->wide_graph.to) : \
 tfx__wide_linear_sampler(noise_resolution_graph->wide_graph.from, noise_resolution_graph->wide_graph.to, noise_resolution_time); \
-if (velocity_turbulance_has_oscillator) {\
-lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(velocity_turbulance_graph->wide_oscillator.offset_x, velocity_turbulance_graph->wide_oscillator.frequency), velocity_turbulance_graph->wide_oscillator.amplitude), lookup_velocity_turbulance), velocity_turbulance_graph->wide_oscillator.offset_y);\
+if (noise_resolution_has_oscillator) {\
+lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);\
 }\
+lookup_noise_resolution = tfxWideMul(lookup_noise_resolution, noise_resolution);\
 tfxWideArray x, y, z;    \
 x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);    \
 y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);    \
