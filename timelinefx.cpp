@@ -5316,6 +5316,107 @@ void tfx_FreeLibrary(tfx_library library) {
 	tfxFREE(library);
 }
 
+void tfx__update_library_compute_nodes() {
+	tmpStack(tfx_effect_descriptor, stack);
+	//tfxStore->all_graph_nodes.clear();
+	tfxStore->compiled_lookup_values.clear();
+	/*
+	The graph data for gpu is uploaded in lots of 8 floats:
+	First node value
+	First node bezier node
+	Second node value
+	Second node bezier node
+	Oscillator Frequency
+	Oscillator Amplitude
+	Oscillator Offset X
+	Oscillator Offset Y
+	*/
+	for (tfx_library library : tfxStore->libraries.data) {
+		for (tfx_effect_descriptor effect : library->effects) {
+			if (effect->property_flags & tfxEffectPropertyFlags_history_effect) {
+				continue;
+			}
+			stack.push_back(effect);
+			while (!stack.empty()) {
+				tfx_effect_descriptor_t *current = stack.pop_back();
+				if (current->type == tfxFolder) {
+					for (auto sub : current->children) {
+						stack.push_back(sub);
+					}
+					continue;
+				}
+				if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
+
+					current->gpu_lookup_offset = tfxStore->compiled_lookup_values.current_size;
+
+					for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
+
+						if (!tfx__gpu_overtime_graph(&graph)) continue;
+
+						TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
+						tfxStore->compiled_lookup_values.push_back(graph.nodes[0].value);
+						tfxStore->compiled_lookup_values.push_back(graph.nodes[0].right.y);
+						if (graph.nodes.current_size >= 2) {
+							tfxStore->compiled_lookup_values.push_back(graph.nodes[1].left.y);
+							tfxStore->compiled_lookup_values.push_back(graph.nodes[1].value);
+						} else {
+							tfxStore->compiled_lookup_values.push_back(0.f);
+							tfxStore->compiled_lookup_values.push_back(0.f);
+						}
+
+						tfxStore->compiled_lookup_values.push_back(graph.oscillator.frequency);
+						tfxStore->compiled_lookup_values.push_back(graph.oscillator.amplitude);
+						tfxStore->compiled_lookup_values.push_back(graph.oscillator.offset_x);
+						tfxStore->compiled_lookup_values.push_back(graph.oscillator.offset_y);
+					}
+				}
+
+				for (auto sub : current->children) {
+					stack.push_back(sub);
+				}
+			}
+		}
+	}
+	stack.free();
+}
+
+void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter) {
+	if (emitter->type != tfxEmitterType && emitter->type != tfxRibbonType) {
+		return;
+	}
+
+	tfxU32 graph_count = tfxGPU_lookup_end - tfxGPU_lookup_start;
+
+	tfxU32 running_offset = 0;
+	if (emitter->gpu_lookup_offset + graph_count * 8 >= tfxStore->compiled_lookup_values.size()) {
+		tfx__update_library_compute_nodes();
+		return;
+	}
+
+	for (tfx_graph_t &graph : emitter->library->graphs[emitter->graph_list_index].graphs) {
+
+		if (!tfx__gpu_overtime_graph(&graph)) continue;
+
+		TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset] = (graph.nodes[0].value);
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 1] = (graph.nodes[0].right.y);
+		if (graph.nodes.current_size >= 2) {
+			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 2] = (graph.nodes[1].left.y);
+			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 3] = (graph.nodes[1].value);
+		} else {
+			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 2] = (0.f);
+			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 3] = (0.f);
+		}
+
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 4] = (graph.oscillator.frequency);
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 5] = (graph.oscillator.amplitude);
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 6] = (graph.oscillator.offset_x);
+		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 7] = (graph.oscillator.offset_y);
+
+		running_offset += 8;
+	}
+}
+
 void tfx__update_all_library_graphs(tfx_library library) {
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
@@ -9380,6 +9481,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		if (uv_lookup) {
 			tfx_UpdateLibraryGPUImageData(lib);
 		}
+		tfx__update_library_compute_nodes();
 	}
 	lib->uid = uid;
 
@@ -13625,13 +13727,13 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 	tfx_graph_list_t &graph_list = ribbon_emitter.library->graphs[ribbon_emitter.graph_list_index];
 	float frames = shared_properties.end_frame + 1.f;
 
-	tfx_graph_t *intensity_graph = &graph_list.graphs[tfxEmitter_overtime_intensity_index];
+	tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overtime_intensity_index];
 	tfx_easing_function intensity_easing = tfx__get_easing_function(intensity_graph->sampling_type);
-	tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxEmitter_overtime_curved_alpha_index];
+	tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overtime_curved_alpha_index];
 	tfx_easing_function curved_alpha_easing = tfx__get_easing_function(curved_alpha_graph->sampling_type);
-	tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxEmitter_overtime_alpha_sharpness_index];
+	tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overtime_alpha_sharpness_index];
 	tfx_easing_function alpha_sharpness_easing = tfx__get_easing_function(alpha_sharpness_graph->sampling_type);
-	tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxEmitter_overtime_gradient_mapper_index];
+	tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index];
 	tfx_easing_function gradient_mapper_easing = tfx__get_easing_function(gradient_mapper_graph->sampling_type);
 
 	bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
@@ -18298,13 +18400,13 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
-		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxEmitter_overtime_intensity_index];
+		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overtime_intensity_index];
 		tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->sampling_type);
-		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxEmitter_overtime_curved_alpha_index];
+		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overtime_curved_alpha_index];
 		tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->sampling_type);
-		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxEmitter_overtime_alpha_sharpness_index];
+		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overtime_alpha_sharpness_index];
 		tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->sampling_type);
-		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxEmitter_overtime_gradient_mapper_index];
+		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index];
 		tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->sampling_type);
 
 		bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
