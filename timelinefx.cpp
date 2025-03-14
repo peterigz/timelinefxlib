@@ -4739,13 +4739,13 @@ tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
 	return library->gpu_shapes;
 }
 
-float *tfx_GetGPUGraphLookupsBuffer() {
-	TFX_ASSERT(tfxStore->compiled_lookup_values.current_size > 0);	//No data in buffer, did you load a library with this library handle?
-	return tfxStore->compiled_lookup_values.data;
+tfx_gpu_graph_data_t *tfx_GetGPUGraphLookupsBuffer() {
+	TFX_ASSERT(tfxStore->gpu_graph_data.current_size > 0);	//No data in buffer, did you load a library with this library handle?
+	return tfxCastBufferRef(tfx_gpu_graph_data_t, tfxStore->gpu_graph_data);
 }
 
 tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes() {
-	return tfxStore->compiled_lookup_values.size_in_bytes();
+	return tfxStore->gpu_graph_data.size_in_bytes();
 }
 
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
@@ -5319,7 +5319,7 @@ void tfx_FreeLibrary(tfx_library library) {
 void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor, stack);
 	//tfxStore->all_graph_nodes.clear();
-	tfxStore->compiled_lookup_values.clear();
+	tfxStore->gpu_graph_data.clear();
 	/*
 	The graph data for gpu is uploaded in lots of 8 floats:
 	First node value
@@ -5331,6 +5331,7 @@ void tfx__update_library_compute_nodes() {
 	Oscillator Offset X
 	Oscillator Offset Y
 	*/
+	tfxU32 index = 0;
 	for (tfx_library library : tfxStore->libraries.data) {
 		for (tfx_effect_descriptor effect : library->effects) {
 			if (effect->property_flags & tfxEffectPropertyFlags_history_effect) {
@@ -5347,27 +5348,36 @@ void tfx__update_library_compute_nodes() {
 				}
 				if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
 
-					current->gpu_lookup_offset = tfxStore->compiled_lookup_values.current_size;
+					current->gpu_lookup_offset = tfxStore->gpu_graph_data.current_size;
+
+					tfxStore->gpu_graph_data.add_space(tfxGPU_lookup_end - tfxGPU_lookup_start);
+					tfx_gpu_graph_data_t *gpu_graph_data = tfxCastBufferRef(tfx_gpu_graph_data_t, tfxStore->gpu_graph_data);
 
 					for (tfx_graph_t &graph : library->graphs[current->graph_list_index].graphs) {
 
 						if (!tfx__gpu_overtime_graph(&graph)) continue;
 
+						tfx_gpu_graph_data_t graph_data{};
 						TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
-						tfxStore->compiled_lookup_values.push_back(graph.nodes[0].value);
-						tfxStore->compiled_lookup_values.push_back(graph.nodes[0].right.y);
+						graph_data.node_data.x = graph.nodes[0].value;
+						graph_data.node_data.y = graph.nodes[0].right.y;
 						if (graph.nodes.current_size >= 2) {
-							tfxStore->compiled_lookup_values.push_back(graph.nodes[1].left.y);
-							tfxStore->compiled_lookup_values.push_back(graph.nodes[1].value);
+							graph_data.node_data.z = graph.nodes[1].left.y;
+							graph_data.node_data.w = graph.nodes[1].value;
 						} else {
-							tfxStore->compiled_lookup_values.push_back(0.f);
-							tfxStore->compiled_lookup_values.push_back(0.f);
+							graph_data.node_data.z = 0.f;
+							graph_data.node_data.w = 0.f;
 						}
 
-						tfxStore->compiled_lookup_values.push_back(graph.oscillator.frequency);
-						tfxStore->compiled_lookup_values.push_back(graph.oscillator.amplitude);
-						tfxStore->compiled_lookup_values.push_back(graph.oscillator.offset_x);
-						tfxStore->compiled_lookup_values.push_back(graph.oscillator.offset_y);
+						graph_data.oscillator.x = graph.oscillator.frequency;
+						graph_data.oscillator.y = graph.oscillator.amplitude;
+						graph_data.oscillator.z = graph.oscillator.offset_x;
+						graph_data.oscillator.w = graph.oscillator.offset_y;
+						graph_data.flags = graph.flags & tfxGraphFlags_use_bezier_sampling | graph.flags & tfxGraphFlags_enable_oscillator;
+						graph_data.easing_type = graph.easing_type;
+						TFX_ASSERT(index < tfxStore->gpu_graph_data.current_size);
+						gpu_graph_data[index] = graph_data;
+						index++;
 					}
 				}
 
@@ -5387,33 +5397,39 @@ void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter)
 
 	tfxU32 graph_count = tfxGPU_lookup_end - tfxGPU_lookup_start;
 
-	tfxU32 running_offset = 0;
-	if (emitter->gpu_lookup_offset + graph_count * 8 >= tfxStore->compiled_lookup_values.size()) {
+	if (emitter->gpu_lookup_offset + graph_count >= tfxStore->gpu_graph_data.current_size) {
 		tfx__update_library_compute_nodes();
 		return;
 	}
+
+	tfxU32 index = 0;
+	tfx_gpu_graph_data_t *gpu_graph_data = tfxCastBufferRef(tfx_gpu_graph_data_t, tfxStore->gpu_graph_data);
 
 	for (tfx_graph_t &graph : emitter->library->graphs[emitter->graph_list_index].graphs) {
 
 		if (!tfx__gpu_overtime_graph(&graph)) continue;
 
+		tfx_gpu_graph_data_t graph_data{};
 		TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset] = (graph.nodes[0].value);
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 1] = (graph.nodes[0].right.y);
+		graph_data.node_data.x = graph.nodes[0].value;
+		graph_data.node_data.y = graph.nodes[0].right.y;
 		if (graph.nodes.current_size >= 2) {
-			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 2] = (graph.nodes[1].left.y);
-			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 3] = (graph.nodes[1].value);
+			graph_data.node_data.z = graph.nodes[1].left.y;
+			graph_data.node_data.w = graph.nodes[1].value;
 		} else {
-			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 2] = (0.f);
-			tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 3] = (0.f);
+			graph_data.node_data.z = 0.f;
+			graph_data.node_data.w = 0.f;
 		}
 
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 4] = (graph.oscillator.frequency);
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 5] = (graph.oscillator.amplitude);
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 6] = (graph.oscillator.offset_x);
-		tfxStore->compiled_lookup_values[emitter->gpu_lookup_offset + running_offset + 7] = (graph.oscillator.offset_y);
+		graph_data.oscillator.x = graph.oscillator.frequency;
+		graph_data.oscillator.y = graph.oscillator.amplitude;
+		graph_data.oscillator.z = graph.oscillator.offset_x;
+		graph_data.oscillator.w = graph.oscillator.offset_y;
+		graph_data.flags = graph.flags & tfxGraphFlags_use_bezier_sampling | graph.flags & tfxGraphFlags_enable_oscillator;
+		graph_data.easing_type = graph.easing_type;
+		gpu_graph_data[emitter->gpu_lookup_offset + index] = graph_data;
 
-		running_offset += 8;
+		index++;
 	}
 }
 
@@ -5845,6 +5861,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 
 	//Graph properties
 	names_and_types.Insert("sampling_type", tfxUInt);
+	names_and_types.Insert("easing_type", tfxUInt);
 	names_and_types.Insert("oscillator_type", tfxUInt);
 	names_and_types.Insert("enable_oscillator", tfxBool);
 	names_and_types.Insert("multi_node", tfxBool);
@@ -6032,8 +6049,9 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 			case tfxUInt: {
 				tfxU32 converted_value;
 				if (tfx__string_to_u32(pair[1].c_str(), &converted_value)) {
-					if (pair[0] == "sampling_type") graph->sampling_type = (tfx_graph_sampling_type)converted_value;
+					if (pair[0] == "easing_type") graph->easing_type = (tfx_graph_easing_type)converted_value;
 					else if (pair[0] == "oscillator_type") graph->oscillator.type = (tfx_oscillator_type)converted_value;
+					else if (pair[0] == "sampling_type") graph->easing_type = (tfx_graph_easing_type)converted_value;
 				}
 			}
 			break;
@@ -6170,26 +6188,20 @@ tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
 	return name;
 }
 
-tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_sampling_type type) {
+tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	tfx_str32_t name;
 	switch (type) {
-	case tfxGraphSamplingType_constant            : name.Set("Constant"); break;
-	case tfxGraphSamplingType_ease_in_quad        : name.Set("Ease In Quad"); break;
-	case tfxGraphSamplingType_ease_out_quad       : name.Set("Ease Out Quad"); break;
-	case tfxGraphSamplingType_ease_in_out_quad    : name.Set("Ease In Out Quad"); break;
-	case tfxGraphSamplingType_ease_in_cubic       : name.Set("Ease In Cubic"); break;
-	case tfxGraphSamplingType_ease_out_cubic      : name.Set("Ease Out Cubic"); break;
-	case tfxGraphSamplingType_ease_in_out_cubic   : name.Set("Ease In Out Cubic"); break;
-	case tfxGraphSamplingType_ease_in_quart		  :	name.Set("Ease In Quart"); break;
-	case tfxGraphSamplingType_ease_out_quart      :	name.Set("Ease Out Quart"); break;
-	case tfxGraphSamplingType_ease_in_out_quart   :	name.Set("Ease In Out Quart"); break;
-	case tfxGraphSamplingType_ease_in_quint       :	name.Set("Ease In Out Quint"); break;
-	case tfxGraphSamplingType_ease_out_quint      :	name.Set("Ease In Quint"); break;
-	case tfxGraphSamplingType_ease_in_out_quint   :	name.Set("Ease Out Quint"); break;
-	case tfxGraphSamplingType_ease_in_circular    :	name.Set("Ease In Circular"); break;
-	case tfxGraphSamplingType_ease_out_circular   :	name.Set("Ease Out Circular"); break;
-	case tfxGraphSamplingType_ease_in_out_circular:	name.Set("Ease In Out Circular"); break;
-	case tfxGraphSamplingType_linear              : name.Set("Linear"); break;
+	case tfxGraphEasingType_constant            : name.Set("Constant"); break;
+	case tfxGraphEasingType_ease_in_quad        : name.Set("Ease In Quad"); break;
+	case tfxGraphEasingType_ease_out_quad       : name.Set("Ease Out Quad"); break;
+	case tfxGraphEasingType_ease_in_out_quad    : name.Set("Ease In Out Quad"); break;
+	case tfxGraphEasingType_ease_in_cubic       : name.Set("Ease In Cubic"); break;
+	case tfxGraphEasingType_ease_out_cubic      : name.Set("Ease Out Cubic"); break;
+	case tfxGraphEasingType_ease_in_out_cubic   : name.Set("Ease In Out Cubic"); break;
+	case tfxGraphEasingType_ease_in_circular    :	name.Set("Ease In Circular"); break;
+	case tfxGraphEasingType_ease_out_circular   :	name.Set("Ease Out Circular"); break;
+	case tfxGraphEasingType_ease_in_out_circular:	name.Set("Ease In Out Circular"); break;
+	case tfxGraphEasingType_linear              : name.Set("Linear"); break;
 	}
 	return name;
 }
@@ -6411,7 +6423,7 @@ tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor effect, tfx_graph_t 
 
 tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t property_name) {
 	tfx_str256_t value;
-	if (property_name == "sampling_type"            ) value.Setf("%u", graph->sampling_type);
+	if (property_name == "easing_type"            ) value.Setf("%u", graph->easing_type);
 	else if (property_name == "enable_oscillator"   ) value.Setf("%i", graph->flags & tfxGraphFlags_enable_oscillator);
 	else if (property_name == "use_bezier_sampling" ) value.Setf("%i", graph->flags & tfxGraphFlags_use_bezier_sampling);
 	else if (property_name == "multi_node"          ) value.Setf("%i", graph->flags & tfxGraphFlags_multi_node_graph);
@@ -7139,7 +7151,7 @@ void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_g
 void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file) {
 	file->AddLine(
 		"%s,"
-		"sampling_type=%i,"
+		"easing_type=%i,"
 		"use_bezier_sampling=%i,"
 		"multi_node=%i,"
 		"enable_oscillator=%i,"
@@ -7149,7 +7161,7 @@ void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descri
 		"oscillator_offset_x=%f,"
 		"oscillator_offset_y=%f",
 		name,
-		graph->sampling_type,
+		graph->easing_type,
 		graph->flags & tfxGraphFlags_use_bezier_sampling,
 		graph->flags & tfxGraphFlags_multi_node_graph,
 		graph->flags & tfxGraphFlags_enable_oscillator,
@@ -7799,7 +7811,7 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 }
 
 void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node, float max_frames) {
-	graph->sampling_type = tfxGraphSamplingType_linear;
+	graph->easing_type = tfxGraphEasingType_linear;
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
 	if (!max_frames) {
@@ -8046,7 +8058,7 @@ void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool include_types) {
 		to->nodes.push_back(from->nodes[i]);
 	}
 	to->oscillator = from->oscillator;
-	to->sampling_type = from->sampling_type;
+	to->easing_type = from->easing_type;
 	to->wide_graph = from->wide_graph;
 	to->wide_oscillator = from->wide_oscillator;
 	if (include_types) {
@@ -8139,7 +8151,7 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 		if (graph->nodes.size() == 1) {
 			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
 			node.frame = 1.f;
-			graph->sampling_type = tfxGraphSamplingType_constant;
+			graph->easing_type = tfxGraphEasingType_constant;
 			tfx__add_graph_node(graph, &node);
 		} else if (graph->nodes.size() > 2) {
 			graph->nodes.current_size = 2;
@@ -8228,7 +8240,7 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
 	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
 
-	tfx_easing_function blendfactor_easing = tfx__get_easing_function(blendfactor->sampling_type);
+	tfx_easing_function blendfactor_easing = tfx__get_easing_function(blendfactor->easing_type);
 
 	bool blendfactor_is_bezier_graph = tfx__graph_has_bezier_curves(blendfactor);
 	bool blendfactor_has_oscillator = tfx__graph_can_oscillate(blendfactor);
@@ -11822,16 +11834,16 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 	tfx_2d_instance_t *sprites = tfxCastBuffer(tfx_2d_instance_t, work_entry->sprite_instances);
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->sampling_type);
+	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->easing_type);
 
 	tfx_graph_t *noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->sampling_type);
+	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->easing_type);
 
 	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
-	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->sampling_type);
+	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12099,13 +12111,13 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->sampling_type);
+	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->easing_type);
 	
 	tfx_graph_t *noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->sampling_type);
+	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12411,10 +12423,10 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12480,10 +12492,10 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 	}
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12542,16 +12554,16 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->sampling_type);
+	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->easing_type);
 
 	tfx_graph_t *noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->sampling_type);
+	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12641,16 +12653,16 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 	}
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->sampling_type);
+	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->easing_type);
 
 	tfx_graph_t *noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->sampling_type);
+	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12737,13 +12749,13 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 	time_step_fraction = tfxWideMul(tfxWideMul(time_step_fraction, time_step_fraction), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), time_step_fraction)));
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
+	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -12843,13 +12855,13 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 	}
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
+	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -13013,7 +13025,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 
 	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
-	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->sampling_type);
+	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->easing_type);
 
 	bool stretch_is_bezier_graph = tfx__graph_has_bezier_curves(stretch_graph);
 	bool stretch_has_oscillator = tfx__graph_can_oscillate(stretch_graph);
@@ -13238,28 +13250,28 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 	}
 
 	tfx_graph_t *velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
-	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->sampling_type);
+	tfx_wide_easing_function velocity_easing = tfx__get_wide_easing_function(velocity_graph->easing_type);
 
 	tfx_graph_t *velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->sampling_type);
+	tfx_wide_easing_function velocity_turbulance_easing = tfx__get_wide_easing_function(velocity_turbulance_graph->easing_type);
 
 	tfx_graph_t *noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->sampling_type);
+	tfx_wide_easing_function noise_resolution_easing = tfx__get_wide_easing_function(noise_resolution_graph->easing_type);
 
 	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
-	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->sampling_type);
+	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->easing_type);
 
 	tfx_graph_t *direction_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_direction_index];
-	tfx_wide_easing_function direction_easing = tfx__get_wide_easing_function(direction_graph->sampling_type);
+	tfx_wide_easing_function direction_easing = tfx__get_wide_easing_function(direction_graph->easing_type);
 
 	tfx_graph_t *spin_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
-	tfx_wide_easing_function spin_easing = tfx__get_wide_easing_function(spin_graph->sampling_type);
+	tfx_wide_easing_function spin_easing = tfx__get_wide_easing_function(spin_graph->easing_type);
 
 	tfx_graph_t *motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->sampling_type);
+	tfx_wide_easing_function motion_randomness_easing = tfx__get_wide_easing_function(motion_randomness_graph->easing_type);
 
 	tfx_graph_t *weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
-	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->sampling_type);
+	tfx_wide_easing_function weight_easing = tfx__get_wide_easing_function(weight_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -13728,13 +13740,13 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 	float frames = shared_properties.end_frame + 1.f;
 
 	tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overtime_intensity_index];
-	tfx_easing_function intensity_easing = tfx__get_easing_function(intensity_graph->sampling_type);
+	tfx_easing_function intensity_easing = tfx__get_easing_function(intensity_graph->easing_type);
 	tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overtime_curved_alpha_index];
-	tfx_easing_function curved_alpha_easing = tfx__get_easing_function(curved_alpha_graph->sampling_type);
+	tfx_easing_function curved_alpha_easing = tfx__get_easing_function(curved_alpha_graph->easing_type);
 	tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overtime_alpha_sharpness_index];
-	tfx_easing_function alpha_sharpness_easing = tfx__get_easing_function(alpha_sharpness_graph->sampling_type);
+	tfx_easing_function alpha_sharpness_easing = tfx__get_easing_function(alpha_sharpness_graph->easing_type);
 	tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index];
-	tfx_easing_function gradient_mapper_easing = tfx__get_easing_function(gradient_mapper_graph->sampling_type);
+	tfx_easing_function gradient_mapper_easing = tfx__get_easing_function(gradient_mapper_graph->easing_type);
 
 	bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
 	bool intensity_has_oscillator = tfx__graph_can_oscillate(intensity_graph);
@@ -13904,7 +13916,7 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
-	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->sampling_type);
+	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
 
 	bool spin_roll_is_bezier_graph = tfx__graph_has_bezier_curves(spin_roll_graph);
 	bool spin_roll_has_oscillator = tfx__graph_can_oscillate(spin_roll_graph);
@@ -14006,11 +14018,11 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
-	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->sampling_type);
+	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
 	tfx_graph_t *spin_pitch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_pitch_spin_index];
-	tfx_wide_easing_function spin_pitch_easing = tfx__get_wide_easing_function(spin_pitch_graph->sampling_type);
+	tfx_wide_easing_function spin_pitch_easing = tfx__get_wide_easing_function(spin_pitch_graph->easing_type);
 	tfx_graph_t *spin_yaw_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_yaw_spin_index];
-	tfx_wide_easing_function spin_yaw_easing = tfx__get_wide_easing_function(spin_yaw_graph->sampling_type);
+	tfx_wide_easing_function spin_yaw_easing = tfx__get_wide_easing_function(spin_yaw_graph->easing_type);
 
 	bool spin_roll_is_bezier_graph = tfx__graph_has_bezier_curves(spin_roll_graph);
 	bool spin_roll_has_oscillator = tfx__graph_can_oscillate(spin_roll_graph);
@@ -14141,9 +14153,9 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (tfx__is_ordered_effect_state(&pm.effects[emitter.root_index])));
 
 	tfx_graph_t *width_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_width_index];
-	tfx_wide_easing_function width_easing = tfx__get_wide_easing_function(width_graph->sampling_type);
+	tfx_wide_easing_function width_easing = tfx__get_wide_easing_function(width_graph->easing_type);
 	tfx_graph_t *height_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_height_index];
-	tfx_wide_easing_function height_easing = tfx__get_wide_easing_function(height_graph->sampling_type);
+	tfx_wide_easing_function height_easing = tfx__get_wide_easing_function(height_graph->easing_type);
 
 	bool width_is_bezier_graph = tfx__graph_has_bezier_curves(width_graph);
 	bool height_is_bezier_graph = tfx__graph_has_bezier_curves(height_graph);
@@ -14281,13 +14293,13 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 	tfxWideArrayi curved_alpha;
 
 	tfx_graph_t *intensity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_intensity_index];
-	tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->sampling_type);
+	tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
 	tfx_graph_t *curved_alpha_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_curved_alpha_index];
-	tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->sampling_type);
+	tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->easing_type);
 	tfx_graph_t *alpha_sharpness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_alpha_sharpness_index];
-	tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->sampling_type);
+	tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->easing_type);
 	tfx_graph_t *gradient_mapper_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_gradient_mapper_index];
-	tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->sampling_type);
+	tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->easing_type);
 
 	bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
 	bool intensity_has_oscillator = tfx__graph_can_oscillate(intensity_graph);
@@ -16273,9 +16285,9 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
 
 	tfx_graph_t *factor_life_graph = &graph_list.graphs[tfxEmitter_factor_life_index];
-	tfx_easing_function factor_life_easing = tfx__get_easing_function(factor_life_graph->sampling_type);
+	tfx_easing_function factor_life_easing = tfx__get_easing_function(factor_life_graph->easing_type);
 	tfx_graph_t *factor_intensity_graph = &graph_list.graphs[tfxEmitter_factor_intensity_index];
-	tfx_easing_function factor_intensity_easing = tfx__get_easing_function(factor_intensity_graph->sampling_type);
+	tfx_easing_function factor_intensity_easing = tfx__get_easing_function(factor_intensity_graph->easing_type);
 
 	bool factor_life_is_bezier_graph = tfx__graph_has_bezier_curves(factor_life_graph);
 	bool factor_life_has_oscillator = tfx__graph_can_oscillate(factor_life_graph);
@@ -16452,7 +16464,7 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
 	tfx_graph_t *size_graph = &graph_list.graphs[tfxEmitter_factor_size_index];
-	tfx_easing_function size_easing = tfx__get_easing_function(size_graph->sampling_type);
+	tfx_easing_function size_easing = tfx__get_easing_function(size_graph->easing_type);
 
 	bool size_is_bezier_graph = tfx__graph_has_bezier_curves(size_graph);
 	bool size_has_oscillator = tfx__graph_can_oscillate(size_graph);
@@ -16539,7 +16551,7 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
 	tfx_graph_t *size_graph = &graph_list.graphs[tfxEmitter_factor_size_index];
-	tfx_easing_function size_easing = tfx__get_easing_function(size_graph->sampling_type);
+	tfx_easing_function size_easing = tfx__get_easing_function(size_graph->easing_type);
 
 	bool size_is_bezier_graph = tfx__graph_has_bezier_curves(size_graph);
 	bool size_has_oscillator = tfx__graph_can_oscillate(size_graph);
@@ -18401,13 +18413,13 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
 		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overtime_intensity_index];
-		tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->sampling_type);
+		tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
 		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overtime_curved_alpha_index];
-		tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->sampling_type);
+		tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->easing_type);
 		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overtime_alpha_sharpness_index];
-		tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->sampling_type);
+		tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->easing_type);
 		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index];
-		tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->sampling_type);
+		tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->easing_type);
 
 		bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
 		bool intensity_has_oscillator = tfx__graph_can_oscillate(intensity_graph);
@@ -18778,7 +18790,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
 	tfx_graph_t *velocity_graph = &graph_list.graphs[tfxEmitter_factor_velocity_index];
-	tfx_easing_function velocity_easing = tfx__get_easing_function(velocity_graph->sampling_type);
+	tfx_easing_function velocity_easing = tfx__get_easing_function(velocity_graph->easing_type);
 
 	bool velocity_is_bezier_graph = tfx__graph_has_bezier_curves(velocity_graph);
 	bool velocity_has_oscillator = tfx__graph_can_oscillate(velocity_graph);
@@ -18982,7 +18994,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
 	tfx_graph_t *width_overlength_graph = &graph_list.graphs[tfxRibbon_overlength_width_index];
-	tfx_easing_function width_overlength_easing = tfx__get_easing_function(width_overlength_graph->sampling_type);
+	tfx_easing_function width_overlength_easing = tfx__get_easing_function(width_overlength_graph->easing_type);
 
 	bool width_overlength_is_bezier_graph = tfx__graph_has_bezier_curves(width_overlength_graph);
 	bool width_overlength_has_oscillator = tfx__graph_can_oscillate(width_overlength_graph);
@@ -19620,52 +19632,40 @@ float tfx__ease_in_out_circular(float t) {
 	return t < 0.5f ? (1 - sqrtf(1 - t2)) * 0.5f : (sqrtf(1 - tm2) + 1) * 0.5f;
 }
 
-tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_sampling_type type) {
+tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type type) {
 	switch (type) {
-	case tfxGraphSamplingType_constant: return tfx__wide_ease_constant;
-	case tfxGraphSamplingType_ease_in_quad: return tfx__wide_ease_in_quad;
-	case tfxGraphSamplingType_ease_out_quad: return tfx__wide_ease_out_quad;
-	case tfxGraphSamplingType_ease_in_out_quad: return tfx__wide_ease_in_out_quad;
-	case tfxGraphSamplingType_ease_in_cubic: return tfx__wide_ease_in_cubic;
-	case tfxGraphSamplingType_ease_out_cubic: return tfx__wide_ease_out_cubic;
-	case tfxGraphSamplingType_ease_in_out_cubic: return tfx__wide_ease_in_out_cubic;
-	case tfxGraphSamplingType_ease_in_quart: return tfx__wide_ease_in_quad;
-	case tfxGraphSamplingType_ease_out_quart: return tfx__wide_ease_out_quad;
-	case tfxGraphSamplingType_ease_in_out_quart: return tfx__wide_ease_in_out_quad;
-	case tfxGraphSamplingType_ease_in_quint: return tfx__wide_ease_in_cubic;
-	case tfxGraphSamplingType_ease_out_quint: return tfx__wide_ease_out_cubic;
-	case tfxGraphSamplingType_ease_in_out_quint: return tfx__wide_ease_in_out_cubic;
-	case tfxGraphSamplingType_ease_in_circular: return tfx__wide_ease_in_circular;
-	case tfxGraphSamplingType_ease_out_circular: return tfx__wide_ease_out_circular;
-	case tfxGraphSamplingType_ease_in_out_circular: return tfx__wide_ease_in_out_circular;
+	case tfxGraphEasingType_constant: return tfx__wide_ease_constant;
+	case tfxGraphEasingType_ease_in_quad: return tfx__wide_ease_in_quad;
+	case tfxGraphEasingType_ease_out_quad: return tfx__wide_ease_out_quad;
+	case tfxGraphEasingType_ease_in_out_quad: return tfx__wide_ease_in_out_quad;
+	case tfxGraphEasingType_ease_in_cubic: return tfx__wide_ease_in_cubic;
+	case tfxGraphEasingType_ease_out_cubic: return tfx__wide_ease_out_cubic;
+	case tfxGraphEasingType_ease_in_out_cubic: return tfx__wide_ease_in_out_cubic;
+	case tfxGraphEasingType_ease_in_circular: return tfx__wide_ease_in_circular;
+	case tfxGraphEasingType_ease_out_circular: return tfx__wide_ease_out_circular;
+	case tfxGraphEasingType_ease_in_out_circular: return tfx__wide_ease_in_out_circular;
 	}
 	return tfx__wide_ease_linear;
 }
 
-tfx_easing_function tfx__get_easing_function(tfx_graph_sampling_type type) {
+tfx_easing_function tfx__get_easing_function(tfx_graph_easing_type type) {
 	switch (type) {
-	case tfxGraphSamplingType_constant: return tfx__ease_constant;
-	case tfxGraphSamplingType_ease_in_quad: return tfx__ease_in_quad;
-	case tfxGraphSamplingType_ease_out_quad: return tfx__ease_out_quad;
-	case tfxGraphSamplingType_ease_in_out_quad: return tfx__ease_in_out_quad;
-	case tfxGraphSamplingType_ease_in_cubic: return tfx__ease_in_cubic;
-	case tfxGraphSamplingType_ease_out_cubic: return tfx__ease_out_cubic;
-	case tfxGraphSamplingType_ease_in_out_cubic: return tfx__ease_in_out_cubic;
-	case tfxGraphSamplingType_ease_in_quart: return tfx__ease_in_quad;
-	case tfxGraphSamplingType_ease_out_quart: return tfx__ease_out_quad;
-	case tfxGraphSamplingType_ease_in_out_quart: return tfx__ease_in_out_quad;
-	case tfxGraphSamplingType_ease_in_quint: return tfx__ease_in_cubic;
-	case tfxGraphSamplingType_ease_out_quint: return tfx__ease_out_cubic;
-	case tfxGraphSamplingType_ease_in_out_quint: return tfx__ease_in_out_cubic;
-	case tfxGraphSamplingType_ease_in_circular: return tfx__ease_in_circular;
-	case tfxGraphSamplingType_ease_out_circular: return tfx__ease_out_circular;
-	case tfxGraphSamplingType_ease_in_out_circular: return tfx__ease_in_out_circular;
+	case tfxGraphEasingType_constant: return tfx__ease_constant;
+	case tfxGraphEasingType_ease_in_quad: return tfx__ease_in_quad;
+	case tfxGraphEasingType_ease_out_quad: return tfx__ease_out_quad;
+	case tfxGraphEasingType_ease_in_out_quad: return tfx__ease_in_out_quad;
+	case tfxGraphEasingType_ease_in_cubic: return tfx__ease_in_cubic;
+	case tfxGraphEasingType_ease_out_cubic: return tfx__ease_out_cubic;
+	case tfxGraphEasingType_ease_in_out_cubic: return tfx__ease_in_out_cubic;
+	case tfxGraphEasingType_ease_in_circular: return tfx__ease_in_circular;
+	case tfxGraphEasingType_ease_out_circular: return tfx__ease_out_circular;
+	case tfxGraphEasingType_ease_in_out_circular: return tfx__ease_in_out_circular;
 	}
 	return tfx__ease_linear;
 }
 
 float tfx__sample_graph(tfx_graph_t *graph, float t) {
-	tfx_easing_function easing_function = tfx__get_easing_function(graph->sampling_type);
+	tfx_easing_function easing_function = tfx__get_easing_function(graph->easing_type);
 	float value = 0.f;
 	float time = easing_function(t);
 	if (graph->flags & tfxGraphFlags_use_bezier_sampling) {
@@ -19832,6 +19832,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
 	tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
 	tfxStore->particle_managers.init();
+	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfx__hash_initialise(&tfxStore->hasher, 0);
 }
 
