@@ -6014,11 +6014,20 @@ int tfx_ValidateEffectPackage(const char *filename) {
 void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
 	tfx_str256_t graph_name = (*values)[0];
 
+	if (!tfxStore->data_types.names_and_types.ValidName(graph_name.c_str())) {
+		tfxPrint("%s data type was found to be invalid.", graph_name.c_str());
+		return;
+	}
+	tfx_data_type data_type = tfxStore->data_types.names_and_types.At(graph_name.c_str());
 	tfx_str256_t graph_property_name;
-	switch (effect->type) {
-	case tfxEffectType: graph_property_name.Setf("%s", graph_name); break;
-	case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name); break;
-	case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name); break;
+	if (data_type == tfxAttributeGraph) {
+		switch (effect->type) {
+		case tfxEffectType: graph_property_name.Setf("%s", graph_name); break;
+		case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name); break;
+		case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name); break;
+		}
+	} else {
+		graph_property_name.Setf("%s", graph_name);
 	}
 
 	if (!tfxStore->graph_indexes.ValidName(graph_property_name.c_str())) {
@@ -6027,7 +6036,6 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 	}
 
 	tfxU32 graph_index = tfxStore->graph_indexes.At(graph_property_name.c_str());
-	tfx_data_type data_type = tfxStore->data_types.names_and_types.At(graph_name.c_str());
 	tfx_graph_t *graph = nullptr;
 
 	if (effect->graph_list_index == tfxINVALID && data_type == tfxAttributeGraph) {
@@ -10735,6 +10743,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				emitter.source_emitter = child;
 				emitter.properties_index = child->property_index;
 				emitter.shared_index = child->shared_index;
+				emitter.loop_length = child->loop_length;
 				emitter.graph_list_index = child->graph_list_index;
 				emitter.transform_index = child->transform_index;
 				emitter.path_attributes = child->path_attributes;
@@ -10874,6 +10883,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				ribbon_emitter.source_ribbon = child;
 				ribbon_emitter.local_position = {};
 				ribbon_emitter.local_rotations = {};
+				ribbon_emitter.loop_length = child->loop_length;
 				ribbon_emitter.age = 0.f;
 				ribbon_emitter.max_life = child->max_life;
 				ribbon_emitter.frame = 0.f;
@@ -15709,17 +15719,47 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_vec3_t local_rotations;
 	tfx_library library = emitter.library;
 	tfx_vec3_t translation;
-	translation.x = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_x_index], emitter.age);
-	translation.y = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_y_index], emitter.age);
-	translation.z = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_z_index], emitter.age);
+
+	tfx_graph_t &translation_x_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_translate_x_index];
+	tfx_graph_t &translation_y_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_translate_y_index];
+	tfx_graph_t &translation_z_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_translate_z_index];
+	tfx_graph_t &roll_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_roll_index];
+	tfx_graph_t &pitch_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_pitch_index];
+	tfx_graph_t &yaw_graph = library->graphs[emitter.transform_index].graphs[tfxTransform_yaw_index];
+
+	translation.x = tfx__lookup_precise(&translation_x_graph, emitter.age);
+	translation.y = tfx__lookup_precise(&translation_y_graph, emitter.age);
+	translation.z = tfx__lookup_precise(&translation_z_graph, emitter.age);
 
 	emitter.captured_position = emitter.world_position;
 
 	emitter.frame = emitter.age;
 
-	local_rotations.roll = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_roll_index], emitter.age);
-	local_rotations.pitch = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_pitch_index], emitter.age);
-	local_rotations.yaw = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_yaw_index], emitter.age);
+	local_rotations.roll = tfx__lookup_precise(&roll_graph, emitter.age);
+	local_rotations.pitch = tfx__lookup_precise(&pitch_graph, emitter.age);
+	local_rotations.yaw = tfx__lookup_precise(&yaw_graph, emitter.age);
+
+	float t = emitter.loop_length > 0.f ? emitter.age / emitter.loop_length : 0.f;
+	if (emitter.loop_length > 0.f) {
+		if (translation_x_graph.flags & tfxGraphFlags_enable_oscillator) {
+			translation.x *= tfxOSCILLATOR_SIN(t + translation_x_graph.oscillator.offset_x, translation_x_graph.oscillator.frequency, translation_x_graph.oscillator.amplitude) + translation_x_graph.oscillator.offset_y;
+		}
+		if (translation_y_graph.flags & tfxGraphFlags_enable_oscillator) {
+			translation.y *= tfxOSCILLATOR_SIN(t + translation_y_graph.oscillator.offset_x, translation_y_graph.oscillator.frequency, translation_y_graph.oscillator.amplitude) + translation_y_graph.oscillator.offset_y;
+		}
+		if (translation_z_graph.flags & tfxGraphFlags_enable_oscillator) {
+			translation.z *= tfxOSCILLATOR_SIN(t + translation_z_graph.oscillator.offset_x, translation_z_graph.oscillator.frequency, translation_z_graph.oscillator.amplitude) + translation_z_graph.oscillator.offset_y;
+		}
+		if (roll_graph.flags & tfxGraphFlags_enable_oscillator) {
+			local_rotations.roll *= tfxOSCILLATOR_SIN(t + roll_graph.oscillator.offset_x, roll_graph.oscillator.frequency, roll_graph.oscillator.amplitude) + roll_graph.oscillator.offset_y;
+		}
+		if (pitch_graph.flags & tfxGraphFlags_enable_oscillator) {
+			local_rotations.pitch *= tfxOSCILLATOR_SIN(t + pitch_graph.oscillator.offset_x, pitch_graph.oscillator.frequency, pitch_graph.oscillator.amplitude) + pitch_graph.oscillator.offset_y;
+		}
+		if (yaw_graph.flags & tfxGraphFlags_enable_oscillator) {
+			local_rotations.yaw *= tfxOSCILLATOR_SIN(t + yaw_graph.oscillator.offset_x, yaw_graph.oscillator.frequency, yaw_graph.oscillator.amplitude) + yaw_graph.oscillator.offset_y;
+		}
+	}
 
 	spawn_work_entry->highest_particle_age = emitter.highest_particle_age;
 
@@ -19191,19 +19231,42 @@ void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emi
 	emitter.bounding_box.max_corner.y = -FLT_MAX;
 	emitter.bounding_box.max_corner.z = -FLT_MAX;
 
+	tfx_graph_t &emitter_width = library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_width_index];
+	tfx_graph_t &emitter_height = library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_height_index];
+	tfx_graph_t &emitter_depth = library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_depth_index];
+
 	bool is_area = shared_properties.emission_type != tfxPoint && shared_properties.emission_type != tfxLine;
+	float t = emitter.loop_length > 0.f ? emitter.age / emitter.loop_length : 0.f;
 
 	emitter.emitter_size = { 0 };
 	if (is_area) {
-		emitter.emitter_size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_height_index], emitter.age);
-		emitter.emitter_size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_width_index], emitter.age);
+		emitter.emitter_size.y = tfx__lookup_precise(&emitter_height, emitter.age);
+		emitter.emitter_size.x = tfx__lookup_precise(&emitter_width, emitter.age);
+		if (emitter.loop_length > 0.f) {
+			if (emitter_height.flags & tfxGraphFlags_enable_oscillator) {
+				emitter.emitter_size.y *= tfxOSCILLATOR_SIN(t + emitter_height.oscillator.offset_x, emitter_height.oscillator.frequency, emitter_height.oscillator.amplitude) + emitter_height.oscillator.offset_y;
+			}
+			if (emitter_width.flags & tfxGraphFlags_enable_oscillator) {
+				emitter.emitter_size.x *= tfxOSCILLATOR_SIN(t + emitter_width.oscillator.offset_x, emitter_width.oscillator.frequency, emitter_width.oscillator.amplitude) + emitter_width.oscillator.offset_y;
+			}
+		}
 	}
 	else if (shared_properties.emission_type == tfxLine) {
-		emitter.emitter_size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_height_index], emitter.age);
+		emitter.emitter_size.y = tfx__lookup_precise(&emitter_height, emitter.age);
+		if (emitter.loop_length > 0.f) {
+			if (emitter_height.flags & tfxGraphFlags_enable_oscillator) {
+				emitter.emitter_size.y *= tfxOSCILLATOR_SIN(t + emitter_height.oscillator.offset_x, emitter_height.oscillator.frequency, emitter_height.oscillator.amplitude) + emitter_height.oscillator.offset_y;
+			}
+		}
 	}
 
 	if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
-		emitter.emitter_size.z = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_depth_index], emitter.age);
+		emitter.emitter_size.z = tfx__lookup_precise(&emitter_depth, emitter.age);
+		if (emitter.loop_length > 0.f) {
+			if (emitter_depth.flags & tfxGraphFlags_enable_oscillator) {
+				emitter.emitter_size.z *= tfxOSCILLATOR_SIN(t + emitter_depth.oscillator.offset_x, emitter_depth.oscillator.frequency, emitter_depth.oscillator.amplitude) + emitter_depth.oscillator.offset_y;
+			}
+		}
 	}
 
 	emitter.emitter_size *= pm->effects[parent_index].emitter_size;

@@ -6010,6 +6010,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float timeout;
 	float delay_spawning;
 	float max_life;
+	float loop_length;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
 	tfxSharedEmitterFlags shared_flags;
