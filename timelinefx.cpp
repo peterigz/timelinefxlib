@@ -3070,7 +3070,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index], 0.f, tfxAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index].type = tfxVariation_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].type = tfxVariation_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].type = tfxOvertime_width;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index].type = tfxOvertime_scale;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index].type = tfxOvertime_overal_ribbon_scale;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].type = tfxOvertime_red;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].type = tfxOvertime_green;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].type = tfxOvertime_blue;
@@ -3214,7 +3214,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset);
@@ -5320,17 +5320,6 @@ void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor, stack);
 	//tfxStore->all_graph_nodes.clear();
 	tfxStore->gpu_graph_data.clear();
-	/*
-	The graph data for gpu is uploaded in lots of 8 floats:
-	First node value
-	First node bezier node
-	Second node value
-	Second node bezier node
-	Oscillator Frequency
-	Oscillator Amplitude
-	Oscillator Offset X
-	Oscillator Offset Y
-	*/
 	tfxU32 index = 0;
 	for (tfx_library library : tfxStore->libraries.data) {
 		for (tfx_effect_descriptor effect : library->effects) {
@@ -5348,7 +5337,7 @@ void tfx__update_library_compute_nodes() {
 				}
 				if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
 
-					current->gpu_lookup_offset = tfxStore->gpu_graph_data.current_size;
+					current->gpu_lookup_offset = index;
 
 					tfxStore->gpu_graph_data.add_space(tfxGPU_lookup_end - tfxGPU_lookup_start);
 					tfx_gpu_graph_data_t *gpu_graph_data = tfxCastBufferRef(tfx_gpu_graph_data_t, tfxStore->gpu_graph_data);
@@ -5369,6 +5358,13 @@ void tfx__update_library_compute_nodes() {
 							graph_data.node_data.w = 0.f;
 						}
 
+						if (!(graph.flags & tfxGraphFlags_use_bezier_sampling)) {
+							//To avoid complications and shader variations to handle linear/bezier sampling, if bezier sampling is not set
+							//then we position the curve points so that the graph will be linear. Then we just do a bezier
+							//sample for all cases. That way we avoid conditions in the shader.
+							graph_data.node_data.y = (float)tfx__linear_sampler((1.f / 3.f), graph_data.node_data.x, graph_data.node_data.z);
+							graph_data.node_data.z = (float)tfx__linear_sampler((2.f / 3.f), graph_data.node_data.x, graph_data.node_data.z);
+						}
 						graph_data.oscillator.x = graph.oscillator.frequency;
 						graph_data.oscillator.y = graph.oscillator.amplitude;
 						graph_data.oscillator.z = graph.oscillator.offset_x;
@@ -5620,7 +5616,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_variation_width", tfxRibbon_variation_width_index);
 
 	tfxStore->graph_indexes.Insert("ribbon_overtime_width", tfxRibbon_overtime_width_index);
-	tfxStore->graph_indexes.Insert("ribbon_overtime_scale", tfxRibbon_overtime_width_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_overal_scale", tfxRibbon_overtime_overal_scale_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_red", tfxRibbon_overtime_red_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_green", tfxRibbon_overtime_green_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_blue", tfxRibbon_overtime_blue_index);
@@ -5803,7 +5799,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_velocity", tfxAttributeGraph);
 	names_and_types.Insert("overtime_width", tfxAttributeGraph);
 	names_and_types.Insert("overtime_height", tfxAttributeGraph);
-	names_and_types.Insert("overtime_scale", tfxAttributeGraph);
+	names_and_types.Insert("overtime_overal_scale", tfxAttributeGraph);
 	names_and_types.Insert("overtime_weight", tfxAttributeGraph);
 	names_and_types.Insert("overtime_spin", tfxAttributeGraph);
 	names_and_types.Insert("overtime_roll_spin", tfxAttributeGraph);
@@ -6368,7 +6364,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOvertime_velocity: return "overtime_velocity"; break;
 	case tfxOvertime_width: return "overtime_width"; break;
 	case tfxOvertime_height: return "overtime_height"; break;
-	case tfxOvertime_scale: return "overtime_scale"; break;
+	case tfxOvertime_overal_ribbon_scale: return "overtime_overal_scale"; break;
 	case tfxOvertime_weight: return "overtime_weight"; break;
 	case tfxOvertime_pitch_spin: return "overtime_pitch_spin"; break;
 	case tfxOvertime_yaw_spin: return "overtime_yaw_spin"; break;
@@ -8169,8 +8165,13 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 		graph->nodes[1].frame = 1.f;
 		graph->wide_graph.from = tfxWideSetSingle(graph->nodes[0].value);
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
-		graph->wide_graph.curve1 = tfxWideSetSingle(graph->nodes[0].right.y);
-		graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
+		if (!graph->flags & tfxGraphFlags_use_bezier_sampling) {
+			graph->wide_graph.curve1 = tfxWideSetSingle(tfx__linear_sampler( graph->nodes[0].value, graph->nodes[1].value, (1.f / 3.f)));
+			graph->wide_graph.curve2 = tfxWideSetSingle(tfx__linear_sampler( graph->nodes[0].value, graph->nodes[1].value, (2.f / 3.f)));
+		} else {
+			graph->wide_graph.curve1 = tfxWideSetSingle(graph->nodes[0].right.y);
+			graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
+		}
 		graph->flags &= ~tfxGraphFlags_multi_node_graph;
 	} else {
 		graph->flags |= tfxGraphFlags_multi_node_graph;
@@ -18452,13 +18453,13 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
-		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overtime_intensity_index];
+		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overlength_intensity_index];
 		tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
-		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overtime_curved_alpha_index];
+		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overlength_curved_alpha_index];
 		tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->easing_type);
-		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overtime_alpha_sharpness_index];
+		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overlength_alpha_sharpness_index];
 		tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->easing_type);
-		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index];
+		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overlength_gradient_map_index];
 		tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->easing_type);
 
 		bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
@@ -18551,8 +18552,19 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
 					float age_lerp = float(s + j) / float(ribbon_emitter.segment_count);
 					segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j]};
-					segments[segment_index].intensity_gradient_map.packed = packed_intensity_gradient_mapper.a[j];
-					segments[segment_index].curved_alpha.packed = packed_curved_alpha_sharpness.a[j];
+					//segments[segment_index].intensity_gradient_map.packed = packed_intensity_gradient_mapper.a[j];
+					//segments[segment_index].curved_alpha.packed = packed_curved_alpha_sharpness.a[j];
+					segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(
+						tfx__sample_graph(intensity_graph, age_lerp),
+						tfx__sample_graph(gradient_mapper_graph, age_lerp), 128.f
+					);
+					float test = tfx__sample_graph(intensity_graph, age_lerp);
+					segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(
+						tfx__sample_graph(curved_alpha_graph, age_lerp),
+						tfx__sample_graph(alpha_sharpness_graph, age_lerp)
+					);
+					//segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(1.f, 1.f, 128.f);
+					//segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(1.f, 1.f);
 				}
 			}
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
