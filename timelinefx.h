@@ -5849,7 +5849,6 @@ typedef struct tfx_path_state_s {
 //      and dynamic variables that change each frame.
 typedef struct tfx_emitter_state_s {
 	//State data
-	float frame;
 	float age;
 	float highest_particle_age;
 	float delay_spawning;
@@ -5869,6 +5868,7 @@ typedef struct tfx_emitter_state_s {
 	tfx_vec3_t world_rotations;
 
 	float loop_length;
+	float oscillator_time;
 	tfx_quaternion_t rotation;
 	tfxU64 image_handle_packed;
 	tfx_bounding_box_t bounding_box;
@@ -5912,7 +5912,6 @@ typedef struct tfx_emitter_state_s {
 typedef struct tfx_effect_state_s {
 	tfx_quaternion_t rotation;
 	//State data
-	float frame;
 	float age;
 	float highest_particle_age;
 	float timeout_counter;
@@ -5922,6 +5921,7 @@ typedef struct tfx_effect_state_s {
 	tfxEffectPropertyFlags effect_flags;
 	tfxEmitterStateFlags state_flags;
 	float loop_length;
+	float oscillator_time;
 	//Position, scale and rotation values
 	tfx_vec3_t translation;
 	tfx_vec3_t local_position;
@@ -6011,6 +6011,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float delay_spawning;
 	float max_life;
 	float loop_length;
+	float oscillator_time;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
 	tfxSharedEmitterFlags shared_flags;
@@ -7189,8 +7190,7 @@ tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_gr
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
-tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
-tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
+tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, float osc_t);
 
 //Node Manipulation
 tfxAPI_EDITOR void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index);
@@ -7216,10 +7216,12 @@ tfxAPI_EDITOR bool tfx__is_node_curve(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool tfx__node_curves_are_initialised(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool tfx__set_node_curve_initialised(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool tfx__is_color_graph_type(tfx_graph_type type);
+tfxAPI_EDITOR void tfx__set_node_curve_frames(tfx_graph_t *graph);
 tfxINTERNAL void tfx__clamp_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
+tfxINTERNAL void tfx__set_left_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
+tfxINTERNAL void tfx__set_right_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
 tfxINTERNAL bool tfx__has_key_frames(tfx_effect_descriptor e);
-tfxINTERNAL void tfx__push_translation_points(tfx_effect_descriptor e, tfx_vector_t<tfx_vec3_t> *points, float frame);
 
 //--------------------------------
 //Grouped graph struct functions
