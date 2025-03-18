@@ -4358,19 +4358,11 @@ void tfx__free_graph_list_graphs(tfx_graph_list_t *graph_list) {
 		tfx__free_graph(&graph);
 	}
 }
-void tfx__copy_graph_list_no_lookups(tfx_graph_list_t *src, tfx_graph_list_t *dst) {
-	if (src == dst) return;
-	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
-	for (int i = 0; i != src->graphs.current_size; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
-	}
-}
-
 void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst) {
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = 0; i != src->graphs.current_size; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
 	}
 }
 
@@ -4378,7 +4370,7 @@ void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tfx_graph_list
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
 	}
 }
 
@@ -4386,7 +4378,7 @@ void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tf
 	if (src == dst) return;
 	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
 	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], false);
+		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
 	}
 }
 
@@ -4882,7 +4874,7 @@ tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 sourc
 	tfx_graph_list_t &graph_list = library->graphs.push_back({});
 	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
 	TFX_ASSERT(dst_list.graphs.current_size == library->graphs[source_index].graphs.current_size);	//dst and src graph list must be the same size at this point!
-	tfx__copy_graph_list_no_lookups(&library->graphs[source_index], &dst_list);
+	tfx__copy_graph_list(&library->graphs[source_index], &dst_list);
 	return new_graph_index;
 }
 
@@ -4892,7 +4884,7 @@ tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, t
 	tfxU32 new_graph_index = tfx__add_library_graphs(destination_library, library->graphs[source_index].effect_descriptor_type);
 	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
 	TFX_ASSERT(dst_list.graphs.current_size == library->graphs[source_index].graphs.current_size);	//dst and src graph list must be the same size at this point!
-	tfx__copy_graph_list_no_lookups(&library->graphs[source_index], &dst_list);
+	tfx__copy_graph_list(&library->graphs[source_index], &dst_list);
 	return new_graph_index;
 }
 
