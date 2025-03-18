@@ -1332,7 +1332,6 @@ You can then use layer inside the loop to get the current layer
 typedef struct tfx_effect_descriptor_s tfx_effect_descriptor_t;
 typedef struct tfx_particle_manager_s tfx_particle_manager_t;
 typedef struct tfx_effect_template_s tfx_effect_template_t;
-typedef struct tfx_compute_sprite_s tfx_compute_sprite_t;
 typedef struct tfx_compute_particle_s tfx_compute_particle_t;
 typedef struct tfx_library_s tfx_library_t;
 typedef struct tfx_animation_manager_s tfx_animation_manager_t;
@@ -6135,15 +6134,6 @@ typedef struct tfx_effect_descriptor_s {
 #endif
 } tfx_effect_descriptor_t;
 
-typedef struct tfx_compute_sprite_s {    //64 bytes
-	tfx_vec4_t bounds;                //the min/max x,y coordinates of the image being drawn
-	tfx_vec4_t uv;                    //The UV coords of the image in the texture
-	tfx_vec4_t scale_rotation;        //Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
-	tfx_vec2_t position;            //The position of the sprite
-	tfx_rgba8_t color;                //The color tint of the sprite
-	tfxU32 parameters;    //4 extra parameters packed into a tfxU32: blend_mode, image layer index, shader function index, blend type
-}tfx_compute_sprite_t;
-
 typedef struct tfx_unique_sprite_id_s {
 	tfxU32 uid;
 	tfxU32 age;
@@ -6227,7 +6217,7 @@ typedef struct tfx_frame_meta_s {
 //This is the exact typedef struct to upload to the GPU for 2d instance_data, so timelinefx will prepare buffers so that they're ready to just
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the instance_data
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
-typedef struct tfx_2d_instance_s {			//44 bytes + padding to 48
+typedef struct tfx_2d_instance_s {			//48 bytes
 	tfx_vec4_t position;							//The position of the sprite, rotation in w, stretch in z
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
