@@ -2906,10 +2906,10 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager pm, tfx_library l
 
 	// Apply rotations directly to the original vector
 	tfx_vec3_t direction;
-	direction.x = to_handle.x * cos_yaw - to_handle.z * sin_yaw;
-	direction.z = to_handle.x * sin_yaw + to_handle.z * cos_yaw;
-	direction.y = to_handle.y * cos_pitch - direction.z * sin_pitch;
-	direction.z = to_handle.y * sin_pitch + direction.z * cos_pitch;
+	direction.y = to_handle.y * cos_pitch - to_handle.z * sin_pitch;
+	direction.z = to_handle.y * sin_pitch + to_handle.z * cos_pitch;
+	direction.x = to_handle.x * cos_yaw - direction.z * sin_yaw;
+	direction.z = to_handle.x * sin_yaw + direction.z * cos_yaw;
 	tfx_vec3_t v = direction;
 	if (range != 0) {
 		v = tfx__random_vector_in_cone(random, v, range);
