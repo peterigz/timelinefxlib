@@ -7041,6 +7041,7 @@ tfxAPI_EDITOR tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor eff
 tfxAPI_EDITOR tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t property_name);
 tfxAPI_EDITOR tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type);
 tfxAPI_EDITOR tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor effect, tfx_graph_t *graph, bool include_property_name);
+tfxAPI_EDITOR void tfx__add_graph_to_stream(tfx_effect_descriptor effect, tfx_stream_t *stream, tfx_graph_t *graph, bool include_property_name);
 tfxAPI_EDITOR void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t property_name, const char *value);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);

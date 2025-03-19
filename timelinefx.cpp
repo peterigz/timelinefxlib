@@ -6417,6 +6417,18 @@ tfx_stream_t tfx__get_graph_as_string(tfx_effect_descriptor effect, tfx_graph_t 
 	return graph_string;
 }
 
+void tfx__add_graph_to_stream(tfx_effect_descriptor effect, tfx_stream_t *stream, tfx_graph_t *graph, bool include_property_name) {
+	TFX_ASSERT(graph);	//Passed in a null graph!
+	for (tfxBucketLoop(graph->nodes, i)) {
+		if (include_property_name) {
+			tfx_str64_t property_name = tfx__graph_type_to_property_string(graph->type);
+			stream->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", property_name.c_str(), graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+		} else {
+			stream->AddLine("%f,%f,%i,%f,%f,%f,%f", graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+		}
+	}
+}
+
 tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t property_name) {
 	tfx_str256_t value;
 	if (property_name == "easing_type"            ) value.Setf("%u", graph->easing_type);
@@ -8163,8 +8175,8 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 	tfxU32 index = 0;
 	for (tfxBucketLoop(graph->nodes, i)) {
 		graph->nodes[i].index = index++;
-		if (!(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
-			//tfx__unset_curves(graph, index - 1);
+		if (!tfx__is_lerp_graph(graph) && !tfx__is_color_graph_type(graph->type) && !(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
+			tfx__unset_curves(graph, index - 1);
 		}
 	}
 }
@@ -8192,7 +8204,7 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 			graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
 		}
 		graph->flags &= ~tfxGraphFlags_multi_node_graph;
-	} else {
+	} else if(!tfx__is_color_graph_type(graph->type)) {
 		graph->flags |= tfxGraphFlags_multi_node_graph;
 	}
 }
