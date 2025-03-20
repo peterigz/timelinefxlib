@@ -5828,9 +5828,9 @@ typedef struct tfx_path_state_s {
 //This is a struct that stores an emitter state that is currently active in a particle manager.
 //Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
 //      and dynamic variables that change each frame.
-typedef struct tfx_emitter_state_s {
+typedef struct tfx_particle_emitter_state_s {
 	//State data
-	float age;
+	float age;										//SoA?
 	float highest_particle_age;
 	float delay_spawning;
 	float timeout_counter;
@@ -5838,28 +5838,24 @@ typedef struct tfx_emitter_state_s {
 	float amount_remainder;
 	float spawn_quantity;
 	float qty_step_size;
-	float max_life;
 	tfx_vec3_t handle;
-	tfxParticleEmitterFlags property_flags;
-	tfxSharedEmitterFlags shared_flags;
-	//Position, scale and rotation values
-	tfx_vec3_t local_position;
-	tfx_vec3_t world_position;
-	tfx_vec3_t captured_position;
-	tfx_vec3_t world_rotations;
-
-	float loop_length;
-	float oscillator_time;
-	tfx_quaternion_t rotation;
-	tfxU64 image_handle_packed;
 	tfx_bounding_box_t bounding_box;
+	//Position, scale and rotation values
+	tfx_vec3_t local_position;						//SoA?
+	tfx_vec3_t world_position;						//SoA?
+	tfx_vec3_t captured_position;					//SoA?
+	tfx_vec3_t world_rotations;						//SoA?
+	tfx_quaternion_t rotation;						//SoA?
+
+	//Static data that won't change frame by frame
+	float loop_length;
+	float max_life;
+	float oscillator_time;
+	tfxU64 image_handle_packed;
 
 	tfxU32 graph_list_index;
 	tfxU32 transform_index;
 	tfxU32 path_attributes;
-
-	tfx_path_state_t path_state;
-
 	tfxU32 root_index;
 	tfxU32 parent_index;
 	tfxU32 properties_index;
@@ -5869,10 +5865,12 @@ typedef struct tfx_emitter_state_s {
 	tfxU32 sprites_count;
 	tfxU32 sprites_index;
 	tfxU32 seed_index;
+	tfxParticleEmitterFlags property_flags;
+	tfxSharedEmitterFlags shared_flags;
 	tfx_effect_descriptor source_emitter;
 	tfx_library library;
 
-	//Control Data
+	//Control Data (May change frame by frame
 	tfxU32 particles_index;
 	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
 	tfxKey ribbon_bucket_id;		 //For spawn on ribbon emission type and storing the last known position of the particle
@@ -5887,7 +5885,8 @@ typedef struct tfx_emitter_state_s {
 	tfxEmitterControlProfileFlags control_profile;
 	tfx_vec2_t image_size;
 	tfx_vec3_t angle_offsets;
-}tfx_emitter_state_t TFX_ALIGN_AFFIX(16);
+	tfx_path_state_t path_state;
+} tfx_particle_emitter_state_t TFX_ALIGN_AFFIX(16);
 
 //This is a struct that stores an effect state that is currently active in a particle manager.
 typedef struct tfx_effect_state_s {
@@ -6041,7 +6040,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 //An tfx_effect_descriptor_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters,
 //an emitter which spawns all of the particles or a ribbon for spawning ribbon segments.
-//This is only for library storage, when using to update each frame aspects of this are copied to tfx_effect_state_t, tfx_emitter_state_t and tfx_ribbon_emitter_state_t for realtime updates
+//This is only for library storage, when using to update each frame aspects of this are copied to tfx_effect_state_t, tfx_particle_emitter_state_t and tfx_ribbon_emitter_state_t for realtime updates
 typedef struct tfx_effect_descriptor_s {
 	tfxU32 magic;
 	//Name of the effect
@@ -6768,7 +6767,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
-	tfx_vector_t<tfx_emitter_state_t> emitters;
+	tfx_vector_t<tfx_particle_emitter_state_t> emitters;
 	tfx_vector_t<tfx_gpu_emitter_t> gpu_emitters;
 	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
@@ -7048,7 +7047,7 @@ tfxINTERNAL tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tfxWideFl
 tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack8bit_quaternion(tfxU32 in);
-tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
+tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_2d(tfx_random_t *random, float range, float angle);
 tfxINTERNAL tfx_vec3_t tfx__normalize_vec3_fast(tfx_vec3_t const *v);
@@ -7494,7 +7493,7 @@ tfxINTERNAL inline void tfx__invalidate_offsetted_sprite_captured_index(T* insta
 	}
 }
 
-tfxINTERNAL float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
+tfxINTERNAL float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
 tfxINTERNAL void tfx__transform_effector_2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
@@ -7505,7 +7504,7 @@ tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
-tfxINTERNAL void tfx__update_emitter_state(tfx_effect_manager pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void tfx__update_emitter_state(tfx_effect_manager pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_effect_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
 tfxINTERNAL void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL tfx_effect_manager tfx__next_global_effect_manager();

@@ -2591,7 +2591,7 @@ void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sp
 }
 
 
-float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position) {
+float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position) {
 	//float (*effect_lookup_callback)(tfx_graph_t &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? tfx__sample_multi_node_graph : tfx__lookup_fast;
 	float emission_angle = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.age, emitter.oscillator_time);
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
@@ -2780,7 +2780,7 @@ void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_norm
 	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE.m, cos)));
 }
 
-tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
+tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
 	//----Emission
 	float range = emission_angle_variation * .5f;
@@ -10704,7 +10704,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 					break;
 				}
 				new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
-				tfx_emitter_state_t &emitter = pm->emitters[index];
+				tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 				tfx__readbarrier;
 				emitter.particles_index = tfxINVALID;
 				emitter.parent_index = parent_index.index;
@@ -10939,7 +10939,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				if (target_pair.hash == source_pair.hash) {
 					if (source_pair.type == tfxRibbonType) {
 						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[source_pair.index];
-						tfx_emitter_state_t &emitter = pm->emitters[target_pair.index];
+						tfx_particle_emitter_state_t &emitter = pm->emitters[target_pair.index];
 						emitter.other_emitter_index = source_pair.index;
 						emitter.ribbon_bucket_id = ribbon_emitter.ribbon_bucket_id;
 						if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
@@ -11519,7 +11519,7 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 				tfx_effect_index_t effect_index = pm->effects_in_use[0][pm->current_ebuff][i];
 				tfx_effect_state_t &effect = pm->effects[effect_index.index];
 				for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-					tfx_emitter_state_t &emitter = pm->emitters[emitter_index];
+					tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 					tfx_bounding_box_t &effect_bb = pm->effects[emitter.root_index].bounding_box;
 					effect_bb.max_corner.x = tfx__Max(effect_bb.max_corner.x, emitter.bounding_box.max_corner.x);
 					effect_bb.max_corner.y = tfx__Max(effect_bb.max_corner.y, emitter.bounding_box.max_corner.y);
@@ -11773,7 +11773,7 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
@@ -12058,7 +12058,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	tfx_library library = emitter.library;
 
@@ -12382,7 +12382,7 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	tfx_library library = emitter.library;
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12440,7 +12440,7 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12512,7 +12512,7 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12601,7 +12601,7 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12700,7 +12700,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12795,7 +12795,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
@@ -12912,7 +12912,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat emitter_size_y = tfxWideSetSingle(emitter.emitter_size.y);
 
@@ -12937,7 +12937,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat emitter_size_y = tfxWideSetSingle(emitter.emitter_size.y);
 
@@ -12964,7 +12964,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
@@ -13179,7 +13179,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
@@ -13583,7 +13583,7 @@ void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
@@ -13869,7 +13869,7 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13969,7 +13969,7 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 
@@ -14096,7 +14096,7 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -14237,7 +14237,7 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
@@ -14368,7 +14368,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 	tfx_image_data_t *image = work_entry->shared_properties->image;
 	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option;
@@ -14476,7 +14476,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
 	tfxU32 start_diff = work_entry->start_diff;
@@ -15654,7 +15654,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_effect_manager pm = spawn_work_entry->pm;
 
-	tfx_emitter_state_t &emitter = pm->emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 
 	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
@@ -15698,7 +15698,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 	spawn_work_entry->root_effect_flags = pm->effects[emitter.root_index].effect_flags;
 	bool ordered_effect = (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_age_order) || (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
-	emitter.delay_spawning = -pm->frame_length;
 
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_no_tween;
 	if (shared_properties.emission_type != tfxOtherEmitter && shared_properties.emission_type != tfxSpawnOnRibbon) {
@@ -15827,7 +15826,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 }
 
 tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
-	tfx_emitter_state_t &emitter = pm->emitters[index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + emitter.seed_index);
 	if (!(emitter.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
@@ -15995,7 +15994,7 @@ void tfx__complete_effect_manager_work(tfx_effect_manager pm) {
 }
 
 tfxU32 tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_entry) {
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	const tfx_shared_properties_t &shared_properties = *work_entry->shared_properties;
 	const tfxU32 layer = shared_properties.layer;
 	// Note that adding this in will mess up other emitter emission types and looped sprite recording || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning
@@ -16104,7 +16103,7 @@ tfxU32 tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_
 void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	if ((work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index == tfxINVALID)
 		|| (work_entry->emission_type == tfxOtherEmitter && emitter.spawn_locations_index == tfxINVALID)) {
 		work_entry->amount_to_spawn = 0;
@@ -16164,7 +16163,7 @@ void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data) {
 void tfx__do_spawn_work_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	if ((work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index == tfxINVALID)
 		|| (work_entry->emission_type == tfxOtherEmitter && emitter.spawn_locations_index == tfxINVALID)) {
 		work_entry->amount_to_spawn = 0;
@@ -16211,7 +16210,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 	float tween = entry->tween;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_random_t random = entry->random;
 	tfx_AlterRandomSeedU32(&random, 2 + emitter.seed_index);
@@ -16365,7 +16364,7 @@ void tfx__spawn_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 3 + emitter.seed_index);
 	const tfx_shared_properties_t &shared_properties = *entry->shared_properties;
 
@@ -16396,7 +16395,7 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 4 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -16483,7 +16482,7 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 5 + emitter.seed_index);
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
@@ -16597,7 +16596,7 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	float tween = entry->tween;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 6 + emitter.seed_index);
 	float emitter_noise_offset_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], emitter.age, emitter.oscillator_time);
@@ -16623,7 +16622,7 @@ void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data) 
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfxU32 emitter_index = entry->emitter_index;
-	tfx_emitter_state_t &emitter = entry->pm->emitters[emitter_index];
+	tfx_particle_emitter_state_t &emitter = entry->pm->emitters[emitter_index];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&entry->pm->particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -16639,7 +16638,7 @@ void tfx__spawn_particle_spin_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 7 + emitter.seed_index);
 
@@ -16665,7 +16664,7 @@ void tfx__spawn_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 8 + emitter.seed_index);
 
@@ -16716,7 +16715,7 @@ void tfx__spawn_particle_point_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 9 + emitter.seed_index);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -16751,7 +16750,7 @@ void tfx__spawn_particle_point_3d(tfx_work_queue_t *queue, void *data) {
 	float tween = 0.f;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 	tfx_effect_state_t *parent = &pm.effects[entry->parent_index];
 
@@ -16790,7 +16789,7 @@ void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 
 	if (emitter.other_emitter_index == tfxINVALID) {
 		entry->amount_to_spawn = 0;
@@ -16915,7 +16914,7 @@ void tfx__spawn_particle_other_emitter_3d(tfx_work_queue_t *queue, void *data) {
 	float tween = 0.f;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 	tfx_effect_state_t *parent = &pm.effects[entry->parent_index];
 
@@ -16980,7 +16979,7 @@ void tfx__spawn_particle_other_emitter_single_3d(tfx_work_queue_t *queue, void *
 	float tween = 0.f;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 	tfx_effect_state_t *parent = &pm.effects[entry->parent_index];
 
@@ -17033,7 +17032,7 @@ void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data) {
 	float tween = 0.f;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 	tfx_effect_state_t *parent = &pm.effects[entry->parent_index];
 
@@ -17092,7 +17091,7 @@ void tfx__spawn_particle_line_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 11 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
 	const float emitter_size = emitter.emitter_size.y;
@@ -17147,7 +17146,7 @@ void tfx__spawn_particle_line_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 12 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
 	const float emitter_size = emitter.emitter_size.y;
@@ -17212,7 +17211,7 @@ void tfx__spawn_particle_area_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 13 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
 	const float grid_segment_size_x = emitter.emitter_size.x / tfxMax(grid_points.x - 1.f, 1.f);;
@@ -17389,7 +17388,7 @@ void tfx__spawn_particle_area_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 14 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
 	const float grid_segment_size_x = emitter.emitter_size.x / tfxMax(grid_points.x - 1.f, 1.f);
@@ -17665,7 +17664,7 @@ void tfx__spawn_particle_ellipse_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 15 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
@@ -17751,7 +17750,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 26 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -18011,7 +18010,7 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 16 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -18079,7 +18078,7 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 17 + emitter.seed_index);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
 	tfxU32 sub_division = tfx__Min((tfxU32)entry->shared_properties->grid_points.x, 5);
@@ -18120,7 +18119,7 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 26 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -18583,7 +18582,7 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 18 + emitter.seed_index);
 	tfxU32 sub_division = tfx__Min((tfxU32)entry->shared_properties->grid_points.x, 5);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
@@ -18621,7 +18620,7 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	float tween = entry->tween;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 19 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
@@ -18719,7 +18718,7 @@ void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 20 + emitter.seed_index);
 	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
@@ -18750,7 +18749,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 21 + emitter.seed_index);
 
@@ -18831,7 +18830,7 @@ void tfx__spawn_particle_roll(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 22 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
 	const tfxAngleSettingFlags angle_settings = properties.angle_settings;
@@ -18860,7 +18859,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 23 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -18959,7 +18958,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfx_effect_manager_t &pm = *entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 24 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
@@ -19162,7 +19161,7 @@ void tfx__update_ribbon_emitter_state(tfx_effect_manager pm, tfx_ribbon_emitter_
 
 }
 
-void tfx__update_emitter_state(tfx_effect_manager pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+void tfx__update_emitter_state(tfx_effect_manager pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
 	tfxPROFILE;
 
 	tfx_library library = emitter.library;
@@ -19274,7 +19273,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_particle_age_work_entry_t *work_entry = static_cast<tfx_particle_age_work_entry_t *>(data);
 	tfx_effect_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_effect_state_t &effect = pm.effects[emitter.root_index];
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 	const tfxWideInt single_shot_limit = tfxWideSetSinglei(work_entry->shared_properties->single_shot_limit);
@@ -19672,7 +19671,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_effect_manager pm = work_entry->pm;
-	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 
 	//-------------------------------------------------------
