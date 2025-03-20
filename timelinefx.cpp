@@ -8152,7 +8152,7 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 }
 
 void tfx__update_lerp_graph(tfx_graph_t *graph) {
-	if (tfx__is_lerp_graph(graph) || graph->type == tfxOvertime_blendfactor) {
+	if (tfx__is_lerp_graph(graph)) {
 		if (graph->nodes.size() == 1) {
 			tfx_attribute_node_t node = *tfx__get_graph_first_node(graph);
 			node.frame = 1.f;
@@ -8174,8 +8174,9 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 			graph->wide_graph.curve2 = tfxWideSetSingle(graph->nodes[1].left.y);
 		}
 		graph->flags &= ~tfxGraphFlags_multi_node_graph;
-	} else if(!tfx__is_color_graph_type(graph->type)) {
+	} else {
 		graph->flags |= tfxGraphFlags_multi_node_graph;
+		graph->easing_type = tfxGraphEasingType_linear;
 	}
 }
 
@@ -8261,18 +8262,7 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * t + color_ramp->offsets.x));
 			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * t + color_ramp->offsets.y));
 			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * t + color_ramp->offsets.z));
-			if (blendfactor->nodes.current_size == 1) {
-				a = blendfactor->nodes[0].value;
-			} else {
-				float blendfactor_time = blendfactor_easing(t);
-				a = blendfactor_is_bezier_graph ?
-					tfx__bezier_sampler(blendfactor_time, blendfactor->nodes[0].value, blendfactor->nodes[0].right.y, blendfactor->nodes[1].left.y, blendfactor->nodes[1].value) :
-					tfx__linear_sampler(blendfactor->nodes[0].value, blendfactor->nodes[1].value, blendfactor_time);
-
-				if (blendfactor_has_oscillator) {
-					a *= (tfxOSCILLATOR_SIN(blendfactor->oscillator.offset_x + blendfactor_time, blendfactor->oscillator.frequency, blendfactor->oscillator.amplitude) + blendfactor->oscillator.offset_y);
-				}
-			}
+			a = tfx__sample_multi_node_graph(blendfactor, t, t);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -8284,18 +8274,7 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), gamma);
 			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), gamma);
 			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), gamma);
-			if (blendfactor->nodes.current_size == 1) {
-				a = blendfactor->nodes[0].value;
-			} else {
-				float blendfactor_time = blendfactor_easing(t);
-				a = blendfactor_is_bezier_graph ?
-					tfx__bezier_sampler(blendfactor_time, blendfactor->nodes[0].value, blendfactor->nodes[0].right.y, blendfactor->nodes[1].left.y, blendfactor->nodes[1].value) :
-					tfx__linear_sampler(blendfactor->nodes[0].value, blendfactor->nodes[1].value, blendfactor_time);
-
-				if (blendfactor_has_oscillator) {
-					a *= (tfxOSCILLATOR_SIN(blendfactor->oscillator.offset_x + blendfactor_time, blendfactor->oscillator.frequency, blendfactor->oscillator.amplitude) + blendfactor->oscillator.offset_y);
-				}
-			}
+			a = tfx__sample_multi_node_graph(blendfactor, t, t);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -15930,7 +15909,7 @@ tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU
 				}
 				break;
 			case tfx_emission_type::tfxLine:
-				emitter.spawn_quantity = x;
+				emitter.spawn_quantity = y;
 				break;
 			case tfx_emission_type::tfxIcosphere:
 				emitter.spawn_quantity = (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
@@ -19656,9 +19635,9 @@ float tfx__sample_graph(tfx_graph_t *graph, float t) {
 	float value = 0.f;
 	float time = easing_function(t);
 	if (graph->flags & tfxGraphFlags_use_bezier_sampling) {
-		value = tfx__bezier_sampler(easing_function(t), graph->nodes[0].value, graph->nodes[0].right.y, graph->nodes[1].left.y, graph->nodes[1].value);
+		value = tfx__bezier_sampler(time, graph->nodes[0].value, graph->nodes[0].right.y, graph->nodes[1].left.y, graph->nodes[1].value);
 	} else {
-		value = tfx__linear_sampler(easing_function(t), graph->nodes[0].value, graph->nodes[1].value);
+		value = tfx__linear_sampler(graph->nodes[0].value, graph->nodes[1].value, time);
 	}
 	if (tfx__graph_can_oscillate(graph)) {
 		value *= (tfxOSCILLATOR_SIN(time + graph->oscillator.offset_x, graph->oscillator.frequency, graph->oscillator.amplitude) + graph->oscillator.offset_y);
