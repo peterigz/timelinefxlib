@@ -14314,10 +14314,6 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
 
-	if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-		int d = 0;
-	}
-
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
@@ -15225,7 +15221,6 @@ tfxU32 tfx__grab_particle_location_lists(tfx_effect_manager pm, tfxKey emitter_h
 void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter) {
 	tfx_ribbon_emitter_properties_t *properties = tfx__get_ribbon_emitter_properties(ribbon_emitter);
 	properties->ribbon_bucket_id = tfxRibbonBucketID(properties->bucket_info);
-	int d = 0;
 }
 
 void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
