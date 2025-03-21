@@ -1253,7 +1253,6 @@ typedef unsigned short tfxUShort;
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
 #define tfx270Radians 4.71239f
-#define tfxMAXDEPTH 3
 #define tfxNL u8"\n"
 #define tfxPROPERTY_INDEX_MASK 0x00007FFF
 #define tfxSPRITE_ALIGNMENT_MASK 0xFF000000
@@ -2949,11 +2948,9 @@ typedef enum {
 
 typedef enum {
 	tfxParticleFlags_none                                       = 0,
-	tfxParticleFlags_fresh                                      = 1 << 0,       //Particle has just spawned this frame    
 	tfxParticleFlags_remove                                     = 1 << 4,       //Particle will be removed this or next frame
-	tfxParticleFlags_has_velocity                               = 1 << 5,       //Flagged if the particle is currently moving
-	tfxParticleFlags_has_sub_effects                            = 1 << 6,       //Flagged if the particle has sub effects
 	tfxParticleFlags_capture_after_transform                    = 1 << 15,      //Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
+																				//*Important* This needs to stay 15 as it's a bit field in the texture index that gets set in the sprite instance
 } tfx_particle_flag_bits;
 
 typedef enum {
@@ -2974,8 +2971,6 @@ typedef enum {
 	tfxEmitterStateFlags_is_area                                = 1 << 19,
 	tfxEmitterStateFlags_no_tween                               = 1 << 20,
 	tfxEmitterStateFlags_align_with_velocity                    = 1 << 21,
-	tfxEmitterStateFlags_is_sub_emitter                         = 1 << 22,
-	tfxEmitterStateFlags_unused2                                = 1 << 23,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw                 = 1 << 24,      //For 3d emitters that have free alignment and not always facing the camera
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter                      = 1 << 26,      //This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
@@ -5861,7 +5856,6 @@ typedef struct tfx_particle_emitter_state_s {
 	tfxU32 properties_index;
 	tfxU32 shared_index;
 	tfxU32 info_index;
-	tfxU32 hierarchy_depth;
 	tfxU32 sprites_count;
 	tfxU32 sprites_index;
 	tfxU32 seed_index;
@@ -5910,7 +5904,6 @@ typedef struct tfx_effect_state_s {
 	tfx_vec3_t local_rotations;
 	tfx_vec3_t world_rotations;
 	tfx_bounding_box_t bounding_box;
-	tfxU32 parent_particle_index;
 
 	//Static data
 	tfxU32 graph_list_index;
@@ -6076,8 +6069,10 @@ typedef struct tfx_effect_descriptor_s {
 	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
 	float loop_length;
 	//All graphs that the effect uses to lookup attribute values are stored in the library. 
+	//Effects, particle emitters and ribbon emitters get their own set of graphs 
 	tfxU32 graph_list_index;
 	//Index to the graph list storing all of the transform graphs.
+	//Transform graphs are shared by all descriptor types (except folders)
 	tfxU32 transform_index;
 	//If the emitter uses a path for emission then the index to the path in the library is stored here.
 	tfxU32 path_attributes;
@@ -6108,11 +6103,11 @@ typedef struct tfx_effect_descriptor_s {
 	//A link to the library that this effect/emitter belongs to
 	tfx_library library;
 
-	//List of sub_effects ( effects contain emitters/ribbons, emitters can contain sub effects )
+	//List of children if this is a folder or stage, or list of particle/ribbon emitters
 #ifdef __cplusplus
 	tfx_vector_t<tfx_effect_descriptor> children;
 #else
-	tfx_vector_t sub_effectors;
+	tfx_vector_t children;
 #endif
 } tfx_effect_descriptor_t;
 
@@ -6463,10 +6458,8 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
 #ifdef __cplusplus
-	tfx_vector_t<tfx_effect_descriptor> *sub_effects;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 #else
-	tfx_vector_t *sub_effects;
 	tfx_vector_t *depth_indexes;
 #endif
 	tfxU32 depth_index_start;
@@ -6476,7 +6469,6 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 amount_to_spawn;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
-	int depth;
 	float qty_step_size;
 	float highest_particle_age;
 	float overal_scale;
@@ -6757,7 +6749,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
-	tfx_vector_t<tfx_effect_index_t> effects_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t<tfx_effect_index_t> effects_in_use[2];
 	tfx_vector_t<tfxU32> control_emitter_queue;
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
@@ -6803,7 +6795,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
 	tfxU32 current_ribbon_count;
 
-	tfxU32 effects_start_size[tfxMAXDEPTH];
+	tfxU32 effects_start_size;
 
 	tfxU32 layer_sizes[tfxLAYERS];
 	tfxU32 running_ribbon_vertex_count;
@@ -6846,8 +6838,8 @@ typedef struct tfx_effect_manager_s {
 
 typedef struct tfx_effect_library_stats_s {
 	tfxU32 total_effects;
-	tfxU32 total_sub_effects;
-	tfxU32 total_emitters;
+	tfxU32 total_particle_emitters;
+	tfxU32 total_ribbon_emitters;
 	tfxU32 total_node_lookup_indexes;
 	tfxU32 total_shapes;
 	tfxU64 required_graph_node_memory;
@@ -7214,7 +7206,6 @@ tfxAPI_EDITOR tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, 
 tfxAPI_EDITOR void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor effect);
-tfxAPI_EDITOR void tfx__add_library_preview_camera_settings_sub_effects(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
@@ -7280,7 +7271,7 @@ tfxAPI_EDITOR tfx_graph_list_t *tfx__get_descriptor_graph_list(tfx_effect_descri
 tfxAPI_EDITOR tfx_graph_list_t *tfx__get_library_graph_list(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__set_effect_name(tfx_effect_descriptor effect, const char *n);
-tfxAPI_EDITOR bool tfx__rename_sub_effector(tfx_effect_descriptor effect, const char *new_name);
+tfxAPI_EDITOR bool tfx__rename_child(tfx_effect_descriptor effect, const char *new_name);
 tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_effect_descriptor excluding_effect, const char *name);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst);
@@ -7741,9 +7732,8 @@ tfxINTERNAL void tfx__free_path_quaternion(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__free_particle_index(tfx_effect_manager pm, tfxU32 *index);
 tfxINTERNAL tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index);
 tfxINTERNAL void tfx__reset_particle_effect_flags(tfx_effect_manager pm);
-tfxINTERNAL tfxU32 tfx__get_particle_sprite_index(tfx_effect_manager pm, tfxParticleID id);
 tfxINTERNAL void tfx__free_compute_slot(tfx_effect_manager pm, unsigned int slot_id);
-tfxINTERNAL tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
+tfxINTERNAL tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void tfx__free_particle_list(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__free_all_particle_lists(tfx_effect_manager pm);
@@ -8415,7 +8405,7 @@ Get the buffer of effect indexes in the particle manager.
 * @param count			  A pointer to an int that you can pass in that will be filled with the count of effects in the array
 * @returns                Pointer to the array of effect indexes
 */
-tfxAPI tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_effect_manager pm, tfxU32 depth, int *count);
+tfxAPI tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_effect_manager pm, int *count);
 
 /*
 Get the buffer of emitter indexes in the particle manager.
