@@ -8024,6 +8024,19 @@ void tfx__clear_graph_to_one(tfx_graph_t *graph, float value) {
 	tfx__add_graph_node_values(graph, 0.f, value);
 }
 
+void tfx__clear_lerp_graph(tfx_graph_t *graph) {
+	graph->oscillator.frequency = 0.f;
+	graph->oscillator.amplitude = 0.f;
+	graph->oscillator.offset_x = 0.f;
+	graph->oscillator.offset_y = 0.f;
+	graph->flags &= ~tfxGraphFlags_enable_oscillator;
+	graph->flags &= ~tfxGraphFlags_use_bezier_sampling;
+	graph->nodes[0].value = 0.f;
+	if (graph->nodes.current_size > 1) {
+		graph->nodes[1].value = 0.f;
+	}
+}
+
 void tfx__clear_graph(tfx_graph_t *graph) {
 	graph->nodes.clear();
 }
@@ -18813,21 +18826,21 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	const float splatter = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_splatter_index], emitter.age, emitter.oscillator_time) * entry->parent_spawn_controls->splatter;
 	float factor = 1.f;
 	tfx_ribbon_bucket_t *ribbon_bucket = nullptr;
+	tfx_ribbon_emitter_state_t *ribbon_emitter = nullptr;
 
 	if (entry->emission_type == tfxOtherEmitter) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
 	} else if (entry->emission_type == tfxSpawnOnRibbon) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
-		tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
-		ribbon_bucket = &pm.ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
+		ribbon_emitter = &pm.ribbon_emitters[emitter.other_emitter_index];
+		ribbon_bucket = &pm.ribbon_segment_buckets.At(ribbon_emitter->ribbon_bucket_id);
 	}
 
-	tfx_graph_list_t &graph_list = library->graphs[emitter.graph_list_index];
-	tfx_graph_t *width_overlength_graph = &graph_list.graphs[tfxRibbon_overlength_width_index];
-	tfx_easing_function width_overlength_easing = tfx__get_easing_function(width_overlength_graph->easing_type);
+	tfx_graph_list_t *ribbon_graph_list = ribbon_emitter ? &library->graphs[ribbon_emitter->graph_list_index] : nullptr;
+	tfx_graph_t *width_overlength_graph = ribbon_graph_list ? &ribbon_graph_list->graphs[tfxRibbon_overlength_width_index] : nullptr;
 
-	bool width_overlength_is_bezier_graph = tfx__graph_has_bezier_curves(width_overlength_graph);
-	bool width_overlength_has_oscillator = tfx__graph_can_oscillate(width_overlength_graph);
+	bool width_overlength_is_bezier_graph = width_overlength_graph ? tfx__graph_has_bezier_curves(width_overlength_graph) : false;
+	bool width_overlength_has_oscillator = width_overlength_graph ? tfx__graph_can_oscillate(width_overlength_graph) : false;
 
 	if (splatter || entry->emission_type == tfxSpawnOnRibbon) {
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -18838,6 +18851,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 
 			if (entry->emission_type == tfxSpawnOnRibbon) {
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
+				tfx_easing_function width_overlength_easing = tfx__get_easing_function(width_overlength_graph->easing_type);
 				int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 				float ribbon_lerp = ribbon_bucket->ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
 
