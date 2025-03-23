@@ -3549,10 +3549,12 @@ void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_d
 
 void tfx__hide_descriptor(tfx_effect_descriptor descriptor) {
 	descriptor->shared_flags |= tfxSharedEmitterPropertyFlags_hidden;
+	tfx__update_library_effect_paths(descriptor->library);
 }
 
 void tfx__show_descriptor(tfx_effect_descriptor descriptor) {
 	descriptor->shared_flags &= ~tfxSharedEmitterPropertyFlags_hidden;
+	tfx__update_library_effect_paths(descriptor->library);
 }
 
 bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor) {
@@ -4381,23 +4383,12 @@ void tfx__update_library_effect_paths(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	library->effect_paths.Clear();
 	for (tfx_effect_descriptor library_effect : library->effects) {
+		if (tfx__is_descriptor_hidden(library_effect)) continue;
 		tfx_str512_t path;
 		path.Set(library_effect->name.c_str());
 		library_effect->path = path;
 		library_effect->path_hash = tfx_Hash(&tfxStore->hasher, path.c_str(), path.Length(), 0);
 		tfx__add_library_path(library, library_effect, path.c_str(), false);
-	}
-}
-
-void tfx__build_all_library_paths(tfx_library library) {
-	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	for (tfxBucketLoop(library->paths, i)) {
-		if (library->paths[i].settings.flags & tfxPathFlags_2d) {
-			tfx__build_path_nodes_2d(&library->paths[i]);
-		}
-		else {
-			tfx__build_path_nodes_3d(&library->paths[i]);
-		}
 	}
 }
 
@@ -4413,12 +4404,25 @@ void tfx__add_library_path(tfx_library library, tfx_effect_descriptor effect_des
 	tfxKey hash = library->effect_paths.Insert(path, effect_descriptor);
 	effect_descriptor->path_hash = hash;
 	for (tfx_effect_descriptor sub : effect_descriptor->children) {
+		if (tfx__is_descriptor_hidden(sub)) continue;
 		tfx_str256_t sub_path;
 		sub_path.Set(path);
 		sub_path.Appendf("/%s", sub->name.c_str());
 		sub->path.Set(sub_path.c_str());
 		sub->path_hash = tfx_Hash(&tfxStore->hasher, sub_path.c_str(), sub_path.Length(), 0);
 		tfx__add_library_path(library, sub, sub_path.c_str(), skip_existing);
+	}
+}
+
+void tfx__build_all_library_paths(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	for (tfxBucketLoop(library->paths, i)) {
+		if (library->paths[i].settings.flags & tfxPathFlags_2d) {
+			tfx__build_path_nodes_2d(&library->paths[i]);
+		}
+		else {
+			tfx__build_path_nodes_3d(&library->paths[i]);
+		}
 	}
 }
 
@@ -4447,7 +4451,8 @@ tfx_effect_descriptor tfx__insert_library_effect(tfx_library library, tfx_effect
 	effect->type = tfxEffectType;
 	effect->uid = ++library->uid;
 	effect->library = library;
-	tfx_effect_descriptor inserted_effect = *library->effects.insert_after(&position, effect);
+	tfx_effect_descriptor *find = library->effects.find(position);
+	tfx_effect_descriptor inserted_effect = *library->effects.insert_after(find, effect);
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	return inserted_effect;
@@ -8169,12 +8174,18 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 }
 
 void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect, bool include_children) {
-	for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
-		tfx__update_lerp_graph(&graph);
-		if (include_children) {
-			for (tfx_effect_descriptor sub : effect->children) {
-				tfx__update_lerp_graphs_of_effect(sub, true);
+	if (effect->type != tfxFolder) {
+		for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
+			tfx__update_lerp_graph(&graph);
+			if (include_children) {
+				for (tfx_effect_descriptor child : effect->children) {
+					tfx__update_lerp_graphs_of_effect(child, true);
+				}
 			}
+		}
+	} else {
+		for (tfx_effect_descriptor child : effect->children) {
+			tfx__update_lerp_graphs_of_effect(child, true);
 		}
 	}
 }
@@ -13451,7 +13462,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!is_ordered) {    //Predictable
+		if (is_ordered) {    //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
@@ -15928,11 +15939,15 @@ tfxU32 tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_
 				work_entry->amount_to_spawn = 0;
 			}
 		}
-	} else if (work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index != tfxINVALID) {
-		if (pm->ribbon_emitters[emitter.other_emitter_index].ribbon_indexes[pm->current_ebuff].current_size == 0) {
+	} else if (work_entry->emission_type == tfxSpawnOnRibbon) {
+		if (emitter.other_emitter_index != tfxINVALID) {
+			if (pm->ribbon_emitters[emitter.other_emitter_index].ribbon_indexes[pm->current_ebuff].current_size == 0) {
+				work_entry->amount_to_spawn = 0;
+			}
+		} else {
 			work_entry->amount_to_spawn = 0;
 		}
-	}
+	} 
 
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 
