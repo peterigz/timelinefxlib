@@ -2768,6 +2768,7 @@ typedef enum {
 	tfxEffectManagerFlags_update_base_values                  = 1 << 6,
 	tfxEffectManagerFlags_dynamic_sprite_allocation           = 1 << 7,
 	tfxEffectManagerFlags_3d_effects                          = 1 << 8,
+	tfxEffectManagerFlags_animation_loops                     = 1 << 9,
 	tfxEffectManagerFlags_update_age_only                     = 1 << 11,
 	tfxEffectManagerFlags_single_threaded                     = 1 << 12,
 	tfxEffectManagerFlags_double_buffer_sprites               = 1 << 13,
@@ -3399,7 +3400,7 @@ struct tfx_vector_t {
 	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline					tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
 	//inline					tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { TFX_ASSERT(0); return *this; }	//Use copy instead. 
-	inline					~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers!
+	inline					~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers! Call the_containter.free();
 
 	inline void				init() { locked = false; current_size = capacity = alignment = 0; data = nullptr; }
 	inline bool				empty() { return current_size == 0; }
@@ -6202,7 +6203,7 @@ typedef struct tfx_2d_instance_s {			//48 bytes
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the gradient mapper value packed into 3 bit unorms
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	float lerp_offset;
+	tfxU32 padding;
 } tfx_2d_instance_t;
 
 typedef struct tfx_3d_instance_s {		//60 bytes + padding to 64

@@ -3347,8 +3347,12 @@ void tfx__clear_effect(tfx_effect_descriptor effect) {
 	stack.push_back(effect);
 	while (stack.size()) {
 		tfx_effect_descriptor current = stack.pop_back();
-		tfx__free_library_graph_list(effect->library, current->graph_list_index);
-		tfx__free_library_graph_list(effect->library, current->transform_index);
+		if (current->graph_list_index != tfxINVALID) {
+			tfx__free_library_graph_list(effect->library, current->graph_list_index);
+		}
+		if (current->transform_index != tfxINVALID) {
+			tfx__free_library_graph_list(effect->library, current->transform_index);
+		}
 		for (tfx_effect_descriptor sub : current->children) {
 			stack.push_back(sub);
 		}
@@ -3366,9 +3370,7 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 	if (!TFX_VALID_HANDLE(effect)) {
 		return;
 	}
-	if (!TFX_VALID_HANDLE(effect->library)) {
-		return;
-	}
+	TFX_ASSERT_HANDLE(effect->library);
 	tmpStack(tfx_effect_descriptor, stack);
 	stack.push_back(effect);
 	while (stack.size()) {
@@ -3376,7 +3378,9 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 		if (current->graph_list_index != tfxINVALID) {
 			tfx__free_library_graph_list(effect->library, current->graph_list_index);
 		}
-		tfx__free_library_graph_list(effect->library, current->transform_index);
+		if (current->transform_index != tfxINVALID) {
+			tfx__free_library_graph_list(effect->library, current->transform_index);
+		}
 		for (tfx_effect_descriptor sub : current->children) {
 			stack.push_back(sub);
 		}
@@ -3391,7 +3395,7 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
 	clone->children.init();
-	if (clone->type != tfxFolder) {
+	if (effect_to_clone->shared_index != tfxINVALID) {
 		clone->shared_index = tfx__clone_library_shared_properties(clone->library, effect_to_clone->shared_index, destination_library);
 	}
 	switch (clone->type) {
@@ -4809,8 +4813,9 @@ void tfx__free_library_graph_list(tfx_library library, tfxU32 index) {
 
 void tfx__free_library_properties(tfx_effect_descriptor descriptor) {
 	TFX_ASSERT_HANDLE(descriptor);
-	TFX_ASSERT(descriptor->shared_index < descriptor->library->shared_properties.current_size);
-	tfx__free_library_shared_properties(descriptor->library, descriptor->shared_index);
+	if (descriptor->shared_index != tfxINVALID) {
+		tfx__free_library_shared_properties(descriptor->library, descriptor->shared_index);
+	}
 	if (descriptor->type == tfxEmitterType) {
 		TFX_ASSERT(descriptor->property_index < descriptor->library->emitter_properties.current_size);
 		tfx__free_library_emitter_properties(descriptor->library, descriptor->property_index);
@@ -4833,10 +4838,8 @@ void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index) {
 }
 
 void tfx__free_library_shared_properties(tfx_library library, tfxU32 index) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT(index < library->shared_properties.current_size);
-	for (tfxU32 index_check : library->free_shared_emitter_properties) {
-		TFX_ASSERT(index_check != index);
-	}
 	library->free_shared_emitter_properties.push_back(index);
 }
 
@@ -5201,19 +5204,9 @@ tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path) {
 
 void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
-	tmpStack(tfx_effect_descriptor, effects);
 	for (tfx_effect_descriptor effect : library->effects) {
-		effects.push_back(effect);
+		tfx__free_effect(effect);
 	}
-	while (!effects.empty()) {
-		tfx_effect_descriptor current = effects.pop_back();
-		for (tfx_effect_descriptor child : current->children) {
-			effects.push_back(child);
-		}
-		current->magic = 0;
-		tfxFREE(current);
-	}
-	effects.free();
 	library->effects.free();
 	library->effect_paths.FreeAll();
 	library->particle_shapes.FreeAll();
@@ -5224,6 +5217,7 @@ void tfx_FreeLibrary(tfx_library library) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
 			tfx__free_graph(&graph);
 		}
+		graph_list.graphs.free();
 	}
 	for (tfx_bitmap_t &bitmap : library->color_ramps.color_ramp_bitmaps) {
 		tfx__free_bitmap(&bitmap);
@@ -5244,11 +5238,16 @@ void tfx_FreeLibrary(tfx_library library) {
 	library->sprite_sheet_settings.free();
 	library->preview_camera_settings.free();
 	library->emitter_properties.free();
+	library->shared_properties.free();
+	library->ribbon_properties.free();
 	library->pre_recorded_effects.FreeAll();
 	library->free_animation_settings.free();
 	library->free_preview_camera_settings.free();
 	library->free_infos.free();
 	library->free_particle_emitter_properties.free();
+	library->free_shared_emitter_properties.free();
+	library->free_ribbon_emitter_properties.free();
+	library->free_graph_lists.free();
 	library->free_keyframes.free();
 	library->library_file_path.Free();
 
@@ -6394,7 +6393,7 @@ tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t 
 }
 
 tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
@@ -6685,7 +6684,7 @@ void tfx__assign_effector_property_u64(tfx_effect_descriptor effect, tfx_str256_
 }
 
 void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
@@ -6734,7 +6733,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	}
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
 	else if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
@@ -6756,7 +6755,7 @@ void tfx__assign_effector_property_str(tfx_effect_descriptor effect, tfx_str256_
 	}
 }
 void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *field, float value) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	if (*field == "position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.x = value;
 	else if (*field == "position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.y = value;
 	else if (*field == "position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.z = value;
@@ -7047,7 +7046,6 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 }
 
 void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
 
 	file->AddLine("is_3d=%i", (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d));
@@ -8037,8 +8035,10 @@ void tfx__clear_lerp_graph(tfx_graph_t *graph) {
 	graph->flags &= ~tfxGraphFlags_enable_oscillator;
 	graph->flags &= ~tfxGraphFlags_use_bezier_sampling;
 	graph->nodes[0].value = 0.f;
+	graph->nodes[0].right.y = 0.f;
 	if (graph->nodes.current_size > 1) {
 		graph->nodes[1].value = 0.f;
+		graph->nodes[1].left.y = 0.f;
 	}
 }
 
@@ -9228,7 +9228,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				current_effect = effect;
 				effect->magic = tfxINIT_MAGIC;
 				effect->library = lib;
-				effect->shared_index = tfx__allocate_library_shared_properties(lib);
 				if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 					tfx__add_library_effect_graphs(lib, effect);
 					tfx__reset_effect_graphs(effect, false);
@@ -9596,6 +9595,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		}
 	}
 	pm->flags |= tfxEffectManagerFlags_recording_sprites;
+	pm->flags |= anim.animation_flags & tfxAnimationFlags_loop ? tfxEffectManagerFlags_animation_loops : 0;
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
@@ -9934,11 +9934,11 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	}
 
 	if (is_3d) {
-		tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
+		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 	}
 	else {
-		tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
+		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.sprite_instance, sprite_data);
 	}
 
@@ -9948,6 +9948,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tfx_DisablePMSpawning(pm, false);
 	tfx_ClearEffectManager(pm, false, false);
 	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+	pm->flags &= ~tfxEffectManagerFlags_animation_loops;
 
 	if (anim.playback_speed < 1.f) {
 		tfx__compress_sprite_data(pm, effect, is_3d, frame_length, progress);
@@ -11670,6 +11671,7 @@ tfxAPI tfx_effect_descriptor tfx_NewEffectDescriptor(tfx_effect_descriptor_type 
 	new_effect->update_callback = nullptr;
 	new_effect->sort_passes = 1;
 	new_effect->property_index = tfxINVALID;
+	new_effect->shared_index = tfxINVALID;
 	new_effect->graph_list_index = tfxINVALID;
 	new_effect->path_attributes = tfxINVALID;
 	new_effect->graph_list_index = tfxINVALID;
@@ -15362,8 +15364,6 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 		}
 	}
 
-	tfx_shared_properties_t &shared_properties = effect.library->shared_properties[effect.shared_index];
-
 	if (!(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
 		effect.world_position = effect.local_position + effect.translation;
 		effect.world_position += effect.source_effect->emitter_handle * effect.overal_scale;
@@ -16165,10 +16165,9 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
 		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc() + entry->particle_uid++;
 		age_accumulator += frame_fraction;
-		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
+		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_animation_loops) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
-		}
-		else {
+		} else {
 			max_age = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
 		}
 		single_loop_count = 0;
