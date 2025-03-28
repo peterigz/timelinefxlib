@@ -6587,8 +6587,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	}
 
 	//U64 values
-	if (property_name == "image_hash") value.Setf("%ull", tfx__get_shared_emitter_properties(effect)->image_hash);
-	else if (property_name == "paired_emitter_hash") value.Setf("%ull", tfx__get_shared_emitter_properties(effect)->paired_emitter_hash);
+	if (property_name == "image_hash") value.Setf("%llu", tfx__get_shared_emitter_properties(effect)->image_hash);
+	else if (property_name == "paired_emitter_hash") value.Setf("%llu", tfx__get_shared_emitter_properties(effect)->paired_emitter_hash);
 
 	//String values
 	if (property_name == "name") value.Setf("%s", effect->name.c_str());

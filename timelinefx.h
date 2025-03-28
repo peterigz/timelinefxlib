@@ -5781,8 +5781,6 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxKey paired_emitter_hash;
 	//Layer of the particle manager that the particle is added to
 	tfxU32 layer;
-	//Oscillator used in the emitter
-	tfx_oscillator_t oscillator;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {
