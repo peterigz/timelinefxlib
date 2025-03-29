@@ -6025,6 +6025,7 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 			break;
 		}
 	}
+	tfx__update_graph_wide_oscillator(graph);
 	pair.free();
 }
 
