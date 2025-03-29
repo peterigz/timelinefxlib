@@ -8157,6 +8157,7 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 			graph->nodes.trim_buckets();
 		}
 		graph->nodes[1].frame = 1.f;
+		graph->nodes[1].index = 1;
 		graph->wide_graph.from = tfxWideSetSingle(graph->nodes[0].value);
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
 		if (!graph->flags & tfxGraphFlags_use_bezier_sampling) {
@@ -9358,7 +9359,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 						}
 						TFX_ASSERT(image_data.image_hash == image_data.image_hash);
 
-						if (shape_loader) {
+						if (shape_loader && shape_entry->data.data) {
 							shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 						}
 
@@ -10208,8 +10209,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			}
 			if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
 				properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
-			}
-			else {
+			} else {
 				properties.start_frame_index = image.compute_shape_index;
 			}
 			effect->library->emitter_properties[effect->property_index].animation_property_index = animation_manager->emitter_properties.current_size;
@@ -10961,6 +10961,27 @@ void tfx__update_library_control_profiles(tfx_library library) {
 	stack.free();
 }
 
+bool tfx__emitter_has_noise(tfx_effect_descriptor emitter) {
+	TFX_ASSERT_HANDLE(emitter);
+	if (emitter->type != tfxEmitterType) {
+		return false;
+	}
+	if (!(emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness)) {
+		tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->graph_list_index];
+		tfx_graph_t &vt = graph_list.graphs[tfxEmitter_overtime_velocity_turbulance_index];
+		float max_noise = tfx__get_graph_max_value(&vt);
+		float max_resolution = tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_overtime_noise_resolution_index]);
+		if (max_noise && max_resolution) {
+			return true;
+		}
+		if (vt.flags & tfxGraphFlags_use_bezier_sampling) {
+			if (vt.nodes[0].right.y != 0.f) return true;
+			if (vt.nodes.size() == 2 && vt.nodes[1].left.y != 0.f) return true;
+		}
+	}
+	return false;
+}
+
 void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
@@ -10971,7 +10992,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	if (emitter_properties->emission_direction == tfxOrbital && shared_properties->emission_type != tfxPoint) {
 		emitter->control_profile |= tfxEmitterControlProfile_orbital;
 	}
-	if ((!(emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness) && tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index]) && tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index]))) {
+	if (tfx__emitter_has_noise(emitter)) {
 		emitter->control_profile |= tfxEmitterControlProfile_noise;
 	}
 	if (shared_properties->emission_type == tfxPath) {
@@ -11887,6 +11908,8 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			if (noise_resolution_has_oscillator) {
 				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
 			}
+
+			lookup_noise_resolution = tfxWideMul(lookup_noise_resolution, noise_resolution);
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -13312,6 +13335,8 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			if (noise_resolution_has_oscillator) {
 				lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(noise_resolution_graph->wide_oscillator.offset_x, noise_resolution_graph->wide_oscillator.frequency), noise_resolution_graph->wide_oscillator.amplitude), lookup_noise_resolution), noise_resolution_graph->wide_oscillator.offset_y);
 			}
+
+			lookup_noise_resolution = tfxWideMul(lookup_noise_resolution, noise_resolution);
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
