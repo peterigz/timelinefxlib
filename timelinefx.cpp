@@ -5809,9 +5809,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("oscillator_offset_y", tfxFloat);
 
 	//Path graphs and properties
+	names_and_types.Insert("path_roll", tfxPathGraph);
 	names_and_types.Insert("path_pitch", tfxPathGraph);
 	names_and_types.Insert("path_yaw", tfxPathGraph);
-	names_and_types.Insert("path_roll", tfxPathGraph);
 	names_and_types.Insert("path_offset_x", tfxPathGraph);
 	names_and_types.Insert("path_offset_y", tfxPathGraph);
 	names_and_types.Insert("path_offset_z", tfxPathGraph);
@@ -6342,9 +6342,9 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxTransform_translate_z: return "transform_translate_z"; break;
 	case tfxEmitterGraphMaxIndex: return "emitterGraphMaxIndex"; break;
 
-	case tfxPath_angle_x: return "path_angle_x"; break;
-	case tfxPath_angle_y: return "path_angle_y"; break;
-	case tfxPath_angle_z: return "path_angle_z"; break;
+	case tfxPath_angle_x: return "path_pitch"; break;
+	case tfxPath_angle_y: return "path_yaw"; break;
+	case tfxPath_angle_z: return "path_roll"; break;
 	case tfxPath_offset_x: return "path_offset_x"; break;
 	case tfxPath_offset_y: return "path_offset_y"; break;
 	case tfxPath_offset_z: return "path_offset_z"; break;
@@ -15774,8 +15774,11 @@ tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
 		emitter.spawn_quantity *= spawn_point_buffer.current_size;
 	} else if (shared_properties->emission_type == tfxSpawnOnRibbon && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
-		TFX_ASSERT(emitter.other_emitter_index != tfxINVALID);
-		emitter.spawn_quantity *= pm->ribbon_emitters[emitter.other_emitter_index].ribbon_indexes[pm->current_ebuff].current_size;
+		if (emitter.other_emitter_index != tfxINVALID) {
+			emitter.spawn_quantity *= pm->ribbon_emitters[emitter.other_emitter_index].ribbon_indexes[pm->current_ebuff].current_size;
+		} else {
+			return 0;
+		}
 	}
 
 	if (emitter.spawn_quantity == 0) {
