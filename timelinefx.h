@@ -2929,22 +2929,19 @@ typedef enum {
 
 typedef enum {
 	tfxGraphEasingType_constant                                 = 0,
+	tfxGraphEasingType_smoothstep                               = 17,
+	tfxGraphEasingType_out_in									= 18,
+	tfxGraphEasingType_in										= 4,
+	tfxGraphEasingType_out										= 5,
+	tfxGraphEasingType_in_out									= 6,
+	tfxGraphEasingType_linear                                   = 16,
+	//Unused
 	tfxGraphEasingType_ease_in_quad                             = 1,
 	tfxGraphEasingType_ease_out_quad                            = 2,
 	tfxGraphEasingType_ease_in_out_quad                         = 3,
-	tfxGraphEasingType_ease_in_cubic                            = 4,
-	tfxGraphEasingType_ease_out_cubic                           = 5,
-	tfxGraphEasingType_ease_in_out_cubic                        = 6,
-	tfxGraphEasingType_ease_in_quart                            = 7,
-	tfxGraphEasingType_ease_out_quart                           = 8,
-	tfxGraphEasingType_ease_in_out_quart                        = 9,
-	tfxGraphEasingType_ease_in_quint                            = 10,
-	tfxGraphEasingType_ease_out_quint                           = 11,
-	tfxGraphEasingType_ease_in_out_quint                        = 12,
 	tfxGraphEasingType_ease_in_circular                         = 13,
 	tfxGraphEasingType_ease_out_circular                        = 14,
 	tfxGraphEasingType_ease_in_out_circular                     = 15,
-	tfxGraphEasingType_linear                                   = 16,
 } tfx_graph_easing_type;
 
 typedef enum {
@@ -7548,10 +7545,12 @@ typedef float(*tfx_easing_function)(float);
 typedef float(*tfx_bezier_function)(float, float, float, float, float);
 
 tfxINTERNAL tfxWideFloat tfx__wide_ease_constant(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_smoothstep(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_linear(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_in_quad(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_out_quad(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_quad(tfxWideFloat t);
+tfxINTERNAL tfxWideFloat tfx__wide_ease_out_in(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_in_cubic(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_out_cubic(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_cubic(tfxWideFloat t);
@@ -7566,9 +7565,11 @@ tfxINTERNAL tfxWideFloat tfx__wide_ease_out_circular(tfxWideFloat t);
 tfxINTERNAL tfxWideFloat tfx__wide_ease_in_out_circular(tfxWideFloat t);
 
 tfxINTERNAL float tfx__ease_constant(float t);
+tfxINTERNAL float tfx__ease_smoothstep(float t);
 tfxINTERNAL float tfx__ease_linear(float t);
 tfxINTERNAL float tfx__ease_in_quad(float t);
 tfxINTERNAL float tfx__ease_out_quad(float t);
+tfxINTERNAL float tfx__ease_out_in(float t);
 tfxINTERNAL float tfx__ease_in_out_quad(float t);
 tfxINTERNAL float tfx__ease_in_cubic(float t);
 tfxINTERNAL float tfx__ease_out_cubic(float t);

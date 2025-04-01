@@ -6140,13 +6140,9 @@ tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	case tfxGraphEasingType_constant            : name.Set("Constant"); break;
 	case tfxGraphEasingType_ease_in_quad        : name.Set("Ease In Quad"); break;
 	case tfxGraphEasingType_ease_out_quad       : name.Set("Ease Out Quad"); break;
-	case tfxGraphEasingType_ease_in_out_quad    : name.Set("Ease In Out Quad"); break;
-	case tfxGraphEasingType_ease_in_cubic       : name.Set("Ease In Cubic"); break;
-	case tfxGraphEasingType_ease_out_cubic      : name.Set("Ease Out Cubic"); break;
-	case tfxGraphEasingType_ease_in_out_cubic   : name.Set("Ease In Out Cubic"); break;
-	case tfxGraphEasingType_ease_in_circular    :	name.Set("Ease In Circular"); break;
-	case tfxGraphEasingType_ease_out_circular   :	name.Set("Ease Out Circular"); break;
-	case tfxGraphEasingType_ease_in_out_circular:	name.Set("Ease In Out Circular"); break;
+	case tfxGraphEasingType_in_out   : name.Set("Ease In Out Cubic"); break;
+	case tfxGraphEasingType_out_in	: name.Set("Ease In Out Cubic"); break;
+	case tfxGraphEasingType_smoothstep		    : name.Set("Smooth Step"); break;
 	case tfxGraphEasingType_linear              : name.Set("Linear"); break;
 	}
 	return name;
@@ -19308,6 +19304,10 @@ tfxWideFloat tfx__wide_ease_constant(tfxWideFloat t) {
 	return tfxWideSetZero;
 }
 
+tfxWideFloat tfx__wide_ease_smoothstep(tfxWideFloat t) {
+	return tfxWideMul(tfxWideMul(t, t), tfxWideSub(tfxWIDETHREE.m, tfxWideMul(tfxWIDETWO.m, t)));
+}
+
 tfxWideFloat tfx__wide_ease_linear(tfxWideFloat t) {
 	return t;
 }
@@ -19330,6 +19330,26 @@ tfxWideFloat tfx__wide_ease_in_out_quad(tfxWideFloat t) {
 	tfxWideFloat four_minus_two_t = tfxWideSub(tfxWIDEFOUR.m, two_t);
 	tfxWideFloat result_second = tfxWideSub(tfxWideMul(t, four_minus_two_t), tfxWIDEONE.m);
 
+	tfxWideFloat masked_first = tfxWideAnd(mask, result_first);
+	tfxWideFloat masked_second = tfxWideAndNot(mask, result_second);
+	return tfxWideOr(masked_first, masked_second);
+}
+
+tfxWideFloat tfx__wide_ease_out_in(tfxWideFloat t) {
+	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
+
+	// First half (t < 0.5): t * (2 - 2 * t)
+	tfxWideFloat two_t = tfxWideMul(tfxWIDETWO.m, t);
+	tfxWideFloat two_minus_two_t = tfxWideSub(tfxWIDETWO.m, two_t);
+	tfxWideFloat result_first = tfxWideMul(t, two_minus_two_t);
+
+	// Second half (t >= 0.5): 2 * (t - 0.5)² + 0.5
+	tfxWideFloat t_minus_half = tfxWideSub(t, tfxWIDEHALF.m);
+	tfxWideFloat t_minus_half_squared = tfxWideMul(t_minus_half, t_minus_half);
+	tfxWideFloat doubled = tfxWideMul(tfxWIDETWO.m, t_minus_half_squared);
+	tfxWideFloat result_second = tfxWideAdd(doubled, tfxWIDEHALF.m);
+
+	// Combine results based on mask
 	tfxWideFloat masked_first = tfxWideAnd(mask, result_first);
 	tfxWideFloat masked_second = tfxWideAndNot(mask, result_second);
 	return tfxWideOr(masked_first, masked_second);
@@ -19438,6 +19458,10 @@ float tfx__ease_constant(float t) {
 	return 0.f;
 }
 
+float tfx__ease_smoothstep(float t) {
+	return t * t * (3.f - 2.f * t);
+}
+
 float tfx__ease_in_quad(float t) {
 	return t * t;
 }
@@ -19463,6 +19487,10 @@ float tfx__ease_in_out_cubic(float t) {
 	float t3 = -2 * t + 2;
 	t3 = t3 * t3 * t3;
 	return t < 0.5f ? 4 * t * t * t : 1 - t3 * 0.5f;
+}
+
+float tfx__ease_out_in(float t) {
+	return t < 0.5f ? t * (2 - 2 * t) : 2 * (t - 0.5f) * (t - 0.5f) + 0.5f;
 }
 
 float tfx__ease_in_quart(float t) {
@@ -19513,15 +19541,11 @@ float tfx__ease_in_out_circular(float t) {
 tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type type) {
 	switch (type) {
 	case tfxGraphEasingType_constant: return tfx__wide_ease_constant;
-	case tfxGraphEasingType_ease_in_quad: return tfx__wide_ease_in_quad;
-	case tfxGraphEasingType_ease_out_quad: return tfx__wide_ease_out_quad;
-	case tfxGraphEasingType_ease_in_out_quad: return tfx__wide_ease_in_out_quad;
-	case tfxGraphEasingType_ease_in_cubic: return tfx__wide_ease_in_cubic;
-	case tfxGraphEasingType_ease_out_cubic: return tfx__wide_ease_out_cubic;
-	case tfxGraphEasingType_ease_in_out_cubic: return tfx__wide_ease_in_out_cubic;
-	case tfxGraphEasingType_ease_in_circular: return tfx__wide_ease_in_circular;
-	case tfxGraphEasingType_ease_out_circular: return tfx__wide_ease_out_circular;
-	case tfxGraphEasingType_ease_in_out_circular: return tfx__wide_ease_in_out_circular;
+	case tfxGraphEasingType_smoothstep: return tfx__wide_ease_smoothstep;
+	case tfxGraphEasingType_in: return tfx__wide_ease_in_cubic;
+	case tfxGraphEasingType_out: return tfx__wide_ease_out_cubic;
+	case tfxGraphEasingType_in_out: return tfx__wide_ease_in_out_cubic;
+	case tfxGraphEasingType_out_in: return tfx__wide_ease_out_in;
 	}
 	return tfx__wide_ease_linear;
 }
@@ -19529,15 +19553,11 @@ tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type typ
 tfx_easing_function tfx__get_easing_function(tfx_graph_easing_type type) {
 	switch (type) {
 	case tfxGraphEasingType_constant: return tfx__ease_constant;
-	case tfxGraphEasingType_ease_in_quad: return tfx__ease_in_quad;
-	case tfxGraphEasingType_ease_out_quad: return tfx__ease_out_quad;
-	case tfxGraphEasingType_ease_in_out_quad: return tfx__ease_in_out_quad;
-	case tfxGraphEasingType_ease_in_cubic: return tfx__ease_in_cubic;
-	case tfxGraphEasingType_ease_out_cubic: return tfx__ease_out_cubic;
-	case tfxGraphEasingType_ease_in_out_cubic: return tfx__ease_in_out_cubic;
-	case tfxGraphEasingType_ease_in_circular: return tfx__ease_in_circular;
-	case tfxGraphEasingType_ease_out_circular: return tfx__ease_out_circular;
-	case tfxGraphEasingType_ease_in_out_circular: return tfx__ease_in_out_circular;
+	case tfxGraphEasingType_smoothstep: return tfx__ease_smoothstep;
+	case tfxGraphEasingType_in: return tfx__ease_in_cubic;
+	case tfxGraphEasingType_out: return tfx__ease_out_cubic;
+	case tfxGraphEasingType_in_out: return tfx__ease_in_out_cubic;
+	case tfxGraphEasingType_out_in: return tfx__ease_out_in;
 	}
 	return tfx__ease_linear;
 }
