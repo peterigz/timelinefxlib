@@ -15771,7 +15771,7 @@ tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU
 	}
 
 	if (emitter.spawn_locations_index != tfxINVALID && shared_properties->emission_type == tfxOtherEmitter && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
-		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
+		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
 		emitter.spawn_quantity *= spawn_point_buffer.current_size;
 	} else if (shared_properties->emission_type == tfxSpawnOnRibbon && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
 		if (emitter.other_emitter_index != tfxINVALID) {
