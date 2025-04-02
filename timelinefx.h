@@ -5701,7 +5701,7 @@ typedef struct tfx_image_data_s {
 	//Index of the image, deprecated, image hash should be used now instead.
 	tfxU32 shape_index;
 	//Name of the image
-	tfx_str64_t name;
+	tfx_str256_t name;
 	//A hash of the image data for a unique id and which can also be used to see if an image has already been loaded
 	tfxU64 image_hash;
 	//The size of one frame of the image
@@ -6879,7 +6879,7 @@ typedef struct tfx_library_s {
 	tfx_gpu_shapes gpu_shapes;
 	tfx_color_ramp_bitmap_data_t color_ramps;
 	//Get an effect from the library by index
-	tfx_str64_t name;
+	tfx_str256_t name;
 	bool open_library;
 	bool dirty;
 	tfx_stream_t library_file_path;
