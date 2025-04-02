@@ -3236,7 +3236,7 @@ tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effe
 }
 
 tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor effect) {
-	return &effect->library->shared_properties[effect->shared_index];
+	return effect->shared_index != tfxINVALID ? &effect->library->shared_properties[effect->shared_index] : nullptr;
 }
 
 tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor effect) {
@@ -6683,12 +6683,13 @@ void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *met
 }
 
 void tfx__assign_effector_property_u64(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
-	if (*field == "image_hash") tfx__get_shared_emitter_properties(effect)->image_hash = value;
-	else if (*field == "paired_emitter_hash") tfx__get_shared_emitter_properties(effect)->paired_emitter_hash = value;
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	if (*field == "image_hash" && shared_properties) tfx__get_shared_emitter_properties(effect)->image_hash = value;
+	else if (*field == "paired_emitter_hash" && shared_properties) tfx__get_shared_emitter_properties(effect)->paired_emitter_hash = value;
 }
 
 void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
-	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
@@ -6696,17 +6697,17 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	} else if (effect->type == tfxRibbonType) {
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 	}
-	if (*field == "spawn_amount") shared_properties->spawn_amount = value;
-	else if (*field == "spawn_amount_variation") shared_properties->spawn_amount_variation = value;
+	if (*field == "spawn_amount" && shared_properties) shared_properties->spawn_amount = value;
+	else if (*field == "spawn_amount_variation" && shared_properties) shared_properties->spawn_amount_variation = value;
+	else if (*field == "layer" && shared_properties) shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
+	else if (*field == "single_shot_limit" && shared_properties) shared_properties->single_shot_limit = value;
 	else if (*field == "frames") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames = value;
 	else if (*field == "current_frame") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].current_frame = value;
 	else if (*field == "seed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed = value;
-	else if (*field == "layer") shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
-	else if (*field == "single_shot_limit") shared_properties->single_shot_limit = value;
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
 	else if (*field == "ribbon_shader_type") ribbon_properties->bucket_info.shader_type = value;
-	else if (*field == "billboard_option") {
+	else if (*field == "billboard_option" && emitter_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
 		//libs for that. This can be removed at some point.
@@ -6719,8 +6720,8 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 		}
 		emitter_properties->billboard_option = (tfx_billboarding_option)value;
 	}
-	else if (*field == "vector_align_type") emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
-	else if (*field == "angle_setting") emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
+	else if (*field == "vector_align_type" && emitter_properties) emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
+	else if (*field == "angle_setting" && emitter_properties) emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
 	else if (*field == "sort_passes") effect->sort_passes = tfxMin(5, value);
 	else if (*field == "animation_flags") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
 	else if (*field == "sprite_data_flags") effect->library->sprite_data_settings[effect->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
@@ -6737,11 +6738,11 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	}
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
-	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
-	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
-	else if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
-	else if (*field == "emission_type") shared_properties->emission_type = (tfx_emission_type)value;
+	if (*field == "emission_direction" && emitter_properties) emitter_properties->emission_direction = (tfx_emission_direction)value;
+	else if (*field == "end_behaviour" && emitter_properties) emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
+	else if (*field == "emission_type" && shared_properties) shared_properties->emission_type = (tfx_emission_type)value;
 	else if (*field == "color_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
 	else if (*field == "export_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
@@ -6759,7 +6760,7 @@ void tfx__assign_effector_property_str(tfx_effect_descriptor effect, tfx_str256_
 	}
 }
 void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *field, float value) {
-	tfx_shared_properties_t *shared_properties = effect->shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	if (*field == "position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.x = value;
 	else if (*field == "position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.y = value;
 	else if (*field == "position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.z = value;
@@ -6794,17 +6795,17 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "preview_camera_isometric_scale") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
 	else if (*field == "preview_effect_z_offset") effect->library->preview_camera_settings[effect->preview_camera_settings].effect_z_offset = value;
 	else if (*field == "preview_camera_speed") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_speed = value;
-	else if (*field == "delay_spawning") shared_properties->delay_spawning = value;
-	else if (*field == "grid_rows") shared_properties->grid_points.x = value;
-	else if (*field == "grid_columns") shared_properties->grid_points.y = value;
-	else if (*field == "grid_depth") shared_properties->grid_points.z = value;
 	else if (*field == "loop_length") effect->loop_length = value < 0 ? 0.f : value;
 	else if (*field == "emitter_handle_x") effect->emitter_handle.x = value;
 	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
-	else if (*field == "emitter_handle_z") effect->emitter_handle.z = value;
-	else if (*field == "image_start_frame") shared_properties->start_frame = value;
-	else if (*field == "image_end_frame") shared_properties->end_frame = value;
-	else if (*field == "image_frame_rate") shared_properties->frame_rate = value;
+	else if (*field == "emitter_handle_z" && shared_properties) effect->emitter_handle.z = value;
+	else if (*field == "delay_spawning" && shared_properties) shared_properties->delay_spawning = value;
+	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
+	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
+	else if (*field == "grid_depth" && shared_properties) shared_properties->grid_points.z = value;
+	else if (*field == "image_start_frame" && shared_properties) shared_properties->start_frame = value;
+	else if (*field == "image_end_frame" && shared_properties) shared_properties->end_frame = value;
+	else if (*field == "image_frame_rate" && shared_properties) shared_properties->frame_rate = value;
 	else if (*field == "sprite_data_playback_speed") effect->library->sprite_data_settings[effect->sprite_data_settings_index].playback_speed = value;
 	else if (*field == "sprite_data_recording_frame_rate") effect->library->sprite_data_settings[effect->sprite_data_settings_index].recording_frame_rate = value;
 	else if (*field == "path_rotation_range") {
