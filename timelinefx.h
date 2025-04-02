@@ -6448,8 +6448,6 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 emitter_index;
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
-	tfxParticleEmitterFlags property_flags;
-	tfxSharedEmitterFlags shared_flags;
 	tfxParticleEmitterFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;

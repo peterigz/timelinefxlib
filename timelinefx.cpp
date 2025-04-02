@@ -7922,7 +7922,7 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxLifePreset:
 		return { tfxMAX_FRAME, 100000.f };
 	case tfx_graph_preset::tfxAmountPreset:
-		return { tfxMAX_FRAME, 5000.f };
+		return { tfxMAX_FRAME, 1000000.f };
 	case tfx_graph_preset::tfxVelocityPreset:
 		return { tfxMAX_FRAME, 10000.f };
 	case tfx_graph_preset::tfxWeightPreset:
@@ -15946,7 +15946,6 @@ tfxU32 tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
 	work_entry->particle_data = &pm->particle_arrays[emitter.particles_index];
-	work_entry->property_flags = emitter.property_flags;
 
 	if (tween >= 1) {
 		emitter.amount_remainder = tween - 1.f;
@@ -16060,10 +16059,10 @@ void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data) {
 	else if (work_entry->emission_type == tfxLine) {
 		tfx__spawn_particle_line_3d(&pm->work_queue, work_entry);
 	}
-	else if (work_entry->emission_type == tfxIcosphere && work_entry->shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) {
+	else if (work_entry->emission_type == tfxIcosphere && emitter.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) {
 		tfx__spawn_particle_icosphere_random(&pm->work_queue, work_entry);
 	}
-	else if (work_entry->emission_type == tfxIcosphere && !(work_entry->shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random)) {
+	else if (work_entry->emission_type == tfxIcosphere && !(emitter.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random)) {
 		tfx__spawn_particle_icosphere(&pm->work_queue, work_entry);
 	}
 	else if (work_entry->emission_type == tfxCylinder) {
