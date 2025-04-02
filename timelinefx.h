@@ -6133,7 +6133,7 @@ typedef struct tfx_particle_soa_s {
 	float *local_rotations_y;
 	float *local_rotations_z;    //In 2d this is the angle of the sprite
 	tfxU32 *velocity_normal;
-	tfxU32 *quaternion;            //Used for paths where the path can be rotated per particle based on the emission direction
+	tfxU32 *quaternion;          //Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
@@ -6147,7 +6147,7 @@ typedef struct tfx_particle_soa_s {
 	float *noise_offset;
 	float *noise_resolution;
 	float *intensity_factor;
-	tfx_rgba8_t *color;
+	float *random_color;
 	float *image_frame;
 	tfxU32 *single_loop_count;
 } tfx_particle_soa_t;

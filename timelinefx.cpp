@@ -3542,12 +3542,19 @@ void tfx__disable_all_emitters(tfx_effect_descriptor effect) {
 }
 
 void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter) {
+	tfxKey enable_source_emitter = 0;
 	for (tfx_effect_descriptor child : effect->children) {
 		if (child->library_index == emitter->library_index) {
+			if (tfx__get_shared_emitter_properties(child)->emission_type == tfxOtherEmitter) {
+				enable_source_emitter = tfx__get_shared_emitter_properties(child)->paired_emitter_hash;
+			}
 			child->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 		} else {
 			child->shared_flags &= ~tfxSharedEmitterPropertyFlags_enabled;
 		}
+	}
+	if (effect->library->effect_paths.ValidKey(enable_source_emitter)) {
+		effect->library->effect_paths.At(enable_source_emitter)->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 	}
 }
 
@@ -14295,13 +14302,18 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 			lookup_alpha_sharpness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(alpha_sharpness_time, tfxWideAdd(alpha_sharpness_graph->wide_oscillator.offset_x, alpha_sharpness_graph->wide_oscillator.frequency), alpha_sharpness_graph->wide_oscillator.amplitude), lookup_alpha_sharpness), alpha_sharpness_graph->wide_oscillator.offset_y);
 		}
 
-		tfxWideFloat gradient_mapper_time = gradient_mapper_easing(life);
-		tfxWideFloat lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?		
-			tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) : 
-			tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
+		tfxWideFloat lookup_gradient_mapper;
+		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_color) {
+			lookup_gradient_mapper = tfxWideLoad(&bank.random_color[index]);
+		} else {
+			tfxWideFloat gradient_mapper_time = gradient_mapper_easing(life);
+			lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?
+				tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) :
+				tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
 
-		if (gradient_mapper_has_oscillator) {
-			lookup_gradient_mapper = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(gradient_mapper_time, tfxWideAdd(gradient_mapper_graph->wide_oscillator.offset_x, gradient_mapper_graph->wide_oscillator.frequency), gradient_mapper_graph->wide_oscillator.amplitude), lookup_gradient_mapper), gradient_mapper_graph->wide_oscillator.offset_y);
+			if (gradient_mapper_has_oscillator) {
+				lookup_gradient_mapper = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(gradient_mapper_time, tfxWideAdd(gradient_mapper_graph->wide_oscillator.offset_x, gradient_mapper_graph->wide_oscillator.frequency), gradient_mapper_graph->wide_oscillator.amplitude), lookup_gradient_mapper), gradient_mapper_graph->wide_oscillator.offset_y);
+			}
 		}
 
 		//----Color changes
@@ -16172,7 +16184,6 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &age = entry->particle_data->age[index];
 		float &max_age = entry->particle_data->max_age[index];
-		tfx_rgba8_t &color = entry->particle_data->color[index];
 		tfxU32 &single_loop_count = entry->particle_data->single_loop_count[index];
 
 		tfxParticleFlags &flags = entry->particle_data->flags[index];
@@ -16243,13 +16254,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		}
 
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_color) {
-			float age = tfx_RandomRangeZeroToMax(&random, max_age) / max_age * (tfxCOLOR_RAMP_WIDTH - 1.f);
-			color = color_ramp.colors[(int)age];
-			color.a = (tfxU32)alpha;
-		}
-		else {
-			color = color_ramp.colors[0];
-			color.a = (tfxU32)alpha;
+			entry->particle_data->random_color[index] = tfx_RandomRangeZeroToMax(&random, max_age) / max_age;
 		}
 
 		entry->highest_particle_age = fmaxf(entry->highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
@@ -19232,11 +19237,11 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		else if (offset > 0) {
 			//Can we eliminate this? The only reason that we do the below is to fill gaps in the buffer when life variation is used. Life variation means that 
 			//particles expire at different rates so we have to manually fill the wholes in the ring buffer. What if we "pretend" that each particle spawns with the 
-			//maximum life possible but sample the graphs based on the actual life that it has. Then we expire the particle based on the maximum life value so 
+			//maximum life possible but sample the graphs based on the actual max life that it has. Then we expire the particle based on the maximum life value so 
 			//we don't have to do the below. This means that we'd still be processing particles that have already expired (but their scaling could be set to 0 so they're
 			//not drawn) but only needing to bump the start index of the ring buffer rather then the memory moving that's done below and is pretty slow.
 			//This would be an interesting experiment to run and profile because it would be nice to not have to do the below. My intuition tells me that below is
-			//slower then just processing extra particles each frame because memory work tends to be.
+			//slower then just processing extra particles each frame because memory work tends to be slower.
 			tfxU32 next_index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i + offset);
 			max_index = tfx__Max(max_index, next_index);
 
@@ -19287,7 +19292,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 			if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
 				bank.quaternion[next_index] = bank.quaternion[index];
 			}
-			bank.color[next_index] = bank.color[index];
+			bank.random_color[next_index] = bank.random_color[index];
 			bank.image_frame[next_index] = bank.image_frame[index];
 			bank.base_size_x[next_index] = bank.base_size_x[index];
 			bank.base_size_y[next_index] = bank.base_size_y[index];
@@ -19896,7 +19901,7 @@ void tfx__init_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa
 	if (tfxEmitterStateFlags_has_rotated_path) {
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, quaternion));
 	}
-	tfx__add_struct_array(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_particle_soa_t, color));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
@@ -19939,7 +19944,7 @@ void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa
 	if (tfxEmitterStateFlags_has_rotated_path || control_profile & tfxEmitterControlProfile_other_ribbon_emitter_path) {
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, quaternion));
 	}
-	tfx__add_struct_array(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_particle_soa_t, color));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
