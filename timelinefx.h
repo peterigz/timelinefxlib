@@ -2904,6 +2904,7 @@ typedef enum {
 	tfxSharedEmitterPropertyFlags_is_in_folder					= 1 << 16,
 	tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments	= 1 << 17,		//Emitter will be excluded from effect hue adjustments if this flag is checked
 	tfxSharedEmitterPropertyFlags_hidden						= 1 << 18,		//Flagged when hidden from showing in the editor. This is mainly used in the undo/history system.
+	tfxSharedEmitterPropertyFlags_do_not_render					= 1 << 19,		//particles will be processed but their scale will be set to 0 so that they're not rendered.
 } tfx_shared_emitter_flag_bits;
 
 typedef enum {
@@ -7272,6 +7273,8 @@ tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst);
 tfxAPI_EDITOR void tfx__enable_all_emitters(tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__render_all_emitters(tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__do_not_render_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__disable_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__hide_descriptor(tfx_effect_descriptor descriptor);
@@ -7627,6 +7630,7 @@ tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_color(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_size(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data);

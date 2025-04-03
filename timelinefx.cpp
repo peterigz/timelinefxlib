@@ -3547,6 +3547,22 @@ void tfx__enable_all_emitters(tfx_effect_descriptor effect) {
 		tfx__enable_all_emitters(child);
 	}
 }
+void tfx__render_all_emitters(tfx_effect_descriptor effect) {
+	for (tfx_effect_descriptor child : effect->children) {
+		child->shared_flags &= ~tfxSharedEmitterPropertyFlags_do_not_render;
+	}
+}
+
+void tfx__do_not_render_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter) {
+	tfxKey enable_source_emitter = 0;
+	for (tfx_effect_descriptor child : effect->children) {
+		if (child == emitter) {
+			child->shared_flags &= ~tfxSharedEmitterPropertyFlags_do_not_render;
+		} else {
+			child->shared_flags |= tfxSharedEmitterPropertyFlags_do_not_render;
+		}
+	}
+}
 
 void tfx__enable_emitter(tfx_effect_descriptor effect) {
 	effect->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
@@ -3562,7 +3578,7 @@ void tfx__disable_all_emitters(tfx_effect_descriptor effect) {
 void tfx__disable_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter) {
 	tfxKey enable_source_emitter = 0;
 	for (tfx_effect_descriptor child : effect->children) {
-		if (child->library_index == emitter->library_index) {
+		if (child == emitter) {
 			if (tfx__get_shared_emitter_properties(child)->emission_type == tfxOtherEmitter) {
 				enable_source_emitter = tfx__get_shared_emitter_properties(child)->paired_emitter_hash;
 			}
@@ -14088,6 +14104,62 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
+void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfxU32 emitter_index = work_entry->emitter_index;
+	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_library library = emitter.library;
+	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
+
+	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+	tfxU32 start_diff = work_entry->start_diff;
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+		if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Predictable
+			tfx_3d_instance_t *sprites = tfxCastBuffer(tfx_3d_instance_t, work_entry->sprite_instances);
+			if (is_ordered) {    //Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+					TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
+					sprites[sprite_depth_index].size_handle.packed = emitter.image_handle_packed;
+					running_sprite_index++;
+				}
+			}
+			else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
+					sprites[running_sprite_index].size_handle.packed = emitter.image_handle_packed;
+					running_sprite_index++;
+				}
+			}
+		}
+		else {
+			tfx_2d_instance_t *sprites = tfxCastBuffer(tfx_2d_instance_t, work_entry->sprite_instances);
+			if (is_ordered) {    //Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+					TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
+					sprites[sprite_depth_index].size_handle.packed = emitter.image_handle_packed;
+					running_sprite_index++;
+				}
+			}
+			else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
+					sprites[running_sprite_index++].size_handle.packed = emitter.image_handle_packed;
+				}
+			}
+		}
+		start_diff = 0;
+	}
+}
+
 void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
@@ -19700,6 +19772,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		tfx__control_particle_size(&pm->work_queue, work_entry);
 		tfx__control_particle_color(&pm->work_queue, work_entry);
 		tfx__control_particle_image_frame(&pm->work_queue, work_entry);
+		if (emitter.source_emitter->shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
+			tfx__control_particle_hide(&pm->work_queue, work_entry);
+		}
 	}
 }
 
