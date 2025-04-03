@@ -2395,6 +2395,24 @@ float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect) {
 	return loop_length;
 }
 
+void tfx__update_source_emitter_flags(tfx_effect_descriptor effect) {
+	tmpStack(tfxKey, stack);
+	for(tfx_effect_descriptor child : effect->children) {
+		child->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source;
+		if(tfx__get_shared_emitter_properties(child)->emission_type == tfxOtherEmitter) {
+			stack.push_back(tfx__get_shared_emitter_properties(child)->paired_emitter_hash);
+		}
+	}
+	while(!stack.empty()) {
+		tfxKey key = stack.pop_back();
+		tfx_effect_descriptor emitter = tfx__get_library_effect_by_key(effect->library, key);
+		if(emitter) {
+			emitter->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source;
+		}
+	}
+	stack.free();
+}
+
 tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, tfx_effect_descriptor emitter, tfx_effect_descriptor_type type) {
 	TFX_ASSERT_HANDLE(emitter);	//Not a valid emitter
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect
@@ -18946,7 +18964,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	const float first_velocity_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_index]);
 	const float first_weight_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_weight_index]);
 	const tfx_emission_type emission_type = shared_properties.emission_type;
-	const bool line = emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
+	const bool line = emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && (emission_type == tfxLine || emission_type == tfxPath);
 	const float velocity_adjuster = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.age, emitter.oscillator_time);
 	const tfxU32 layer = shared_properties.layer;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
