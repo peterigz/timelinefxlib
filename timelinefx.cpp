@@ -3394,10 +3394,10 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 	while (stack.size()) {
 		tfx_effect_descriptor current = stack.pop_back();
 		if (current->graph_list_index != tfxINVALID) {
-			tfx__free_library_graph_list(effect->library, current->graph_list_index);
+			tfx__free_library_graph_list(current->library, current->graph_list_index);
 		}
 		if (current->transform_index != tfxINVALID) {
-			tfx__free_library_graph_list(effect->library, current->transform_index);
+			tfx__free_library_graph_list(current->library, current->transform_index);
 		}
 		for (tfx_effect_descriptor sub : current->children) {
 			stack.push_back(sub);
