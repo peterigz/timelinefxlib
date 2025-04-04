@@ -460,9 +460,6 @@ tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
-#define tfx__strcpy(dst, size, src) strcpy(dst, src)
-#define tfx__fseek fseeko
-#define tfx__ftell ftello
 #define TFX_ALIGN_AFFIX(v)            __attribute__((aligned(v)))
 #define TFX_PACKED_STRUCT            __attribute__((packed))
 
@@ -6124,16 +6121,18 @@ typedef struct tfx_particle_soa_s {
 	tfxParticleFlags *flags;
 	float *age;
 	float *max_age;
-	float *position_x;
-	float *position_y;
-	float *position_z;
-	float *captured_position_x;
-	float *captured_position_y;
-	float *captured_position_z;
-	float *local_rotations_x;    //In 2d this is the direction
-	float *local_rotations_y;
-	float *local_rotations_z;    //In 2d this is the angle of the sprite
-	tfxU32 *velocity_normal;
+	float *from_position_x;
+	float *from_position_y;
+	float *from_position_z;
+	float *to_position_x;
+	float *to_position_y;
+	float *to_position_z;
+	union {
+		float *rotation_offset_pitch;    
+		float *direction;				//For 2d emitters
+	};
+	float *rotation_offset_yaw; 
+	float *rotation_offset_roll; 
 	tfxU32 *quaternion;          //Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
@@ -6154,12 +6153,12 @@ typedef struct tfx_particle_soa_s {
 } tfx_particle_soa_t;
 
 typedef struct tfx_spawn_points_soa_s {
-	float *position_x;
-	float *position_y;
-	float *position_z;
-	float *captured_position_x;
-	float *captured_position_y;
-	float *captured_position_z;
+	float *from_position_x;
+	float *from_position_y;
+	float *from_position_z;
+	float *to_position_x;
+	float *to_position_y;
+	float *to_position_z;
 	float *age;
 }tfx_spawn_points_soa_t;
 
@@ -7363,7 +7362,7 @@ tfxINTERNAL float tfx__interpolate_float(float tween, float from, float to);
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL void tfx__transform_particle_position(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations);
+tfxINTERNAL void tfx__transform_particle_position(const float local_position_x, const float local_position_y, tfx_vec2_t *world_position);
 
 tfxINTERNAL inline tfxWideInt tfx__wide_seedgen_base(tfxWideInt base, tfxWideInt h)
 {
