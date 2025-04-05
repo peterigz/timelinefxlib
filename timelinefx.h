@@ -5837,6 +5837,7 @@ typedef struct tfx_particle_emitter_state_s {
 	tfx_vec3_t world_position;						//SoA?
 	tfx_vec3_t captured_position;					//SoA?
 	tfx_vec3_t world_rotations;						//SoA?
+	tfx_quaternion_t captured_rotation;				//SoA?
 	tfx_quaternion_t rotation;						//SoA?
 
 	//Static data that won't change frame by frame
@@ -6114,25 +6115,24 @@ typedef struct tfx_unique_sprite_id_s {
 	tfxU32 property_index;
 }tfx_unique_sprite_id_t;
 
-//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 116 bytes in total.
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
 	tfxU32 *uid;
 	tfxU32 *sprite_index;
-	tfxU32 *particle_index;
 	tfxParticleFlags *flags;
 	float *age;
 	float *max_age;
 	float *position_x;
 	float *position_y;
 	float *position_z;
-	float *captured_position_x;
-	float *captured_position_y;
-	float *captured_position_z;
-	float *local_rotations_x;    //In 2d this is the direction
-	float *local_rotations_y;
-	float *local_rotations_z;    //In 2d this is the angle of the sprite
+	union {
+		float *rotation_offset_pitch;    
+		float *direction;    
+	};
+	float *rotation_offset_yaw;
+	float *rotation_offset_roll;    //In 2d this is the angle of the sprite
 	tfxU32 *velocity_normal;
 	tfxU32 *quaternion;          //Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
@@ -7638,6 +7638,7 @@ tfxINTERNAL void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void
 tfxINTERNAL void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data);
