@@ -6111,13 +6111,12 @@ typedef struct tfx_unique_sprite_id_s {
 	tfxU32 property_index;
 }tfx_unique_sprite_id_t;
 
-//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. 136 / 34
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
 	tfxU32 *uid;
 	tfxU32 *sprite_index;
-	tfxU32 *particle_index;
 	tfxParticleFlags *flags;
 	float *age;
 	float *max_age;
@@ -6127,6 +6126,9 @@ typedef struct tfx_particle_soa_s {
 	float *to_position_x;
 	float *to_position_y;
 	float *to_position_z;
+	float *force_accumulator_x;
+	float *force_accumulator_y;
+	float *force_accumulator_z;
 	union {
 		float *rotation_offset_pitch;    
 		float *direction;				//For 2d emitters
