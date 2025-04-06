@@ -1599,6 +1599,21 @@ tfxU32 tfx__pack16bit_unorm(float x, float y) {
 	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
 }
 
+tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z) {
+	int x_scaled = (int)(v_x * 127.0f);
+	int y_scaled = (int)(v_y * 127.0f);
+	int z_scaled = (int)(v_z * 127.0f);
+
+	x_scaled &= 0xFF;
+	y_scaled &= 0xFF;
+	z_scaled &= 0xFF;
+
+	y_scaled <<= 8;   
+	z_scaled <<= 16; 
+
+	return x_scaled | y_scaled | z_scaled;
+}
+
 tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t q) {
 	uint8_t x = static_cast<uint8_t>((q.x * 0.5f + 0.5f) * 255.0f);
 	uint8_t y = static_cast<uint8_t>((q.y * 0.5f + 0.5f) * 255.0f);
@@ -9976,6 +9991,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	if (is_3d) {
 		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.billboard_instance, sprite_data);
+		tfx__update_sprite_alignment_data_3d(sprite_data);
 	}
 	else {
 		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
@@ -10076,8 +10092,7 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 				bool captured = false;
 				if (is_3d) {
 					captured = sprites.billboard_instance[i].captured_index == tfxINVALID;
-				}
-				else {
+				} else {
 					captured = sprites.sprite_instance[i].captured_index == tfxINVALID;
 				}
 				if (captured) {
@@ -10170,6 +10185,23 @@ void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *work_en
 	}
 	else {
 		tfx__link_sprite_data_captured_indexes(sprite_data->compressed_sprites.sprite_instance, entry->frame, sprite_data);
+	}
+}
+
+void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data) {
+	for (int frame = 0; frame != sprite_data->normal.frame_count; ++frame) {
+		for (tfxEachLayer) {
+			for (int j = sprite_data->normal.frame_meta[frame].index_offset[layer]; j != sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer]; ++j) {
+				tfx_3d_instance_t &instance = sprite_data->real_time_sprites.billboard_instance[j];
+				if (instance.captured_index == tfxINVALID) continue;
+				if (instance.alignment.packed == 0) {
+					tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
+					motion.z += 0.000001f;
+					motion = tfx__normalize_vec3(&motion);
+					instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
+				}
+			}
+		}
 	}
 }
 

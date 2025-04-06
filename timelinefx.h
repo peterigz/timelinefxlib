@@ -7026,6 +7026,7 @@ tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxINTERNAL tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q);
 tfxINTERNAL tfx_quaternion_t tfx__unpack8bit_quaternion_from_gpu(tfxU32 q);
@@ -7768,6 +7769,7 @@ tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, bool is_3d, float frame_length, int *progress);
+tfxINTERNAL void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
