@@ -9606,9 +9606,8 @@ void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, float update_frequency, float camera_position[3], int *progress) {
+void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t &anim, float update_frequency, float camera_position[3], int *progress) {
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
-	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
 	float frame_length = 1000.f / update_frequency;
 	tfxU32 frames = anim.real_frames;
 	tfxU32 start_frame = anim.frame_offset;
@@ -10328,7 +10327,8 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		TFX_ASSERT(pm);        //You must pass an appropriate particle manager if the animation needs recording
 		int progress;
-		tfx__record_sprite_data(pm, effect, animation_manager->update_frequency, &camera_position.x, &progress);
+		tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
+		tfx__record_sprite_data(pm, effect, anim, animation_manager->update_frequency, &camera_position.x, &progress);
 	}
 
 	bool has_animated_shape = false;
@@ -10593,7 +10593,14 @@ void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_effect_manager pm, floa
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT_HANDLE(pm);	//Not a valid particle manager handle
 	int progress;
-	tfx__record_sprite_data(pm, t->effect, update_frequency, camera_position, &progress);
+	tfx__record_sprite_data(pm, t->effect, t->effect->library->sprite_data_settings[t->effect->sprite_data_settings_index], update_frequency, camera_position, &progress);
+}
+
+void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t &settings, tfx_effect_manager pm, float update_frequency, float camera_position[3]) {
+	TFX_ASSERT_HANDLE(effect);	//Not a valid effect 
+	TFX_ASSERT_HANDLE(pm);		//Not a valid particle manager handle
+	int progress;
+	tfx__record_sprite_data(pm, effect, settings, update_frequency, camera_position, &progress);
 }
 
 void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
