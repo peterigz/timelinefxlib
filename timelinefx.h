@@ -42,7 +42,7 @@
 		-[Initialisation_functions]		Startup and shutdown timelinefx
 		-[Global_variable_access]		Any functions that give you access to global variables relating to timelinefx
 		-[Library_functions]			Functions for loading and accessing timelinefx libraries
-		-[Particle_Manager_functions]	Create and update functions for particle managers where the main work is done to update particles every frame
+		-[Particle_Manager_functions]	Create and update functions for effect managers where the main work is done to update particles every frame
 		-[Animation_manager]			Animation manager functions for playing pre-recorded effect data
 		-[Effect_templates]				Functions for working with effect templates which help modify effects in the library without actually changing the base effect in the library.
 		-[General_helpers]				General math functions and other helpers.
@@ -2900,7 +2900,7 @@ typedef enum {
 	tfxSharedEmitterPropertyFlags_effect_is_3d					= 1 << 11,      //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 	tfxSharedEmitterPropertyFlags_grid_spawn_random				= 1 << 12,		//Spawn on grid points but randomly rather then in sequence
 	tfxSharedEmitterPropertyFlags_spawn_location_source			= 1 << 13,	    //This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
-	tfxSharedEmitterPropertyFlags_enabled						= 1 << 14,      //The emitter is enabled or not, meaning it will or will not be added the particle manager with tfx__add_effect
+	tfxSharedEmitterPropertyFlags_enabled						= 1 << 14,      //The emitter is enabled or not, meaning it will or will not be added the effect manager with tfx__add_effect
 	tfxSharedEmitterPropertyFlags_use_color_hint				= 1 << 15,	    //Activate a second color to tint the particles and mix between the two colors.
 	tfxSharedEmitterPropertyFlags_is_in_folder					= 1 << 16,
 	tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments	= 1 << 17,		//Emitter will be excluded from effect hue adjustments if this flag is checked
@@ -2956,7 +2956,7 @@ typedef enum {
 typedef enum {
 	tfxEmitterStateFlags_none                                   = 0,
 	tfxEmitterStateFlags_stop_spawning                          = 1 << 3,       //Tells the emitter to stop spawning
-	tfxEmitterStateFlags_remove                                 = 1 << 4,       //Tells the effect/emitter to remove itself from the particle manager immediately
+	tfxEmitterStateFlags_remove                                 = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
 	tfxEmitterStateFlags_unused1                                = 1 << 5,       //the emitter is enabled. **moved to property state_flags**
 	tfxEmitterStateFlags_retain_matrix                          = 1 << 6,       //Internal flag about matrix usage
 	tfxEmitterStateFlags_no_tween_this_update                   = 1 << 7,       //Internal flag generally, but you could use it if you want to teleport the effect to another location
@@ -2984,7 +2984,7 @@ typedef enum {
 typedef enum {
 	tfxRibbonEmitterStateFlags_none                             = 0,
 	tfxRibbonEmitterStateFlags_stop_spawning                    = 1 << 3,       //Tells the emitter to stop spawning
-	tfxRibbonEmitterStateFlags_remove                           = 1 << 4,       //Tells the effect/emitter to remove itself from the particle manager immediately
+	tfxRibbonEmitterStateFlags_remove                           = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
 	tfxRibbonEmitterStateFlags_single_shot_done                 = 1 << 17,
 } tfx_ribbon_emitter_state_flag_bits;
 
@@ -3008,7 +3008,7 @@ typedef enum {
 typedef enum {
 	tfxEffectStateFlags_none                                    = 0,
 	tfxEffectStateFlags_stop_spawning                           = 1 << 3,       //Tells the emitter to stop spawning
-	tfxEffectStateFlags_remove                                  = 1 << 4,       //Tells the effect/emitter to remove itself from the particle manager immediately
+	tfxEffectStateFlags_remove                                  = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
 	tfxEffectStateFlags_retain_matrix                           = 1 << 6,       //Internal flag about matrix usage
 	tfxEffectStateFlags_no_tween_this_update                    = 1 << 7,       //Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEffectStateFlags_override_overal_scale                   = 1 << 8,       //Flagged when the over scale is overridden with tfx_SetEffectOveralScale
@@ -3552,7 +3552,7 @@ typedef struct tfx_soa_buffer_s {
 }tfx_soa_buffer_t;
 
 #ifdef __cplusplus
-//This simple container struct was created for storing instance_data in the particle manager. I didn't want this templated because either 2d or 3d instance_data could be used so
+//This simple container struct was created for storing instance_data in the effect manager. I didn't want this templated because either 2d or 3d instance_data could be used so
 //I wanted to cast as needed when writing and using the sprite data. See simple cast macros above tfxCastBuffer and tfxCastBufferRef
 struct tfx_buffer_t {
 	tfxU32 current_size;
@@ -4659,8 +4659,8 @@ extern tfx_allocator *tfxMemoryAllocator;
 //Tried to keep this as simple as possible, was originally based on Casey Muratory's Hand Made Hero threading which used the Windows API for
 //threading but for the sake of supporting other platforms I changed it to use std::thread which was actually a lot more simple to do then 
 //I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
-//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
-//each emitter that the particle manager uses will be given it's own thread.
+//There is a single thread pool created to serve multiple queues. Currently each effect manager that you create will have it's own queue and then
+//each emitter that the effect manager uses will be given it's own thread.
 
 // Platform-specific atomic operations
 tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
@@ -5458,7 +5458,7 @@ typedef struct tfx_depth_index_s {
 	float depth;
 }tfx_depth_index_t;
 
-//Used when a particle manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
+//Used when a effect manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 typedef struct tfx_effect_instance_data_s {
 #ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
@@ -5778,7 +5778,7 @@ typedef struct tfx_shared_emitter_properties_s {
 	float delay_spawning;
 	//When the emission type is shared emitter then this is the hash of the shared emitter.
 	tfxKey paired_emitter_hash;
-	//Layer of the particle manager that the particle is added to
+	//Layer of the effect manager that the particle is added to
 	tfxU32 layer;
 } tfx_shared_properties_t;
 
@@ -5818,7 +5818,7 @@ typedef struct tfx_path_state_s {
 	tfxU32 ribbon_index;
 } tfx_path_state_t;
 
-//This is a struct that stores an emitter state that is currently active in a particle manager.
+//This is a struct that stores an emitter state that is currently active in a effect manager.
 //Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
 //      and dynamic variables that change each frame.
 typedef struct tfx_particle_emitter_state_s {
@@ -5867,7 +5867,7 @@ typedef struct tfx_particle_emitter_state_s {
 	tfxU32 particles_index;
 	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
 	tfxKey ribbon_bucket_id;		 //For spawn on ribbon emission type and storing the last known position of the particle
-	tfxU32 other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the particle manager
+	tfxU32 other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the effect manager
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t grid_coords;
@@ -5881,7 +5881,7 @@ typedef struct tfx_particle_emitter_state_s {
 	tfx_path_state_t path_state;
 } tfx_particle_emitter_state_t TFX_ALIGN_AFFIX(16);
 
-//This is a struct that stores an effect state that is currently active in a particle manager.
+//This is a struct that stores an effect state that is currently active in a effect manager.
 typedef struct tfx_effect_state_s {
 	//State data that can change every frame
 	tfx_quaternion_t rotation;
@@ -6060,7 +6060,7 @@ typedef struct tfx_effect_descriptor_s {
 	//Pointer to the immediate parent
 	tfx_effect_descriptor parent;
 
-	//All the below fields will be used by the effect/emitter states when added to a particle manager
+	//All the below fields will be used by the effect/emitter states when added to a effect manager
 	//Indexes into library storage
 	tfxU32 property_index;		//this will be the index to either particle emitter, ribbon emitter properties. Effects don't have any properties that aren't shared.
 	//Shared properties used by all emitter/effect/ribbon types
@@ -6415,7 +6415,7 @@ typedef struct tfx_compute_particle_s {
 	float noise_offset;                    //The random velocity added each frame
 	float noise_resolution;                //The random velocity added each frame
 	float image_frame;
-	tfxU32 control_slot_and_layer;    //index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
+	tfxU32 control_slot_and_layer;    //index to the controller, and also stores the layer in the effect manager that the particle is on (layer << 3)
 	float local_rotation;
 }tfx_compute_particle_t;
 
@@ -6682,12 +6682,12 @@ typedef struct tfx_effect_index_s {
 	float depth;
 }tfx_effect_index_t;
 
-//This struct is used for configuring a particle manager on creation
+//This struct is used for configuring a effect manager on creation
 typedef struct tfx_effect_manager_info_s {
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
-											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the particle manager to get the byte
+											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
 											//nearest multiple of 32.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
@@ -6699,7 +6699,7 @@ typedef struct tfx_effect_manager_info_s {
 	bool group_sprites_by_effect;           //Set to true to group all instance_data by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
 	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use tfx_SetPMCamera in 3d to set the effect depth to the distance the camera, in 2d the depth is set to the effect y position.
 	bool is_3d;                             //All effects are 3d
-	bool write_direct_to_staging_buffer;	//Make the particle manager write directly to the staging buffer. Use tfx_SetStagingBuffer before you call tfx_UpdateEffectManager
+	bool write_direct_to_staging_buffer;	//Make the effect manager write directly to the staging buffer. Use tfx_SetStagingBuffer before you call tfx_UpdateEffectManager
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_effect_manager pm, void *user_data);
@@ -6722,7 +6722,7 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 total_segments;
 } tfx_ribbon_dispatch_t;
 
-//Use the particle manager to add multiple effects to your scene 
+//Use the effect manager to add multiple effects to your scene 
 #ifdef __cplusplus
 typedef struct tfx_effect_manager_s {
 	tfxU32 magic;
@@ -6764,7 +6764,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfxU32> free_compute_controllers;
 
 	tfx_work_queue_t work_queue;
-	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
+	//The info config that was used to initialise the effect manager. This can be used to alter and the reconfigure the effect manager
 	tfx_effect_manager_info_t info;
 	//Banks of instance_data. All emitters write their sprite data to these banks. 
 	tfx_buffer_t instance_buffer;
@@ -6777,7 +6777,7 @@ typedef struct tfx_effect_manager_s {
 	tfxU32 new_compute_particle_index;
 	tfxU32 new_particles_count;
 	void *new_compute_particle_ptr;
-	//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
+	//The maximum number of effects that can be updated per frame in the effect manager. If you're running effects with particles that have sub effects then this number might need 
 	//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 	tfxU32 max_effects;
 	//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
@@ -7394,7 +7394,7 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 }
 
 //--------------------------------
-//Particle manager internal functions
+//effect manager internal functions
 //--------------------------------
 template<typename T>
 tfxINTERNAL inline void tfx__write_particle_color_sprite_data(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha_life, tfxU32 &running_sprite_index) {
@@ -7727,7 +7727,7 @@ tfxINTERNAL bool tfx__free_pm_effect_capacity(tfx_effect_manager pm);
 tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances);
 
 //--------------------------------
-//Particle manager internal functions
+//effect manager internal functions
 //--------------------------------
 tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_effect_manager pm);
 tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm);
@@ -7768,7 +7768,7 @@ tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, bool is_3d, float frame_length, int *progress);
-tfxINTERNAL void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data);
+tfxINTERNAL void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data, float update_time);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
@@ -7971,7 +7971,7 @@ tfxAPI tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index
 
 /*
 Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
-You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
+You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the effect manager
 * @param tfx_library_t                A valid pointer to a tfx_library_t
 * @param const char *path             Path to the effect or emitter
 */
@@ -8041,23 +8041,23 @@ tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes();
 //Particle_Manager_functions
 //--------------------------------
 /*
-Create a tfx_effect_manager_info_t object which contains configuration data that you can pass to tfx_CreateEffectManager to setup a particle manager. You can tweak the config after calling this
+Create a tfx_effect_manager_info_t object which contains configuration data that you can pass to tfx_CreateEffectManager to setup a effect manager. You can tweak the config after calling this
 function if needed to fine tune the settings.
 * @param setup                    A tfx_effect_manager_setup enum which you can use to set the info based on some commonly used templates
 */
 tfxAPI tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup setup);
 
 /*
-Initialize a particle manager with a tfx_effect_manager_info_t object which contains setup data for how to configure the particle manager. See tfx_CreateEffectManagerInfo
-* @param pm						A pointer to an unitialised tfx_effect_manager_t. If you want to reconfigure a particle manager for a different usage then you can call tfx_ReconfigureEffectManager.
-* @param library                A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
-* @param info                   A tfx_effect_manager_info_t pointer containing the configuration for the particle manager.
+Initialize a effect manager with a tfx_effect_manager_info_t object which contains setup data for how to configure the effect manager. See tfx_CreateEffectManagerInfo
+* @param pm						A pointer to an unitialised tfx_effect_manager_t. If you want to reconfigure a effect manager for a different usage then you can call tfx_ReconfigureEffectManager.
+* @param library                A pointer to a tfx_library_t that you will be using to add all of the effects from to the effect manager.
+* @param info                   A tfx_effect_manager_info_t pointer containing the configuration for the effect manager.
 */
 tfxAPI tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info);
 
 /*
-Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
-in mind that you can just use more than one particle manager and utilised different modes that way as well. The modes that you need will depend on the effects that you're adding to the particle manager.
+Reconfigure a effect manager to make it work in a different mode. A effect manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
+in mind that you can just use more than one effect manager and utilised different modes that way as well. The modes that you need will depend on the effects that you're adding to the effect manager.
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 * @param mode                     One of the following modes:
 								  tfxEffectManagerMode_unordered
@@ -8065,15 +8065,15 @@ in mind that you can just use more than one particle manager and utilised differ
 								  tfxEffectManagerMode_ordered_by_depth
 								  tfxEffectManagerMode_ordered_by_depth_guaranteed
 * @param sort_passes              The number of sort passes if you're using depth sorted effects
-* @param is_3d                    True if the particle manager should be configured for 3d effects.
+* @param is_3d                    True if the effect manager should be configured for 3d effects.
 */
 tfxAPI void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 sort_passes, bool is_3d);
 
 /*
-Set the staging buffer used in the particle manager. The particle manager flags must be set with tfxEffectManagerFlags_direct_to_staging_buffer when the particle
-manager was created. Depending on the renderer you use you may have to call this before each time you update the particle manager so you can set the buffer to the
+Set the staging buffer used in the effect manager. The effect manager flags must be set with tfxEffectManagerFlags_direct_to_staging_buffer when the particle
+manager was created. Depending on the renderer you use you may have to call this before each time you update the effect manager so you can set the buffer to the
 current frame in flight. This will probably apply in any modern renderer like vulkan, metal or dx12.
-Note: It's up to you to ensure that the staging buffer has enough capacity. The particle manager will assume that the size_in_bytes that you pass to the particle
+Note: It's up to you to ensure that the staging buffer has enough capacity. The effect manager will assume that the size_in_bytes that you pass to the particle
 manager is correct and if tfxEffectManagerFlags_dynamic_sprite_allocation is set will attempt to grow the buffer by calling the callback you set to do this.
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 * @param staging_buffer           A pointer to the staging buffer where all the instance_data/billboards are written to
@@ -8082,7 +8082,7 @@ manager is correct and if tfxEffectManagerFlags_dynamic_sprite_allocation is set
 tfxAPI void tfx_SetStagingBuffer(tfx_effect_manager pm, void *staging_buffer, tfxU32 size_in_bytes);
 
 /*
-Turn on and off whether the particle manager should sort the effects by depth order. Use tfx_SetPMCamera to set the position of the camera that the particle manager will
+Turn on and off whether the effect manager should sort the effects by depth order. Use tfx_SetPMCamera to set the position of the camera that the effect manager will
 use to update the depth of each effect in the scene (3d mode). In 2d mode the depth will be auto set to the y position of the effect.
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 * @param yesno                    A boolean, set to true or false if you want auto ordering on or off respectively
@@ -8090,23 +8090,29 @@ use to update the depth of each effect in the scene (3d mode). In 2d mode the de
 tfxAPI void tfx_TogglePMOrderEffects(tfx_effect_manager pm, bool yesno);
 
 /*
-Get the sprite buffer in the particle manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+Get the sprite buffer in the effect manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call tfx_GetEffect2dInstanceBuffer.
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfxAPI tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_effect_manager pm);
 
 /*
-Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+Get the billboard buffer in the effect manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfxAPI tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_effect_manager  pm);
 
 /*
-Get the number of instances within the instance buffer of a particle manager
+Get the number of instances within the instance buffer of a effect manager
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfxAPI int tfx_GetInstanceCount(tfx_effect_manager pm);
+
+/*
+Get the update time being used by the effect manager.
+* @param pm                       A handle to an intialised tfx_effect_manager_t.
+*/
+tfxAPI float tfx_GetUpdateTime(tfx_effect_manager pm);
 
 /*
 Get the ribbon buffer for a given segment size. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
@@ -8118,7 +8124,7 @@ a vertex buffer for rendering.
 tfxAPI tfx_ribbon_bucket_t *tfx_Get3dRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_id);
 
 /*
-Call this to determine whether or not any particle manager has ribbon_emitters to draw this frame.
+Call this to determine whether or not any effect manager has ribbon_emitters to draw this frame.
 * @returns						  True or false
 */
 tfxAPI bool tfx_HasRibbonsToDraw();
@@ -8152,7 +8158,7 @@ tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm, tfxU32 ma
 tfxAPI size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm);
 
 /*
-When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
+When a effect manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
 run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you
 could reduce the numbers as well if needed (they don't take a lot of space though)
@@ -8167,61 +8173,61 @@ tfxAPI void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max
 multiple emitters of the same type then their particle lists are resused rather then freed as they expire. When they're freed then the unused list is added to a list
 of free particle banks for that emitter type so that they can then be recycled if another emitter of the same type is created. If you want to free the memory for a
 specific emitter then you can call this function to do that.
-NOTE: No emitters of the type passed to the function must be in use in the particle manager.
+NOTE: No emitters of the type passed to the function must be in use in the effect manager.
 * @param pm                        A pointer to an intialised tfx_effect_manager_t.
 * @param emitter                   A pointer to a valid tfx_effect_descriptor_t of type tfxEmitterType
 */
 tfxAPI void tfx_FreeParticleListsMemory(tfx_effect_manager pm, tfx_effect_descriptor emitter);
 
 /*
-Free all the memory that is associated with an effect. Depending on the configuration of the particle manager this might be instance_data, particle lists and spawn location lists.
+Free all the memory that is associated with an effect. Depending on the configuration of the effect manager this might be instance_data, particle lists and spawn location lists.
 * @param pm                        A pointer to an intialised tfx_effect_manager_t.
 * @param emitter                   A pointer to a valid tfx_effect_descriptor_t of type tfxEffectType
 */
 tfxAPI void tfx_FreeEffectListsMemory(tfx_effect_manager pm, tfx_effect_descriptor effect);
 
 /*
-Get the current particle count for a particle manager
+Get the current particle count for a effect manager
 * @param pm                        A pointer to an tfx_effect_manager_t
 * @returns tfxU32                  The total number of particles currently being updated
 */
 tfxAPI tfxU32 tfx_ParticleCount(tfx_effect_manager pm);
 
 /*
-Get the current ribbon count for a particle manager
+Get the current ribbon count for a effect manager
 * @param pm                        A pointer to an tfx_effect_manager_t
 * @returns tfxU32                  The total number of particles currently being updated
 */
 tfxAPI tfxU32 tfx_RibbonCount(tfx_effect_manager pm);
 
 /*
-Get the current number of effects that are currently being updated by a particle manager
+Get the current number of effects that are currently being updated by a effect manager
 * @param pm                        A pointer to an tfx_effect_manager_t
 * @returns tfxU32                  The total number of effects currently being updated
 */
 tfxAPI tfxU32 tfx_EffectCount(tfx_effect_manager pm);
 
 /*
-Get the current number of emitters that are currently being updated by a particle manager
+Get the current number of emitters that are currently being updated by a effect manager
 * @param pm                        A pointer to an tfx_effect_manager_t
 * @returns tfxU32                  The total number of emitters currently being updated
 */
 tfxAPI tfxU32 tfx_EmitterCount(tfx_effect_manager pm);
 
 /*
-Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
+Set the seed for the effect manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the effect manager
 then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
-* @param pm                        A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm                        A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param seed                      An unsigned int representing the seed (Any value other then 0)
 */
 tfxAPI void tfx_SetSeed(tfx_effect_manager pm, tfxU64 seed);
 
 /*
 Add an effect to a tfx_effect_manager_t from an effect template
-* @param pm                         A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect_template			The tfx_effect_template_t object that you want to add to the particle manager. It must have already been prepared by calling tfx_PrepareEffectTemplate
-* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+* @param pm                         A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_PrepareEffectTemplate
+* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
+									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the effect manager if it's out of space and reached it's effect limit.
   @returns							True if the effect was succesfully added.
 */
 tfxAPI bool tfx_AddEffectTemplateToEffectManager(tfx_effect_manager pm, tfx_effect_template effect, tfxEffectID *effect_id);
@@ -8229,16 +8235,16 @@ tfxAPI bool tfx_AddEffectTemplateToEffectManager(tfx_effect_manager pm, tfx_effe
 /*
 Add an effect to a tfx_effect_manager_t. Generally you should always call tfx_AddEffectTemplateToEffectManager and use templates to organise your effects but if you want to just
 test things out you can add an effect direct from a library using this command.
-* @param pm							A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect						tfx_effect_descriptor_t object that you want to add to the particle manager.
-* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+* @param pm							A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect						tfx_effect_descriptor_t object that you want to add to the effect manager.
+* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
+									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the effect manager if it's out of space and reached it's effect limit.
   @returns							True if the effect was succesfully added.
 */
 tfxAPI bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descriptor effect, tfxEffectID *effect_id);
 
 /*
-Update a particle manager. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.
+Update a effect manager. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.
 That means that if your fixed loop has to run twice to catch up (because of low frame rates) then you should still only call this function once but you can multiply the elapsed time
 by the number of ticks. The ellapsed time should be the amount of time that has passed since the last frame so in a fixed step loop this will simply be the update rate in millisecs.
 For example if you're updating 60 frames per second then elapsed time would be 16.666667. Psuedo code would look something like this:
@@ -8257,20 +8263,20 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 	}
 	TimerSet(game->timer);	//Set the timer and calculate the interpolation value. You can pass that to a uniform or push constant for the shader
 
-	//Only upload the sprite/billboard buffer to the gpu if the particle manager was updated.
+	//Only upload the sprite/billboard buffer to the gpu if the effect manager was updated.
 	if (TimerUpdateWasRun(game->timer)) {
 		RenderParticles(game->pm, game);
 	}
 
-* @param pm                    A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm                    A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
 */
 tfxAPI void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
-used when loading an effect library. Generally you shouldn't need to use this function, simply copy the whole instance buffer in the particle manager to your staging buffer to be
+used when loading an effect library. Generally you shouldn't need to use this function, simply copy the whole instance buffer in the effect manager to your staging buffer to be
 copied to the gpu in one go.
-* @param pm                    A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm                    A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param property_indexes    The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @returns                    void* pointer to the image
 */
@@ -8278,43 +8284,43 @@ tfxAPI void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_in
 
 /*
 Get the handle of the sprite. Use this when rendering particles in your renderer one sprite at a time.
-* @param pm                    A pointer to an initialised tfx_effect_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm                    A pointer to an initialised tfx_effect_manager_t. The effect manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param property_indexes      The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @out_handle                  Pass in a pointer to a vec2 which will be loaded with the handle values
 */
 tfxAPI void tfx_GetSpriteHandle(void *instance, float out_handle[2]);
 
 /*
-Get the total number of instances ready for rendering in the particle manager.
+Get the total number of instances ready for rendering in the effect manager.
 * @param pm                    A pointer to an initialised tfx_effect_manager_t.
 */
 tfxAPI tfxU32 tfx_TotalSpriteCount(tfx_effect_manager pm);
 
 /*
-Clear all particles, instance_data and effects in a particle manager. If you don't need to use the particle manager again then call tfx_FreeEffectManager to also
-free all the memory associated with the particle manager.
+Clear all particles, instance_data and effects in a effect manager. If you don't need to use the effect manager again then call tfx_FreeEffectManager to also
+free all the memory associated with the effect manager.
 * @param pm                        A pointer to an initialised tfx_effect_manager_t.
 * @param free_particle_banks    Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
 */
 tfxAPI void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, bool free_sprite_buffers);
 
 /*
-Free all the memory used in the particle manager.
+Free all the memory used in the effect manager.
 * @param pm                        A pointer to an initialised tfx_effect_manager_t.
 */
 tfxAPI void tfx_FreeEffectManager(tfx_effect_manager pm);
 
-//[Effects functions for altering effects that are currently playing out in a particle manager]
+//[Effects functions for altering effects that are currently playing out in a effect manager]
 
 /*
-Expire an effect by telling it to stop spawning particles. This means that the effect will eventually be removed from the particle manager after all of it's remaining particles have expired.
+Expire an effect by telling it to stop spawning particles. This means that the effect will eventually be removed from the effect manager after all of it's remaining particles have expired.
 * @param pm                A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToEffectManager
 */
 tfxAPI void tfx_SoftExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index);
 
 /*
-Soft expire all the effects in a particle manager so that the particles complete their animation first
+Soft expire all the effects in a effect manager so that the particles complete their animation first
 * @param pm                A pointer to a tfx_effect_manager_t where the effect is being managed
 */
 tfxAPI void tfx_SoftExpireAll(tfx_effect_manager pm);
@@ -8340,7 +8346,7 @@ More for use in the editor, this function updates emitter base values for any ef
 tfxAPI void tfx_UpdatePMBaseValues(tfx_effect_manager pm);
 
 /*
-Set the particle manager camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
+Set the effect manager camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
 * @param pm                A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param front            An array of 3 floats representing a normalised 3d vector describing the direction that the camera is pointing
 * @param position        An array of 3 floats representing the position of the camera in 3d space
@@ -8348,7 +8354,7 @@ Set the particle manager camera. This is used to calculate particle depth if you
 tfxAPI void tfx_SetPMCamera(tfx_effect_manager pm, float front[3], float position[3]);
 
 /*
-Each effect in the particle manager can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
+Each effect in the effect manager can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
 extra overhead to keep the bounding boxes updated but that can be made back if you have a number of effect particles offscreen that don't need to be drawn.
 * @param pm					A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param yesno				Set to true or false if you want the bounding boxes to be udpated.
@@ -8356,7 +8362,7 @@ extra overhead to keep the bounding boxes updated but that can be made back if y
 tfxAPI void tfx_KeepBoundingBoxesUpdated(tfx_effect_manager pm, bool yesno);
 
 /*
-Set the effect user data for an effect already added to a particle manager
+Set the effect user data for an effect already added to a effect manager
 * @param pm					A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param effect_index		The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToEffectManager
 * @param user_data			A void* pointing to the user_data that you want to store in the effect
@@ -8364,7 +8370,7 @@ Set the effect user data for an effect already added to a particle manager
 tfxAPI void tfx_SetEffectUserData(tfx_effect_manager pm, tfxU32 effect_index, void *data);
 
 /*
-Force a particle manager to only run in single threaded mode. In other words, only use the main thread to update particles
+Force a effect manager to only run in single threaded mode. In other words, only use the main thread to update particles
 * @param pm                A pointer to a tfx_effect_manager_t.
 * @param switch_on        true or false to use a single thread or not
 */
@@ -8398,7 +8404,7 @@ a for loop to iterate over the instance_data in a pre-recorded effect
 tfxAPI tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
-Make a particle manager stop spawning. This will mean that all emitters in the particle manager will no longer spawn any particles so all currently running effects will expire
+Make a effect manager stop spawning. This will mean that all emitters in the effect manager will no longer spawn any particles so all currently running effects will expire
 as the remaining particles come to the end of their life. Any single particles will also get flagged to expire
 * @param pm                A pointer to a tfx_effect_manager_t.
 * @param yesno            True = disable spawning, false = enable spawning
@@ -8406,7 +8412,7 @@ as the remaining particles come to the end of their life. Any single particles w
 tfxAPI void tfx_DisablePMSpawning(tfx_effect_manager pm, bool yesno);
 
 /*
-Get the buffer of effect indexes in the particle manager.
+Get the buffer of effect indexes in the effect manager.
 * @param pm               A pointer to a tfx_effect_manager_t.
 * @param depth            The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
 * @param count			  A pointer to an int that you can pass in that will be filled with the count of effects in the array
@@ -8415,7 +8421,7 @@ Get the buffer of effect indexes in the particle manager.
 tfxAPI tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_effect_manager pm, int *count);
 
 /*
-Get the buffer of emitter indexes in the particle manager.
+Get the buffer of emitter indexes in the effect manager.
 * @param pm                A pointer to a tfx_effect_manager_t.
 * @param depth            The depth of the list that you want. 0 are top level emitters and anything higher are sub emitters within those effects
 * @param count			  A pointer to an int that you can pass in that will be filled with the count of emitters in the array
@@ -8503,25 +8509,25 @@ You can use this function to get the billboard buffer of a specific effect.
 tfxAPI tfx_3d_instance_t *tfx_GetEffect3dInstanceBuffer(tfx_effect_manager pm, tfxEffectID effect_index, tfxU32 *sprite_count);
 
 /*
-You can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
+You can use this function to get each sprite buffer for every effect that is currently active in the effect manager. Generally you would call this inside a for loop for each layer.
 * @param pm						A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param tfxU32					The index of the sprite layer that you want
 * @param tfx_2d_instance_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
 * @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
 *                               You can use this with functions like GetCapturedEffectSprite3dTransform.
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
-* @return						true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+* @return						true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the effect manager
 */
 tfxAPI bool tfx_GetNext2dInstanceBuffer(tfx_effect_manager pm, tfx_2d_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*
-You can use this function to get each billboard buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
+You can use this function to get each billboard buffer for every effect that is currently active in the effect manager. Generally you would call this inside a for loop for each layer.
 * @param pm						A pointer to a tfx_effect_manager_t where the effect is being managed
 * @param tfx_sprite_billboard_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
 * @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
 *                               You can use this with functions like GetCapturedEffectSprite3dTransform.
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
-* @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+* @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the effect manager
 */
 tfxAPI bool tfx_GetNext3dInstanceBuffer(tfx_effect_manager pm, tfx_3d_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
@@ -8683,8 +8689,8 @@ tfxAPI void tfx_SetEffectOveralScale(tfx_effect_manager pm, tfxEffectID effect_i
 Set the base noise offset for an effect
 * @param pm                A pointer to a tfx_effect_manager_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToEffectManager
-* @param noise_offset    A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a particle manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
-						value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
+* @param noise_offset    A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a effect manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
+						value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the effect manager, but you could call it any time you wanted for a constantly changing noise offset.
 */
 tfxAPI void tfx_SetEffectBaseNoiseOffset(tfx_effect_manager pm, tfxEffectID effect_index, float noise_offset);
 
@@ -8735,7 +8741,7 @@ tfxAPI tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager 
 
 /*
 Initialise an Animation Manager for use with 3d instance_data. This must be run before using an animation manager. An animation manager is used
-to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
+to playback pre recorded particle effects as opposed to using a effect manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
@@ -8748,7 +8754,7 @@ tfxAPI tfx_animation_manager tfx_CreateAnimationManagerFor3d(tfxU32 max_instance
 
 /*
 Initialise an Animation Manager for use with 2d instance_data. This must be run before using an animation manager. An animation manager is used
-to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
+to playback pre recorded particle effects as opposed to using a effect manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
@@ -8978,7 +8984,7 @@ tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manage
 //--------------------------------
  
 /*
-Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
+Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a effect manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
 * @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
 * @param name                       The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
@@ -9069,13 +9075,13 @@ of the function allows you to pass in specific settings
 tfxAPI void tfx_RecordEffect(tfx_effect_descriptor e, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_effect_manager pm, float update_frequency, float camera_position[3]);
 
 /*
-Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling tfx_AddEffectTemplateToEffectManager
+Disable an emitter within an effect. Disabling an emitter will stop it being added to the effect manager when calling tfx_AddEffectTemplateToEffectManager
 * @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
 tfxAPI void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path);
 
 /*
-Enable an emitter within an effect so that it is added to the particle manager when calling tfx_AddEffectTemplateToEffectManager. Emitters are enabled by default.
+Enable an emitter within an effect so that it is added to the effect manager when calling tfx_AddEffectTemplateToEffectManager. Emitters are enabled by default.
 * @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
 tfxAPI void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path);

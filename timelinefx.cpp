@@ -9914,7 +9914,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	if (is_3d) {
 		if(settings->animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.billboard_instance, sprite_data);
-		tfx__update_sprite_alignment_data_3d(sprite_data);
+		tfx__update_sprite_alignment_data_3d(sprite_data, pm->update_time);
 	}
 	else {
 		if(settings->animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
@@ -10111,7 +10111,7 @@ void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *work_en
 	}
 }
 
-void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data) {
+void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data, float update_time) {
 	for (int frame = 0; frame != sprite_data->normal.frame_count; ++frame) {
 		for (tfxEachLayer) {
 			for (int j = sprite_data->normal.frame_meta[frame].index_offset[layer]; j != sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer]; ++j) {
@@ -10120,6 +10120,7 @@ void tfx__update_sprite_alignment_data_3d(tfx_sprite_data_t *sprite_data) {
 				if (instance.alignment.packed == 0) {
 					tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
 					motion.z += 0.000001f;
+					instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion) / update_time;  
 					motion = tfx__normalize_vec3(&motion);
 					instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
 				}
@@ -10238,6 +10239,7 @@ void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_des
 }
 
 void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (tfx__is_3d_effect(effect)) {
 		//If you're adding 3d effect sprite data then the animation manager must have been initialised with tfx_InitialiseAnimationManagerFor3d
@@ -11158,6 +11160,7 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 }
 
 void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfxPROFILE;
 
 	if (pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer) {
@@ -11507,6 +11510,7 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 }
 
 void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_DEPRECATED;
 	//return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image->ptr;
 	return 0;
@@ -11522,19 +11526,23 @@ void tfx_GetSpriteHandle(void *instance, float out_handle[2]) {
 }
 
 void tfx_SoftExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 }
 
 void tfx_HardExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
 }
 
 void *tfx_GetEffectUserData(tfx_effect_manager pm, tfxEffectID effect_index) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return pm->effects[effect_index].user_data;
 }
 
 void tfx_GetCapturedInstance3dTransform(tfx_effect_manager pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx_vec3_t position = static_cast<tfx_3d_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
 	out_position[0] = position.x;
 	out_position[1] = position.y;
@@ -11542,6 +11550,7 @@ void tfx_GetCapturedInstance3dTransform(tfx_effect_manager pm, tfxU32 layer, tfx
 }
 
 void tfx_GetCapturedInstance2dTransform(tfx_effect_manager pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx_vec2_t position = static_cast<tfx_2d_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xy();
 	out_position[0] = position.x;
 	out_position[1] = position.y;
@@ -14586,16 +14595,19 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 }
 
 tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_effect_manager pm, int *count) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	*count = pm->effects_in_use[pm->current_ebuff].current_size;
 	return pm->effects_in_use[pm->current_ebuff].data;
 }
 
 tfxU32 *tfx_GetPMEmitterBuffer(tfx_effect_manager pm, int *count) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	*count = pm->control_emitter_queue.current_size;
 	return pm->control_emitter_queue.data;
 }
 
 void tfx__toggle_sprites_with_uid(tfx_effect_manager pm, bool switch_on) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (switch_on) {
 		for (tfxEachLayer) {
 			pm->unique_sprite_ids[0][layer].reserve(pm->max_cpu_particles_per_layer[layer]);
@@ -14613,6 +14625,7 @@ void tfx__toggle_sprites_with_uid(tfx_effect_manager pm, bool switch_on) {
 }
 
 void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes, bool is_3d) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx_ClearEffectManager(pm, true, true);
 	for (auto &bank : pm->free_particle_lists.data) {
 		bank.free();
@@ -14649,6 +14662,7 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes,
 }
 
 void tfx_SetStagingBuffer(tfx_effect_manager pm, void *staging_buffer, tfxU32 size_in_bytes) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT(pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer);		//Particle manager must be flagged to write direct to staging before on creation
 	TFX_ASSERT(staging_buffer);		//Staging buffer is null!
 	tfxU32 unit_size = size_in_bytes / pm->instance_buffer.struct_size;
@@ -14657,6 +14671,7 @@ void tfx_SetStagingBuffer(tfx_effect_manager pm, void *staging_buffer, tfxU32 si
 }
 
 void tfx_TogglePMOrderEffects(tfx_effect_manager pm, bool yesno) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (yesno) {
 		pm->flags |= tfxEffectManagerFlags_auto_order_effects;
 	}
@@ -14671,10 +14686,12 @@ void tfx_SetSeed(tfx_effect_manager pm, tfxU64 seed) {
 }
 
 tfxU32 tfx_TotalSpriteCount(tfx_effect_manager pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return pm->instance_buffer.current_size;
 }
 
 void tfx_ForcePMSingleThreaded(tfx_effect_manager pm, bool switch_on) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (switch_on) pm->flags |= tfxEffectManagerFlags_single_threaded; else pm->flags &= ~tfxEffectManagerFlags_single_threaded;
 }
 
@@ -14684,6 +14701,7 @@ This will be a pointer to the start of the buffer for uploading all the instance
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_effect_manager pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return tfxCastBufferRef(tfx_2d_instance_t, pm->instance_buffer);
 }
 
@@ -14692,11 +14710,18 @@ Get the billboard buffer in the particle manager containing all the 3d billboard
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_effect_manager pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
 }
 
 int tfx_GetInstanceCount(tfx_effect_manager pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return pm->instance_buffer.current_size;
+}
+
+float tfx_GetUpdateTime(tfx_effect_manager pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	return pm->update_time;
 }
 
 tfx_ribbon_bucket_t *tfx_Get3dRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_hash) {
