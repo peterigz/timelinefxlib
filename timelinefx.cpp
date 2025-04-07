@@ -4999,6 +4999,7 @@ tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_de
 	a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
 	a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
+	a.effect_z_offset = tfx__length_vec3(&a.camera_settings.camera_position);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
 	a.camera_settings.camera_hide_floor = false;
@@ -5013,54 +5014,6 @@ tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_de
 	library->sprite_sheet_settings.push_back(a);
 	effect->sprite_sheet_settings_index = library->sprite_sheet_settings.size() - 1;
 	return effect->sprite_sheet_settings_index;
-}
-
-void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_descriptor effect) {
-	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
-	TFX_ASSERT_HANDLE(effect);		//Not a valid effect handle
-	if (effect->type == tfxEffectType) {
-		tfx_sprite_sheet_settings_t a{};
-		a.frames = 32;
-		a.current_frame = 1;
-		a.frame_offset = 0;
-		a.extra_frames_count = 0;
-		a.position = tfx_vec2_t(0.f, 0.f);
-		a.frame_size = tfx_vec2_t(256.f, 256.f);
-		a.playback_speed = 1.f;
-		a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
-		a.seed = 0;
-		a.zoom = 1.f;
-		a.scale = 1.f;
-		a.needs_exporting = 0;
-		a.color_option = tfx_export_color_options::tfxFullColor;
-		a.export_option = tfx_export_options::tfxSpriteSheet;
-		a.camera_settings.camera_floor_height = -10.f;
-		a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
-		a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
-		a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
-		a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
-		a.camera_settings.camera_isometric = false;
-		a.camera_settings.camera_isometric_scale = 5.f;
-		a.camera_settings.camera_hide_floor = false;
-		a.camera_settings_orthographic.camera_floor_height = -10.f;
-		a.camera_settings_orthographic.camera_fov = tfx_DegreesToRadians(60);
-		a.camera_settings_orthographic.camera_pitch = tfx_DegreesToRadians(-30.f);
-		a.camera_settings_orthographic.camera_yaw = tfx_DegreesToRadians(-90.f);
-		a.camera_settings_orthographic.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
-		a.camera_settings_orthographic.camera_isometric = true;
-		a.camera_settings_orthographic.camera_isometric_scale = 5.f;
-		a.camera_settings_orthographic.camera_hide_floor = false;
-		library->sprite_sheet_settings.push_back(a);
-		effect->sprite_sheet_settings_index = library->sprite_sheet_settings.size() - 1;
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_library_sprite_sheet_settings_sub(effect->library, sub);
-		}
-	}
-	else {
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_library_sprite_sheet_settings_sub(effect->library, sub);
-		}
-	}
 }
 
 tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_descriptor effect) {
@@ -5078,45 +5031,9 @@ tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_des
 	a.seed = 0;
 	a.needs_exporting = 0;
 	a.recording_frame_rate = 60.f;
-	//a.camera_settings.camera_floor_height = -10.f;
-	//a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
-	//a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
-	//a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
-	//a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
-	//a.camera_settings.camera_isometric = false;
-	//a.camera_settings.camera_isometric_scale = 5.f;
-	//a.camera_settings.camera_hide_floor = false;
 	library->sprite_data_settings.push_back(a);
 	effect->sprite_data_settings_index = library->sprite_data_settings.size() - 1;
 	return effect->sprite_data_settings_index;
-}
-
-void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_descriptor effect) {
-	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
-	TFX_ASSERT_HANDLE(effect);		//Not a valid effect handle
-	if (effect->type == tfxEffectType) {
-		tfx_sprite_data_settings_t a{};
-		a.real_frames = 32;
-		a.frames_after_compression = 32;
-		a.current_frame = 1;
-		a.frame_offset = 0;
-		a.extra_frames_count = 0;
-		a.playback_speed = 1.f;
-		a.recording_frame_rate = 60.f;
-		a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
-		a.seed = 0;
-		a.needs_exporting = 0;
-		library->sprite_data_settings.push_back(a);
-		effect->sprite_data_settings_index = library->sprite_data_settings.size() - 1;
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_library_sprite_data_settings_sub(effect->library, sub);
-		}
-	}
-	else {
-		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_library_sprite_data_settings_sub(effect->library, sub);
-		}
-	}
 }
 
 tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor effect) {
@@ -9606,12 +9523,12 @@ void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t &anim, float update_frequency, float camera_position[3], int *progress) {
+void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	float frame_length = 1000.f / update_frequency;
-	tfxU32 frames = anim.real_frames;
-	tfxU32 start_frame = anim.frame_offset;
-	int extra_frames = anim.extra_frames_count;
+	tfxU32 frames = settings->real_frames;
+	tfxU32 start_frame = settings->frame_offset;
+	int extra_frames = settings->extra_frames_count;
 	tfxU32 frame = 0;
 	int extra_frame_count = 0;
 	tfxU32 offset = 0;
@@ -9621,10 +9538,10 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	bool is_3d = tfx__is_3d_effect(effect);
 	*progress = tfxCalculateFrames;
 
-	anim.recording_frame_rate = tfxMin(tfxMax(30.f, anim.recording_frame_rate), 240.f);
+	settings->recording_frame_rate = tfxMin(tfxMax(30.f, settings->recording_frame_rate), 240.f);
 
 	bool auto_set_length = false;
-	if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && tfx__is_finite_effect(effect)) {
+	if (settings->animation_flags & tfxAnimationFlags_auto_set_length && !(settings->animation_flags & tfxAnimationFlags_loop) && tfx__is_finite_effect(effect)) {
 		frames = 99999;
 		auto_set_length = true;
 	}
@@ -9649,12 +9566,12 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		}
 	}
 	pm->flags |= tfxEffectManagerFlags_recording_sprites;
-	pm->flags |= anim.animation_flags & tfxAnimationFlags_loop ? tfxEffectManagerFlags_animation_loops : 0;
+	pm->flags |= settings->animation_flags & tfxAnimationFlags_loop ? tfxEffectManagerFlags_animation_loops : 0;
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
 	pm->unique_particle_id = 0;
-	tfx_SetSeed(pm, anim.seed);
+	tfx_SetSeed(pm, settings->seed);
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
@@ -9707,7 +9624,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 			}
 		}
 
-		if (auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
+		if (auto_set_length && !(settings->animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
 			break;
 		}
 
@@ -9716,7 +9633,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		if (particles_started)
 			frame++;
 
-		if (anim.animation_flags & tfxAnimationFlags_loop && particles_started) {
+		if (settings->animation_flags & tfxAnimationFlags_loop && particles_started) {
 			if (frame == frames) {
 				frame = 0;
 				start_counting_extra_frames = true;
@@ -9734,18 +9651,25 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 
 	frames = tmp_frame_meta.size();
 
-	tfx_sprite_data_t *sprite_data = nullptr;
-	if (effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
-		sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
-		tfx__free_sprite_data(sprite_data);
-		sprite_data->normal.frame_count = frames;
-		sprite_data->normal.animation_length_in_time = frames * frame_length;
-		sprite_data->normal.frame_meta.resize(frames);
-		sprite_data->normal.frame_meta.zero();
-	}
-	else {
-		effect->library->pre_recorded_effects.Insert(effect->path_hash, {});
-		sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
+	if (!sprite_data) {
+		if (effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
+			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
+			tfx__free_sprite_data(sprite_data);
+			sprite_data->normal.frame_count = frames;
+			sprite_data->normal.animation_length_in_time = frames * frame_length;
+			sprite_data->normal.frame_meta.resize(frames);
+			sprite_data->normal.frame_meta.zero();
+		} else {
+			effect->library->pre_recorded_effects.Insert(effect->path_hash, {});
+			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
+			tfx__reset_soa_buffer(&sprite_data->real_time_sprites_buffer);
+			tfx__reset_soa_buffer(&sprite_data->compressed_sprites_buffer);
+			sprite_data->normal.frame_count = frames;
+			sprite_data->normal.animation_length_in_time = frames * frame_length;
+			sprite_data->normal.frame_meta.resize(frames);
+			sprite_data->normal.frame_meta.zero();
+		}
+	} else {
 		tfx__reset_soa_buffer(&sprite_data->real_time_sprites_buffer);
 		tfx__reset_soa_buffer(&sprite_data->compressed_sprites_buffer);
 		sprite_data->normal.frame_count = frames;
@@ -9754,9 +9678,9 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		sprite_data->normal.frame_meta.zero();
 	}
 
-	anim.real_frames = frames;
-	anim.animation_length_in_time = sprite_data->normal.animation_length_in_time;
-	sprite_data->frame_compression = anim.playback_speed;
+	settings->real_frames = frames;
+	settings->animation_length_in_time = sprite_data->normal.animation_length_in_time;
+	sprite_data->frame_compression = settings->playback_speed;
 
 	tfx_vector_t<tfx_frame_meta_t> &frame_meta = sprite_data->normal.frame_meta;
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
@@ -9779,7 +9703,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
-	tfx_SetSeed(pm, anim.seed);
+	tfx_SetSeed(pm, settings->seed);
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
 	if (is_3d) {
@@ -9958,7 +9882,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		if (particles_started)
 			frame++;
 
-		if (anim.animation_flags & tfxAnimationFlags_loop && particles_started) {
+		if (settings->animation_flags & tfxAnimationFlags_loop && particles_started) {
 			if (frame == frames) {
 				frame = 0;
 				start_counting_extra_frames = true;
@@ -9977,7 +9901,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	TFX_ASSERT(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
 	tfx__reset_sprite_data_lerp_offset(sprite_data);
 
-	for (int i = 0; i != anim.real_frames; ++i) {
+	for (int i = 0; i != settings->real_frames; ++i) {
 		int previous_frame = i - 1;
 		previous_frame = previous_frame < 0 ? frames - 1 : previous_frame;
 		if (is_3d) {
@@ -9988,12 +9912,12 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	}
 
 	if (is_3d) {
-		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
+		if(settings->animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.billboard_instance, sprite_data);
 		tfx__update_sprite_alignment_data_3d(sprite_data);
 	}
 	else {
-		if(anim.animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
+		if(settings->animation_flags & tfxAnimationFlags_loop) tfx__wrap_single_particle_instances(sprite_data->real_time_sprites.sprite_instance, sprite_data);
 		tfx__clear_wrap_bit(sprite_data->real_time_sprites.sprite_instance, sprite_data);
 	}
 
@@ -10005,7 +9929,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
 	pm->flags &= ~tfxEffectManagerFlags_animation_loops;
 
-	if (anim.playback_speed < 1.f) {
+	if (settings->playback_speed < 1.f) {
 		tfx__compress_sprite_data(pm, effect, is_3d, frame_length, progress);
 	}
 	else {
@@ -10014,7 +9938,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		memcpy(&sprite_data->compressed, &sprite_data->normal, sizeof(tfx_sprite_data_metrics_t));
 		sprite_data->compressed.frame_meta.init();;
 		sprite_data->compressed.frame_meta.copy(sprite_data->normal.frame_meta);
-		anim.frames_after_compression = sprite_data->normal.frame_count;
+		settings->frames_after_compression = sprite_data->normal.frame_count;
 	}
 
 	pm->camera_position = pm_camera_position;
@@ -10031,7 +9955,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 
 void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, bool is_3d, float frame_length, int *progress) {
 	*progress = tfxLinkUpSprites;
-	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
+	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 	if (is_3d) {
 		tfx__init_sprite_data_soa_compression_3d(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, tfxU32((float)sprite_data->real_time_sprites_buffer.current_size * sprite_data->frame_compression));
@@ -10040,10 +9964,10 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 		tfx__init_sprite_data_soa_compression_2d(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, tfxU32((float)sprite_data->real_time_sprites_buffer.current_size * sprite_data->frame_compression));
 	}
 
-	sprite_data->compressed.frame_meta.resize(tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
+	sprite_data->compressed.frame_meta.resize(tfxU32((float)settings.real_frames * settings.playback_speed) + 1);
 	sprite_data->compressed.frame_meta.zero();
 
-	float frequency = frame_length * (1.f / anim.playback_speed);
+	float frequency = frame_length * (1.f / settings.playback_speed);
 	float real_time = 0.f;
 	float compressed_time = 0.f;
 	int compressed_frame = 0;
@@ -10086,7 +10010,7 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 			frame_done = true;
 			f++;
 		}
-		else if (real_time > compressed_time && real_time < next_compressed_time && f < anim.real_frames) {
+		else if (real_time > compressed_time && real_time < next_compressed_time && f < settings.real_frames) {
 			for (tfxU32 i = tfx_SpriteDataIndexOffset(sprite_data, f, layer); i != tfx_SpriteDataEndIndex(sprite_data, f, layer); ++i) {
 				bool captured = false;
 				if (is_3d) {
@@ -10125,7 +10049,7 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 			if (layer == tfxLAYERS) {
 				layer = 0;
 				start_frame = f;
-				if (start_frame >= anim.real_frames) {
+				if (start_frame >= settings.real_frames) {
 					finished = true;
 				}
 				else {
@@ -10147,8 +10071,8 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 	f = 0;
 	//Second pass, link up the captured indexes using the UIDs
 	sprite_data->compressed.frame_count = compressed_frame + 1;
-	anim.animation_length_in_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
-	anim.frames_after_compression = sprite_data->compressed.frame_count;
+	settings.animation_length_in_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
+	settings.frames_after_compression = sprite_data->compressed.frame_count;
 	tfx_vector_t<tfx_compress_work_entry_t> compress_work;
 	compress_work.reserve((int)sprite_data->compressed.frame_count);
 	*progress = tfxCompressFrames;
@@ -10323,12 +10247,12 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		//If you're adding 2d effect sprite data then the animation manager must have been initialised with tfx_InitialiseAnimationManagerFor2d
 		TFX_ASSERT(!(animation_manager->flags & tfxAnimationManagerFlags_is_3d));
 	}
-	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
+	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
 	if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		TFX_ASSERT(pm);        //You must pass an appropriate particle manager if the animation needs recording
 		int progress;
-		tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
-		tfx__record_sprite_data(pm, effect, anim, animation_manager->update_frequency, &camera_position.x, &progress);
+		tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
+		tfx__record_sprite_data(pm, effect, &settings, nullptr, animation_manager->update_frequency, &camera_position.x, &progress);
 	}
 
 	bool has_animated_shape = false;
@@ -10339,10 +10263,10 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 	tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
 	metrics.name = effect->name;
-	metrics.frames_after_compression = anim.frames_after_compression;
-	metrics.real_frames = anim.real_frames;
-	metrics.animation_length_in_time = anim.animation_length_in_time;
-	metrics.animation_flags = anim.animation_flags;
+	metrics.frames_after_compression = settings.frames_after_compression;
+	metrics.real_frames = settings.real_frames;
+	metrics.animation_length_in_time = settings.animation_length_in_time;
+	metrics.animation_flags = settings.animation_flags;
 	metrics.flags = has_animated_shape ? tfxAnimationManagerFlags_has_animated_shapes : 0;
 	tfx_sprite_data_soa_t &sprites = sprite_data.compressed_sprites;
 	if (is_3d) {
@@ -10593,14 +10517,14 @@ void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_effect_manager pm, floa
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT_HANDLE(pm);	//Not a valid particle manager handle
 	int progress;
-	tfx__record_sprite_data(pm, t->effect, t->effect->library->sprite_data_settings[t->effect->sprite_data_settings_index], update_frequency, camera_position, &progress);
+	tfx__record_sprite_data(pm, t->effect, &t->effect->library->sprite_data_settings[t->effect->sprite_data_settings_index], nullptr, update_frequency, camera_position, &progress);
 }
 
-void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t &settings, tfx_effect_manager pm, float update_frequency, float camera_position[3]) {
+void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_effect_manager pm, float update_frequency, float camera_position[3]) {
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect 
 	TFX_ASSERT_HANDLE(pm);		//Not a valid particle manager handle
 	int progress;
-	tfx__record_sprite_data(pm, effect, settings, update_frequency, camera_position, &progress);
+	tfx__record_sprite_data(pm, effect, settings, sprite_data, update_frequency, camera_position, &progress);
 }
 
 void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
@@ -14533,7 +14457,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxWideInt color_ramp_indexes;
 	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes) << 24);
 	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes) << 16));
-	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
+	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && !(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
@@ -14698,6 +14622,7 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes,
 	tfxEffectManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) | 
 											(pm->flags & tfxEffectManagerFlags_double_buffer_sprites) | 
 											(pm->flags & tfxEffectManagerFlags_2d_and_3d) | 
+											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) | 
 											(pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer);
 
 	tfxU32 size_in_bytes = pm->instance_buffer.capacity * pm->instance_buffer.struct_size;

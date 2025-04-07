@@ -2779,6 +2779,7 @@ typedef enum {
 	tfxEffectManagerFlags_auto_order_effects                  = 1 << 19,
 	tfxEffectManagerFlags_direct_to_staging_buffer            = 1 << 20,
 	tfxEffectManagerFlags_has_ribbons_to_draw                 = 1 << 21,
+	tfxEffectManagerFlags_record_with_compute_image_index     = 1 << 22,
 } tfx_effect_manager_flag_bits;
 
 typedef enum {
@@ -7201,8 +7202,6 @@ tfxAPI_EDITOR void tfx__add_library_effect_graphs(tfx_library library, tfx_effec
 tfxAPI_EDITOR tfxU32 tfx__add_library_transform_graphs(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_descriptor effect);
-tfxAPI_EDITOR void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_descriptor effect);
-tfxAPI_EDITOR void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
@@ -7216,7 +7215,7 @@ tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
-tfxAPI_EDITOR void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t &settings, float update_frequency, float camera_position[3], int *progress);
+tfxAPI_EDITOR void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress);
 tfxAPI_EDITOR tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type type);
 tfxAPI_EDITOR void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
@@ -9067,7 +9066,7 @@ of the function allows you to pass in specific settings
 	* @param path				  const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 	* @param camera				  Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
 */
-tfxAPI void tfx_RecordEffect(tfx_effect_descriptor e, tfx_sprite_data_settings_t &settings, tfx_effect_manager pm, float update_frequency, float camera_position[3]);
+tfxAPI void tfx_RecordEffect(tfx_effect_descriptor e, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_effect_manager pm, float update_frequency, float camera_position[3]);
 
 /*
 Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling tfx_AddEffectTemplateToEffectManager
