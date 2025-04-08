@@ -6203,18 +6203,17 @@ typedef struct tfx_2d_instance_s {			//48 bytes
 	tfxU32 padding;
 } tfx_2d_instance_t;
 
-typedef struct tfx_3d_instance_s {		//60 bytes + padding to 64
+typedef struct tfx_3d_instance_s {		//56 bytes + padding to 64
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
 	tfx_vec3_t rotations;				            //Rotation of the billboard 
-	//tfxU32 quaternion;				            //Rotation of the billboard stored as a quaternion (not enough resolution)
-	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits, 8 bits left over that could be used for something else.
+	//tfxU32 quaternion;				            //Rotation of the billboard stored as a quaternion (not enough resolution?)
+	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
-	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	float lerp_offset;
-	tfxU32 padding;
+	tfxU32 padding[2];
 } tfx_3d_instance_t;
 
 typedef enum {
