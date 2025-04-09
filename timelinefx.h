@@ -7399,6 +7399,47 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 }
 
 //--------------------------------
+//Control particle inline functions
+//--------------------------------
+tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide) {
+	tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+	tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+	tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
+	tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
+	current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
+	current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm->update_time_wide), velocity_adjuster), age_fraction);
+	current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm->update_time_wide), velocity_adjuster), age_fraction);
+	current_velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_z, pm->update_time_wide), velocity_adjuster), age_fraction);
+	local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
+	local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
+	local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale_wide));
+	tfxWideStore(&bank.position_x[index], local_position_x);
+	tfxWideStore(&bank.position_y[index], local_position_y);
+	tfxWideStore(&bank.position_z[index], local_position_z);
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__get_particle_life(tfx_particle_soa_t &bank, const bool sample_path_life,  const tfxU32 index, const tfxWideFloat &age, const tfxWideFloat &max_age, const tfxWideFloat &node_count) {
+	if (sample_path_life) {
+		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
+		return tfxWideDiv(path_position, node_count);
+	}
+	else {
+		return tfxWideDiv(age, max_age);
+	}    
+}
+
+tfxINTERNAL inline void tfx__set_orbital_vector(tfxWideFloat &velocity_normal_x, tfxWideFloat &velocity_normal_y, tfxWideFloat &velocity_normal_z, const tfxWideFloat &local_position_x, const tfxWideFloat &local_position_z, const tfxWideFloat &emitter_x, const tfxWideFloat &emitter_z)  {
+	velocity_normal_z = tfxWideSub(local_position_x, emitter_x);    
+	velocity_normal_y = tfxWideSetZero;    
+	velocity_normal_x = tfxWideMul(tfxWideSub(local_position_z, emitter_z), tfxWideSetSingle(-1.f));    
+	tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);    
+	l = tfxWideAdd(l, tfxWideMul(velocity_normal_z, velocity_normal_z));    
+	l = tfxWideMul(tfxWideRSqrt(l), l);    
+	velocity_normal_x = tfxWideDiv(velocity_normal_x, l);    
+	velocity_normal_z = tfxWideDiv(velocity_normal_z, l);    
+}
+
+//--------------------------------
 //effect manager internal functions
 //--------------------------------
 template<typename T>
