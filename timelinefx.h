@@ -2289,6 +2289,7 @@ typedef enum {
 	tfxPath_offset_y,
 	tfxPath_offset_z,
 	tfxPath_distance,
+	tfxPath_scale_variation,
 
 	tfxGraphMaxIndex
 } tfx_graph_type;
@@ -2335,6 +2336,7 @@ typedef enum {
 	tfxPath_offset_y_index,
 	tfxPath_offset_z_index,
 	tfxPath_distance_index,
+	tfxPath_scale_variation_index,
 	tfxPath_rotation_range_index,
 	tfxPath_rotation_pitch_index,
 	tfxPath_rotation_yaw_index,
@@ -2877,11 +2879,11 @@ typedef enum {
 	tfxEmitterPropertyFlags_use_spawn_ratio					    = 1 << 7,       //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 	tfxEmitterPropertyFlags_area_open_ends					    = 1 << 8,       //Only sides of the area/cylinder are spawned on when fill area is not checked
 	tfxEmitterPropertyFlags_match_amount_to_grid_points		    = 1 << 9,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_use_path_for_direction			    = 1 << 10,		//Make the particles use a path to dictate their direction of travel
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling	    = 1 << 11,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling		    = 1 << 12,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		    = 1 << 13,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_use_simple_motion_randomness	    = 1 << 14,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
+	tfxEmitterPropertyFlags_use_path_as_trajectory				= 1 << 15,		//When using path emission type, all particles will be spawned at the start of the path only and travel along the path. Only available when traverse edge is active
 } tfx_particle_emitter_flag_bits;
 
 typedef enum {
@@ -5596,6 +5598,7 @@ typedef struct tfx_path_buffers_s {
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
+	tfx_graph_t scale_variation;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
 } tfx_path_buffers_t;
@@ -6135,12 +6138,15 @@ typedef struct tfx_particle_soa_s {
 	float *rotation_offset_yaw;
 	float *rotation_offset_roll;    //In 2d this is the angle of the sprite
 	tfxU32 *velocity_normal;
-	tfxU32 *quaternion;          //Used for paths where the path can be rotated per particle based on the emission direction
+	tfxU32 *quaternion;				//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
 	float *base_weight;
-	float *base_velocity;
+	union {
+		float *base_velocity;
+		float *path_scale_variation;
+	};
 	float *base_spin;
 	float *base_pitch_spin;
 	float *base_yaw_spin;
@@ -7532,6 +7538,7 @@ tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *dat
 tfxINTERNAL void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_path_start_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data);

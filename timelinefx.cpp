@@ -3193,6 +3193,10 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime);
+
+		if (effect->path_attributes != tfxINVALID) {
+			if (library->paths[effect->path_attributes].buffers.scale_variation.nodes.size() == 0) tfx__reset_graph(&library->paths[effect->path_attributes].buffers.scale_variation, 0.f, tfxDimensionsPreset);
+		}
 	}
 
 	if (effect->type == tfxRibbonType) {
@@ -3699,6 +3703,11 @@ void tfx__initialise_path_graphs(tfx_emitter_path_t *path, bool add_node, tfxU32
 	path->buffers.distance.graph_preset = tfxPathTranslationOvertimePreset;
 	path->buffers.distance.nodes.bucket_list.init();
 	tfx__reset_graph(&path->buffers.distance, 0.f, path->buffers.distance.graph_preset, add_node, 1.f);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->buffers.scale_variation.nodes ,bucket_size);
+	path->buffers.scale_variation.type = tfxPath_scale_variation;
+	path->buffers.scale_variation.graph_preset = tfxDimensionsPreset;
+	path->buffers.scale_variation.nodes.bucket_list.init();
+	tfx__reset_graph(&path->buffers.scale_variation, 0.f, path->buffers.scale_variation.graph_preset, add_node, 1.f);
 }
 
 void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator) {
@@ -3709,6 +3718,7 @@ void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type ge
 	tfx__reset_graph(&path->buffers.offset_y, 0.f, path->buffers.offset_y.graph_preset, true, 1.f);
 	tfx__reset_graph(&path->buffers.offset_z, 0.f, path->buffers.offset_z.graph_preset, true, 1.f);
 	tfx__reset_graph(&path->buffers.distance, 0.f, path->buffers.distance.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->buffers.scale_variation, 0.f, path->buffers.scale_variation.graph_preset, true, 1.f);
 	switch (generator) {
 	case tfxPathGenerator_spiral:
 		if (path->settings.flags & tfxPathFlags_2d) {
@@ -5643,7 +5653,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("spawn_location_source", tfxBool);
 	names_and_types.Insert("use_color_hint", tfxBool);
 	names_and_types.Insert("hidden", tfxBool);
-	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
+	names_and_types.Insert("use_path_as_trajectory", tfxBool);
 
 	//Ribbon properties
 	names_and_types.Insert("ribbon_segment_count", tfxUInt);
@@ -5789,6 +5799,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_offset_y", tfxPathGraph);
 	names_and_types.Insert("path_offset_z", tfxPathGraph);
 	names_and_types.Insert("path_distance", tfxPathGraph);
+	names_and_types.Insert("path_scale_variation", tfxPathGraph);
 
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
@@ -6025,6 +6036,8 @@ void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_
 			if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
 				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.offset_z, &n); }
 			if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
+				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.distance, &n); }
+			if ((*values)[0] == "path_scale_variation") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
 				tfx__add_graph_node(&effect->library->paths[tfx__create_emitter_path_attributes(effect, false)].buffers.distance, &n); }
 		} else {
 			if (data_type != tfxTransformGraph) {
@@ -6318,6 +6331,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxPath_offset_y: return "path_offset_y"; break;
 	case tfxPath_offset_z: return "path_offset_z"; break;
 	case tfxPath_distance: return "path_distance"; break;
+	case tfxPath_scale_variation: return "path_scale_variation"; break;
 	}
 	return "";
 }
@@ -6534,26 +6548,26 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "draw_order_by_depth") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 	else if (property_name == "guaranteed_draw_order") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	else if (property_name == "include_in_sprite_data_export") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
-	else if (property_name == "use_path_for_direction") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_path_for_direction);
 	else if (property_name == "alt_velocity_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling);
 	else if (property_name == "alt_color_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
 	else if (property_name == "alt_size_lifetime_sampling") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
 	else if (property_name == "use_simple_motion_randomness") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness);
+	else if (property_name == "use_path_as_trajectory") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory);
 	else if (property_name == "spawn_location_source") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
 	else if (property_name == "use_color_hint") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
 	else if (property_name == "static_ribbon") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_static);
 	else if (property_name == "path_is_2d") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_2d);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_2d);
 	} else if (property_name == "path_mode_origin") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_mode_origin);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_origin);
 	} else if (property_name == "path_mode_node") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_mode_node);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_node);
 	} else if (property_name == "path_space_nodes_evenly") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_space_nodes_evenly);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_space_nodes_evenly);
 	} else if (property_name == "path_rotation_range_yaw_only") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_rotation_range_yaw_only);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_rotation_range_yaw_only);
 	} else if (property_name == "path_reverse_direction") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags |= tfxPathFlags_reverse_direction);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_reverse_direction);
 	}
 
 	//U64 values
@@ -6882,8 +6896,6 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order; }
 	} else if (*field == "include_in_sprite_data_export") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
-	} else if (*field == "use_path_for_direction") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
 	} else if (*field == "alt_velocity_lifetime_sampling") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
 	} else if (*field == "alt_color_lifetime_sampling") {
@@ -6892,6 +6904,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
 	} else if (*field == "use_simple_motion_randomness") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
+	} else if (*field == "use_path_as_trajectory") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_as_trajectory; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_as_trajectory; }
 	} else if (*field == "spawn_location_source") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
 	} else if (*field == "use_color_hint") {
@@ -6970,11 +6984,11 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
 	file->AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 	file->AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
-	file->AddLine("use_path_for_direction=%i", (flags & tfxEmitterPropertyFlags_use_path_for_direction));
 	file->AddLine("alt_velocity_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling));
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
+	file->AddLine("use_path_as_trajectory=%i", (flags & tfxEmitterPropertyFlags_use_path_as_trajectory));
 }
 
 void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
@@ -12085,7 +12099,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 		tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
 		tfxWideFloat path_offset = tfxWideLoad(&bank.path_offset[index]);
-		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
+		const tfxWideFloat path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
 
 		//----Velocity Changes
 
@@ -12109,8 +12123,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 			lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(velocity_graph->wide_oscillator.offset_x, velocity_graph->wide_oscillator.frequency), velocity_graph->wide_oscillator.amplitude), lookup_velocity), velocity_graph->wide_oscillator.offset_y);
 		}
 
-		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
-		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
+		path_position = tfxWideMul(lookup_velocity, node_count);
 
 		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
@@ -12232,9 +12245,9 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 			local_position_z = tfxWideAdd(local_position_z, noise_z.m);
 		}
 
-		tfxWideStore(&bank.position_x[index], tfxWideMul(local_position_x, emitter_width));
-		tfxWideStore(&bank.position_y[index], tfxWideMul(local_position_y, emitter_height));
-		tfxWideStore(&bank.position_z[index], tfxWideMul(local_position_z, emitter_depth));
+		tfxWideStore(&bank.position_x[index], tfxWideMul(local_position_x, tfxWideMul(emitter_width, path_scale_variation)));
+		tfxWideStore(&bank.position_y[index], tfxWideMul(local_position_y, tfxWideMul(emitter_height, path_scale_variation)));
+		tfxWideStore(&bank.position_z[index], tfxWideMul(local_position_z, tfxWideMul(emitter_depth, path_scale_variation)));
 
 		tfxWideStore(&bank.path_position[index], path_position);
 	}
@@ -16182,12 +16195,18 @@ void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data) {
 	else if (work_entry->emission_type == tfxCylinder) {
 		tfx__spawn_particle_cylinder(&pm->work_queue, work_entry);
 	}
-	else if (work_entry->emission_type == tfxPath) {
+	else if (work_entry->emission_type == tfxPath && !(emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
 		tfx__spawn_particle_path_3d(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type == tfxPath && (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
+		tfx__spawn_particle_path_start_3d(&pm->work_queue, work_entry);
 	}
 
+	if (work_entry->emission_type == tfxPath && !(emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
+		tfx__spawn_particle_velocity(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type != tfxPath) {
+		tfx__spawn_particle_velocity(&pm->work_queue, work_entry);
+	}
 	tfx__spawn_particle_weight(&pm->work_queue, work_entry);
-	tfx__spawn_particle_velocity(&pm->work_queue, work_entry);
 	tfx__spawn_particle_roll(&pm->work_queue, work_entry);
 	tfx__spawn_particle_micro_update_3d(&pm->work_queue, work_entry);
 	if (emitter.control_profile & tfxEmitterControlProfile_noise) {
@@ -18127,6 +18146,68 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 		tween += entry->qty_step_size;
 	}
 
+}
+
+void tfx__spawn_particle_path_start_3d(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_random_t random = entry->random;
+	float tween = entry->tween;
+	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_library library = emitter.library;
+	tfx_AlterRandomSeedU32(&random, 26 + emitter.seed_index);
+	const tfx_particle_emitter_properties_t &properties = *entry->properties;
+	tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
+	float arc_size = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.age, emitter.oscillator_time);
+	float arc_offset = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.age, emitter.oscillator_time);
+	float extrusion = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_extrusion_index], emitter.age, emitter.oscillator_time);
+	float path_scale_variation = tfx__sample_multi_node_graph(&library->paths[emitter.path_attributes].buffers.scale_variation, emitter.age, emitter.oscillator_time);
+	tfx_vec3_t point;
+	bool has_rotation = path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0;
+
+	for (int i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		float &local_position_x = entry->particle_data->position_x[index];
+		float &local_position_y = entry->particle_data->position_y[index];
+		float &local_position_z = entry->particle_data->position_z[index];
+		float &path_position = entry->particle_data->path_position[index];
+		float &path_offset = entry->particle_data->path_offset[index];
+		entry->particle_data->path_scale_variation[index] = 1.f + tfx_RandomRangeZeroToMax(&random, path_scale_variation);
+
+		path_position = 0.f;
+
+		tfx__catmull_rom_spline_3d_soa(path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, 0, 0.f, &point.x);
+
+		if (path->settings.extrusion_type == tfxExtrusionLinear) {
+			float radius = extrusion * .5f;
+			path_offset = tfx_RandomRangeFromTo(&random, -radius, radius);
+			local_position_x = point.x + path_offset;
+			local_position_x *= emitter.emitter_size.x;
+			local_position_y = point.y * emitter.emitter_size.y;
+			local_position_z = point.z * emitter.emitter_size.z;
+		}
+		else {
+			path_offset = tfx_RandomRangeZeroToMax(&random, arc_size) + arc_offset;
+			float length_squared = point.x * point.x + point.z * point.z;
+			float radius = length_squared == 0.f ? 0.f : 1.f / tfx__quake_sqrt(length_squared);
+			float len = sqrtf(point.x * point.x + point.z * point.z);
+			float norm_x = point.x / len;
+			float norm_z = point.z / len;
+			float sin_path_offset = sinf(path_offset);
+			float cos_path_offset = cosf(path_offset);
+			float rx = norm_x * cos_path_offset - norm_z * sin_path_offset;
+			float rz = norm_x * sin_path_offset + norm_z * cos_path_offset;
+			local_position_x = rx * radius * emitter.emitter_size.x;
+			local_position_z = rz * radius * emitter.emitter_size.z;
+			local_position_y = point.y * emitter.emitter_size.y;
+		}
+
+		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+			entry->particle_data->quaternion[index] = tfx__pack8bit_quaternion(q);
+		}
+	}
 }
 
 void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
