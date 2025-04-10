@@ -7354,7 +7354,6 @@ tfxINTERNAL tfx_mat4_t tfx__transform_matrix4(const tfx_mat4_t *in, const tfx_ma
 tfxINTERNAL tfx_vec4_t tfx__transform_matrix4_vec4(const tfx_mat4_t *mat, const tfx_vec4_t vec);
 tfxINTERNAL tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v);
 tfxINTERNAL tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
-tfxINTERNAL void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
 tfxINTERNAL tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in);
 tfxINTERNAL void tfx__transform_2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxINTERNAL float tfx__gamma_correct(float color, float gamma = tfxGAMMA);
@@ -7401,10 +7400,38 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 //--------------------------------
 //Control particle inline functions
 //--------------------------------
-tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide) {
+
+tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+	tfxWideInt w511 = tfxWideSetSinglei(511);
+	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
+	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
+	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
+	x = tfxWideMul(x, one_div_511_wide.m);
+	y = tfxWideMul(y, one_div_511_wide.m);
+	z = tfxWideMul(z, one_div_511_wide.m);
+}
+
+tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  
+														const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide) {
 	tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
 	tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 	tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
+	tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
+	current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
+	current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm->update_time_wide), velocity_adjuster), age_fraction);
+	current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm->update_time_wide), velocity_adjuster), age_fraction);
+	current_velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_z, pm->update_time_wide), velocity_adjuster), age_fraction);
+	local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
+	local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
+	local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale_wide));
+	tfxWideStore(&bank.position_x[index], local_position_x);
+	tfxWideStore(&bank.position_y[index], local_position_y);
+	tfxWideStore(&bank.position_z[index], local_position_z);
+}
+
+tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  
+														const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide,
+														tfxWideFloat &local_position_x, tfxWideFloat &local_position_y, tfxWideFloat &local_position_z) {
 	tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
 	current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
 	current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm->update_time_wide), velocity_adjuster), age_fraction);
