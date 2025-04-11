@@ -11983,15 +11983,15 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
-	ctx.velocity_is_bezier_graph = tfx__graph_has_bezier_curves(ctx.velocity_graph);
-	ctx.velocity_has_oscillator = tfx__graph_can_oscillate(ctx.velocity_graph);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_has_oscillator : 0;
 }
 
 void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.weight_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
 	ctx.weight_easing = tfx__get_wide_easing_function(ctx.weight_graph->easing_type);
-	ctx.weight_is_bezier_graph = tfx__graph_has_bezier_curves(ctx.weight_graph);
-	ctx.weight_has_oscillator = tfx__graph_can_oscillate(ctx.weight_graph);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_has_oscillator : 0;
 }
 
 void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -11999,10 +11999,10 @@ void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry
 	ctx.velocity_turbulance_easing = tfx__get_wide_easing_function(ctx.velocity_turbulance_graph->easing_type);
 	ctx.noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
 	ctx.noise_resolution_easing = tfx__get_wide_easing_function(ctx.noise_resolution_graph->easing_type);
-	ctx.velocity_turbulance_is_bezier_graph = tfx__graph_has_bezier_curves(ctx.velocity_turbulance_graph);
-	ctx.velocity_turbulance_has_oscillator = tfx__graph_can_oscillate(ctx.velocity_turbulance_graph);
-	ctx.noise_resolution_is_bezier_graph = tfx__graph_has_bezier_curves(ctx.noise_resolution_graph);
-	ctx.noise_resolution_has_oscillator = tfx__graph_can_oscillate(ctx.noise_resolution_graph);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_has_oscillator : 0;
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
 	ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
 }
 
@@ -12056,8 +12056,8 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 
 	ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
 	ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
-	ctx.motion_randomness_is_bezier_graph = tfx__graph_has_bezier_curves(ctx.motion_randomness_graph);
-	ctx.motion_randomness_has_oscillator = tfx__graph_can_oscillate(ctx.motion_randomness_graph);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
 }
 
 template <typename... Policies>
@@ -18921,7 +18921,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	}
 
 	if (amount_to_update > 0) {
-		tfx_position_policy_context ctx;
+		tfx_position_policy_context ctx = {};
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 			tfx__control_particle_uid(&pm->work_queue, work_entry);
 		}
@@ -19022,6 +19022,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				>(work_entry, ctx);
 			}
 			else {
+				//Basic position control
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy>(work_entry, ctx);
 				tfx__update_particles_position<
 					tfx_apply_life_based_on_age, 

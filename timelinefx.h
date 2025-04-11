@@ -38,6 +38,7 @@
 	[File_IO]							A package manager for reading/writing files such as a tfx library effects file
 	[Struct_Types]						All of the structs used for objects in TimelineFX
 	[Internal_Functions]				Mainly internal functions called only by the library but also the Editor, these are marked either tfxINTERNAL or tfxAPI_EDITOR
+	[Control_Position_Policies]			Inline functions for templated the functions that control particle positions
 	[API_Functions]						The main functions for use by users of the library
 		-[Initialisation_functions]		Startup and shutdown timelinefx
 		-[Global_variable_access]		Any functions that give you access to global variables relating to timelinefx
@@ -2698,6 +2699,7 @@ typedef tfxU32 tfxAnimationInstanceFlags;       //tfx_animation_instance_flag_bi
 typedef tfxU32 tfxAnimationManagerFlags;        //tfx_animation_manager_flag_bits
 typedef tfxU32 tfxEmitterPathFlags;             //tfx_emitter_path_flag_bits
 typedef tfxU32 tfxEmitterControlProfileFlags;   //tfx_emitter_control_profile_flag_bits
+typedef tfxU32 tfxContextPolicyFlags;			//tfx_context_policy_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
 
 typedef enum {
@@ -2763,25 +2765,39 @@ typedef enum {
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
-	tfxEffectManagerFlags_none                                = 0,
-	tfxEffectManagerFlags_disable_spawning                    = 1,
-	tfxEffectManagerFlags_force_capture                       = 2,            //Unused
-	tfxEffectManagerFlags_use_compute_shader                  = 1 << 3,
-	tfxEffectManagerFlags_update_base_values                  = 1 << 6,
-	tfxEffectManagerFlags_dynamic_sprite_allocation           = 1 << 7,
-	tfxEffectManagerFlags_3d_effects                          = 1 << 8,
-	tfxEffectManagerFlags_animation_loops                     = 1 << 9,
-	tfxEffectManagerFlags_update_age_only                     = 1 << 11,
-	tfxEffectManagerFlags_single_threaded                     = 1 << 12,
-	tfxEffectManagerFlags_double_buffer_sprites               = 1 << 13,
-	tfxEffectManagerFlags_recording_sprites                   = 1 << 14,
-	tfxEffectManagerFlags_using_uids                          = 1 << 15,
-	tfxEffectManagerFlags_2d_and_3d                           = 1 << 16,
-	tfxEffectManagerFlags_update_bounding_boxes               = 1 << 17,
-	tfxEffectManagerFlags_auto_order_effects                  = 1 << 19,
-	tfxEffectManagerFlags_direct_to_staging_buffer            = 1 << 20,
-	tfxEffectManagerFlags_has_ribbons_to_draw                 = 1 << 21,
-	tfxEffectManagerFlags_record_with_compute_image_index     = 1 << 22,
+	tfx_ctx_policy_flag_none                                	= 0,
+	tfx_ctx_policy_flag_velocity_is_bezier_graph            	= 1,
+	tfx_ctx_policy_flag_velocity_has_oscillator             	= 1 << 1,
+	tfx_ctx_policy_flag_weight_is_bezier_graph              	= 1 << 2,
+	tfx_ctx_policy_flag_weight_has_oscillator               	= 1 << 3,
+	tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph 	= 1 << 4,
+	tfx_ctx_policy_flag_velocity_turbulance_has_oscillator  	= 1 << 5,
+	tfx_ctx_policy_flag_noise_resolution_is_bezier_graph    	= 1 << 6,
+	tfx_ctx_policy_flag_noise_resolution_has_oscillator     	= 1 << 7,
+	tfx_ctx_policy_flag_motion_randomness_is_bezier_graph   	= 1 << 8,
+	tfx_ctx_policy_flag_motion_randomness_has_oscillator    	= 1 << 9,
+} tfx_context_policy_flag_bits;
+
+typedef enum {
+	tfxEffectManagerFlags_none                              	= 0,
+	tfxEffectManagerFlags_disable_spawning                  	= 1,
+	tfxEffectManagerFlags_force_capture                     	= 2,            //Unused
+	tfxEffectManagerFlags_use_compute_shader                	= 1 << 3,
+	tfxEffectManagerFlags_update_base_values                	= 1 << 6,
+	tfxEffectManagerFlags_dynamic_sprite_allocation         	= 1 << 7,
+	tfxEffectManagerFlags_3d_effects                        	= 1 << 8,
+	tfxEffectManagerFlags_animation_loops                   	= 1 << 9,
+	tfxEffectManagerFlags_update_age_only                   	= 1 << 11,
+	tfxEffectManagerFlags_single_threaded                   	= 1 << 12,
+	tfxEffectManagerFlags_double_buffer_sprites             	= 1 << 13,
+	tfxEffectManagerFlags_recording_sprites                 	= 1 << 14,
+	tfxEffectManagerFlags_using_uids                        	= 1 << 15,
+	tfxEffectManagerFlags_2d_and_3d                         	= 1 << 16,
+	tfxEffectManagerFlags_update_bounding_boxes             	= 1 << 17,
+	tfxEffectManagerFlags_auto_order_effects                	= 1 << 19,
+	tfxEffectManagerFlags_direct_to_staging_buffer          	= 1 << 20,
+	tfxEffectManagerFlags_has_ribbons_to_draw               	= 1 << 21,
+	tfxEffectManagerFlags_record_with_compute_image_index   	= 1 << 22,
 } tfx_effect_manager_flag_bits;
 
 typedef enum {
@@ -7561,6 +7577,37 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_linear_sampler(tfxWideFloat from, tfxW
 typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
 typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
 
+//Section: Control_Position_Policies
+/*
+I've gone through many iterations over how to organise the functions that update a particle's position. I went from a single function which became problematic
+after introducing for features like noise, paths and such and having a single function with if statements was too large and unwieldy. Then I separated out into 
+different functions which repeated a lot of code, this was harder to maintain. Then I put that repeated code into macros which was just ugly and hard to debug.
+Then I switched those to inline functions which was a little better but adding yet more features made the whole process a bit of a mess. Finally I settled on template
+policies. I'm not a huge fan of templates but in this case they seem to work very well and allows me to avoid repeated code and let the compiler produce all of
+the different variations of the control functions that I need based on the polices I use in the templated function.
+
+There are 2 templated functions that are run, one which sets up variables outside of the particle loop, and the other applies the policies inside the loop. So for
+example the templated function would be called like this:
+
+//Setup necessary variables outside of the loop:
+tfx__setup_particles_position<
+	tfx_setup_vecolity_lookup_policy, 
+	tfx_setup_weight_lookup_policy
+>(work_entry, ctx);
+
+//Perform the following opperations on particles inside the loop:
+tfx__update_particles_position<
+	tfx_apply_life_based_on_age,
+	tfx_apply_lookup_velocity,
+	tfx_apply_lookup_weight,
+	tfx_apply_velocity,
+	tfx_apply_load_position,
+	tfx_apply_position
+>(work_entry, ctx);
+
+In order to pass around variables between the different policy functions this context struct is used. Not all of these variables are used in every situation
+of course.
+*/
 struct tfx_position_policy_context {
 	tfxWideFloat position_x;
 	tfxWideFloat position_y;
@@ -7606,19 +7653,11 @@ struct tfx_position_policy_context {
 	tfx_wide_easing_function velocity_turbulance_easing;
 	tfx_wide_easing_function noise_resolution_easing;
 	tfx_wide_easing_function motion_randomness_easing;
-	bool velocity_is_bezier_graph;
-	bool velocity_has_oscillator;
-	bool weight_is_bezier_graph;
-	bool weight_has_oscillator;
-	bool velocity_turbulance_is_bezier_graph;
-	bool velocity_turbulance_has_oscillator;
-	bool noise_resolution_is_bezier_graph;
-	bool noise_resolution_has_oscillator;
-	bool motion_randomness_is_bezier_graph;
-	bool motion_randomness_has_oscillator;
+	tfxContextPolicyFlags flags;
 };
 
 //Control setup policies
+//These policy structs are run outside of the loop to set up things like graph access and emitter position etc.
 struct tfx_setup_vecolity_lookup_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
@@ -7644,6 +7683,8 @@ struct tfx_setup_motion_randomness_policy {
 };
 
 //Control loop policies
+//These policy structs are run inside the particle loop. They should all be inlined at compile time to build the different function
+//variations based on the control profile of the emitter.
 struct tfx_apply_life_based_on_age {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
@@ -7664,10 +7705,10 @@ struct tfx_apply_lookup_velocity {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		tfxWideFloat velocity_time = ctx.velocity_easing(ctx.life);
-		ctx.lookup_velocity = ctx.velocity_is_bezier_graph ?
+		ctx.lookup_velocity = (ctx.flags & tfx_ctx_policy_flag_velocity_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(velocity_time, ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.curve1, ctx.velocity_graph->wide_graph.curve2, ctx.velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.to, velocity_time);
-		if (ctx.velocity_has_oscillator) {
+		if (ctx.flags & tfx_ctx_policy_flag_velocity_has_oscillator) {
 			ctx.lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(ctx.velocity_graph->wide_oscillator.offset_x, ctx.velocity_graph->wide_oscillator.frequency), ctx.velocity_graph->wide_oscillator.amplitude), ctx.lookup_velocity), ctx.velocity_graph->wide_oscillator.offset_y);
 		}
 		ctx.velocity = tfxWideMul(ctx.lookup_velocity, base_velocity);
@@ -7678,9 +7719,10 @@ struct tfx_apply_lookup_weight {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
 		tfxWideFloat weight_time = ctx.weight_easing(ctx.life);
-		ctx.lookup_weight = ctx.weight_is_bezier_graph ? tfx__wide_bezier_sampler(weight_time, ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.curve1, ctx.weight_graph->wide_graph.curve2, ctx.weight_graph->wide_graph.to) :
+		ctx.lookup_weight = (ctx.flags & tfx_ctx_policy_flag_weight_is_bezier_graph) ? 
+			tfx__wide_bezier_sampler(weight_time, ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.curve1, ctx.weight_graph->wide_graph.curve2, ctx.weight_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.to, weight_time);
-		if (ctx.weight_has_oscillator) {
+		if (ctx.flags & tfx_ctx_policy_flag_weight_has_oscillator) {
 			ctx.lookup_weight = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(weight_time, tfxWideAdd(ctx.weight_graph->wide_oscillator.offset_x, ctx.weight_graph->wide_oscillator.frequency), ctx.weight_graph->wide_oscillator.amplitude), ctx.lookup_weight), ctx.weight_graph->wide_oscillator.offset_y);
 		}
 		ctx.weight = tfxWideMul(ctx.lookup_weight, base_weight);
@@ -7690,18 +7732,18 @@ struct tfx_apply_lookup_weight {
 struct tfx_apply_simplex_noise {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
-		ctx.lookup_velocity_turbulance = ctx.velocity_turbulance_is_bezier_graph ?
+		ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
-		if (ctx.velocity_turbulance_has_oscillator) {
+		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
 			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
 		}
 
 		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
-		ctx.lookup_noise_resolution = ctx.noise_resolution_is_bezier_graph ?
+		ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
-		if (ctx.noise_resolution_has_oscillator) {
+		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
@@ -7749,7 +7791,7 @@ struct tfx_apply_motion_randomness {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		//----Do the random calculation
 
-		tfxWideInt velocity_normal;
+		tfxWideInt velocity_normal = tfxWideSetZeroi;
 		if (!(ctx.emitter->control_profile & tfxEmitterControlProfile_orbital)) {
 			velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 			tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
@@ -7759,10 +7801,10 @@ struct tfx_apply_motion_randomness {
 		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
 		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
 		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
-		tfxWideFloat lookup_motion_randomness = ctx.motion_randomness_is_bezier_graph ?
+		tfxWideFloat lookup_motion_randomness = (ctx.flags & tfx_ctx_policy_flag_motion_randomness_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(motion_randomness_time, ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.curve1, ctx.motion_randomness_graph->wide_graph.curve2, ctx.motion_randomness_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.to, motion_randomness_time);
-		if (ctx.motion_randomness_has_oscillator) {
+		if (ctx.flags & tfx_ctx_policy_flag_motion_randomness_has_oscillator) {
 			lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(ctx.motion_randomness_graph->wide_oscillator.offset_x, ctx.motion_randomness_graph->wide_oscillator.frequency), ctx.motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), ctx.motion_randomness_graph->wide_oscillator.offset_y);
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
