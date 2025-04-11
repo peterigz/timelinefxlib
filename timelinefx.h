@@ -7580,7 +7580,7 @@ typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxW
 //Section: Control_Position_Policies
 /*
 I've gone through many iterations over how to organise the functions that update a particle's position. I went from a single function which became problematic
-after introducing for features like noise, paths and such and having a single function with if statements was too large and unwieldy. Then I separated out into 
+after introducing other features like noise, paths and such and having a single function with if statements was too large and unwieldy. Then I separated out into 
 different functions which repeated a lot of code, this was harder to maintain. Then I put that repeated code into macros which was just ugly and hard to debug.
 Then I switched those to inline functions which was a little better but adding yet more features made the whole process a bit of a mess. Finally I settled on template
 policies. I'm not a huge fan of templates but in this case they seem to work very well and allows me to avoid repeated code and let the compiler produce all of
@@ -7975,6 +7975,14 @@ struct tfx_apply_path_position {
 			tfxWideInt quaternion = tfxWideLoadi((tfxWideIntLoader*)&bank.quaternion[index]);
 			tfx__wide_transform_packed_quaternion_vec3(&quaternion, &ctx.position_x, &ctx.position_y, &ctx.position_z);
 		}
+	}
+};
+
+struct tfx_apply_path_scale_variation {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.position_x = tfxWideMul(ctx.position_x, ctx.path_scale_variation);
+		ctx.position_y = tfxWideMul(ctx.position_y, ctx.path_scale_variation);
+		ctx.position_z = tfxWideMul(ctx.position_z, ctx.path_scale_variation);
 	}
 };
 

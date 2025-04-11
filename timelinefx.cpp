@@ -12231,11 +12231,8 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxWideArrayi alignment_packed;
-		if (vector_align_type == tfxVectorAlignType_motion) {
-			//Motion will be calculated in the vertex shader
-			alignment_packed.m = tfxWideSetZeroi;
-		}
-		else if (vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+		alignment_packed.m = tfxWideSetZeroi;
+		if (vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 			tfxWideFloat velocity_normal_x;
 			tfxWideFloat velocity_normal_y;
@@ -18937,21 +18934,34 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_load_path,
 					tfx_apply_load_position,
 					tfx_apply_update_path_position_trajectory,
-					tfx_apply_path_end_loop,
 					tfx_apply_path_position,
+					tfx_apply_path_scale_variation,
 					tfx_apply_store_path_position_edge_traversal
 				>(work_entry, ctx);
 			} else {
-				tfx__update_particles_position<
-					tfx_apply_life_based_on_age,
-					tfx_apply_lookup_velocity,
-					tfx_apply_load_path,
-					tfx_apply_load_position,
-					tfx_apply_update_path_position,
-					tfx_apply_path_end_loop,
-					tfx_apply_path_position,
-					tfx_apply_store_path_position_edge_traversal
-				>(work_entry, ctx);
+				if (emitter.library->emitter_properties[emitter.properties_index].end_behaviour == tfxLoop) {
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_load_path,
+						tfx_apply_load_position,
+						tfx_apply_update_path_position,
+						tfx_apply_path_end_loop,
+						tfx_apply_path_position,
+						tfx_apply_store_path_position_edge_traversal
+					>(work_entry, ctx);
+				} else {
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_load_path,
+						tfx_apply_load_position,
+						tfx_apply_update_path_position,
+						tfx_apply_path_end_kill,
+						tfx_apply_path_position,
+						tfx_apply_store_path_position_edge_traversal
+					>(work_entry, ctx);
+				}
 			}
 			tfx__control_particle_transform_3d(&pm->work_queue, work_entry);
 		}
