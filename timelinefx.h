@@ -7031,7 +7031,6 @@ tfxINTERNAL bool tfx__emitter_has_noise(tfx_effect_descriptor emitter);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
-tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q);
@@ -7341,7 +7340,6 @@ tfxINTERNAL float tfx__has_length_vec3(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v);
 tfxINTERNAL tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v);
 tfxINTERNAL tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t *a, tfx_vec3_t *b);
-tfxINTERNAL void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, tfxWideFloat *bx, tfxWideFloat *by, tfxWideFloat *bz, tfxWideFloat *rx, tfxWideFloat *ry, tfxWideFloat *rz);
 tfxINTERNAL float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
 tfxINTERNAL float tfx__dot_product_vec3(const tfx_vec3_t *a, const tfx_vec3_t *b);
 tfxINTERNAL float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length);
@@ -7353,7 +7351,6 @@ tfxINTERNAL tfx_mat4_t tfx__matrix4_rotate_z(float angle);
 tfxINTERNAL tfx_mat4_t tfx__transform_matrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
 tfxINTERNAL tfx_vec4_t tfx__transform_matrix4_vec4(const tfx_mat4_t *mat, const tfx_vec4_t vec);
 tfxINTERNAL tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v);
-tfxINTERNAL tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in);
 tfxINTERNAL void tfx__transform_2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxINTERNAL float tfx__gamma_correct(float color, float gamma = tfxGAMMA);
@@ -7397,10 +7394,34 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 	return tfxWideConvert(h);
 }
 
-//--------------------------------
-//Control particle inline functions
-//--------------------------------
+//An ugly macro to unroll the loop for the simplex noise algo
+#define tfxParticleNoise3dLoopUnroll(n)        \
+x4 = tfx128SetSingle(x.a[n]);    \
+y4 = tfx128SetSingle(y.a[n]);    \
+z4 = tfx128SetSingle(z.a[n]);    \
+xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);    \
+xeps4r = tfx128Set(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);    \
+yeps4 = tfx128Set(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);    \
+zeps4 = tfx128Set(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);    \
+zeps4r = tfx128Set(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);    \
+sample = tfxNoise4_3d(x4, yeps4, zeps4);    \
+a = (sample.a[0] - sample.a[1]) / eps2;    \
+b = (sample.a[2] - sample.a[3]) / eps2;    \
+noise_x.a[n] = a - b;    \
+y.a[n] += 100.f;    \
+yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);    \
+sample = tfxNoise4_3d(xeps4, y4, zeps4r);    \
+a = (sample.a[0] - sample.a[1]) / eps2;    \
+b = (sample.a[2] - sample.a[3]) / eps2;    \
+noise_y.a[n] = a - b;    \
+sample = tfxNoise4_3d(xeps4r, yeps4r, z4);    \
+a = (sample.a[0] - sample.a[1]) / eps2;    \
+b = (sample.a[2] - sample.a[3]) / eps2;    \
+noise_z.a[n] = a - b;
 
+//--------------------------------
+//Control particle inline functions and policies
+//--------------------------------
 tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
 	tfxWideInt w511 = tfxWideSetSinglei(511);
 	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
@@ -7410,6 +7431,570 @@ tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tf
 	y = tfxWideMul(y, one_div_511_wide.m);
 	z = tfxWideMul(z, one_div_511_wide.m);
 }
+
+tfxINTERNAL inline void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
+	tfxWideInt mask_w = tfxWideSetSinglei(0xFF000000);
+	tfxWideInt mask_z = tfxWideSetSinglei(0x00FF0000);
+	tfxWideInt mask_y = tfxWideSetSinglei(0x0000FF00);
+	tfxWideInt mask_x = tfxWideSetSinglei(0x000000FF);
+	tfxWideInt w127 = tfxWideSetSinglei(127);
+
+	w = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_w), 24), w127));
+	z = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_z), 16), w127));
+	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_y), 8), w127));
+	x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, mask_x), w127));
+
+	x = tfxWideMul(x, one_div_127_wide.m);
+	y = tfxWideMul(y, one_div_127_wide.m);
+	z = tfxWideMul(z, one_div_127_wide.m);
+	w = tfxWideMul(w, one_div_127_wide.m);
+}
+
+tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+	tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
+	converted_x = tfxWideAndi(converted_x, bits10);
+	converted_x = tfxWideShiftLeft(converted_x, 20);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
+	converted_y = tfxWideAndi(converted_y, bits10);
+	converted_y = tfxWideShiftLeft(converted_y, 10);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+	tfxWideFloat q_x, q_y, q_z, q_w;
+	tfx__wide_unpack8bit(*quaternion, q_x, q_y, q_z, q_w);
+
+	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
+	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
+	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
+
+	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
+	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
+	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
+}
+
+tfxINTERNAL inline void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, tfxWideFloat *bx, tfxWideFloat *by, tfxWideFloat *bz, tfxWideFloat *rx, tfxWideFloat *ry, tfxWideFloat *rz) {
+	*rx = tfxWideSub(tfxWideMul(ay, *bz), tfxWideMul(az, *by));
+	*ry = tfxWideSub(tfxWideMul(az, *bx), tfxWideMul(ax, *bz));
+	*rz = tfxWideSub(tfxWideMul(ax, *by), tfxWideMul(ay, *bx));
+}
+
+tfxINTERNAL inline void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfxWideFloat velocity_normal_y, tfxWideFloat velocity_normal_z, tfxWideFloat cone_angle, tfxWideFloat *random_x, tfxWideFloat *random_y, tfxWideFloat *random_z) {
+	// Convert cone angle to radians
+
+	cone_angle = tfxWideMin(cone_angle, tfx180RadiansWide.m);
+	// Calculate the minimum z value for the cone
+	tfxWideFloat min_z = tfxWideCos52s(cone_angle);
+
+	tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
+	// Randomly sample z in [min_z, 1]
+	tfxWideFloat z = tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f));
+	z = tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideSub(tfxWIDEONE.m, min_z), z));
+
+	// Randomly sample [0, 2pi)
+	tfxWideFloat phi = tfxWideMul(tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f)), tfxWideSetSingle(2.f * tfxPI));
+
+	// Calculate the corresponding x and y for the random point on the unit sphere
+	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE.m, tfxWideMul(z, z));
+	sqrt_one_minus_z_squared = tfxWideMul(tfxWideRSqrt(sqrt_one_minus_z_squared), sqrt_one_minus_z_squared);
+	tfxWideFloat sin;
+	tfxWideFloat cos;
+	tfxWideSinCos(phi, &sin, &cos);
+	tfxWideFloat x = tfxWideMul(sqrt_one_minus_z_squared, cos);
+	tfxWideFloat y = tfxWideMul(sqrt_one_minus_z_squared, sin);
+
+	// Calculate the rotation axis (cross product of (0, 0, 1) and cone_direction)
+	tfx_vec3_t north_pole = { 0, 0, 1.f };
+	tfxWideFloat rotation_axis_x, rotation_axis_y, rotation_axis_z;
+	rotation_axis_x = tfxWideSub(tfxWideSetZero, velocity_normal_y);
+	rotation_axis_y = velocity_normal_x;
+	rotation_axis_z = tfxWideSetZero;
+	tfxWideFloat length = tfxWideMul(rotation_axis_x, rotation_axis_x);
+	length = tfxWideAdd(length, tfxWideMul(rotation_axis_y, rotation_axis_y));
+	length = tfxWideMul(tfxWideRSqrt(length), length);
+	rotation_axis_x = tfxWideDiv(rotation_axis_x, length);
+	rotation_axis_y = tfxWideDiv(rotation_axis_y, length);
+
+	tfxWideArray rotation_angle;
+	tfxWideArray dir_z;
+	dir_z.m = velocity_normal_z;
+	rotation_angle.a[0] = acosf(dir_z.a[0]);
+	rotation_angle.a[1] = acosf(dir_z.a[1]);
+	rotation_angle.a[2] = acosf(dir_z.a[2]);
+	rotation_angle.a[3] = acosf(dir_z.a[3]);
+#if defined(tfxUSEAVX)
+	rotation_angle.a[4] = acosf(dir_z.a[4]);
+	rotation_angle.a[5] = acosf(dir_z.a[5]);
+	rotation_angle.a[6] = acosf(dir_z.a[6]);
+	rotation_angle.a[7] = acosf(dir_z.a[7]);
+#endif
+
+	// Rotate the random vector to align with the cone direction
+	// Use Rodrigues' rotation formula
+	tfxWideSinCos(rotation_angle.m, &sin, &cos);
+	tfxWideFloat dot = tfxWideAdd(tfxWideMul(rotation_axis_x, x), tfxWideMul(rotation_axis_y, y));
+	tfxWideFloat cx, cy, cz;
+	tfx__wide_cross_product(rotation_axis_x, rotation_axis_y, rotation_axis_z, &x, &y, &z, &cx, &cy, &cz);
+	//tfx_vec3_t rotated_vector = random_vector * cos + tfx__cross_product_vec3(&rotation_axis, &random_vector) * sin + rotation_axis * tfx__dot_product_vec3(&rotation_axis, &random_vector) * (1.f - cos);
+	*random_x = tfxWideAdd(tfxWideAdd(tfxWideMul(x, cos), tfxWideMul(cx, sin)), tfxWideMul(tfxWideMul(rotation_axis_x, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+	*random_y = tfxWideAdd(tfxWideAdd(tfxWideMul(y, cos), tfxWideMul(cy, sin)), tfxWideMul(tfxWideMul(rotation_axis_y, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat node2) {
+	tfxWideFloat u = tfxWideSub(tfxWIDEONE.m, t);
+	tfxWideFloat w1 = tfxWideMul(tfxWideMul(u, u), u);
+	tfxWideFloat w2 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), u), t);
+	tfxWideFloat w3 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), t), t);
+	tfxWideFloat w4 = tfxWideMul(tfxWideMul(t, t), t);
+	return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(w1, node1), tfxWideMul(w2, curve1)), tfxWideMul(w3, curve2)), tfxWideMul(w4, node2));
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
+	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
+}
+
+typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
+typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
+
+struct tfx_position_policy_context {
+	tfxWideFloat position_x;
+	tfxWideFloat position_y;
+	tfxWideFloat position_z;
+	tfxWideFloat velocity_x;
+	tfxWideFloat velocity_y;
+	tfxWideFloat velocity_z;
+	tfxWideFloat weight;
+	tfxWideFloat velocity;
+	tfxWideFloat age;
+	tfxWideFloat life;
+	tfxWideFloat velocity_adjuster;
+	tfxWideFloat overal_scale_wide;
+	tfxWideFloat lookup_velocity;
+	tfxWideFloat lookup_weight;
+	tfxWideFloat lookup_velocity_turbulance;
+	tfxWideFloat lookup_noise_resolution;
+	tfxWideFloat node_count;
+	tfxWideFloat global_noise;
+	tfxWideFloat emitter_width;
+	tfxWideFloat emitter_height;
+	tfxWideFloat emitter_depth;
+	tfxWideFloat emitter_offset_x;
+	tfxWideFloat emitter_offset_y;
+	tfxWideFloat emitter_offset_z;
+	tfxWideFloat path_position;
+	tfxWideFloat path_offset;
+	tfxWideFloat path_scale_variation;
+	tfxWideFloat motion_randomness_base;
+	tfxWideInt capture_after_transform_flag;
+	tfxWideInt time_step;
+	tfxWideInt time_changed_mask;
+	tfxWideFloat time_step_fraction;
+	tfx_particle_emitter_state_t *emitter;
+	tfx_emitter_path_t *path;
+	tfx_graph_t *velocity_graph;
+	tfx_graph_t *weight_graph;
+	tfx_graph_t *velocity_turbulance_graph;
+	tfx_graph_t *noise_resolution_graph;
+	tfx_graph_t *motion_randomness_graph;
+	tfx_wide_easing_function velocity_easing;
+	tfx_wide_easing_function weight_easing;
+	tfx_wide_easing_function velocity_turbulance_easing;
+	tfx_wide_easing_function noise_resolution_easing;
+	tfx_wide_easing_function motion_randomness_easing;
+	bool velocity_is_bezier_graph;
+	bool velocity_has_oscillator;
+	bool weight_is_bezier_graph;
+	bool weight_has_oscillator;
+	bool velocity_turbulance_is_bezier_graph;
+	bool velocity_turbulance_has_oscillator;
+	bool noise_resolution_is_bezier_graph;
+	bool noise_resolution_has_oscillator;
+	bool motion_randomness_is_bezier_graph;
+	bool motion_randomness_has_oscillator;
+};
+
+//Control setup policies
+struct tfx_setup_vecolity_lookup_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_weight_lookup_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_simplex_lookup_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_path_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_orbital_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_motion_randomness_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+//Control loop policies
+struct tfx_apply_life_based_on_age {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+		ctx.age = tfxWideLoad(&bank.age[index]);
+		ctx.life = tfxWideDiv(ctx.age, max_age);
+	}
+};
+
+struct tfx_apply_life_based_on_path {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
+		ctx.age = tfxWideLoad(&bank.age[index]);
+		ctx.life = tfxWideDiv(path_position, ctx.node_count);
+	}
+};
+
+struct tfx_apply_lookup_velocity {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
+		tfxWideFloat velocity_time = ctx.velocity_easing(ctx.life);
+		ctx.lookup_velocity = ctx.velocity_is_bezier_graph ?
+			tfx__wide_bezier_sampler(velocity_time, ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.curve1, ctx.velocity_graph->wide_graph.curve2, ctx.velocity_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.to, velocity_time);
+		if (ctx.velocity_has_oscillator) {
+			ctx.lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(ctx.velocity_graph->wide_oscillator.offset_x, ctx.velocity_graph->wide_oscillator.frequency), ctx.velocity_graph->wide_oscillator.amplitude), ctx.lookup_velocity), ctx.velocity_graph->wide_oscillator.offset_y);
+		}
+		ctx.velocity = tfxWideMul(ctx.lookup_velocity, base_velocity);
+	}
+};
+
+struct tfx_apply_lookup_weight {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
+		tfxWideFloat weight_time = ctx.weight_easing(ctx.life);
+		ctx.lookup_weight = ctx.weight_is_bezier_graph ? tfx__wide_bezier_sampler(weight_time, ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.curve1, ctx.weight_graph->wide_graph.curve2, ctx.weight_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.to, weight_time);
+		if (ctx.weight_has_oscillator) {
+			ctx.lookup_weight = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(weight_time, tfxWideAdd(ctx.weight_graph->wide_oscillator.offset_x, ctx.weight_graph->wide_oscillator.frequency), ctx.weight_graph->wide_oscillator.amplitude), ctx.lookup_weight), ctx.weight_graph->wide_oscillator.offset_y);
+		}
+		ctx.weight = tfxWideMul(ctx.lookup_weight, base_weight);
+	}
+};
+
+struct tfx_apply_simplex_noise {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+		ctx.lookup_velocity_turbulance = ctx.velocity_turbulance_is_bezier_graph ?
+			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+		if (ctx.velocity_turbulance_has_oscillator) {
+			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+		}
+
+		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+		ctx.lookup_noise_resolution = ctx.noise_resolution_is_bezier_graph ?
+			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+		if (ctx.noise_resolution_has_oscillator) {
+			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+		}
+
+		tfxWideArray noise_x, noise_y, noise_z;
+		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
+
+		tfx__readbarrier;
+
+		ctx.lookup_noise_resolution = tfxWideMul(ctx.lookup_noise_resolution, noise_resolution);
+		tfxWideArray x, y, z;
+		x.m = tfxWideAdd(tfxWideDiv(ctx.position_x, ctx.lookup_noise_resolution), noise_offset);
+		y.m = tfxWideAdd(tfxWideDiv(ctx.position_y, ctx.lookup_noise_resolution), noise_offset);
+		z.m = tfxWideAdd(tfxWideDiv(ctx.position_z, ctx.lookup_noise_resolution), noise_offset);
+
+		float eps = 0.001f;
+		float eps2 = 0.002f;
+		tfx128 x4, y4, z4, xeps4, xeps4r, yeps4, zeps4, zeps4r, yeps4r;
+		tfx128Array sample;
+		float a, b;
+
+		tfxParticleNoise3dLoopUnroll(0)
+		tfxParticleNoise3dLoopUnroll(1)
+		tfxParticleNoise3dLoopUnroll(2)
+		tfxParticleNoise3dLoopUnroll(3)
+#if defined(tfxUSEAVX)    
+		tfxParticleNoise3dLoopUnroll(4)
+		tfxParticleNoise3dLoopUnroll(5)
+		tfxParticleNoise3dLoopUnroll(6)
+		tfxParticleNoise3dLoopUnroll(7)
+#endif    
+
+		noise_x.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x.m));
+		noise_y.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y.m));
+		noise_z.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z.m));
+
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x.m);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y.m);
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z.m);
+	}
+};
+
+struct tfx_apply_motion_randomness {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		//----Do the random calculation
+
+		tfxWideInt velocity_normal;
+		if (!(ctx.emitter->control_profile & tfxEmitterControlProfile_orbital)) {
+			velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
+			tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
+		}
+
+		tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
+		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
+		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
+		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
+		tfxWideFloat lookup_motion_randomness = ctx.motion_randomness_is_bezier_graph ?
+			tfx__wide_bezier_sampler(motion_randomness_time, ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.curve1, ctx.motion_randomness_graph->wide_graph.curve2, ctx.motion_randomness_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.to, motion_randomness_time);
+		if (ctx.motion_randomness_has_oscillator) {
+			lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(ctx.motion_randomness_graph->wide_oscillator.offset_x, ctx.motion_randomness_graph->wide_oscillator.frequency), ctx.motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), ctx.motion_randomness_graph->wide_oscillator.offset_y);
+		}
+		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
+		tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);
+		tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));
+		tfxWideFloat random_x, random_y, random_z;
+		tfx__wide_random_vector_in_cone(seed, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z, tfxWideMul(tfxDEGREERANGEMR.m, influence), &random_x, &random_y, &random_z);
+		speed = tfxWideAdd(speed, random_speed);
+		tfxWideFloat length = tfxWideMul(random_x, random_x);
+		length = tfxWideAdd(length, tfxWideMul(random_y, random_y));
+		length = tfxWideAdd(length, tfxWideMul(random_z, random_z));
+		length = tfxWideMul(tfxWideRSqrt(length), length);
+		tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE.m, length);
+		random_x = tfxWideMul(random_x, length_one);
+		random_y = tfxWideMul(random_y, length_one);
+		random_z = tfxWideMul(random_z, length_one);
+		ctx.velocity = tfxWideAdd(ctx.velocity, tfxWideMul(speed, ctx.global_noise));
+		//----
+
+		tfxWideInt packed_normal = tfxWideSetZeroi;
+		if (ctx.emitter->control_profile & tfxEmitterControlProfile_orbital) {
+			tfxWideFloat vx, vy, vz;
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
+			tfx__wide_unpack10bit(velocity_normal, vx, vy, vz);
+			vx = tfxWideAdd(tfxWideMul(random_x, ctx.time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			vy = tfxWideAdd(tfxWideMul(random_y, ctx.time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			vz = tfxWideAdd(tfxWideMul(random_z, ctx.time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			ctx.velocity_x = tfxWideAdd(ctx.velocity_x, vx);
+			ctx.velocity_y = tfxWideAdd(ctx.velocity_y, vy);
+			ctx.velocity_z = tfxWideAdd(ctx.velocity_z, vz);
+			length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
+			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
+			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
+			length = tfxWideMul(tfxWideRSqrt(length), length);
+			ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
+			ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
+			ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
+			length = tfxWideMul(vx, vx);
+			length = tfxWideAdd(length, tfxWideMul(vy, vy));
+			length = tfxWideAdd(length, tfxWideMul(vz, vz));
+			length = tfxWideMul(tfxWideRSqrt(length), length);
+			vx = tfxWideDiv(vx, length);
+			vy = tfxWideDiv(vy, length);
+			vz = tfxWideDiv(vz, length);
+			packed_normal = tfx__wide_pack10bit_unsigned(vx, vy, vz);
+			tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, ctx.time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(ctx.time_changed_mask, tfxWIDEMINUSONEi.m)));
+			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
+		} else {
+			//Non Orbit emission direction
+			//Add the random direction to the current velocity
+			ctx.velocity_x = tfxWideAdd(tfxWideMul(random_x, ctx.time_step_fraction), tfxWideMul(ctx.velocity_x, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			ctx.velocity_y = tfxWideAdd(tfxWideMul(random_y, ctx.time_step_fraction), tfxWideMul(ctx.velocity_y, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			ctx.velocity_z = tfxWideAdd(tfxWideMul(random_z, ctx.time_step_fraction), tfxWideMul(ctx.velocity_z, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
+			length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
+			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
+			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
+			length = tfxWideMul(tfxWideRSqrt(length), length);
+			ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
+			ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
+			ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
+			packed_normal = tfx__wide_pack10bit_unsigned(ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
+			tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, ctx.time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(ctx.time_changed_mask, tfxWIDEMINUSONEi.m)));
+			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
+			//--
+		}
+		tfxWideStore(&bank.noise_offset[index], speed);
+
+		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
+		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
+		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
+	}
+};
+
+struct tfx_apply_velocity {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
+		tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
+		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
+		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
+		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
+	}
+};
+
+struct tfx_apply_load_position {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.position_x = tfxWideLoad(&bank.position_x[index]);
+		ctx.position_y = tfxWideLoad(&bank.position_y[index]);
+		ctx.position_z = tfxWideLoad(&bank.position_z[index]);
+	}
+};
+
+struct tfx_apply_load_path {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.path_position = tfxWideLoad(&bank.path_position[index]);
+		ctx.path_offset = tfxWideLoad(&bank.path_offset[index]);
+		ctx.path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
+	}
+};
+
+struct tfx_apply_update_path_position {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.path_position = tfxWideAdd(ctx.path_position, tfxWideMul(ctx.velocity, pm->update_time_wide));
+	}
+};
+
+struct tfx_apply_update_path_position_trajectory {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.path_position = tfxWideMul(ctx.lookup_velocity, ctx.node_count);
+	}
+};
+
+struct tfx_apply_path_end_kill {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		//Kill if the particle has reached the end of the path
+		tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+		tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(ctx.path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(ctx.path_position, ctx.node_count))));
+		ctx.path_position = tfxWideMax(ctx.path_position, tfxWideSetZero);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		flags = tfxWideOri(flags, remove_flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
+	}
+};
+
+struct tfx_apply_path_end_loop {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		//Reposition if the particle is travelling along the path
+		tfxWideFloat at_end = tfxWideGreaterEqual(ctx.path_position, ctx.node_count);
+		ctx.path_position = tfxWideSub(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
+		at_end = tfxWideLess(ctx.path_position, tfxWideSetZero);
+		ctx.path_position = tfxWideAdd(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
+		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
+	}
+};
+
+struct tfx_apply_path_position {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideArrayi node_index;
+		node_index.m = tfxWideConverti(ctx.path_position);
+		tfxWideArray t;
+		t.m = tfxWideSub(ctx.path_position, tfxWideConvert(node_index.m));
+		tfxWideArray point_x;
+		tfxWideArray point_z;
+		tfx__wide_catmull_rom_spline_3d(&node_index, t.m, ctx.path->buffers.node_soa.x, ctx.path->buffers.node_soa.y, ctx.path->buffers.node_soa.z, &point_x.m, &ctx.position_y, &point_z.m);
+		if (ctx.path->settings.extrusion_type == tfxExtrusionArc) {
+			tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
+			tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
+			radius = tfxWideMul(tfxWideRSqrt(radius), radius);
+			tfxWideArray angle;
+			tfxWideArray rx;
+			tfxWideArray rz;
+			angle.m = tfxWideAtan2(point_z.m, point_x.m);
+			angle.m = tfxWideAnd(length_mask, angle.m);
+			angle.m = tfxWideAdd(angle.m, ctx.path_offset);
+			tfxWideSinCos(angle.m, &rz.m, &rx.m);
+			ctx.position_x = tfxWideMul(rx.m, radius);
+			ctx.position_z = tfxWideMul(rz.m, radius);
+		} else {
+			ctx.position_x = tfxWideAdd(point_x.m, ctx.path_offset);
+			ctx.position_z = point_z.m;
+		}
+		ctx.position_x = tfxWideAdd(ctx.position_x, ctx.emitter_offset_x);
+		ctx.position_y = tfxWideAdd(ctx.position_y, ctx.emitter_offset_y);
+		ctx.position_z = tfxWideAdd(ctx.position_z, ctx.emitter_offset_z);
+		if (ctx.emitter->state_flags & tfxEmitterStateFlags_has_rotated_path) {
+			tfxWideInt quaternion = tfxWideLoadi((tfxWideIntLoader*)&bank.quaternion[index]);
+			tfx__wide_transform_packed_quaternion_vec3(&quaternion, &ctx.position_x, &ctx.position_y, &ctx.position_z);
+		}
+	}
+};
+
+struct tfx_apply_store_path_position {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideStore(&bank.position_x[index], tfxWideMul(ctx.position_x, tfxWideMul(ctx.emitter_width, ctx.path_scale_variation)));
+		tfxWideStore(&bank.position_y[index], tfxWideMul(ctx.position_y, tfxWideMul(ctx.emitter_height, ctx.path_scale_variation)));
+		tfxWideStore(&bank.position_z[index], tfxWideMul(ctx.position_z, tfxWideMul(ctx.emitter_depth, ctx.path_scale_variation)));
+		tfxWideStore(&bank.path_position[index], ctx.path_position);
+	}
+};
+
+struct tfx_apply_store_path_position_edge_traversal {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideStore(&bank.position_x[index], tfxWideMul(ctx.position_x, ctx.emitter_width));
+		tfxWideStore(&bank.position_y[index], tfxWideMul(ctx.position_y, ctx.emitter_height));
+		tfxWideStore(&bank.position_z[index], tfxWideMul(ctx.position_z, ctx.emitter_depth));
+		tfxWideStore(&bank.path_position[index], ctx.path_position);
+	}
+};
+
+struct tfx_apply_orbital_velocity_normal {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.velocity_x = tfxWideMul(tfxWideSub(ctx.position_z, ctx.emitter_offset_z), tfxWIDEMINUSONE.m);
+		ctx.velocity_y = tfxWideSetZero;
+		ctx.velocity_z = tfxWideSub(ctx.position_x, ctx.emitter_offset_x);
+		tfxWideFloat l = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
+		l = tfxWideAdd(l, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
+		l = tfxWideMul(tfxWideRSqrt(l), l);
+		ctx.velocity_x = tfxWideDiv(ctx.velocity_x, l);
+		ctx.velocity_z = tfxWideDiv(ctx.velocity_z, l);
+	}
+};
+
+struct tfx_apply_orbital_scale_velocity {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
+		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
+	}
+};
+
+struct tfx_apply_position {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(ctx.age, pm->frame_length_wide), tfxWIDEONE.m);
+		ctx.velocity_y = tfxWideSub(ctx.velocity_y, ctx.weight);
+		ctx.velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_x, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
+		ctx.velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_y, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
+		ctx.velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_z, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
+		ctx.position_x = tfxWideAdd(ctx.position_x, tfxWideMul(ctx.velocity_x, ctx.overal_scale_wide));
+		ctx.position_y = tfxWideAdd(ctx.position_y, tfxWideMul(ctx.velocity_y, ctx.overal_scale_wide));
+		ctx.position_z = tfxWideAdd(ctx.position_z, tfxWideMul(ctx.velocity_z, ctx.overal_scale_wide));
+		tfxWideStore(&bank.position_x[index], ctx.position_x);
+		tfxWideStore(&bank.position_y[index], ctx.position_y);
+		tfxWideStore(&bank.position_z[index], ctx.position_z);
+	}
+};
+
+template <typename... Policies>
+void tfx__setup_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+
+template <typename... Policies>
+void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 
 tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  
 														const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide) {
@@ -7559,7 +8144,6 @@ tfxINTERNAL inline void tfx__invalidate_offsetted_sprite_captured_index(T* insta
 
 tfxINTERNAL float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
-tfxINTERNAL void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
 tfxINTERNAL void tfx__transform_effector_2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void tfx__transform_effector_3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
@@ -7614,9 +8198,6 @@ tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
-typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
-typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
-
 typedef float(*tfx_easing_function)(float);
 typedef float(*tfx_bezier_function)(float, float, float, float, float);
 
@@ -7660,15 +8241,6 @@ tfxINTERNAL float tfx__ease_in_circular(float t);
 tfxINTERNAL float tfx__ease_out_circular(float t);
 tfxINTERNAL float tfx__ease_in_out_circular(float t);
 
-tfxINTERNAL inline tfxWideFloat tfx__wide_bezier_sampler(tfxWideFloat t, tfxWideFloat node1, tfxWideFloat curve1, tfxWideFloat curve2, tfxWideFloat node2) {
-	tfxWideFloat u = tfxWideSub(tfxWIDEONE.m, t);
-	tfxWideFloat w1 = tfxWideMul(tfxWideMul(u, u), u);
-	tfxWideFloat w2 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), u), t);
-	tfxWideFloat w3 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDETHREE.m, u), t), t);
-	tfxWideFloat w4 = tfxWideMul(tfxWideMul(t, t), t);
-	return tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(w1, node1), tfxWideMul(w2, curve1)), tfxWideMul(w3, curve2)), tfxWideMul(w4, node2));
-}
-
 tfxINTERNAL tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type type);
 tfxINTERNAL tfx_easing_function tfx__get_easing_function(tfx_graph_easing_type type);
 
@@ -7679,10 +8251,6 @@ tfxINTERNAL inline float tfx__bezier_sampler(float t, float node1, float curve1,
 	float w3 = 3 * u * t * t;
 	float w4 = t * t * t;
 	return w1 * node1 + w2 * curve1 + w3 * curve2 + w4 * node2;
-}
-
-tfxINTERNAL inline tfxWideFloat tfx__wide_linear_sampler(tfxWideFloat from, tfxWideFloat to, tfxWideFloat t) {
-	return tfxWideAdd(from, tfxWideMul(tfxWideSub(to, from), t));
 }
 
 tfxINTERNAL inline float tfx__linear_sampler(float from, float to, float t) {
@@ -7711,16 +8279,11 @@ tfxINTERNAL void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue, void *data);
+
 tfxINTERNAL void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data);
+
 tfxINTERNAL void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
 
