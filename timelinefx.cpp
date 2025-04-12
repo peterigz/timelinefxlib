@@ -214,7 +214,7 @@ tfx_storage_t *tfx_GetGlobals() {
 	}
 
 	//A 3d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
+	tfxWideFloat tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
 		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
@@ -323,8 +323,8 @@ tfx_storage_t *tfx_GetGlobals() {
 		cond = _mm_cmplt_ps(t3, tfxZERO.m);
 		n3 = _mm_or_ps(_mm_andnot_ps(cond, n3), _mm_and_ps(cond, tfxZERO.m));
 
-		tfx128Array result;
-		result.m = _mm_mul_ps(tfxTHIRTYTWO.m, _mm_add_ps(n0, _mm_add_ps(n1, _mm_add_ps(n2, n3))));
+		tfx128 result;
+		result = _mm_mul_ps(tfxTHIRTYTWO.m, _mm_add_ps(n0, _mm_add_ps(n1, _mm_add_ps(n2, n3))));
 		return result;
 	}
 

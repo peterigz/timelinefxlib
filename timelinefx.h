@@ -38,7 +38,7 @@
 	[File_IO]							A package manager for reading/writing files such as a tfx library effects file
 	[Struct_Types]						All of the structs used for objects in TimelineFX
 	[Internal_Functions]				Mainly internal functions called only by the library but also the Editor, these are marked either tfxINTERNAL or tfxAPI_EDITOR
-	[Control_Position_Policies]			Inline functions for templated the functions that control particle positions
+	[Control_Position_Policies]			Inline functions for templated functions that control particle positions
 	[API_Functions]						The main functions for use by users of the library
 		-[Initialisation_functions]		Startup and shutdown timelinefx
 		-[Global_variable_access]		Any functions that give you access to global variables relating to timelinefx
@@ -1573,7 +1573,7 @@ tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tf
 
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 //Hiding this define here for now until I can test and improve AVX more
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -1846,6 +1846,9 @@ const tfxWideArray tfxWIDEPI2         = tfxWideSetConst(6.283185307f);
 const tfxWideArray tfxWIDEINVTWOPI    = tfxWideSetConst(0.1591549f);
 const tfxWideArray tfxWIDETHREEHALFPI = tfxWideSetConst(4.7123889f);
 const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
+const tfxWideFloat tfxWIDEEPS		  = tfxWideSetConst(0.001f);
+const tfxWideFloat tfxWIDEEPS2		  = tfxWideSetConst(0.002f);
+const tfxWideFloat tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
 #ifdef tfxINTEL
 typedef __m128 tfx128;
@@ -5318,7 +5321,7 @@ static const uint8_t tfx_perm_mod12[] =
 
 // 4 noise samples using simd
 tfx128Array tfxNoise4_2d(const tfx128 x4, const tfx128 y4);
-tfx128Array tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4);
+tfxWideFloat tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4);
 
 //-----------------------------------------------------------
 //Section: Profiling
@@ -7410,31 +7413,6 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 	return tfxWideConvert(h);
 }
 
-//An ugly macro to unroll the loop for the simplex noise algo
-#define tfxParticleNoise3dLoopUnroll(n)        \
-x4 = tfx128SetSingle(x.a[n]);    \
-y4 = tfx128SetSingle(y.a[n]);    \
-z4 = tfx128SetSingle(z.a[n]);    \
-xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);    \
-xeps4r = tfx128Set(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);    \
-yeps4 = tfx128Set(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);    \
-zeps4 = tfx128Set(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);    \
-zeps4r = tfx128Set(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);    \
-sample = tfxNoise4_3d(x4, yeps4, zeps4);    \
-a = (sample.a[0] - sample.a[1]) / eps2;    \
-b = (sample.a[2] - sample.a[3]) / eps2;    \
-noise_x.a[n] = a - b;    \
-y.a[n] += 100.f;    \
-yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);    \
-sample = tfxNoise4_3d(xeps4, y4, zeps4r);    \
-a = (sample.a[0] - sample.a[1]) / eps2;    \
-b = (sample.a[2] - sample.a[3]) / eps2;    \
-noise_y.a[n] = a - b;    \
-sample = tfxNoise4_3d(xeps4r, yeps4r, z4);    \
-a = (sample.a[0] - sample.a[1]) / eps2;    \
-b = (sample.a[2] - sample.a[3]) / eps2;    \
-noise_z.a[n] = a - b;
-
 //--------------------------------
 //Control particle inline functions and policies
 //--------------------------------
@@ -7729,7 +7707,7 @@ struct tfx_apply_lookup_weight {
 	}
 };
 
-struct tfx_apply_simplex_noise {
+struct tfx_apply_curl_noise {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
 		ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
@@ -7747,7 +7725,6 @@ struct tfx_apply_simplex_noise {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
-		tfxWideArray noise_x, noise_y, noise_z;
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
 		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
@@ -7755,35 +7732,54 @@ struct tfx_apply_simplex_noise {
 		tfx__readbarrier;
 
 		ctx.lookup_noise_resolution = tfxWideMul(ctx.lookup_noise_resolution, noise_resolution);
-		tfxWideArray x, y, z;
-		x.m = tfxWideAdd(tfxWideDiv(ctx.position_x, ctx.lookup_noise_resolution), noise_offset);
-		y.m = tfxWideAdd(tfxWideDiv(ctx.position_y, ctx.lookup_noise_resolution), noise_offset);
-		z.m = tfxWideAdd(tfxWideDiv(ctx.position_z, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z, ctx.lookup_noise_resolution), noise_offset);
 
-		float eps = 0.001f;
-		float eps2 = 0.002f;
-		tfx128 x4, y4, z4, xeps4, xeps4r, yeps4, zeps4, zeps4r, yeps4r;
-		tfx128Array sample;
-		float a, b;
+		// 2. Calculate Offset Y coordinate for the 4 particles
+		tfxWideFloat regPyOffset = tfxWideAdd(y, tfxWIDENOISEOFFSET);
 
-		tfxParticleNoise3dLoopUnroll(0)
-		tfxParticleNoise3dLoopUnroll(1)
-		tfxParticleNoise3dLoopUnroll(2)
-		tfxParticleNoise3dLoopUnroll(3)
-#if defined(tfxUSEAVX)    
-		tfxParticleNoise3dLoopUnroll(4)
-		tfxParticleNoise3dLoopUnroll(5)
-		tfxParticleNoise3dLoopUnroll(6)
-		tfxParticleNoise3dLoopUnroll(7)
-#endif    
+		// 3. Perform Noise Samples (10 calls, each processing 4 particles)
+		// --- Samples needed for Curl X component
+		tfxWideFloat regN_y_minus_eps = tfxNoise4_3d(x, tfxWideSub(y, tfxWIDEEPS), z);
+		tfxWideFloat regN_y_plus_eps = tfxNoise4_3d(x, tfxWideAdd(y, tfxWIDEEPS), z);
+		tfxWideFloat regN_z_minus_eps = tfxNoise4_3d(x, y, tfxWideSub(z, tfxWIDEEPS));
+		tfxWideFloat regN_z_plus_eps = tfxNoise4_3d(x, y, tfxWideAdd(z, tfxWIDEEPS));
 
-		noise_x.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x.m));
-		noise_y.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y.m));
-		noise_z.m = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z.m));
+		// --- Samples needed for Curl Y component
+		tfxWideFloat regNoff_z_minus_eps = tfxNoise4_3d(x, regPyOffset, tfxWideSub(z, tfxWIDEEPS));
+		tfxWideFloat regNoff_z_plus_eps = tfxNoise4_3d(x, regPyOffset, tfxWideAdd(z, tfxWIDEEPS));
+		tfxWideFloat regNoff_x_minus_eps = tfxNoise4_3d(tfxWideSub(x, tfxWIDEEPS), regPyOffset, z);
+		tfxWideFloat regNoff_x_plus_eps = tfxNoise4_3d(tfxWideAdd(x, tfxWIDEEPS), regPyOffset, z);
 
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x.m);
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y.m);
-		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z.m);
+		// --- Samples needed for Curl Z component
+		// Re-use regNoff_x_minus_eps, regNoff_x_plus_eps
+		tfxWideFloat regNoff_y_minus_eps = tfxNoise4_3d(x, tfxWideSub(regPyOffset, tfxWIDEEPS), z);
+		tfxWideFloat regNoff_y_plus_eps = tfxNoise4_3d(x, tfxWideAdd(regPyOffset, tfxWIDEEPS), z);
+
+		// 4. Calculate Partial Derivatives and Curl Components using SSE math
+		// Derivatives for Curl X
+		tfxWideFloat reg_dNdy = tfxWideDiv(tfxWideSub(regN_y_plus_eps, regN_y_minus_eps), tfxWIDEEPS2);
+		tfxWideFloat reg_dNdz = tfxWideDiv(tfxWideSub(regN_z_plus_eps, regN_z_minus_eps), tfxWIDEEPS2);
+		// Derivatives for Curl Y (offset)
+		tfxWideFloat reg_dNdz_off = tfxWideDiv(tfxWideSub(regNoff_z_plus_eps, regNoff_z_minus_eps), tfxWIDEEPS2);
+		tfxWideFloat reg_dNdx_off = tfxWideDiv(tfxWideSub(regNoff_x_plus_eps, regNoff_x_minus_eps), tfxWIDEEPS2);
+		// Derivatives for Curl Z (offset)
+		// Re-use reg_dNdx_off
+		tfxWideFloat reg_dNdy_off = tfxWideDiv(tfxWideSub(regNoff_y_plus_eps, regNoff_y_minus_eps), tfxWIDEEPS2);
+
+		// Curl Components for 4 particles
+		tfxWideFloat noise_x = tfxWideSub(reg_dNdy, reg_dNdz);
+		tfxWideFloat noise_y = tfxWideSub(reg_dNdz_off, reg_dNdx_off);
+		tfxWideFloat noise_z = tfxWideSub(reg_dNdx_off, reg_dNdy_off);
+
+		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
+		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
+		noise_z = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z));
+
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y);
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z);
 	}
 };
 
