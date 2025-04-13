@@ -7819,7 +7819,7 @@ struct tfx_apply_curl_noise {
 		// 2. Calculate Offset Y coordinate for the 4 particles
 		tfxWideFloat y_offset = tfxWideAdd(y, tfxWIDENOISEOFFSET.m);
 
-		// 3. Perform Noise Samples (10 calls, each processing 4 particles)
+		// 3. Perform Noise Samples (10 calls, each processing either 4 or 8 particles for SSE or AVX)
 		// --- Samples needed for Curl X component
 		tfxWideFloat y_minus_eps = tfx__simd_noise_3d(x, tfxWideSub(y, tfxWIDEEPS.m), z);
 		tfxWideFloat y_plus_eps = tfx__simd_noise_3d(x, tfxWideAdd(y, tfxWIDEEPS.m), z);
@@ -8355,9 +8355,6 @@ tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 }
 
 tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
-
-tfxINTERNAL void tfx__control_update_count(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_update_count_reset(tfx_effect_manager pm, tfxU32 emitter_index, tfx_buffer_t *sprite_instances);
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
