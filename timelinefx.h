@@ -5,6 +5,10 @@
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
+#define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025
+//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
+#define tfxUSEAVX
+
 //#define TFX_MEMORY_TRACKING
 
 /*
@@ -1571,10 +1575,6 @@ tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tf
 
 #define tfx128SetConst(value) {value, value, value, value}
 
-//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
-//Hiding this define here for now until I can test and improve AVX more
-//#define tfxUSEAVX
-
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
 //Note that avx is currently only slightly faster than SSE, probably because memory bandwidth/caching becomes more of an issue at that point. But also I could be doing it wrong!
@@ -1634,6 +1634,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSetZero _mm256_setzero_ps()
 #define tfxWideSetZeroi _mm256_setzero_si256()
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
+#define tfxWideFloor _mm256_floor_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfxWideSet(lookup[index.a[7] + offset], lookup[index.a[6] + offset], lookup[index.a[5] + offset], lookup[index.a[4] + offset], lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
@@ -1712,6 +1713,11 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideEqualsi _mm_cmpeq_epi32
 #define tfxWideEquals _mm_cmpeq_ps
 #define tfxWideShufflei _mm_shuffle_epi32
+#ifdef SSE41
+#define tfxWideFloor _mm_floor_ps
+#else
+#define tfxWideFloor tfxFloor128
+#endif
 
 #define tfxWideSetConst(value) {value, value, value, value}
 
@@ -1846,9 +1852,9 @@ const tfxWideArray tfxWIDEPI2         = tfxWideSetConst(6.283185307f);
 const tfxWideArray tfxWIDEINVTWOPI    = tfxWideSetConst(0.1591549f);
 const tfxWideArray tfxWIDETHREEHALFPI = tfxWideSetConst(4.7123889f);
 const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
-const tfxWideFloat tfxWIDEEPS		  = tfxWideSetConst(0.001f);
-const tfxWideFloat tfxWIDEEPS2		  = tfxWideSetConst(0.002f);
-const tfxWideFloat tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
+const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.001f);
+const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.002f);
+const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
 #ifdef tfxINTEL
 typedef __m128 tfx128;
@@ -1876,19 +1882,13 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
 	//__m128i ji = _mm_srli_epi32(v1, 25);
 	//__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
 	//Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
-	__m128 j = _mm_set1_ps(1.f); //create vector 1.0f
+	__m128 j = _mm_set1_ps(1.f); //create vector 1.0f I think this is faster now on more modern CPUs
 	__m128i i = _mm_cvttps_epi32(x);
 	__m128 fi = _mm_cvtepi32_ps(i);
 	__m128 igx = _mm_cmpgt_ps(fi, x);
 	j = _mm_and_ps(igx, j);
 	return _mm_sub_ps(fi, j);
 }
-
-#ifdef tfxUSEAVX
-#define tfxWideFloor _mm256_floor_ps
-#else
-#define tfxWideFloor tfxFloor128
-#endif
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return __rdtsc();
@@ -2537,7 +2537,16 @@ typedef enum {
 	tfxExtrusionLinear
 } tfx_path_extrusion_type;
 
+//These must not change, values are used in the save file.
+typedef enum {
+	tfxNoNoise,
+	tfxWhiteNoise,
+	tfxSimplexNoise,
+	tfxCurlNoise,
+} tfx_noise_type;
+
 //Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
+//These must not change, values are used in the save file.
 typedef enum {
 	tfxInwards,
 	tfxOutwards,
@@ -2549,6 +2558,7 @@ typedef enum {
 } tfx_emission_direction;
 
 //For line effects where traverse line is switched on
+//These must not change, values are used in the save file.
 typedef enum {
 	tfxLoop,
 	tfxKill,
@@ -2753,18 +2763,21 @@ typedef enum {
 
 typedef enum {
 	tfxEmitterControlProfile_basic                              = 0,
-	tfxEmitterControlProfile_noise                              = 1 << 0,
-	tfxEmitterControlProfile_orbital                            = 1 << 1,
+	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,
+	tfxEmitterControlProfile_curl_noise                         = 1 << 1,
 	tfxEmitterControlProfile_motion_randomness                  = 1 << 2,
-	tfxEmitterControlProfile_path                               = 1 << 3,
-	tfxEmitterControlProfile_path_rotated_path                  = 1 << 4,
-	tfxEmitterControlProfile_edge_traversal                     = 1 << 5,
-	tfxEmitterControlProfile_edge_kill                          = 1 << 6,
-	tfxEmitterControlProfile_edge_loop                          = 1 << 7,
-	tfxEmitterControlProfile_stretch                            = 1 << 8,
-	tfxEmitterControlProfile_other_ribbon_emitter_path          = 1 << 9,
-	tfxEmitterControlProfile_spin3d                             = 1 << 10,
-	tfxEmitterControlProfile_spin                               = 1 << 11,
+	tfxEmitterControlProfile_orbital                            = 1 << 3,
+	tfxEmitterControlProfile_path                               = 1 << 4,
+	tfxEmitterControlProfile_path_rotated_path                  = 1 << 5,
+	tfxEmitterControlProfile_edge_traversal                     = 1 << 6,
+	tfxEmitterControlProfile_edge_kill                          = 1 << 7,
+	tfxEmitterControlProfile_edge_loop                          = 1 << 8,
+	tfxEmitterControlProfile_stretch                            = 1 << 9,
+	tfxEmitterControlProfile_other_ribbon_emitter_path          = 1 << 10,
+	tfxEmitterControlProfile_spin3d                             = 1 << 11,
+	tfxEmitterControlProfile_spin                               = 1 << 12,
+	tfxEmitterControlProfile_has_simplex_noise_type				= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise,
+	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_motion_randomness
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -2901,7 +2914,6 @@ typedef enum {
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling	    = 1 << 11,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling		    = 1 << 12,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		    = 1 << 13,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_use_simple_motion_randomness	    = 1 << 14,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
 	tfxEmitterPropertyFlags_use_path_as_trajectory				= 1 << 15,		//When using path emission type, all particles will be spawned at the start of the path only and travel along the path. Only available when traverse edge is active
 } tfx_particle_emitter_flag_bits;
 
@@ -3560,6 +3572,8 @@ typedef struct tfx_soa_buffer_s {
 	tfxU32 last_bump;						//the amount the the start index was bumped by the last time tfx__bump_soa_buffer was called
 	tfxU32 capacity;						//capacity of each array
 	tfxU32 block_size;						//Keep the capacity to the nearest block size
+	tfxU32 buffer_amount;					//Specify an amount of extra space there should be in addition to the max capacity. This is so that in a ring buffer if you want to align to the nearest block_size amount you
+											//can avoid looping over data twice once at the beginning and again at the end
 	tfxU32 alignment;						//The alignment of the memory. If you're planning on using simd for the memory, then 16 will be necessary.
 #ifdef __cplusplus
 	tfx_vector_t<tfx_soa_data_t> array_ptrs;    //Container for all the pointers into the arena
@@ -3880,7 +3894,7 @@ struct tfx_storage_map_t {
 #endif
 
 //Note this doesn't free memory, call tfx__free_soa_buffer to do that.
-inline void tfx__reset_soa_buffer(tfx_soa_buffer_t *buffer) {
+inline void tfx__init_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = 0;
 	buffer->struct_size = 0;
 	buffer->current_size = 0;
@@ -3889,6 +3903,7 @@ inline void tfx__reset_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->capacity = 0;
 	buffer->alignment = 4;
 	buffer->block_size = tfxDataWidth;
+	buffer->buffer_amount = 0;
 	buffer->user_data = nullptr;
 	buffer->resize_callback = nullptr;
 	buffer->struct_of_arrays = nullptr;
@@ -3940,14 +3955,16 @@ inline size_t tfx__get_soa_capacity_requirement(tfx_soa_buffer_t *buffer, size_t
 //Once you have called tfx__add_struct_array for all your member variables you must call this function in order to 
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
-inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, tfxU32 alignment = 4) {
+inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, tfxU32 alignment = 4, tfxU32 buffer_amount = 0) {
 	TFX_ASSERT(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);    //Must be an unitialised soa buffer
 	TFX_ASSERT(alignment >= 4);        //Alignment must be 4 or greater
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
+	buffer->buffer_amount = buffer_amount;
 	reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
 	buffer->capacity = reserve_amount;
+	TFX_ASSERT(buffer->capacity > buffer->buffer_amount);	//buffer_amount must be less than the capacity, reserver more than the buffer_amount
 	buffer->alignment = alignment;
 	buffer->current_arena_size = tfx__get_soa_capacity_requirement(buffer, reserve_amount);
 	buffer->data = tfxALLOCATE_ALIGNED(buffer->current_arena_size, buffer->alignment);
@@ -4044,8 +4061,9 @@ inline void tfx__set_soa_capacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 //Increase current size of a SoA Buffer by 1 and grow if grow is true. Returns the last index.
 inline tfxU32 tfx__add_soa_row(tfx_soa_buffer_t *buffer, bool grow = false) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
+	TFX_ASSERT(buffer->capacity >= buffer->buffer_amount);            //Buffer amount must not be greater than capacity of the buffer
 	tfxU32 new_size = ++buffer->current_size;
-	if (grow && new_size == buffer->capacity) {
+	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
 		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
@@ -4057,9 +4075,10 @@ inline tfxU32 tfx__add_soa_row(tfx_soa_buffer_t *buffer, bool grow = false) {
 //You can also pass in a boolean to know if the buffer had to be increased in size or not. Returns the index where the new rows start.
 inline tfxU32 tfx__add_soa_rows_grew(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow, bool &grew) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
+	TFX_ASSERT(buffer->capacity >= buffer->buffer_amount);            //Buffer amount must not be greater than capacity of the buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size += amount;
-	if (grow && new_size >= buffer->capacity) {
+	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
 		grew = tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
@@ -4070,9 +4089,10 @@ inline tfxU32 tfx__add_soa_rows_grew(tfx_soa_buffer_t *buffer, tfxU32 amount, bo
 //Increase current size of a SoA Buffer and grow if grow is true. Returns the index where the new rows start.
 inline tfxU32 tfx__add_soa_rows(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
+	TFX_ASSERT(buffer->capacity >= buffer->buffer_amount);            //Buffer amount must not be greater than capacity of the buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size + amount;
-	if (grow && new_size >= buffer->capacity) {
+	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
 		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
@@ -4113,7 +4133,7 @@ inline void tfx__free_soa_buffer(tfx_soa_buffer_t *buffer) {
 	if (buffer->data)
 		tfxFREE(buffer->data);
 	buffer->array_ptrs.free();
-	tfx__reset_soa_buffer(buffer);
+	tfx__init_soa_buffer(buffer);
 }
 
 //Clear the SoA buffer
@@ -4131,7 +4151,7 @@ inline void tfx__trim_soa_buffer(tfx_soa_buffer_t *buffer) {
 		return;
 	}
 	TFX_ASSERT(buffer->current_size < buffer->capacity);
-	tfxU32 new_capacity = buffer->current_size;
+	tfxU32 new_capacity = buffer->current_size + buffer->buffer_amount;
 	void *new_data = tfxALLOCATE_ALIGNED(tfx__get_soa_capacity_requirement(buffer, new_capacity), buffer->alignment);
 	TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
@@ -5208,19 +5228,19 @@ const float gradZ[] =
 	1, 1,-1,-1
 };
 
-const tfx128Array tfxF3_4 = tfx128SetConst(1.0f / 3.0f);
-const tfx128Array tfxF2_4 = tfx128SetConst(.366025403f);
-const tfx128Array tfxG2_4 = tfx128SetConst(0.211324865f);
-const tfx128Array tfxG2_4x2 = tfx128SetConst(0.42264973f);
-const tfx128Array tfxG3_4 = tfx128SetConst(1.0f / 6.0f);
-const tfx128Array tfxG32_4 = tfx128SetConst((1.0f / 6.0f) * 2.f);
-const tfx128Array tfxG33_4 = tfx128SetConst((1.0f / 6.0f) * 3.f);
-const tfx128iArray tfxONE = tfx128SetConst(1);
-const tfx128Array tfxONEF = tfx128SetConst(1.f);
-const tfx128Array tfxZERO = tfx128SetConst(0.f);
-const tfx128Array tfxTHIRTYTWO = tfx128SetConst(32.f);
-const tfx128iArray tfxFF = tfx128SetConst(0xFF);
-const tfx128Array tfxPSIX = tfx128SetConst(0.6f);
+const tfxWideArray tfxF3_4 = tfxWideSetConst(1.0f / 3.0f);
+const tfxWideArray tfxF2_4 = tfxWideSetConst(.366025403f);
+const tfxWideArray tfxG2_4 = tfxWideSetConst(0.211324865f);
+const tfxWideArray tfxG2_4x2 = tfxWideSetConst(0.42264973f);
+const tfxWideArray tfxG3_4 = tfxWideSetConst(1.0f / 6.0f);
+const tfxWideArray tfxG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const tfxWideArray tfxG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const tfxWideArrayi tfxONE = tfxWideSetConst(1);
+const tfxWideArray tfxONEF = tfxWideSetConst(1.f);
+const tfxWideArray tfxZERO = tfxWideSetConst(0.f);
+const tfxWideArray tfxTHIRTYTWO = tfxWideSetConst(32.f);
+const tfxWideArrayi tfxFF = tfxWideSetConst(int(255));
+const tfxWideArray tfxPSIX = tfxWideSetConst(0.6f);
 
 static const float tfxGRADIENTS_3D[] =
 {
@@ -5320,8 +5340,8 @@ static const uint8_t tfx_perm_mod12[] =
 };
 
 // 4 noise samples using simd
-tfx128Array tfxNoise4_2d(const tfx128 x4, const tfx128 y4);
-tfxWideFloat tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4);
+tfxWideFloat tfx__simd_noise_2d(const tfxWideFloat x4, const tfxWideFloat y4);
+tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, const tfxWideFloat z4);
 
 //-----------------------------------------------------------
 //Section: Profiling
@@ -5759,6 +5779,9 @@ typedef struct tfx_emitter_emitter_properties_s {
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
 	tfx_emission_direction emission_direction;
 
+	//The type of noise algorithm to use
+	tfx_noise_type noise_algorithm;
+
 	//How particles should behave when they reach the end of the line
 	tfx_line_traversal_end_behaviour end_behaviour;
 	//Bit field of various boolean state_flags
@@ -6143,6 +6166,7 @@ typedef struct tfx_unique_sprite_id_s {
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
 	tfxU32 *uid;
+	tfxU32 *update_count;
 	tfxU32 *sprite_index;
 	tfxParticleFlags *flags;
 	float *age;
@@ -6519,6 +6543,7 @@ typedef struct tfx_control_work_entry_s {
 	tfxU32 end_index;
 	tfxU32 wide_end_index;
 	tfxU32 start_diff;
+	tfxU32 running_sprite_offset;
 	tfxU32 sprites_index;
 	tfxU32 cumulative_index_point;
 	tfxU32 effect_instance_offset;
@@ -7046,7 +7071,7 @@ tfxAPI_EDITOR void tfx__complete_effect_manager_work(tfx_effect_manager pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
-tfxINTERNAL bool tfx__emitter_has_noise(tfx_effect_descriptor emitter);
+tfxINTERNAL tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
@@ -7351,8 +7376,6 @@ tfxINTERNAL void tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point_cache, 
 tfxINTERNAL int tfx__sort_icosphere_points(void const *left, void const *right);
 tfxINTERNAL int tfx__sort_depth(void const *left, void const *right);
 tfxINTERNAL void tfx__insertion_sort_depth(tfx_work_queue_t *queue, void *work_entry);
-tfxINTERNAL tfx128 tfx__dot128_xyz(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z);
-tfxINTERNAL tfx128 tfx__dot128_xy(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2);
 tfxINTERNAL float tfx__length_vec4_nosqr(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__length_vec4(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__has_length_vec3(tfx_vec3_t const *v);
@@ -7416,6 +7439,9 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 //--------------------------------
 //Control particle inline functions and policies
 //--------------------------------
+#define tfx__wide_dp_xyz(x1,y1,z1,x2,y2,z2) tfxWideAdd(tfxWideMul(x1, x2), tfxWideAdd(tfxWideMul(y1, y2), tfxWideMul(z1, z2)))
+#define tfx__wide_dp_xy(x1,y1,x2,y2) tfxWideAdd(tfxWideMul(x1, x2), tfxWideMul(y1, y2))
+
 tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
 	tfxWideInt w511 = tfxWideSetSinglei(511);
 	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
@@ -7707,6 +7733,60 @@ struct tfx_apply_lookup_weight {
 	}
 };
 
+struct tfx_apply_simplex_noise {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+		ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
+			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
+			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+		}
+
+		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+		ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
+			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
+			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+		}
+
+		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
+
+		tfx__readbarrier;
+
+		ctx.lookup_noise_resolution = tfxWideMul(ctx.lookup_noise_resolution, noise_resolution);
+		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z, ctx.lookup_noise_resolution), noise_offset);
+
+		tfxWideFloat y_offset = tfxWideAdd(y, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
+		tfxWideFloat z_offset = tfxWideAdd(z, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
+
+		tfxWideFloat noise_x = tfx__simd_noise_3d(x, y, z);
+		tfxWideFloat noise_y = tfx__simd_noise_3d(x, y_offset, z);
+		tfxWideFloat noise_z = tfx__simd_noise_3d(x, y, z_offset);
+
+		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
+		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
+		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+		l = tfxWideRSqrt(l);
+		noise_x = tfxWideMul(noise_x, l);
+		noise_y = tfxWideMul(noise_y, l);
+		noise_z = tfxWideMul(noise_z, l);
+
+		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
+		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
+		noise_z = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z));
+
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y);
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z);
+	}
+};
+
 struct tfx_apply_curl_noise {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
@@ -7737,41 +7817,49 @@ struct tfx_apply_curl_noise {
 		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z, ctx.lookup_noise_resolution), noise_offset);
 
 		// 2. Calculate Offset Y coordinate for the 4 particles
-		tfxWideFloat regPyOffset = tfxWideAdd(y, tfxWIDENOISEOFFSET);
+		tfxWideFloat y_offset = tfxWideAdd(y, tfxWIDENOISEOFFSET.m);
 
 		// 3. Perform Noise Samples (10 calls, each processing 4 particles)
 		// --- Samples needed for Curl X component
-		tfxWideFloat regN_y_minus_eps = tfxNoise4_3d(x, tfxWideSub(y, tfxWIDEEPS), z);
-		tfxWideFloat regN_y_plus_eps = tfxNoise4_3d(x, tfxWideAdd(y, tfxWIDEEPS), z);
-		tfxWideFloat regN_z_minus_eps = tfxNoise4_3d(x, y, tfxWideSub(z, tfxWIDEEPS));
-		tfxWideFloat regN_z_plus_eps = tfxNoise4_3d(x, y, tfxWideAdd(z, tfxWIDEEPS));
+		tfxWideFloat y_minus_eps = tfx__simd_noise_3d(x, tfxWideSub(y, tfxWIDEEPS.m), z);
+		tfxWideFloat y_plus_eps = tfx__simd_noise_3d(x, tfxWideAdd(y, tfxWIDEEPS.m), z);
+		tfxWideFloat z_minus_eps = tfx__simd_noise_3d(x, y, tfxWideSub(z, tfxWIDEEPS.m));
+		tfxWideFloat z_plus_eps = tfx__simd_noise_3d(x, y, tfxWideAdd(z, tfxWIDEEPS.m));
 
 		// --- Samples needed for Curl Y component
-		tfxWideFloat regNoff_z_minus_eps = tfxNoise4_3d(x, regPyOffset, tfxWideSub(z, tfxWIDEEPS));
-		tfxWideFloat regNoff_z_plus_eps = tfxNoise4_3d(x, regPyOffset, tfxWideAdd(z, tfxWIDEEPS));
-		tfxWideFloat regNoff_x_minus_eps = tfxNoise4_3d(tfxWideSub(x, tfxWIDEEPS), regPyOffset, z);
-		tfxWideFloat regNoff_x_plus_eps = tfxNoise4_3d(tfxWideAdd(x, tfxWIDEEPS), regPyOffset, z);
+		tfxWideFloat off_z_minus_eps = tfx__simd_noise_3d(x, y_offset, tfxWideSub(z, tfxWIDEEPS.m));
+		tfxWideFloat off_z_plus_eps = tfx__simd_noise_3d(x, y_offset, tfxWideAdd(z, tfxWIDEEPS.m));
+		tfxWideFloat off_x_minus_eps = tfx__simd_noise_3d(tfxWideSub(x, tfxWIDEEPS.m), y_offset, z);
+		tfxWideFloat off_x_plus_eps = tfx__simd_noise_3d(tfxWideAdd(x, tfxWIDEEPS.m), y_offset, z);
 
 		// --- Samples needed for Curl Z component
-		// Re-use regNoff_x_minus_eps, regNoff_x_plus_eps
-		tfxWideFloat regNoff_y_minus_eps = tfxNoise4_3d(x, tfxWideSub(regPyOffset, tfxWIDEEPS), z);
-		tfxWideFloat regNoff_y_plus_eps = tfxNoise4_3d(x, tfxWideAdd(regPyOffset, tfxWIDEEPS), z);
+		// Re-use off_x_minus_eps, off_x_plus_eps
+		tfxWideFloat off_y_minus_eps = tfx__simd_noise_3d(x, tfxWideSub(y_offset, tfxWIDEEPS.m), z);
+		tfxWideFloat off_y_plus_eps = tfx__simd_noise_3d(x, tfxWideAdd(y_offset, tfxWIDEEPS.m), z);
 
 		// 4. Calculate Partial Derivatives and Curl Components using SSE math
 		// Derivatives for Curl X
-		tfxWideFloat reg_dNdy = tfxWideDiv(tfxWideSub(regN_y_plus_eps, regN_y_minus_eps), tfxWIDEEPS2);
-		tfxWideFloat reg_dNdz = tfxWideDiv(tfxWideSub(regN_z_plus_eps, regN_z_minus_eps), tfxWIDEEPS2);
+		tfxWideFloat dy = tfxWideDiv(tfxWideSub(y_plus_eps, y_minus_eps), tfxWIDEEPS2.m);
+		tfxWideFloat dz = tfxWideDiv(tfxWideSub(z_plus_eps, z_minus_eps), tfxWIDEEPS2.m);
 		// Derivatives for Curl Y (offset)
-		tfxWideFloat reg_dNdz_off = tfxWideDiv(tfxWideSub(regNoff_z_plus_eps, regNoff_z_minus_eps), tfxWIDEEPS2);
-		tfxWideFloat reg_dNdx_off = tfxWideDiv(tfxWideSub(regNoff_x_plus_eps, regNoff_x_minus_eps), tfxWIDEEPS2);
+		tfxWideFloat dz_off = tfxWideDiv(tfxWideSub(off_z_plus_eps, off_z_minus_eps), tfxWIDEEPS2.m);
+		tfxWideFloat dx_off = tfxWideDiv(tfxWideSub(off_x_plus_eps, off_x_minus_eps), tfxWIDEEPS2.m);
 		// Derivatives for Curl Z (offset)
-		// Re-use reg_dNdx_off
-		tfxWideFloat reg_dNdy_off = tfxWideDiv(tfxWideSub(regNoff_y_plus_eps, regNoff_y_minus_eps), tfxWIDEEPS2);
+		// Re-use dx_off
+		tfxWideFloat dy_off = tfxWideDiv(tfxWideSub(off_y_plus_eps, off_y_minus_eps), tfxWIDEEPS2.m);
 
 		// Curl Components for 4 particles
-		tfxWideFloat noise_x = tfxWideSub(reg_dNdy, reg_dNdz);
-		tfxWideFloat noise_y = tfxWideSub(reg_dNdz_off, reg_dNdx_off);
-		tfxWideFloat noise_z = tfxWideSub(reg_dNdx_off, reg_dNdy_off);
+		tfxWideFloat noise_x = tfxWideSub(dy, dz);
+		tfxWideFloat noise_y = tfxWideSub(dz_off, dx_off);
+		tfxWideFloat noise_z = tfxWideSub(dx_off, dy_off);
+
+		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
+		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
+		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+		l = tfxWideRSqrt(l);
+		noise_x = tfxWideMul(noise_x, l);
+		noise_y = tfxWideMul(noise_y, l);
+		noise_z = tfxWideMul(noise_z, l);
 
 		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
 		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
@@ -8023,13 +8111,23 @@ struct tfx_apply_orbital_scale_velocity {
 struct tfx_apply_position {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(ctx.age, pm->frame_length_wide), tfxWIDEONE.m);
+		//tfxWideFloat age_fraction = tfxWIDEONE.m;
 		ctx.velocity_y = tfxWideSub(ctx.velocity_y, ctx.weight);
 		ctx.velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_x, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_y, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_z, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
+		tfxWideFloat last_y = ctx.position_y;
 		ctx.position_x = tfxWideAdd(ctx.position_x, tfxWideMul(ctx.velocity_x, ctx.overal_scale_wide));
 		ctx.position_y = tfxWideAdd(ctx.position_y, tfxWideMul(ctx.velocity_y, ctx.overal_scale_wide));
 		ctx.position_z = tfxWideAdd(ctx.position_z, tfxWideMul(ctx.velocity_z, ctx.overal_scale_wide));
+		tfxWideArray distance;
+		distance.m = tfxWideSub(ctx.position_y, last_y);
+		for (int i = 0; i != tfxDataWidth; ++i) {
+			if (distance.a[i] > 0.066537) {
+				int d = 0;
+				//0.0665362030
+			}
+		}
 		tfxWideStore(&bank.position_x[index], ctx.position_x);
 		tfxWideStore(&bank.position_y[index], ctx.position_y);
 		tfxWideStore(&bank.position_z[index], ctx.position_z);
@@ -8041,61 +8139,6 @@ void tfx__setup_particles_position(tfx_control_work_entry_t *work_entry, tfx_pos
 
 template <typename... Policies>
 void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
-
-tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  
-														const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide) {
-	tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
-	tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-	tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
-	tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
-	current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
-	current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm->update_time_wide), velocity_adjuster), age_fraction);
-	current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm->update_time_wide), velocity_adjuster), age_fraction);
-	current_velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_z, pm->update_time_wide), velocity_adjuster), age_fraction);
-	local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
-	local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
-	local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale_wide));
-	tfxWideStore(&bank.position_x[index], local_position_x);
-	tfxWideStore(&bank.position_y[index], local_position_y);
-	tfxWideStore(&bank.position_z[index], local_position_z);
-}
-
-tfxINTERNAL inline void tfx__update_particle_position(tfx_particle_soa_t &bank, tfxWideFloat &current_velocity_x, tfxWideFloat &current_velocity_y, tfxWideFloat &current_velocity_z, const tfxU32 index,  
-														const tfxWideFloat &age, const tfx_effect_manager pm, const tfxWideFloat &base_weight, const tfxWideFloat &lookup_weight, const tfxWideFloat &velocity_adjuster, const tfxWideFloat &overal_scale_wide,
-														tfxWideFloat &local_position_x, tfxWideFloat &local_position_y, tfxWideFloat &local_position_z) {
-	tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
-	current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
-	current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm->update_time_wide), velocity_adjuster), age_fraction);
-	current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm->update_time_wide), velocity_adjuster), age_fraction);
-	current_velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_z, pm->update_time_wide), velocity_adjuster), age_fraction);
-	local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
-	local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
-	local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale_wide));
-	tfxWideStore(&bank.position_x[index], local_position_x);
-	tfxWideStore(&bank.position_y[index], local_position_y);
-	tfxWideStore(&bank.position_z[index], local_position_z);
-}
-
-tfxINTERNAL inline tfxWideFloat tfx__get_particle_life(tfx_particle_soa_t &bank, const bool sample_path_life,  const tfxU32 index, const tfxWideFloat &age, const tfxWideFloat &max_age, const tfxWideFloat &node_count) {
-	if (sample_path_life) {
-		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-		return tfxWideDiv(path_position, node_count);
-	}
-	else {
-		return tfxWideDiv(age, max_age);
-	}    
-}
-
-tfxINTERNAL inline void tfx__set_orbital_vector(tfxWideFloat &velocity_normal_x, tfxWideFloat &velocity_normal_y, tfxWideFloat &velocity_normal_z, const tfxWideFloat &local_position_x, const tfxWideFloat &local_position_z, const tfxWideFloat &emitter_x, const tfxWideFloat &emitter_z)  {
-	velocity_normal_z = tfxWideSub(local_position_x, emitter_x);    
-	velocity_normal_y = tfxWideSetZero;    
-	velocity_normal_x = tfxWideMul(tfxWideSub(local_position_z, emitter_z), tfxWideSetSingle(-1.f));    
-	tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);    
-	l = tfxWideAdd(l, tfxWideMul(velocity_normal_z, velocity_normal_z));    
-	l = tfxWideMul(tfxWideRSqrt(l), l);    
-	velocity_normal_x = tfxWideDiv(velocity_normal_x, l);    
-	velocity_normal_z = tfxWideDiv(velocity_normal_z, l);    
-}
 
 //--------------------------------
 //effect manager internal functions
@@ -8313,6 +8356,9 @@ tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 
 tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
 
+tfxINTERNAL void tfx__control_update_count(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_update_count_reset(tfx_effect_manager pm, tfxU32 emitter_index, tfx_buffer_t *sprite_instances);
+
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data);
@@ -8343,6 +8389,7 @@ tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_effect_manager pm);
 tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_effect_manager pm);
 tfxAPI_EDITOR bool tfx__next_ribbon_bucket(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
+tfxINTERNAL bool tfx__control_profile_has_noise(tfxEmitterControlProfileFlags flags);
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_2d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
