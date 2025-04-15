@@ -1059,10 +1059,6 @@ tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in)
 float tfx_DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 float tfx_RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
 
-float tfx__length_vec3_nosqr(tfx_vec3_t const *v) {
-	return v->x * v->x + v->y * v->y + v->z * v->z;
-}
-
 float tfx__length_vec4_nosqr(tfx_vec4_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z + v->w * v->w;
 }
@@ -1672,20 +1668,6 @@ tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat v_y, floa
 	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
 	converted_x = tfxWideAndi(converted_x, bits16);
 	return tfxWideOri(converted_x, converted_y);
-}
-
-tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
-	tfxWideFloat w127 = tfxWideSetSingle(127.f);
-	tfxWideInt bits8 = tfxWideSetSinglei(0xFF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w127));
-	converted_x = tfxWideAndi(converted_x, bits8);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w127));
-	converted_y = tfxWideAndi(converted_y, bits8);
-	converted_y = tfxWideShiftLeft(converted_y, 8);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w127));
-	converted_z = tfxWideAndi(converted_z, bits8);
-	converted_z = tfxWideShiftLeft(converted_z, 16);
-	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
 }
 
 tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
@@ -12074,6 +12056,13 @@ void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry,
 	ctx.flags |= tfx__graph_can_oscillate(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_has_oscillator : 0;
 }
 
+void tfx_setup_stretch_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	ctx.stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
+	ctx.stretch_easing = tfx__get_wide_easing_function(ctx.stretch_graph->easing_type);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_has_oscillator : 0;
+}
+
 void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
 	ctx.velocity_turbulance_easing = tfx__get_wide_easing_function(ctx.velocity_turbulance_graph->easing_type);
@@ -12147,6 +12136,30 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 	ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
 }
 
+void tfx_setup_transform_3d_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+
+	ctx.emitter_world_x = tfxWideSetSingle(ctx.emitter->world_position.x);
+	ctx.emitter_world_y = tfxWideSetSingle(ctx.emitter->world_position.y);
+	ctx.emitter_world_z = tfxWideSetSingle(ctx.emitter->world_position.z);
+	ctx.emitter_handle_x = tfxWideSetSingle(ctx.emitter->handle.x);
+	ctx.emitter_handle_y = tfxWideSetSingle(ctx.emitter->handle.y);
+	ctx.emitter_handle_z = tfxWideSetSingle(ctx.emitter->handle.z);
+	ctx.emitter_scale = tfxWideSetSingle(work_entry->overal_scale);
+	ctx.global_stretch = tfxWideSetSingle(work_entry->global_stretch);
+	ctx.start_diff = work_entry->start_diff;
+
+	ctx.capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+	const tfxSharedEmitterFlags shared_flags = ctx.emitter->shared_flags;
+	ctx.vector_align_type = work_entry->properties->vector_align_type;
+	ctx.emission_type = work_entry->shared_properties->emission_type;
+	ctx.sprites = tfxCastBuffer(tfx_3d_instance_t, work_entry->sprite_instances);
+
+	ctx.flags |= tfx__is_ordered_effect_state(&work_entry->pm->effects[ctx.emitter->root_index]) ? tfx_ctx_policy_flag_is_ordered : 0;
+	ctx.flags |= (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type != tfxPath && ctx.emission_type != tfxOtherEmitter && ctx.emission_type != tfxSpawnOnRibbon) || ctx.emitter->state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative ? 
+					tfx_ctx_policy_flag_transform_relative : 0;
+}
+
 template <typename... Policies>
 void tfx__setup_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	(Policies::apply(work_entry, ctx), ...);
@@ -12156,6 +12169,7 @@ template <typename... Policies>
 void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxPROFILE;
 
+	ctx.work_entry = work_entry;
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_effect_manager_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
@@ -19108,9 +19122,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx__update_particles_position<
 					tfx_apply_life_based_on_age,
 					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
 					tfx_apply_load_position,
-					tfx_apply_position_line_trajectory
+					tfx_apply_position_line_trajectory,
+					tfx_apply_store_position
 				>(work_entry, ctx);
 			} else if (emitter.control_profile & tfxEmitterControlProfile_orbital) {
 				if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
