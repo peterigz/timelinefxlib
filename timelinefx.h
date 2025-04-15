@@ -2229,6 +2229,7 @@ typedef enum {
 	tfxVariation_width,
 	tfxVariation_height,
 	tfxVariation_weight,
+	tfxVariation_path_trajectory_scale,
 	tfxVariation_pitch_spin,
 	tfxVariation_yaw_spin,
 	tfxVariation_roll_spin,
@@ -2293,7 +2294,6 @@ typedef enum {
 	tfxPath_offset_y,
 	tfxPath_offset_z,
 	tfxPath_distance,
-	tfxPath_scale_variation,
 
 	tfxGraphMaxIndex
 } tfx_graph_type;
@@ -2340,7 +2340,6 @@ typedef enum {
 	tfxPath_offset_y_index,
 	tfxPath_offset_z_index,
 	tfxPath_distance_index,
-	tfxPath_scale_variation_index,
 	tfxPath_rotation_range_index,
 	tfxPath_rotation_pitch_index,
 	tfxPath_rotation_yaw_index,
@@ -2375,6 +2374,7 @@ typedef enum {
 	tfxEmitter_variation_width_index,
 	tfxEmitter_variation_height_index,
 	tfxEmitter_variation_weight_index,
+	tfxEmitter_variation_path_trajectory_scale_index,
 	tfxEmitter_variation_pitch_spin_index,
 	tfxEmitter_variation_yaw_spin_index,
 	tfxEmitter_variation_roll_spin_index,
@@ -2411,17 +2411,6 @@ typedef enum {
 	tfxEmitter_factor_intensity_index,
 
 	tfxEmitterGraphs_max_index,
-
-	tfxEmitter_property_start_index = 0,
-	tfxEmitter_base_start_index = tfxEmitter_base_life_index,
-	tfxEmitter_variation_start_index = tfxEmitter_variation_life_index,
-	tfxEmitter_overtime_start_index = tfxEmitter_overtime_red_index,
-	tfxEmitter_factor_start_index = tfxEmitter_factor_life_index + 1,
-	tfxEmitter_property_end_index = tfxEmitter_property_arc_offset_index + 1,
-	tfxEmitter_base_end_index = tfxEmitter_base_noise_offset_index + 1,
-	tfxEmitter_variation_end_index = tfxEmitter_variation_motion_randomness_index + 1,
-	tfxEmitter_overtime_end_index = tfxEmitter_overtime_motion_randomness_index + 1,
-	tfxEmitter_factor_end_index = tfxEmitter_factor_intensity_index + 1,
 } tfx_emitter_graph_index;
 
 typedef enum {
@@ -2768,7 +2757,7 @@ typedef enum {
 	tfxEmitterControlProfile_motion_randomness                  = 1 << 2,
 	tfxEmitterControlProfile_orbital                            = 1 << 3,
 	tfxEmitterControlProfile_path                               = 1 << 4,
-	tfxEmitterControlProfile_path_rotated_path                  = 1 << 5,
+	tfxEmitterControlProfile_rotated_path						= 1 << 5,
 	tfxEmitterControlProfile_edge_traversal                     = 1 << 6,
 	tfxEmitterControlProfile_edge_kill                          = 1 << 7,
 	tfxEmitterControlProfile_edge_loop                          = 1 << 8,
@@ -2776,8 +2765,13 @@ typedef enum {
 	tfxEmitterControlProfile_other_ribbon_emitter_path          = 1 << 10,
 	tfxEmitterControlProfile_spin3d                             = 1 << 11,
 	tfxEmitterControlProfile_spin                               = 1 << 12,
+	tfxEmitterControlProfile_trajectory                         = 1 << 13,
+	tfxEmitterControlProfile_line		                        = 1 << 14,
+	tfxEmitterControlProfile_rotated_line                       = 1 << 15,
 	tfxEmitterControlProfile_has_simplex_noise_type				= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise,
-	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_motion_randomness
+	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_motion_randomness,
+	tfxEmitterControlProfile_has_rotated_path_or_line			= tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_rotated_line,
+	tfxEmitterControlProfile_any_line							= tfxEmitterControlProfile_line | tfxEmitterControlProfile_rotated_line,
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -5637,7 +5631,6 @@ typedef struct tfx_path_buffers_s {
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
-	tfx_graph_t scale_variation;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
 } tfx_path_buffers_t;
@@ -7335,6 +7328,7 @@ tfxAPI_EDITOR void tfx__flag_effect_as_3d(tfx_effect_descriptor effect, bool fla
 tfxAPI_EDITOR void tfx__flag_effects_as_3d(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_3d_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR bool tfx__is_ordered_effect(tfx_effect_descriptor effect);
+tfxAPI_EDITOR bool tfx__has_emission_range(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__update_source_emitter_flags(tfx_effect_descriptor effect);
@@ -7675,6 +7669,10 @@ struct tfx_setup_simplex_lookup_policy {
 };
 
 struct tfx_setup_path_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_line_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
@@ -8116,17 +8114,24 @@ struct tfx_apply_position {
 		ctx.velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_x, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_y, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_z, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
-		tfxWideFloat last_y = ctx.position_y;
 		ctx.position_x = tfxWideAdd(ctx.position_x, tfxWideMul(ctx.velocity_x, ctx.overal_scale_wide));
 		ctx.position_y = tfxWideAdd(ctx.position_y, tfxWideMul(ctx.velocity_y, ctx.overal_scale_wide));
 		ctx.position_z = tfxWideAdd(ctx.position_z, tfxWideMul(ctx.velocity_z, ctx.overal_scale_wide));
-		tfxWideArray distance;
-		distance.m = tfxWideSub(ctx.position_y, last_y);
-		for (int i = 0; i != tfxDataWidth; ++i) {
-			if (distance.a[i] > 0.066537) {
-				int d = 0;
-				//0.0665362030
-			}
+		tfxWideStore(&bank.position_x[index], ctx.position_x);
+		tfxWideStore(&bank.position_y[index], ctx.position_y);
+		tfxWideStore(&bank.position_z[index], ctx.position_z);
+	}
+};
+
+struct tfx_apply_position_line_trajectory {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
+		ctx.position_x = tfxWideSetZero;
+		ctx.position_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.lookup_velocity, ctx.emitter_height), ctx.overal_scale_wide), path_scale_variation);
+		ctx.position_z = tfxWideSetZero;
+		if (ctx.emitter->control_profile & tfxEmitterControlProfile_rotated_line) {
+			tfxWideInt quaternion = tfxWideLoadi((tfxWideIntLoader *)&bank.quaternion[index]);
+			tfx__wide_transform_packed_quaternion_vec3(&quaternion, &ctx.position_x, &ctx.position_y, &ctx.position_z);
 		}
 		tfxWideStore(&bank.position_x[index], ctx.position_x);
 		tfxWideStore(&bank.position_y[index], ctx.position_y);
@@ -8273,6 +8278,7 @@ tfxINTERNAL void tfx__spawn_particle_other_emitter_3d(tfx_work_queue_t *queue, v
 tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_line_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_line_start_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_area_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data);
