@@ -5173,7 +5173,7 @@ const tfxWideArray one_div_511_wide = tfxWideSetConst(1 / 511.f);
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
 #define tfxPACKED_Y_NORMAL_2D 32767
-
+#define tfxPACKED_W_QUATERNION 4286545791
 typedef struct tfx_rgba_s {
 	float r, g, b, a;
 } tfx_rgba_t;

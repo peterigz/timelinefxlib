@@ -10706,7 +10706,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				}
 
 				emitter.shared_flags |= (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d);
-				if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
+				if (state_flags & tfxEmitterStateFlags_is_edge_traversal || emitter.control_profile & tfxEmitterControlProfile_trajectory) {
 					emitter.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
 				}
 
@@ -16472,7 +16472,7 @@ void tfx__spawn_particle_line_start_3d(tfx_work_queue_t *queue, void *data) {
 	float emission_yaw = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], emitter.age, emitter.oscillator_time);
 	float emission_range = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
 	float path_scale_variation = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_path_trajectory_scale_index], emitter.age, emitter.oscillator_time);
-	bool has_rotated_emission = emission_pitch + emission_yaw + emission_range > 0.f;
+	bool has_rotated_emission = (emission_pitch + emission_yaw + emission_range) != 0.f;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -16486,6 +16486,8 @@ void tfx__spawn_particle_line_start_3d(tfx_work_queue_t *queue, void *data) {
 		if (has_rotated_emission) {
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, emission_range, emission_pitch, emission_yaw, false);
 			entry->particle_data->quaternion[index] = tfx__pack8bit_quaternion(q);
+		} else {
+			entry->particle_data->quaternion[index] = tfxPACKED_W_QUATERNION;
 		}
 
 		tween += entry->qty_step_size;
