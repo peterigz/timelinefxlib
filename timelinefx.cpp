@@ -2903,6 +2903,7 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_velocity_index], 0.f, tfxVelocityPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_velocity_index].type = tfxVariation_velocity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_width_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_width_index].type = tfxVariation_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_height_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_height_index].type = tfxVariation_height;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_path_trajectory_scale_index], 0.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_path_trajectory_scale_index].type = tfxVariation_path_trajectory_scale;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_weight_index], 0.f, tfxWeightVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_weight_index].type = tfxVariation_weight;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index], 0.f, tfxSpinVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index].type = tfxVariation_roll_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index], 0.f, tfxSpinVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index].type = tfxVariation_pitch_spin;
@@ -5240,6 +5241,7 @@ void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter)
 void tfx__update_all_library_graphs(tfx_library library) {
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
+			graph.flags |= tfxGraphFlags_multi_node_graph;
 			if (graph.type == tfxOvertime_blendfactor) {
 				tfx__update_lerp_graph(&graph);
 			} else if (!tfx__is_color_graph_type(graph.type) && (tfx__is_lerp_graph(&graph))) {
@@ -5368,6 +5370,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_variation_velocity", tfxEmitter_variation_velocity_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_width", tfxEmitter_variation_width_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_height", tfxEmitter_variation_height_index);
+	tfxStore->graph_indexes.Insert("emitter_variation_path_trajectory_scale", tfxEmitter_variation_path_trajectory_scale_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_weight", tfxEmitter_variation_weight_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_spin", tfxEmitter_variation_roll_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_roll_spin", tfxEmitter_variation_roll_spin_index);
@@ -19072,7 +19075,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 			tfx__control_particle_capture_spawn_locations(&pm->work_queue, work_entry);
 		}
-		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.control_profile & tfxEmitterControlProfile_path && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
+		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.control_profile & tfxEmitterControlProfile_path && (emitter.control_profile & tfxEmitterControlProfile_edge_traversal || emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_path_policy>(work_entry, ctx);
 			if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
 				tfx__update_particles_position<
