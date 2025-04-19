@@ -1525,21 +1525,6 @@ void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat
 	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
-void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y) {
-	tfxWideFloat q_x, q_y, q_z, q_w;
-	tfx__wide_unpack8bit(*quaternion, q_x, q_y, q_z, q_w);
-
-	tfxWideFloat s2 = tfxWideMul(q_z, q_z);
-	tfxWideFloat c2 = tfxWideMul(q_w, q_w);
-	tfxWideFloat sc = tfxWideMul(tfxWideSetSingle(2.f), tfxWideMul(q_z, q_w));
-
-	tfxWideFloat rx = tfxWideSub(tfxWideMul(c2, *x), tfxWideAdd(tfxWideMul(sc, *y), tfxWideMul(s2, *x)));
-	tfxWideFloat ry = tfxWideAdd(tfxWideMul(sc, *x), tfxWideSub(tfxWideMul(c2, *y), tfxWideMul(s2, *y)));
-
-	*x = rx;
-	*y = ry;
-}
-
 void tfx__wide_transform_quaternion_vec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y) {
 	tfxWideFloat c = tfxWideSetSingle(q->w);
 	tfxWideFloat s = tfxWideSetSingle(q->z);
@@ -1637,17 +1622,6 @@ tfx_quaternion_t tfx__unpack8bit_quaternion_from_gpu(tfxU32 packed) {
 	return { w / 127.0f, x / 127.0f, y / 127.0f, z / 127.0f };
 }
 
-tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat v_y) {
-	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
-	converted_y = tfxWideAndi(converted_y, bits16);
-	converted_y = tfxWideShiftLeft(converted_y, 16);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
-	converted_x = tfxWideAndi(converted_x, bits16);
-	return tfxWideOri(converted_x, converted_y);
-}
-
 tfxWideInt tfx__wide_pack16bit_unorm(tfxWideFloat v_x, tfxWideFloat v_y) {
 	tfxWideFloat w65k = tfxWideSetSingle(65535.f);
 	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
@@ -1655,17 +1629,6 @@ tfxWideInt tfx__wide_pack16bit_unorm(tfxWideFloat v_x, tfxWideFloat v_y) {
 	converted_y = tfxWideAndi(converted_y, bits16);
 	converted_y = tfxWideShiftLeft(converted_y, 16);
 	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w65k));
-	converted_x = tfxWideAndi(converted_x, bits16);
-	return tfxWideOri(converted_x, converted_y);
-}
-
-tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat v_y, float max_value) {
-	tfxWideFloat w32k = tfxWideSetSingle(32767.f / max_value);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
-	converted_y = tfxWideAndi(converted_y, bits16);
-	converted_y = tfxWideShiftLeft(converted_y, 16);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
 	converted_x = tfxWideAndi(converted_x, bits16);
 	return tfxWideOri(converted_x, converted_y);
 }
@@ -2572,10 +2535,10 @@ void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sp
 }
 
 
-float tfx__get_emission_direciton_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position) {
-	//float (*effect_lookup_callback)(tfx_graph_t &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? tfx__sample_multi_node_graph : tfx__lookup_fast;
+float tfx__get_emission_direction_2d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position) {
 	float emission_angle = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.age, emitter.oscillator_time);
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
+
 	//----Emission
 	float range = emission_angle_variation * .5f;
 	float direction = 0;
@@ -11814,8 +11777,6 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 		tfxWideArray point_x;
 		tfxWideArray point_y;
 		tfx__wide_catmull_rom_spline_2d(&node_index, t.m, path->buffers.node_soa.x, path->buffers.node_soa.y, &point_x.m, &point_y.m);
-		tfxWideFloat last_position_x = local_position_x;
-		tfxWideFloat last_position_y = local_position_y;
 		if (path->settings.extrusion_type == tfxExtrusionArc) {
 			tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_y.m, point_y.m));
 			tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
@@ -11927,27 +11888,9 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			
 			stretch.m = tfxWideMul(lookup_stretch, global_stretch);
 
-			tfxWideFloat stretch_velocity_x;
-			tfxWideFloat stretch_velocity_y;
-
-			stretch_velocity_x = tfxWideSub(local_position_x, last_position_x);
-			stretch_velocity_y = tfxWideSub(local_position_y, last_position_y);
-
-			stretch_velocity_y = tfxWideAdd(stretch_velocity_y, tfxWideSetSingle(0.000001f));
-			tfxWideFloat l = tfxWideMul(stretch_velocity_x, stretch_velocity_x);
-			l = tfxWideAdd(l, tfxWideMul(stretch_velocity_y, stretch_velocity_y));
-			l = tfxWideMul(tfxWideRSqrt(l), l);
-
 			stretch.m = tfxWideMul(stretch.m, tfxWideMul(velocity_scalar, tfxWideSetSingle(0.015f)));
-			stretch_velocity_x = tfxWideDiv(stretch_velocity_x, l);
-			stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
-
-			if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
-				tfx__wide_transform_quaternion_vec2(&emitter.rotation, &stretch_velocity_x, &stretch_velocity_y);
-			}
 
 			tfxWideArrayi packed;
-			packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (is_ordered) {    //Predictable
@@ -12060,10 +12003,17 @@ void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry,
 }
 
 void tfx_setup_stretch_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
-	ctx.stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
+	ctx.stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
 	ctx.stretch_easing = tfx__get_wide_easing_function(ctx.stretch_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_has_oscillator : 0;
+}
+
+void tfx_setup_direction_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	ctx.direction_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_weight_index];
+	ctx.direction_easing = tfx__get_wide_easing_function(ctx.direction_graph->easing_type);
+	ctx.flags |= tfx__graph_has_bezier_curves(ctx.direction_graph) ? tfx_ctx_policy_flag_direction_is_bezier_graph : 0;
+	ctx.flags |= tfx__graph_can_oscillate(ctx.direction_graph) ? tfx_ctx_policy_flag_direction_has_oscillator : 0;
 }
 
 void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -12140,7 +12090,7 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 }
 
 void tfx_setup_transform_3d_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
-	tfxU32 running_sprite_index = work_entry->sprites_index;
+	ctx.running_sprite_index = work_entry->sprites_index;
 
 	ctx.emitter_world_x = tfxWideSetSingle(ctx.emitter->world_position.x);
 	ctx.emitter_world_y = tfxWideSetSingle(ctx.emitter->world_position.y);
@@ -12156,11 +12106,26 @@ void tfx_setup_transform_3d_policy::apply(tfx_control_work_entry_t *work_entry, 
 	const tfxSharedEmitterFlags shared_flags = ctx.emitter->shared_flags;
 	ctx.vector_align_type = work_entry->properties->vector_align_type;
 	ctx.emission_type = work_entry->shared_properties->emission_type;
-	ctx.sprites = tfxCastBuffer(tfx_3d_instance_t, work_entry->sprite_instances);
+	ctx.sprites_3d = tfxCastBuffer(tfx_3d_instance_t, work_entry->sprite_instances);
 
 	ctx.flags |= tfx__is_ordered_effect_state(&work_entry->pm->effects[ctx.emitter->root_index]) ? tfx_ctx_policy_flag_is_ordered : 0;
 	ctx.flags |= (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type != tfxPath && ctx.emission_type != tfxOtherEmitter && ctx.emission_type != tfxSpawnOnRibbon) || ctx.emitter->state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative ? 
 					tfx_ctx_policy_flag_transform_relative : 0;
+}
+void tfx_setup_2d_alignment_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	ctx.running_sprite_index = work_entry->sprites_index;
+	ctx.start_diff = work_entry->start_diff;
+	tfx_effect_manager_t &pm = *work_entry->pm;
+	ctx.emitter = &pm.emitters[work_entry->emitter_index];
+
+	ctx.global_stretch = tfxWideSetSingle(work_entry->global_stretch);
+
+	const tfxSharedEmitterFlags shared_flags = ctx.emitter->shared_flags;
+	ctx.vector_align_type = work_entry->properties->vector_align_type;
+	ctx.emission_type = work_entry->shared_properties->emission_type;
+	ctx.sprites_2d = tfxCastBuffer(tfx_2d_instance_t, work_entry->sprite_instances);
+
+	ctx.flags |= tfx__is_ordered_effect_state(&work_entry->pm->effects[ctx.emitter->root_index]) ? tfx_ctx_policy_flag_is_ordered : 0;
 }
 
 template <typename... Policies>
@@ -12527,11 +12492,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			velocity_normal_x = tfxWideMul(tfxWideSub(local_position_y, emitter_y), tfxWideSetSingle(-1.f));
 			tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_y, velocity_normal_y));
-#ifdef tfxARM
 			l = tfxWideMul(tfxWideRSqrt(l), l);
-#else
-			l = tfxWideSqrt(l);
-#endif
 			velocity_normal_x = tfxWideDiv(velocity_normal_x, l);
 			velocity_normal_y = tfxWideDiv(velocity_normal_y, l);
 		}
@@ -12540,11 +12501,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			velocity_normal_x = tfxWideMul(tfxWideAdd(emitter_y, local_position_y), tfxWideSetSingle(-1.f));
 			tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_y, velocity_normal_y));
-#ifdef tfxARM
 			l = tfxWideMul(tfxWideRSqrt(l), l);
-#else
-			l = tfxWideSqrt(l);
-#endif
 			velocity_normal_x = tfxWideDiv(velocity_normal_x, l);
 			velocity_normal_y = tfxWideDiv(velocity_normal_y, l);
 		}
@@ -12796,7 +12753,6 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				const tfxWideFloat offset_y = tfxWideMul(tfx__wide_unpack10bit_y(tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index])), emitter_size_y);
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
 
@@ -12812,7 +12768,6 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				const tfxWideFloat offset_y = tfxWideMul(tfx__wide_unpack10bit_y(tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index])), emitter_size_y);
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
 
@@ -12822,7 +12777,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 
 				tfx__readbarrier;
 
-				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
+				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 				tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
 				tfxWideStore(&bank.position_y[index], local_position_y);
@@ -12849,11 +12804,18 @@ void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxWideFloat global_stretch = tfxWideSetSingle(work_entry->global_stretch);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	tfxWideFloat max_life = tfxWideSetSingle(emitter.max_life);
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
 
 	tfxU32 start_diff = work_entry->start_diff;
+
+	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
+	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->easing_type);
+
+	bool stretch_is_bezier_graph = tfx__graph_has_bezier_curves(stretch_graph);
+	bool stretch_has_oscillator = tfx__graph_can_oscillate(stretch_graph);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -13702,8 +13664,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-		tfxWideArray image_frame;
-		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
+		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
 		tfxWideArrayi single_loop_count;
 		single_loop_count.m = tfxWideLoadi((tfxWideIntLoader *)&bank.single_loop_count[index]);
@@ -13715,25 +13676,25 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 
 		//----Image animation
-		image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
-		tfxWideStore(&bank.image_frame[index], image_frame.m);
+		image_frame = tfxWideAdd(image_frame, image_frame_rate);
+		tfxWideStore(&bank.image_frame[index], image_frame);
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation && emitter.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame.m = tfxWideSub(end_frame, image_frame.m);
-			image_frame.m = tfxWideMax(image_frame.m, tfxWideSetZero);
+			image_frame = tfxWideSub(end_frame, image_frame);
+			image_frame = tfxWideMax(image_frame, tfxWideSetZero);
 		}
 		else if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame.m = tfxWideMin(image_frame.m, end_frame);
+			image_frame = tfxWideMin(image_frame, end_frame);
 		}
 		else if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) {
-			image_frame.m = tfxWideMod(image_frame.m, frames);
-			image_frame.m = tfxWideSub(end_frame, image_frame.m);
+			image_frame = tfxWideMod(image_frame, frames);
+			image_frame = tfxWideSub(end_frame, image_frame);
 		}
 		else {
-			image_frame.m = tfxWideMod(image_frame.m, frames);
+			image_frame = tfxWideMod(image_frame, frames);
 		}
 
 		tfxWideArrayi image_indexes;
-		image_indexes.m = tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame.m), image_start_index));
+		image_indexes.m = tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame), image_start_index));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm->flags & tfxEffectManagerFlags_3d_effects) { //Predictable
@@ -15449,20 +15410,17 @@ void tfx__do_spawn_work_2d(tfx_work_queue_t *queue, void *data) {
 	tfx__spawn_particle_age(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		tfx__spawn_particle_other_emitter_2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxPoint) {
+	} else if (work_entry->emission_type == tfxPoint) {
 		tfx__spawn_particle_point_2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxArea) {
+	} else if (work_entry->emission_type == tfxArea) {
 		tfx__spawn_particle_area_2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxEllipse) {
+	} else if (work_entry->emission_type == tfxEllipse) {
 		tfx__spawn_particle_ellipse_2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxLine) {
+	} else if (work_entry->emission_type == tfxLine && !(emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
 		tfx__spawn_particle_line_2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxPath) {
+	} else if (work_entry->emission_type == tfxLine && (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
+		tfx__spawn_particle_line_start_2d(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type == tfxPath) {
 		tfx__spawn_particle_path_2d(&pm->work_queue, work_entry);
 	}
 	tfx__spawn_particle_weight(&pm->work_queue, work_entry);
@@ -15471,8 +15429,7 @@ void tfx__do_spawn_work_2d(tfx_work_queue_t *queue, void *data) {
 	tfx__spawn_particle_micro_update_2d(&pm->work_queue, work_entry);
 	if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise || emitter.control_profile & tfxEmitterControlProfile_curl_noise) {
 		tfx__spawn_particle_noise(&pm->work_queue, work_entry);
-	}
-	else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
+	} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
 		tfx__spawn_particle_motion_randomness(&pm->work_queue, work_entry);
 	}
 	tfx__spawn_particle_image_frame(&pm->work_queue, work_entry);
@@ -16336,7 +16293,6 @@ void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-
 void tfx__spawn_particle_line_2d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
@@ -16389,6 +16345,43 @@ void tfx__spawn_particle_line_2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 	}
+
+}
+
+void tfx__spawn_particle_line_start_2d(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_random_t random = entry->random;
+	float tween = entry->tween;
+	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_AlterRandomSeedU32(&random, 12 + emitter.seed_index);
+	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
+	const float emitter_size = emitter.emitter_size.y;
+	const float grid_segment_size_y = emitter_size / tfxMax(grid_points.y - 1.f, 1.f);
+	float emission_offset = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.age, emitter.oscillator_time);
+	float emission_range = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
+	float path_scale_variation = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_path_trajectory_scale_index], emitter.age, emitter.oscillator_time);
+	bool has_rotated_emission = (emission_offset + emission_range) != 0.f;
+
+	for (int i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		float &local_position_x = entry->particle_data->position_x[index];
+		float &local_position_y = entry->particle_data->position_y[index];
+		entry->particle_data->path_scale_variation[index] = 1.f + tfx_RandomRangeZeroToMax(&random, path_scale_variation);
+
+		local_position_x = local_position_y = 0;
+
+		if (has_rotated_emission) {
+			tfx_quaternion_t q = tfx__get_path_rotation_2d(&random, emission_range, emission_offset);
+			entry->particle_data->quaternion[index] = tfx__pack8bit_quaternion(q);
+		} else {
+			entry->particle_data->quaternion[index] = tfxPACKED_W_QUATERNION;
+		}
+
+		tween += entry->qty_step_size;
+	}
+
 
 }
 
@@ -18274,7 +18267,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 
 		if (!line) {
 			if (properties.emission_direction != tfxPathGradient) {
-				direction = tfx__get_emission_direciton_2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_direction_index]);
+				direction = tfx__get_emission_direction_2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_direction_index]);
 			}
 		}
 		else {
@@ -19077,59 +19070,54 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 			tfx__control_particle_capture_spawn_locations(&pm->work_queue, work_entry);
 		}
-		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.control_profile & tfxEmitterControlProfile_path && (emitter.control_profile & tfxEmitterControlProfile_edge_traversal || emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_path_policy>(work_entry, ctx);
-			if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
-				tfx__update_particles_position<
-					tfx_apply_life_based_on_age,
-					tfx_apply_lookup_velocity,
-					tfx_apply_load_path,
-					tfx_apply_load_position,
-					tfx_apply_update_path_position_trajectory,
-					tfx_apply_path_position,
-					tfx_apply_path_scale_variation,
-					tfx_apply_store_path_position_edge_traversal
-				>(work_entry, ctx);
-			} else {
-				if (emitter.library->emitter_properties[emitter.properties_index].end_behaviour == tfxLoop) {
+		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
+			// ---- 3d Effect Particle Positioning
+			if (emitter.control_profile & tfxEmitterControlProfile_path && (emitter.control_profile & tfxEmitterControlProfile_edge_traversal || emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_path_policy>(work_entry, ctx);
+				if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
 					tfx__update_particles_position<
 						tfx_apply_life_based_on_age,
 						tfx_apply_lookup_velocity,
 						tfx_apply_load_path,
-						tfx_apply_load_position,
-						tfx_apply_update_path_position,
-						tfx_apply_path_end_loop,
-						tfx_apply_path_position,
-						tfx_apply_store_path_position_edge_traversal
+						tfx_apply_load_position_3d,
+						tfx_apply_update_path_position_trajectory,
+						tfx_apply_path_position_3d,
+						tfx_apply_path_scale_variation_3d,
+						tfx_apply_store_path_position_edge_traversal_3d
 					>(work_entry, ctx);
 				} else {
-					tfx__update_particles_position<
-						tfx_apply_life_based_on_age,
-						tfx_apply_lookup_velocity,
-						tfx_apply_load_path,
-						tfx_apply_load_position,
-						tfx_apply_update_path_position,
-						tfx_apply_path_end_kill,
-						tfx_apply_path_position,
-						tfx_apply_store_path_position_edge_traversal
-					>(work_entry, ctx);
+					if (emitter.library->emitter_properties[emitter.properties_index].end_behaviour == tfxLoop) {
+						tfx__update_particles_position<
+							tfx_apply_life_based_on_age,
+							tfx_apply_lookup_velocity,
+							tfx_apply_load_path,
+							tfx_apply_load_position_3d,
+							tfx_apply_update_path_position,
+							tfx_apply_path_end_loop,
+							tfx_apply_path_position_3d,
+							tfx_apply_store_path_position_edge_traversal_3d
+						>(work_entry, ctx);
+					} else {
+						tfx__update_particles_position<
+							tfx_apply_life_based_on_age,
+							tfx_apply_lookup_velocity,
+							tfx_apply_load_path,
+							tfx_apply_load_position_3d,
+							tfx_apply_update_path_position,
+							tfx_apply_path_end_kill,
+							tfx_apply_path_position_3d,
+							tfx_apply_store_path_position_edge_traversal_3d
+						>(work_entry, ctx);
+					}
 				}
-			}
-			tfx__control_particle_transform_3d(&pm->work_queue, work_entry);
-		}
-		else if (emitter.control_profile & tfxEmitterControlProfile_path && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
-			tfx__control_particle_position_path_2d(&pm->work_queue, work_entry);
-			tfx__control_particle_transform_2d(&pm->work_queue, work_entry);
-		}
-		else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
-			if (emitter.control_profile & tfxEmitterControlProfile_trajectory && emitter.control_profile & tfxEmitterControlProfile_any_line) {
+			} else if (emitter.control_profile & tfxEmitterControlProfile_trajectory && emitter.control_profile & tfxEmitterControlProfile_any_line) {
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_line_policy>(work_entry, ctx);
 				tfx__update_particles_position<
 					tfx_apply_life_based_on_age,
 					tfx_apply_lookup_velocity,
-					tfx_apply_load_position,
-					tfx_apply_position_line_trajectory,
-					tfx_apply_store_position
+					tfx_apply_load_position_3d,
+					tfx_apply_position_line_trajectory_3d,
+					tfx_apply_store_position_3d
 				>(work_entry, ctx);
 			} else if (emitter.control_profile & tfxEmitterControlProfile_orbital) {
 				if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
@@ -19138,11 +19126,11 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 						tfx_apply_life_based_on_age,
 						tfx_apply_lookup_velocity,
 						tfx_apply_lookup_weight,
-						tfx_apply_load_position,
-						tfx_apply_orbital_velocity_normal, 
-						tfx_apply_orbital_scale_velocity, 
-						tfx_apply_simplex_noise,
-						tfx_apply_position
+						tfx_apply_load_position_3d,
+						tfx_apply_orbital_velocity_normal_3d,
+						tfx_apply_orbital_scale_velocity_3d,
+						tfx_apply_simplex_noise_3d,
+						tfx_apply_position_3d
 					>(work_entry, ctx);
 				} else if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
 					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
@@ -19150,11 +19138,11 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 						tfx_apply_life_based_on_age,
 						tfx_apply_lookup_velocity,
 						tfx_apply_lookup_weight,
-						tfx_apply_load_position,
-						tfx_apply_orbital_velocity_normal, 
-						tfx_apply_orbital_scale_velocity, 
-						tfx_apply_curl_noise,
-						tfx_apply_position
+						tfx_apply_load_position_3d,
+						tfx_apply_orbital_velocity_normal_3d,
+						tfx_apply_orbital_scale_velocity_3d,
+						tfx_apply_curl_noise_3d,
+						tfx_apply_position_3d
 					>(work_entry, ctx);
 				} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
 					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy, tfx_setup_orbital_policy>(work_entry, ctx);
@@ -19162,21 +19150,21 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 						tfx_apply_life_based_on_age,
 						tfx_apply_lookup_velocity,
 						tfx_apply_lookup_weight,
-						tfx_apply_load_position,
-						tfx_apply_orbital_velocity_normal,
-						tfx_apply_motion_randomness,
-						tfx_apply_position
+						tfx_apply_load_position_3d,
+						tfx_apply_orbital_velocity_normal_3d,
+						tfx_apply_motion_randomness_3d,
+						tfx_apply_position_3d
 					>(work_entry, ctx);
 				} else {
 					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy>(work_entry, ctx);
 					tfx__update_particles_position<
-						tfx_apply_life_based_on_age, 
-						tfx_apply_load_position, 
-						tfx_apply_lookup_velocity, 
-						tfx_apply_lookup_weight, 
-						tfx_apply_orbital_velocity_normal, 
-						tfx_apply_orbital_scale_velocity, 
-						tfx_apply_position
+						tfx_apply_life_based_on_age,
+						tfx_apply_load_position_3d,
+						tfx_apply_lookup_velocity,
+						tfx_apply_lookup_weight,
+						tfx_apply_orbital_velocity_normal_3d,
+						tfx_apply_orbital_scale_velocity_3d,
+						tfx_apply_position_3d
 					>(work_entry, ctx);
 				}
 			} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
@@ -19185,9 +19173,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_life_based_on_age,
 					tfx_apply_lookup_velocity,
 					tfx_apply_lookup_weight,
-					tfx_apply_load_position,
-					tfx_apply_motion_randomness,
-					tfx_apply_position
+					tfx_apply_load_position_3d,
+					tfx_apply_motion_randomness_3d,
+					tfx_apply_position_3d
 				>(work_entry, ctx);
 			} else	if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
@@ -19195,10 +19183,10 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_life_based_on_age,
 					tfx_apply_lookup_velocity,
 					tfx_apply_lookup_weight,
-					tfx_apply_velocity, 
-					tfx_apply_load_position,
-					tfx_apply_simplex_noise,
-					tfx_apply_position
+					tfx_apply_velocity_3d,
+					tfx_apply_load_position_3d,
+					tfx_apply_simplex_noise_3d,
+					tfx_apply_position_3d
 				>(work_entry, ctx);
 			} else if (emitter.control_profile & tfxEmitterControlProfile_curl_noise) {
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
@@ -19206,33 +19194,185 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_life_based_on_age,
 					tfx_apply_lookup_velocity,
 					tfx_apply_lookup_weight,
-					tfx_apply_velocity, 
-					tfx_apply_load_position,
-					tfx_apply_curl_noise,
-					tfx_apply_position
+					tfx_apply_velocity_3d,
+					tfx_apply_load_position_3d,
+					tfx_apply_curl_noise_3d,
+					tfx_apply_position_3d
 				>(work_entry, ctx);
 			} else {
 				//Basic position control
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy>(work_entry, ctx);
 				tfx__update_particles_position<
-					tfx_apply_life_based_on_age, 
-					tfx_apply_lookup_velocity, 
-					tfx_apply_lookup_weight, 
-					tfx_apply_velocity, 
-					tfx_apply_load_position, 
-					tfx_apply_position
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_velocity_3d,
+					tfx_apply_load_position_3d,
+					tfx_apply_position_3d
 				>(work_entry, ctx);
 			}
+			tfx__control_particle_transform_3d(&pm->work_queue, work_entry);
+		} else {
+			// ---- 2d Effect Particle Positioning
+			if (emitter.control_profile & tfxEmitterControlProfile_path && (emitter.control_profile & tfxEmitterControlProfile_edge_traversal || emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_path_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_load_path,
+						tfx_apply_load_position_2d,
+						tfx_apply_update_path_position_trajectory,
+						tfx_apply_path_position_2d,
+						tfx_apply_path_scale_variation_2d,
+						tfx_apply_alignment_2d,
+						tfx_apply_store_path_position_edge_traversal_2d
+					>(work_entry, ctx);
+				} else {
+					if (emitter.library->emitter_properties[emitter.properties_index].end_behaviour == tfxLoop) {
+						tfx__update_particles_position<
+							tfx_apply_life_based_on_age,
+							tfx_apply_lookup_velocity,
+							tfx_apply_load_path,
+							tfx_apply_load_position_2d,
+							tfx_apply_update_path_position,
+							tfx_apply_path_end_loop,
+							tfx_apply_path_position_2d,
+							tfx_apply_alignment_2d,
+							tfx_apply_store_path_position_edge_traversal_2d
+						>(work_entry, ctx);
+					} else {
+						tfx__update_particles_position<
+							tfx_apply_life_based_on_age,
+							tfx_apply_lookup_velocity,
+							tfx_apply_load_path,
+							tfx_apply_load_position_2d,
+							tfx_apply_update_path_position,
+							tfx_apply_path_end_kill,
+							tfx_apply_path_position_2d,
+							tfx_apply_alignment_2d,
+							tfx_apply_store_path_position_edge_traversal_2d
+						>(work_entry, ctx);
+					}
+				}
+			} else if (emitter.control_profile & tfxEmitterControlProfile_trajectory && emitter.control_profile & tfxEmitterControlProfile_any_line) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_line_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_load_position_2d,
+					tfx_apply_position_line_trajectory_2d,
+					tfx_apply_alignment_2d,
+					tfx_apply_store_position_2d
+				>(work_entry, ctx);
+			} else if (emitter.control_profile & tfxEmitterControlProfile_orbital) {
+				if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
+					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_lookup_weight,
+						tfx_apply_load_position_2d,
+						tfx_apply_orbital_velocity_normal_2d,
+						tfx_apply_orbital_scale_velocity_2d,
+						tfx_apply_simplex_noise_2d,
+						tfx_apply_alignment_2d,
+						tfx_apply_position_2d
+					>(work_entry, ctx);
+				} else if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
+					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_lookup_weight,
+						tfx_apply_load_position_2d,
+						tfx_apply_orbital_velocity_normal_2d,
+						tfx_apply_orbital_scale_velocity_2d,
+						tfx_apply_curl_noise_2d,
+						tfx_apply_alignment_2d,
+						tfx_apply_position_2d
+					>(work_entry, ctx);
+				} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
+					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy, tfx_setup_orbital_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_lookup_velocity,
+						tfx_apply_lookup_weight,
+						tfx_apply_load_position_2d,
+						tfx_apply_orbital_velocity_normal_2d,
+						tfx_apply_motion_randomness_2d,
+						tfx_apply_alignment_2d,
+						tfx_apply_position_2d
+					>(work_entry, ctx);
+				} else {
+					tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+					tfx__update_particles_position<
+						tfx_apply_life_based_on_age,
+						tfx_apply_load_position_2d,
+						tfx_apply_lookup_velocity,
+						tfx_apply_lookup_weight,
+						tfx_apply_orbital_velocity_normal_2d,
+						tfx_apply_orbital_scale_velocity_2d,
+						tfx_apply_alignment_2d,
+						tfx_apply_position_2d
+					>(work_entry, ctx);
+				}
+			} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position_2d,
+					tfx_apply_motion_randomness_2d,
+					tfx_apply_alignment_2d,
+					tfx_apply_position_2d
+				>(work_entry, ctx);
+			} else	if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy, tfx_setup_direction_lookup_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_velocity_2d,
+					tfx_apply_load_position_2d,
+					tfx_apply_simplex_noise_2d,
+					tfx_apply_alignment_2d,
+					tfx_apply_position_2d
+				>(work_entry, ctx);
+			} else if (emitter.control_profile & tfxEmitterControlProfile_curl_noise) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy, tfx_setup_direction_lookup_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_velocity_2d,
+					tfx_apply_load_position_2d,
+					tfx_apply_curl_noise_2d,
+					tfx_apply_alignment_2d,
+					tfx_apply_position_2d
+				>(work_entry, ctx);
+			} else {
+				//Basic position control
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_direction_lookup_policy, tfx_setup_stretch_lookup_policy, tfx_setup_2d_alignment_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_age,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_velocity_2d,
+					tfx_apply_load_position_2d,
+					tfx_apply_position_2d,
+					tfx_apply_alignment_2d
+				>(work_entry, ctx);
+			}
+			tfx__control_particle_transform_2d(&pm->work_queue, work_entry);
+		}
+		if (emitter.control_profile & tfxEmitterControlProfile_any_line) {
 			if (emitter.control_profile & tfxEmitterControlProfile_edge_kill && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
 				tfx__control_particle_line_behaviour_kill(&pm->work_queue, work_entry);
-			}
-			else if (emitter.control_profile & tfxEmitterControlProfile_edge_loop && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
+			} else if (emitter.control_profile & tfxEmitterControlProfile_edge_loop && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
 				tfx__control_particle_line_behaviour_loop(&pm->work_queue, work_entry);
 			}
-			tfx__control_particle_transform_3d(&pm->work_queue, work_entry);
-		}
-		else {
-			tfx__control_particle_position_2d(&pm->work_queue, work_entry);
 		}
 		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
@@ -19476,7 +19616,6 @@ void tfx__init_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa
 
 void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
-	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, update_count));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
 	tfx__add_struct_array(buffer, sizeof(tfxParticleFlags), offsetof(tfx_particle_soa_t, flags));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, age));
