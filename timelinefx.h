@@ -7,7 +7,7 @@
 #define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 //#define TFX_MEMORY_TRACKING
 
@@ -1852,8 +1852,8 @@ const tfxWideArray tfxWIDEPI2         = tfxWideSetConst(6.283185307f);
 const tfxWideArray tfxWIDEINVTWOPI    = tfxWideSetConst(0.1591549f);
 const tfxWideArray tfxWIDETHREEHALFPI = tfxWideSetConst(4.7123889f);
 const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
-const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.001f);
-const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.002f);
+const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.0001f);
+const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.0002f);
 const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
 #ifdef tfxINTEL
@@ -7752,7 +7752,11 @@ struct tfx_setup_line_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
-struct tfx_setup_orbital_policy {
+struct tfx_setup_orbital_policy_2d {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_orbital_policy_3d {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
@@ -7957,29 +7961,32 @@ struct tfx_apply_curl_noise_2d {
 		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
 
-		tfxWideFloat x_minus_eps = tfx__simd_noise_2d(tfxWideSub(x, tfxWIDEEPS.m), x);
-		tfxWideFloat x_plus_eps = tfx__simd_noise_2d(tfxWideAdd(x, tfxWIDEEPS.m), x);
-		tfxWideFloat dx = tfxWideDiv(tfxWideSub(x_plus_eps, x_minus_eps), tfxWIDEEPS2.m);
-		tfxWideFloat noise_x = tfxWideSub(tfxWideSetZero, dx); // Negate dN/dx
+		// Central Difference Reminder (4 samples)
+		const tfxWideFloat dt = tfxWideSetSingle(1e-4f); // Epsilon
+		const tfxWideFloat dt2 = tfxWideSetSingle(2.0f * 1e-4f); // 2 * Epsilon
+		// Assume x, y are appropriately calculated (potentially including time offset: y_coord = y + time_offset)
 
-		tfxWideFloat regPyOffset = tfxWideAdd(x, tfxWIDENOISEOFFSET.m);
+		tfxWideFloat y_coord = tfxWideAdd(y, ctx.life);
 
-		tfxWideFloat off_y_minus_eps = tfx__simd_noise_2d(x, tfxWideSub(regPyOffset, tfxWIDEEPS.m));
-		tfxWideFloat off_y_plus_eps = tfx__simd_noise_2d(x, tfxWideAdd(regPyOffset, tfxWIDEEPS.m));
-		tfxWideFloat dy_off = tfxWideDiv(tfxWideSub(off_y_plus_eps, off_y_minus_eps), tfxWIDEEPS2.m);
-		tfxWideFloat noise_y = tfxWideSub(tfxWideSetZero, dy_off); // Negate dN/dy_off
+		tfxWideFloat n_x_minus = tfx__simd_noise_2d(tfxWideSub(x, dt), y); // Use y_coord if time needed
+		tfxWideFloat n_x_plus = tfx__simd_noise_2d(tfxWideAdd(x, dt), y); // Use y_coord if time needed
+		tfxWideFloat n_y_minus = tfx__simd_noise_2d(x, tfxWideSub(y, dt)); // Use y_coord if time needed
+		tfxWideFloat n_y_plus = tfx__simd_noise_2d(x, tfxWideAdd(y, dt)); // Use y_coord if time needed
 
-		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
-		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
-		l = tfxWideRSqrt(l);
-		noise_x = tfxWideMul(noise_x, l);
-		noise_y = tfxWideMul(noise_y, l);
+		tfxWideFloat grad_x = tfxWideDiv(tfxWideSub(n_x_plus, n_x_minus), dt2); // dN/dx
+		tfxWideFloat grad_y = tfxWideDiv(tfxWideSub(n_y_plus, n_y_minus), dt2); // dN/dy
 
-		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
-		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
+		tfxWideFloat curl_x = grad_y;
+		tfxWideFloat curl_y = tfxWideMul(grad_x, tfxWIDEMINUSONE.m); // -dN/dx
 
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x);
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y);
+		// Scale by global noise strength and turbulence lookup
+		tfxWideFloat noise_force_scale = tfxWideMul(ctx.global_noise, ctx.lookup_velocity_turbulance);
+		curl_x = tfxWideMul(noise_force_scale, curl_x);
+		curl_y = tfxWideMul(noise_force_scale, curl_y);
+
+		// Add curl noise force to velocity
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, curl_x);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, curl_y);
 	}
 };
 
@@ -8012,6 +8019,7 @@ struct tfx_apply_curl_noise_3d {
 		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);
 
+		/*
 		// 2. Calculate Offset Y coordinate for the 4 particles
 		tfxWideFloat y_offset = tfxWideAdd(y, tfxWIDENOISEOFFSET.m);
 
@@ -8056,6 +8064,51 @@ struct tfx_apply_curl_noise_3d {
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
 		noise_z = tfxWideMul(noise_z, l);
+		*/
+
+		const tfxWideFloat dt = tfxWideSetSingle(1e-4f); // Epsilon for finite difference
+		const tfxWideFloat tfxWIDEMINUSONE = tfxWideSetSingle(-1.0f); // Assuming you have this
+
+		// 1. Sample noise at 4 points
+		//    n0 = N(x, y, z)
+		//    nx = N(x+dt, y, z)
+		//    ny = N(x, y+dt, z)
+		//    nz = N(x, y, z+dt)
+		tfxWideFloat n0 = tfx__simd_noise_3d(x, y, z);
+		tfxWideFloat nx = tfx__simd_noise_3d(tfxWideAdd(x, dt), y, z);
+		tfxWideFloat ny = tfx__simd_noise_3d(x, tfxWideAdd(y, dt), z);
+		tfxWideFloat nz = tfx__simd_noise_3d(x, y, tfxWideAdd(z, dt));
+
+		// 2. Calculate partial derivatives using forward differences
+		//    grad_x = (N(x+dt, y, z) - N(x, y, z)) / dt  ~= dN/dx
+		//    grad_y = (N(x, y+dt, z) - N(x, y, z)) / dt  ~= dN/dy
+		//    grad_z = (N(x, y, z+dt) - N(x, y, z)) / dt  ~= dN/dz
+		tfxWideFloat grad_x = tfxWideDiv(tfxWideSub(nx, n0), dt);
+		tfxWideFloat grad_y = tfxWideDiv(tfxWideSub(ny, n0), dt);
+		tfxWideFloat grad_z = tfxWideDiv(tfxWideSub(nz, n0), dt);
+
+		// 3. Construct the 3D noise vector (inspired by common approximations/your previous code)
+		//    noise_x = dN/dy - dN/dz
+		//    noise_y = dN/dz - dN/dx
+		//    noise_z = dN/dx - dN/dy
+		//    This specific combination is one way to generate a divergence-free field from gradients.
+		tfxWideFloat noise_x = tfxWideSub(grad_y, grad_z);
+		tfxWideFloat noise_y = tfxWideSub(grad_z, grad_x);
+		tfxWideFloat noise_z = tfxWideSub(grad_x, grad_y);
+
+		// 4. Normalize (Optional but recommended for consistent speed)
+		tfxWideFloat l_sq = tfxWideMul(noise_x, noise_x);
+		l_sq = tfxWideAdd(l_sq, tfxWideMul(noise_y, noise_y));
+		l_sq = tfxWideAdd(l_sq, tfxWideMul(noise_z, noise_z));
+		// Add a small epsilon before rsqrt/sqrt to avoid division by zero
+		tfxWideFloat epsilon_sq = tfxWideSetSingle(1e-12f); // Example small value
+		l_sq = tfxWideAdd(l_sq, epsilon_sq);
+		tfxWideFloat inv_l = tfxWideRSqrt(l_sq); // Reciprocal square root if available and precise enough
+		// Or: inv_l = tfxWideDiv(tfxWideSetSingle(1.0f), tfxWideSqrt(l_sq));
+
+		noise_x = tfxWideMul(noise_x, inv_l);
+		noise_y = tfxWideMul(noise_y, inv_l);
+		noise_z = tfxWideMul(noise_z, inv_l);
 
 		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
 		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
@@ -8283,8 +8336,14 @@ struct tfx_apply_alignment_2d {
 			stretch.m = tfxWideMul(stretch.m, tfxWideDiv(l, ctx.overal_scale_wide));
 			ctx.last_position_x = tfxWideDiv(ctx.last_position_x, l);
 			ctx.last_position_y = tfxWideDiv(ctx.last_position_y, l);
+
+			if (ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+				tfx__wide_transform_quaternion_vec2(&ctx.emitter->rotation, &ctx.last_position_x, &ctx.last_position_y);
+			}
+
 			tfxWideArrayi packed; 
 			packed.m = tfx__wide_pack16bit(ctx.last_position_x, ctx.last_position_y);
+
 			tfxU32 limit_index = ctx.running_sprite_index + tfxDataWidth > ctx.work_entry->sprite_buffer_end_index ? ctx.work_entry->sprite_buffer_end_index - ctx.running_sprite_index : tfxDataWidth;
 			if (ctx.flags & tfx_ctx_policy_flag_is_ordered) {    //Predictable
 				for (tfxU32 j = ctx.start_diff; j < tfxMin(limit_index + ctx.start_diff, tfxDataWidth); ++j) {
@@ -8538,8 +8597,7 @@ struct tfx_apply_orbital_scale_velocity_3d {
 struct tfx_apply_position_2d {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(ctx.age, pm->frame_length_wide), tfxWIDEONE.m);
-		//tfxWideFloat age_fraction = tfxWIDEONE.m;
-		ctx.velocity_y = tfxWideSub(ctx.velocity_y, ctx.weight);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, ctx.weight);
 		ctx.velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_x, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_y, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.position_x.m = tfxWideAdd(ctx.position_x.m, tfxWideMul(ctx.velocity_x, ctx.overal_scale_wide));
@@ -8948,6 +9006,7 @@ tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t 
 
 tfxINTERNAL void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_line_behaviour_2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
