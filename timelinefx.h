@@ -7,7 +7,7 @@
 #define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
-//#define tfxUSEAVX
+#define tfxUSEAVX
 
 //#define TFX_MEMORY_TRACKING
 
