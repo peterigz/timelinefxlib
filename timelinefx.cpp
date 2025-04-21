@@ -5173,8 +5173,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
 	names_and_types.Insert("path_node_count", tfxUInt);
-	names_and_types.Insert("path_is_2d", tfxBool);
-	names_and_types.Insert("path_is_3d", tfxBool);    //Not used
 	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
 	names_and_types.Insert("path_reverse_direction", tfxBool);
 	names_and_types.Insert("path_extrusion_type", tfxSInt);
