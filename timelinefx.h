@@ -3059,8 +3059,14 @@ typedef enum {
 	tfxAnimationFlags_needs_recording                           = 1 << 2,
 	tfxAnimationFlags_export_with_transparency                  = 1 << 3,
 	tfxAnimationFlags_auto_set_length                           = 1 << 4,
-	tfxAnimationFlags_orthographic                              = 1 << 5
 } tfx_animation_flag_bits;
+
+typedef enum {
+	tfx_perspective_view            							= 1,
+	tfx_isometric_view              							= 1 << 1,
+	tfx_flat_view                   							= 1 << 2,
+	tfx_3d_views                    							= tfx_isometric_view | tfx_perspective_view
+} tfx_render_view_mode;
 
 typedef enum {
 	tfxAnimationInstanceFlags_none                              = 0,
@@ -5676,8 +5682,10 @@ typedef struct tfx_camera_settings_s {
 	bool camera_hide_floor;
 }tfx_camera_settings_t;
 
+//Only in the editor?
 typedef struct tfx_preview_camera_settings_s {
 	tfx_camera_settings_t camera_settings;
+	tfx_render_view_mode view_mode;
 	float effect_z_offset;
 	float camera_speed;
 	bool attach_effect_to_camera;
@@ -5695,6 +5703,7 @@ typedef struct tfx_sprite_sheet_settings_s {
 	int extra_frames_count;
 	tfxU32 seed;
 	tfxAnimationFlags animation_flags;
+	tfx_render_view_mode view_mode;
 	tfxU32 needs_exporting;
 	float max_radius;
 	tfxU32 largest_frame;
@@ -5703,7 +5712,6 @@ typedef struct tfx_sprite_sheet_settings_s {
 	tfx_export_color_options color_option;
 	tfx_export_options export_option;
 	tfx_camera_settings_t camera_settings;
-	tfx_camera_settings_t camera_settings_orthographic;
 } tfx_sprite_sheet_settings_t;
 
 //This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
@@ -5717,12 +5725,13 @@ typedef struct tfx_sprite_data_settings_s {
 	int extra_frames_count;
 	tfxU32 seed;
 	tfxAnimationFlags animation_flags;
+	tfx_render_view_mode view_mode;
 	tfxU32 needs_exporting;
 	float max_radius;
 	tfxU32 largest_frame;
 	float playback_speed;
 	float recording_frame_rate;
-}tfx_sprite_data_settings_t;
+} tfx_sprite_data_settings_t;
 
 //------------------------------------------------------------
 
