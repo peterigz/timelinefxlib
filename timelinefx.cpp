@@ -2185,7 +2185,7 @@ void tfx__update_source_emitter_flags(tfx_effect_descriptor effect) {
 	while(!stack.empty()) {
 		tfxKey key = stack.pop_back();
 		tfx_effect_descriptor emitter = tfx__get_library_effect_by_key(effect->library, key);
-		if(emitter) {
+		if (emitter) {
 			emitter->shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source;
 		}
 	}
@@ -3981,7 +3981,9 @@ bool tfx__is_valid_effect_key(tfx_library library, tfxKey key) {
 
 tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey key) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	TFX_ASSERT(library->effect_paths.ValidKey(key));            //Effect was not found by that key
+	if (!library->effect_paths.ValidKey(key)) {
+		return nullptr;
+	}
 	return library->effect_paths.At(key);
 }
 
