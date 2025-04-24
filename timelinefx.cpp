@@ -7448,7 +7448,7 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 	tfxU32 index = 0;
 	for (tfxBucketLoop(graph->nodes, i)) {
 		graph->nodes[i].index = index++;
-		if (!tfx__is_lerp_graph(graph) && !tfx__is_color_graph_type(graph->type) && !(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
+		if (!tfx__is_lerp_graph(graph) && !(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
 			tfx__unset_curves(graph, index - 1);
 		}
 	}
