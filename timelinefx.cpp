@@ -5476,10 +5476,10 @@ tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	tfx_str32_t name;
 	switch (type) {
 	case tfxGraphEasingType_constant            : name.Set("Constant"); break;
-	case tfxGraphEasingType_ease_in_quad        : name.Set("Ease In Quad"); break;
-	case tfxGraphEasingType_ease_out_quad       : name.Set("Ease Out Quad"); break;
-	case tfxGraphEasingType_in_out   : name.Set("Ease In Out Cubic"); break;
-	case tfxGraphEasingType_out_in	: name.Set("Ease In Out Cubic"); break;
+	case tfxGraphEasingType_in                  : name.Set("Ease In Quad"); break;
+	case tfxGraphEasingType_out                 : name.Set("Ease Out Quad"); break;
+	case tfxGraphEasingType_in_out              : name.Set("Ease In Out Cubic"); break;
+	case tfxGraphEasingType_out_in	            : name.Set("Ease Out In Cubic"); break;
 	case tfxGraphEasingType_smoothstep		    : name.Set("Smooth Step"); break;
 	case tfxGraphEasingType_linear              : name.Set("Linear"); break;
 	}
