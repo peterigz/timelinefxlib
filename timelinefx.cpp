@@ -3017,7 +3017,7 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 	stack.free();
 }
 
-void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
+void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
 	clone->children.init();
 	if (effect_to_clone->shared_index != tfxINVALID) {
@@ -3041,19 +3041,11 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 
 	if (effect_to_clone->type == tfxEffectType) {
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->transform_index, destination_library) : clone->transform_index = effect_to_clone->transform_index;
-		if (root_parent == clone) {
-			clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : clone->graph_list_index = effect_to_clone->graph_list_index;
-		} else {
-			if (!(flags & tfxEffectCloningFlags_force_clone_global)) {
-				clone->graph_list_index = root_parent->graph_list_index;
-			} else {
-				clone->graph_list_index = tfx__clone_library_graph_list(library, root_parent->graph_list_index, destination_library);
-			}
-		}
+		clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : clone->graph_list_index = effect_to_clone->graph_list_index;
 		if (flags & tfxEffectCloningFlags_history) {
 			clone->effect_flags |= tfxEffectPropertyFlags_history_effect;
 		}
-		if (effect_to_clone->preview_camera_settings != tfxINVALID) {
+		if (clone->effect_flags & tfxEffectCloningFlags_clone_camera_settings && effect_to_clone->preview_camera_settings != tfxINVALID) {
 			tfx__add_library_preview_camera_settings_effect(destination_library, clone);
 			destination_library->preview_camera_settings[clone->preview_camera_settings] = effect_to_clone->library->preview_camera_settings[effect_to_clone->preview_camera_settings];
 		}
@@ -3079,15 +3071,11 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	for (tfx_effect_descriptor child : effect_to_clone->children) {
 		if (child->type == tfxEmitterType || child->type == tfxRibbonType) {
 			tfx_effect_descriptor emitter_copy = tfx_NewEffectDescriptor(child->type);
-			tfx__clone_effect(child, emitter_copy, root_parent, destination_library, flags);
+			tfx__clone_effect(child, emitter_copy, destination_library, flags);
 			tfx__add_emitter_to_effect(clone, emitter_copy, child->type);
 		} else if (child->type == tfxEffectType) {
 			tfx_effect_descriptor effect_copy = tfx_NewEffectDescriptor(tfxEffectType);
-			if (clone->type == tfxFolder) {
-				tfx__clone_effect(child, effect_copy, effect_copy, destination_library, flags);
-			} else {
-				tfx__clone_effect(child, effect_copy, root_parent, destination_library, flags);
-			}
+			tfx__clone_effect(child, effect_copy, destination_library, flags);
 			tfx__add_effect_to_emitter(clone, effect_copy);
 		}
 	}
@@ -3102,13 +3090,13 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 	}
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
-	tfx__clone_effect(src, *dst, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
+	tfx__clone_effect(src, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
 }
 
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(effect_to_clone);		//effect to clone is not a valid handle
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
-	tfx__clone_effect(effect_to_clone, clone, root_parent ? root_parent : clone, destination_library, flags);
+	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
 	return clone;
 }
 
@@ -3993,7 +3981,7 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect = effect;
-	if (TFX_VALID_HANDLE(effect_template->effect)) {
+	if (TFX_VALID_HANDLE(effect_template->effect) && TFX_VALID_HANDLE(effect_template->effect->library)) {
 		tfx__free_effect(effect_template->effect);
 	}
 	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs);

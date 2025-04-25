@@ -2729,9 +2729,10 @@ typedef enum {
 typedef enum {
 	tfxEffectCloningFlags_none                                  = 0,
 	tfxEffectCloningFlags_keep_user_data                        = 1 << 0,
-	tfxEffectCloningFlags_force_clone_global                    = 1 << 1,
-	tfxEffectCloningFlags_clone_graphs                          = 1 << 2,
-	tfxEffectCloningFlags_history                               = 1 << 3
+	tfxEffectCloningFlags_clone_graphs                          = 1 << 1,
+	tfxEffectCloningFlags_history                               = 1 << 2,
+	tfxEffectCloningFlags_clone_camera_settings                 = 1 << 3,
+	tfxEffectCloningFlags_camera_and_graphs		                = tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_clone_camera_settings 
 } tfx_effect_cloning_flag_bits;
 
 typedef enum {
@@ -7276,7 +7277,7 @@ tfxAPI_EDITOR bool tfx__has_emission_range(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__update_source_emitter_flags(tfx_effect_descriptor effect);
-tfxINTERNAL void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
+tfxINTERNAL void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__enable_emitter(tfx_effect_descriptor effect);
