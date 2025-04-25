@@ -4658,7 +4658,11 @@ typedef struct tfx_queue_processor_s {
 
 typedef struct tfx_data_types_dictionary_s {
 	int initialised;
+#ifdef __cplusplus
 	tfx_storage_map_t<tfx_data_type> names_and_types;
+#else
+	tfx_storage_map_t names_and_types;
+#endif
 } tfx_data_types_dictionary_t;
 
 tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
@@ -4676,9 +4680,15 @@ typedef struct tfx_storage_s {
 	tfx_color_ramp_format color_ramp_format;
 	tfx_queue_processor_t thread_queues;
 	tfx_hasher_t hasher;
+#ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_manager> effect_managers;
 	tfx_storage_map_t<tfx_library> libraries;
 	tfx_storage_map_t<tfxU32> graph_indexes;
+#else
+	tfx_storage_map_t effect_managers;
+	tfx_storage_map_t libraries;
+	tfx_storage_map_t graph_indexes;
+#endif
 	tfx_buffer_t gpu_graph_data;
 	tfx_ribbon_dispatch last_ribbon_dispatch;
 	tfx_effect_manager current_pm;
@@ -5240,7 +5250,7 @@ const tfxWideArrayi tfxONE = tfxWideSetConst(1);
 const tfxWideArray tfxONEF = tfxWideSetConst(1.f);
 const tfxWideArray tfxZERO = tfxWideSetConst(0.f);
 const tfxWideArray tfxTHIRTYTWO = tfxWideSetConst(32.f);
-const tfxWideArrayi tfxFF = tfxWideSetConst(int(255));
+const tfxWideArrayi tfxFF = tfxWideSetConst(255);
 const tfxWideArray tfxPSIX = tfxWideSetConst(0.6f);
 
 static const float tfxGRADIENTS_3D[] =
