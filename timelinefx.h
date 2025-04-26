@@ -2812,10 +2812,12 @@ typedef enum {
 	tfxEffectManagerFlags_record_with_compute_image_index   	= 1 << 22,
 } tfx_effect_manager_flag_bits;
 
+//These values must stay the same
 typedef enum {
 	tfxVectorAlignType_motion,
 	tfxVectorAlignType_emission,
 	tfxVectorAlignType_emitter,
+	tfxVectorAlignType_velocity,
 	tfxVectorAlignType_max,
 } tfx_vector_align_type;
 
@@ -5831,6 +5833,8 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxU32 single_shot_limit;
 	//Milliseconds to delay spawing
 	float delay_spawning;
+	//When relative position is set you can create a lag between the particle position and the emitter position base on the particle age
+	float relative_lag;
 	//When the emission type is shared emitter then this is the hash of the shared emitter.
 	tfxKey paired_emitter_hash;
 	//Layer of the effect manager that the particle is added to
@@ -7612,7 +7616,6 @@ of course.
 */
 struct tfx_position_policy_context {
 	tfxWideArray position_x, position_y, position_z;
-	tfxWideFloat last_position_x, last_position_y;
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
@@ -7638,7 +7641,6 @@ struct tfx_position_policy_context {
 	tfxWideFloat emitter_handle_x, emitter_handle_y, emitter_handle_z;
 	tfxWideFloat emitter_world_x, emitter_world_y, emitter_world_z;
 	tfxWideFloat emitter_scale;
-	tfxWideArray stretch;
 	tfxWideInt capture_after_transform;
 	tfx_vector_align_type vector_align_type;
 	tfx_emission_type emission_type;
@@ -7655,14 +7657,12 @@ struct tfx_position_policy_context {
 	tfx_graph_t *velocity_graph;
 	tfx_graph_t *direction_graph;
 	tfx_graph_t *weight_graph;
-	tfx_graph_t *stretch_graph;
 	tfx_graph_t *velocity_turbulance_graph;
 	tfx_graph_t *noise_resolution_graph;
 	tfx_graph_t *motion_randomness_graph;
 	tfx_wide_easing_function velocity_easing;
 	tfx_wide_easing_function direction_easing;
 	tfx_wide_easing_function weight_easing;
-	tfx_wide_easing_function stretch_easing;
 	tfx_wide_easing_function velocity_turbulance_easing;
 	tfx_wide_easing_function noise_resolution_easing;
 	tfx_wide_easing_function motion_randomness_easing;
@@ -7676,10 +7676,6 @@ struct tfx_setup_vecolity_lookup_policy {
 };
 
 struct tfx_setup_weight_lookup_policy {
-	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
-};
-
-struct tfx_setup_stretch_lookup_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
@@ -7741,19 +7737,6 @@ struct tfx_apply_lookup_velocity {
 			ctx.lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(ctx.velocity_graph->wide_oscillator.offset_x, ctx.velocity_graph->wide_oscillator.frequency), ctx.velocity_graph->wide_oscillator.amplitude), ctx.lookup_velocity), ctx.velocity_graph->wide_oscillator.offset_y);
 		}
 		ctx.velocity = tfxWideMul(ctx.lookup_velocity, base_velocity);
-	}
-};
-
-struct tfx_apply_lookup_stretch {
-	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		tfxWideFloat stretch_time = ctx.stretch_easing(ctx.life);
-		ctx.lookup_stretch = (ctx.flags & tfx_ctx_policy_flag_stretch_is_bezier_graph) ?
-			tfx__wide_bezier_sampler(stretch_time, ctx.stretch_graph->wide_graph.from, ctx.stretch_graph->wide_graph.curve1, ctx.stretch_graph->wide_graph.curve2, ctx.stretch_graph->wide_graph.to) :
-			tfx__wide_linear_sampler(ctx.stretch_graph->wide_graph.from, ctx.stretch_graph->wide_graph.to, stretch_time);
-		if (ctx.flags & tfx_ctx_policy_flag_stretch_is_bezier_graph) {
-			ctx.lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(ctx.stretch_graph->wide_oscillator.offset_x, ctx.stretch_graph->wide_oscillator.frequency), ctx.stretch_graph->wide_oscillator.amplitude), ctx.lookup_stretch), ctx.stretch_graph->wide_oscillator.offset_y);
-		}
-		ctx.stretch.m = tfxWideMul(ctx.lookup_stretch, ctx.global_stretch);
 	}
 };
 
@@ -8209,6 +8192,20 @@ struct tfx_apply_position {
 	}
 };
 
+struct tfx_apply_pack_velocity {
+	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
+		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
+		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
+		length = tfxWideMul(tfxWideRSqrt(length), length);
+		ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
+		ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
+		ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
+		tfxWideInt packed_normal = tfx__wide_pack10bit_unsigned(ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
+		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], packed_normal);
+	}
+};
+
 struct tfx_apply_position_line_trajectory {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
@@ -8227,108 +8224,6 @@ struct tfx_apply_store_position {
 		tfxWideStore(&bank.position_x[index], ctx.position_x.m);
 		tfxWideStore(&bank.position_y[index], ctx.position_y.m);
 		tfxWideStore(&bank.position_z[index], ctx.position_z.m);
-	}
-};
-
-//Not used currently, can revisit at some point
-struct tfx_apply_transform {
-	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
-		tfxWideArray capture_flag;
-		tfx__readbarrier;
-		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, ctx.capture_after_transform), tfxWideSetZeroi));
-		tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero);
-		tfx__readbarrier;
-
-		tfxWideFloat alignment_vector_x;
-		tfxWideFloat alignment_vector_y;
-		tfxWideFloat alignment_vector_z;
-
-		if (ctx.flags & tfx_ctx_policy_flag_transform_relative) {
-			ctx.position_x.m = tfxWideAdd(ctx.position_x.m, ctx.emitter_handle_x);
-			ctx.position_y.m = tfxWideAdd(ctx.position_y.m, ctx.emitter_handle_y);
-			ctx.position_z.m = tfxWideAdd(ctx.position_z.m, ctx.emitter_handle_z);
-			tfx__wide_transform_quaternion_vec3(&ctx.emitter->rotation, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
-			ctx.position_x.m = tfxWideAdd(tfxWideMul(ctx.position_x.m, ctx.emitter_scale), ctx.emitter_world_x);
-			ctx.position_y.m = tfxWideAdd(tfxWideMul(ctx.position_y.m, ctx.emitter_scale), ctx.emitter_world_y);
-			ctx.position_z.m = tfxWideAdd(tfxWideMul(ctx.position_z.m, ctx.emitter_scale), ctx.emitter_world_z);
-		} else if (ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type == tfxPath) {
-			tfx__wide_transform_quaternion_vec3(&ctx.emitter->rotation, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
-			ctx.position_x.m = tfxWideAdd(tfxWideMul(ctx.position_x.m, ctx.emitter_scale), ctx.emitter_world_x);
-			ctx.position_y.m = tfxWideAdd(tfxWideMul(ctx.position_y.m, ctx.emitter_scale), ctx.emitter_world_y);
-			ctx.position_z.m = tfxWideAdd(tfxWideMul(ctx.position_z.m, ctx.emitter_scale), ctx.emitter_world_z);
-		} else if (ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type == tfxOtherEmitter) {
-			ctx.position_x.m = tfxWideMul(ctx.position_x.m, ctx.emitter_scale);
-			ctx.position_y.m = tfxWideMul(ctx.position_y.m, ctx.emitter_scale);
-			ctx.position_z.m = tfxWideMul(ctx.position_z.m, ctx.emitter_scale);
-		}
-
-		tfxWideArrayi alignment_packed;
-		alignment_packed.m = tfxWideSetZeroi;
-		if (ctx.vector_align_type == tfxVectorAlignType_emission && ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
-			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfxWideFloat velocity_normal_x;
-			tfxWideFloat velocity_normal_y;
-			tfxWideFloat velocity_normal_z;
-			tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
-			alignment_vector_x = velocity_normal_x;
-			alignment_vector_y = velocity_normal_y;
-			alignment_vector_z = velocity_normal_z;
-			tfx__wide_transform_quaternion_vec3(&ctx.emitter->rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		} else if (ctx.vector_align_type == tfxVectorAlignType_emission) {
-			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfxWideFloat velocity_normal_x;
-			tfxWideFloat velocity_normal_y;
-			tfxWideFloat velocity_normal_z;
-			tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
-			alignment_vector_x = velocity_normal_x;
-			alignment_vector_y = velocity_normal_y;
-			alignment_vector_z = velocity_normal_z;
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		} else if (ctx.vector_align_type == tfxVectorAlignType_emitter) {
-			alignment_vector_x = tfxWideSetZero;
-			alignment_vector_y = tfxWideSetSingle(1.f);
-			alignment_vector_z = tfxWideSetZero;
-			tfx__wide_transform_quaternion_vec3(&ctx.emitter->rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		}
-
-		if (ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && ctx.emitter->spawn_locations_index != tfxINVALID) {
-			tfx_spawn_points_soa_t &locations = pm->particle_location_arrays[ctx.emitter->spawn_locations_index];
-			tfxWideStore(&locations.position_x[index], ctx.position_x.m);
-			tfxWideStore(&locations.position_y[index], ctx.position_y.m);
-			tfxWideStore(&locations.position_z[index], ctx.position_z.m);
-			tfxWideStore(&locations.age[index], ctx.life);
-		}
-
-		tfxU32 limit_index = ctx.running_sprite_index + tfxDataWidth > ctx.work_entry->sprite_buffer_end_index ? ctx.work_entry->sprite_buffer_end_index - ctx.running_sprite_index : tfxDataWidth;
-		if (ctx.flags & tfx_ctx_policy_flag_is_ordered) {
-			for (tfxU32 j = ctx.start_diff; j < tfxMin(limit_index + ctx.start_diff, tfxDataWidth); ++j) {
-				int index_j = index + j;
-				tfxU32 sprite_depth_index = bank.depth_index[index_j] + ctx.work_entry->cumulative_index_point + ctx.work_entry->effect_instance_offset;
-				ctx.sprites[sprite_depth_index].alignment.packed = alignment_packed.a[j];
-				ctx.sprites[sprite_depth_index].position.w = ctx.stretch.a[j];
-				ctx.sprites[sprite_depth_index].position.x = ctx.position_x.a[j];
-				ctx.sprites[sprite_depth_index].position.y = ctx.position_y.a[j];
-				ctx.sprites[sprite_depth_index].position.z = ctx.position_z.a[j];
-				tfx_vec3_t sprite_plus_camera_position = ctx.sprites[sprite_depth_index].position.xyz() - pm->camera_position;
-				(*ctx.work_entry->depth_indexes)[sprite_depth_index - ctx.work_entry->cumulative_index_point - ctx.work_entry->effect_instance_offset].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
-				ctx.running_sprite_index++;
-			}
-		} else {
-			for (tfxU32 j = ctx.start_diff; j < tfxMin(limit_index + ctx.start_diff, tfxDataWidth); ++j) {
-				int index_j = index + j;
-				ctx.sprites[ctx.running_sprite_index].position.w = ctx.stretch.a[j];
-				ctx.sprites[ctx.running_sprite_index].alignment.packed = alignment_packed.a[j];
-				ctx.sprites[ctx.running_sprite_index].position.x = ctx.position_x.a[j];
-				ctx.sprites[ctx.running_sprite_index].position.y = ctx.position_y.a[j];
-				ctx.sprites[ctx.running_sprite_index].position.z = ctx.position_z.a[j];
-				ctx.running_sprite_index++;
-			}
-		}
-
-		ctx.start_diff = 0;
 	}
 };
 
