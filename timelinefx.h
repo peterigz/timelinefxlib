@@ -8261,6 +8261,7 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_ef
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
+		tfxPrint("%u", capture);
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm->current_sprite_buffer << 30) + running_sprite_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + running_sprite_index;

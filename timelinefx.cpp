@@ -11147,9 +11147,6 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 		tfxWideFloat at_end = tfxWideGreater(local_position_y, emitter_size_y);
 		local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
 		flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-		at_end = tfxWideLess(local_position_y, tfxWideSetZero);
-		local_position_y = tfxWideAdd(local_position_y, tfxWideAnd(at_end, emitter_size_y));
-		flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
 		tfxWideStore(&bank.position_y[index], local_position_y);
 	}
@@ -16557,7 +16554,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_position
 			>(work_entry, ctx);
 		}
-		tfx__control_particle_transform(&pm->work_queue, work_entry);
 		if (emitter.control_profile & tfxEmitterControlProfile_any_line) {
 			if (emitter.control_profile & tfxEmitterControlProfile_edge_kill && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
 				tfx__control_particle_line_behaviour_kill(&pm->work_queue, work_entry);
@@ -16565,6 +16561,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx__control_particle_line_behaviour_loop(&pm->work_queue, work_entry);
 			}
 		}
+		tfx__control_particle_transform(&pm->work_queue, work_entry);
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
 		}
