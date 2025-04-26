@@ -10973,13 +10973,6 @@ void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry,
 	ctx.flags |= tfx__graph_can_oscillate(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_has_oscillator : 0;
 }
 
-void tfx_setup_stretch_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
-	ctx.stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
-	ctx.stretch_easing = tfx__get_wide_easing_function(ctx.stretch_graph->easing_type);
-	ctx.flags |= tfx__graph_has_bezier_curves(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_is_bezier_graph : 0;
-	ctx.flags |= tfx__graph_can_oscillate(ctx.stretch_graph) ? tfx_ctx_policy_flag_stretch_has_oscillator : 0;
-}
-
 void tfx_setup_direction_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.direction_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_direction_index];
 	ctx.direction_easing = tfx__get_wide_easing_function(ctx.direction_graph->easing_type);
@@ -11243,8 +11236,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
-		}
-		else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxPath) {
+		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxPath) {
 			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
@@ -11268,8 +11260,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_z = velocity_normal_z;
 			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		}
-		else if (vector_align_type == tfxVectorAlignType_emission) {
+		} else if (vector_align_type == tfxVectorAlignType_emission) {
 			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 			tfxWideFloat velocity_normal_x;
 			tfxWideFloat velocity_normal_y;
@@ -11279,8 +11270,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_y = velocity_normal_y;
 			alignment_vector_z = velocity_normal_z;
 			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		}
-		else if (vector_align_type == tfxVectorAlignType_emitter) {
+		} else if (vector_align_type == tfxVectorAlignType_emitter) {
 			alignment_vector_x = tfxWideSetZero;
 			alignment_vector_y = tfxWideSetSingle(1.f);
 			alignment_vector_z = tfxWideSetZero;
@@ -16077,7 +16067,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 				bank.path_position[next_index] = bank.path_position[index];
 				bank.path_offset[next_index] = bank.path_offset[index];
 			}
-			if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+			if (emitter.control_profile & tfxEmitterControlProfile_has_rotated_path_or_line) {
 				bank.quaternion[next_index] = bank.quaternion[index];
 			}
 			bank.random_color[next_index] = bank.random_color[index];
