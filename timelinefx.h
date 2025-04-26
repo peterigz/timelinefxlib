@@ -9911,7 +9911,7 @@ Scale all nodes on a global graph graph of the effect
 * @param global_type			  tfx_graph_type of the global graph that you want to scale. Must be a global graph or an assert will be called
 * @param amount					  A float of the amount that you want to scale the multiplier by.
 */
-tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_graph_type global_type, float amount);
+tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float amount);
 
 /*
 Scale all nodes on an emitter graph
@@ -9919,7 +9919,7 @@ Scale all nodes on an emitter graph
 * @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
 * @param amount                   A float of the amount that you want to scale the graph by.
 */
-tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_graph_type graph_type, float amount);
+tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float amount);
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
