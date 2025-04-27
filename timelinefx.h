@@ -6845,6 +6845,7 @@ typedef struct tfx_effect_manager_s {
 	tfxWideFloat frame_length_wide;
 	float update_time;
 	tfxWideFloat update_time_wide;
+	tfxWideFloat target_frame_length_update;
 	float update_frequency;
 } tfx_effect_manager_t;
 #endif
@@ -9062,8 +9063,11 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 	}
 
 * @param pm                    A pointer to an initialised tfx_effect_manager_t.
+* @param elapsed               The amount of time that passed since the last frame in milliseconds.
+* @param target_frame_length   The expected frame length. This is currently used to avoid particles getting over stretched when too much time passes so it looks less glitchy
+							   Pass in 0.f if the frame length is variable
 */
-tfxAPI void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed);
+tfxAPI void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed, float target_frame_length);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function

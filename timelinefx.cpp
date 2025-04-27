@@ -8886,7 +8886,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tmp_frame_meta.clear();
 	while (frame < frames &&offset < 99999) {
 		tfxU32 count_this_frame = 0;
-		tfx_UpdateEffectManager(pm, frame_length);
+		tfx_UpdateEffectManager(pm, frame_length, frame_length);
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
@@ -9031,7 +9031,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
-		tfx_UpdateEffectManager(pm, frame_length);
+		tfx_UpdateEffectManager(pm, frame_length, frame_length);
 		for (tfxEachLayer) {
 			tfx__invalidate_new_captured_index(tfxCastBufferRef(tfx_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 		}
@@ -10314,7 +10314,7 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
-void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
+void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time, float target_frame_length) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfxPROFILE;
 
@@ -10339,10 +10339,12 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 	}
 
 	pm->frame_length = tfx__Min(elapsed_time, pm->max_frame_length);
+	target_frame_length = tfx__Min(elapsed_time, target_frame_length);
 	pm->frame_length_wide = tfxWideSetSingle(pm->frame_length);
 	pm->update_frequency = 1000.f / elapsed_time;
 	pm->update_time = 1.f / pm->update_frequency;
 	pm->update_time_wide = tfxWideSetSingle(pm->update_time);
+	pm->target_frame_length_update = target_frame_length ? tfxWideSetSingle(target_frame_length / pm->frame_length) : tfxWideSetSingle(1.f);
 	pm->new_compute_particle_index = 0;
 	pm->current_ribbon_count = 0;
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
@@ -11206,7 +11208,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 			lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
 		}
 
-		stretch.m = tfxWideDiv(tfxWideMul(lookup_stretch, global_stretch), e_scale);
+		stretch.m = tfxWideMul(tfxWideDiv(tfxWideMul(lookup_stretch, global_stretch), e_scale), pm.target_frame_length_update);
 
 		tfxWideArray position_x;
 		tfxWideArray position_y;
