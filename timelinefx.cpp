@@ -11114,7 +11114,11 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 
 		tfx__readbarrier;
 
@@ -11123,7 +11127,11 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 		flags = tfxWideOri(flags, remove_flags);
 		remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_y, tfxWideSetZero)));
 		flags = tfxWideOri(flags, remove_flags);
+#ifdef tfxHALFFLOATS
+		tfx__store_half_ints(&bank.flags_single_loop_count[index], flags);
+#else
 		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags);
+#endif
 	}
 }
 
@@ -11139,7 +11147,11 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 
 		tfx__readbarrier;
 
@@ -11148,7 +11160,11 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 		local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
 		flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 		tfxWideStore(&bank.position_y[index], local_position_y);
-		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags);
+#ifdef tfxHALFFLOATS
+		tfx__store_half_ints(&bank.flags_single_loop_count[index], flags);
+#else
+		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+#endif
 	}
 }
 
@@ -11214,7 +11230,11 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 		tfxWideArray capture_flag;
 		tfx__readbarrier;
 		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi));
@@ -12067,7 +12087,11 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
 		//We only want to not capture if single loop count is 0.
-		flags.m = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		flags.m = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		flags.m = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
 
 		tfx__readbarrier;
@@ -12147,7 +12171,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				bool new_id = bank.age[index_j] == 0 && bank.flags_single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
+				bool new_id = bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped ? true : false;
 				sprite_uids[sprite_depth_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
@@ -12158,7 +12182,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				bool new_id = bank.age[index_j] == 0 && bank.flags_single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
+				bool new_id = bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped ? true : false;
 				sprite_uids[running_sprite_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[running_sprite_index].uid;
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
@@ -16014,7 +16038,11 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags_single_loop_count = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
 		tfxWideInt flags_single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#endif
 		age = tfxWideAdd(age, pm.frame_length_wide);
 
 		tfx__readbarrier;
@@ -16030,7 +16058,11 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
 
 		tfxWideStore(&bank.age[index], age);
+#ifdef tfxHALFFLOATS
+		tfx__store_half_ints(&bank.flags_single_loop_count[index], flags_single_loop_count);
+#else
 		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags_single_loop_count);
+#endif
 	}
 
 	if (tfx__is_ordered_effect_state(&effect)) { 
@@ -16043,7 +16075,11 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxU32 max_index = 0;
 	for (int i = work_entry->start_index; i >= 0; --i) {
 		const tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i);
-		tfxU32 &flags_single_loop_count = bank.flags_single_loop_count[index];
+#ifdef tfxHALFFLOATS
+		tfxU16 &flags_single_loop_count = bank.flags_single_loop_count[index];
+#else
+		tfx32 &flags_single_loop_count = bank.flags_single_loop_count[index];
+#endif
 		if (flags_single_loop_count & tfxParticleFlags_remove) {
 			offset++;
 			if (is_ordered) {
@@ -16776,7 +16812,6 @@ void tfx__init_sprite_data_soa(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *
 void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
-	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, flags_single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, max_age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_x));
@@ -16809,12 +16844,14 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 #ifdef tfxHALFFLOATS
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, flags_single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_x));
 	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_y));
 	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_roll_spin));
 	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_pitch_spin));
 	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_yaw_spin));
 #else
+	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, flags_single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_roll_spin));

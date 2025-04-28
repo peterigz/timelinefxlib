@@ -6225,8 +6225,8 @@ typedef struct tfx_particle_soa_s {
 		float *path_scale_variation;
 	};
 	float *base_weight;
-	tfxU32 *flags_single_loop_count;
 #ifdef tfxHALFFLOATS
+	tfxHalf *flags_single_loop_count;
 	tfxHalf *base_size_x;
 	tfxHalf *base_size_y;
 	tfxHalf *noise_offset;
@@ -6235,6 +6235,7 @@ typedef struct tfx_particle_soa_s {
 	tfxHalf *base_pitch_spin;
 	tfxHalf *base_yaw_spin;
 #else
+	tfxU32 *flags_single_loop_count;
 	float *base_size_x;
 	float *base_size_y;
 	float *noise_offset;
@@ -7719,6 +7720,42 @@ tfxAPI inline unsigned short tfx__float_to_half(float f) {
 	}
 }
 
+tfxINTERNAL inline tfxWideInt tfx__load_half_ints(tfxU16 *half_ints) {
+	// For AVX target (e.g., inside #ifdef tfxUSEAVX ... #endif block)
+	// Processes 8 elements (uint16_t) = 16 bytes
+
+	// Step 1: Load all 16 bytes (8x uint16_t) into a 128-bit register
+	tfx128i loaded_16_bytes = _mm_loadu_si128((tfx128i const *)half_ints);
+	// loaded_16_bytes = [ w7 w6 w5 w4 | w3 w2 w1 w0 ]
+
+	// Step 2: Expand the lower 4 words (w0..w3) using the SSE4.1 instruction
+	tfx128i dwords_0_3 = _mm_cvtepu16_epi32(loaded_16_bytes); // SSE4.1 ok
+	// dwords_0_3 = [ d3 d2 d1 d0 ]
+
+	// Step 3: Isolate the upper 4 words (w4..w7) into the lower part of another register
+	// Shift the original loaded bytes right by 8 bytes (64 bits)
+	tfx128i packed_words_4_7_shifted = _mm_srli_si128(loaded_16_bytes, 8);
+	// packed_words_4_7_shifted = [ 00...00 | w7 w6 w5 w4 ]
+
+	// Step 4: Expand these shifted words (w4..w7) using the SSE4.1 instruction
+	tfx128i dwords_4_7 = _mm_cvtepu16_epi32(packed_words_4_7_shifted); // SSE4.1 ok
+	// dwords_4_7 = [ d7 d6 d5 d4 ]
+
+	// Step 5: Combine the two 128-bit results into a 256-bit register using AVX1 instruction
+	// _mm256_set_m128i places the first argument in the high lane, second in the low lane.
+	return tfxWideSet128i(dwords_4_7, dwords_0_3); // AVX1
+}
+
+tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt half_ints) {
+	tfx128i lo = tfxWideExtract128i(half_ints, 0);
+	tfx128i hi = tfxWideExtract128i(half_ints, 1);
+	tfx128i zero = tfx128SetZeroi;
+	lo = tfx128Packus32(lo, zero);
+	hi = tfx128Packus32(hi, zero);
+	tfx128i packed = _mm_unpacklo_epi64(lo, hi);
+	*(tfx128i*)dst = packed;
+}
+
 tfxINTERNAL inline tfxWideInt tfx__load_bytes(tfxU8 *bytes) {
 #ifdef tfxUSEAVX2
 	tfx128i loaded_bytes = tfx128Load64bytes((tfx128i *)bytes);
@@ -8290,9 +8327,17 @@ struct tfx_apply_path_end_kill {
 		tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 		tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(ctx.path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(ctx.path_position, ctx.node_count))));
 		ctx.path_position = tfxWideMax(ctx.path_position, tfxWideSetZero);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 		flags = tfxWideOri(flags, remove_flags);
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
+#ifdef tfxHALFFLOATS
+		tfx__store_half_ints(&bank.flags_single_loop_count[index], flags);
+#else
+		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+#endif
 	}
 };
 
@@ -8301,12 +8346,20 @@ struct tfx_apply_path_end_loop {
 		//Reposition if the particle is travelling along the path
 		tfxWideFloat at_end = tfxWideGreaterEqual(ctx.path_position, ctx.node_count);
 		ctx.path_position = tfxWideSub(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+#ifdef tfxHALFFLOATS
+		tfxWideInt flags = tfx__load_half_ints(&bank.flags_single_loop_count[index]);
+#else
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+#endif
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
 		at_end = tfxWideLess(ctx.path_position, tfxWideSetZero);
 		ctx.path_position = tfxWideAdd(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
+#ifdef tfxHALFFLOATS
+		tfx__store_half_ints(&bank.flags_single_loop_count[index], flags);
+#else
+		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+#endif
 	}
 };
 
