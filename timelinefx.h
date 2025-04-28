@@ -8,6 +8,8 @@
 #define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 #define tfxUSEAVX
+//#define tfxUSEAVX2
+#define tfxHALFFLOATS
 
 //#define TFX_MEMORY_TRACKING
 
@@ -1231,7 +1233,9 @@ tfx_allocator *tfxGetAllocator();
 
 //type defs
 typedef uint16_t tfxU16;
+typedef unsigned short tfxHalf;
 typedef uint32_t tfxU32;
+typedef unsigned char tfxU8;
 typedef unsigned int tfxEmitterID;
 typedef int32_t tfxS32;
 typedef uint64_t tfxU64;
@@ -1587,12 +1591,24 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideLoadi _mm256_load_si256
 #define tfx128Set _mm_set_ps
 #define tfx128Seti _mm_set_epi32
+#define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
+#define tfxWideStoreHalfs _mm_store_si128
 #define tfx128SetSingle _mm_set_ps1
 #define tfx128SetSinglei _mm_set1_epi32
+#define tfx128Load64bytes _mm_loadl_epi64 
+#define tfx128UnpackLo8 _mm_unpacklo_epi8
+#define tfx128UnpackLo16 _mm_unpacklo_epi16
+#define tfx128UnpackHi16 _mm_unpackhi_epi16
+#define tfx128SetZeroi _mm_setzero_si128()
+#define tfx128Packus32 _mm_packus_epi32
+#define tfx128Packus16 _mm_packus_epi16
+#define tfx128Convert32 _mm_cvtsi128_si32
 #define tfxWideSet _mm256_set_ps
 #define tfxWideSetSingle _mm256_set1_ps
 #define tfxWideSeti _mm256_set_epi32
 #define tfxWideSetSinglei _mm256_set1_epi32
+#define tfxWideSet128i _mm256_set_m128i
+#define tfxWideExtract128i _mm256_extractf128_si256
 #define tfxWideAdd _mm256_add_ps
 #define tfxWideSub _mm256_sub_ps
 #define tfxWideMul _mm256_mul_ps
@@ -1618,7 +1634,9 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideCasti _mm256_castps_si256
 #define tfxWideCast _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
-#define tfxWideConvert    _mm256_cvtepi32_ps 
+#define tfxWideConvert _mm256_cvtepi32_ps 
+#define tfxWideConvertHalfsToFloats _mm256_cvtph_ps 
+#define tfxWideConvertFloatsToHalfs(floats) _mm256_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
@@ -2683,7 +2701,11 @@ typedef tfxU32 tfxSharedEmitterFlags;			//tfx_shared_emitter_flag_bits
 typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
-typedef tfxU32 tfxParticleFlags;                //tfx_particle_flag_bits
+#ifdef tfxHALFFLOATS
+typedef tfxU8 tfxParticleFlags;                 //tfx_particle_flag_bits
+#else
+typedef tfxU32 tfxParticleFlags;                 //tfx_particle_flag_bits
+#endif
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonFlags;		            //tfx_ribbon_flag_bits
@@ -2703,6 +2725,11 @@ typedef tfxU32 tfxEmitterPathFlags;             //tfx_emitter_path_flag_bits
 typedef tfxU32 tfxEmitterControlProfileFlags;   //tfx_emitter_control_profile_flag_bits
 typedef tfxU32 tfxContextPolicyFlags;			//tfx_context_policy_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
+
+typedef enum {
+	tfxSharedFlag_capture_after_transform						= 1 << 8,
+	tfxSharedFlag_remove										= 1 << 9
+} tfx_shared_flag_bits;
 
 typedef enum {
 	tfxErrorCode_success                                        = 0,
@@ -2857,7 +2884,7 @@ typedef enum {
                                                                                 //All the state_flags needed by the ControlParticle function put into one typedef enum save typedef enum
 typedef enum {
 	tfxParticleControlFlags_none                                = 0,
-	tfxParticleControlFlags_random_color                        = 1 << 0,
+	tfxParticleControlFlags_remove                              = tfxSharedFlag_remove,
 	tfxParticleControlFlags_relative_position                   = 1 << 1,
 	tfxParticleControlFlags_relative_angle                      = 1 << 2,
 	tfxParticleControlFlags_point                               = 1 << 3,
@@ -2868,7 +2895,7 @@ typedef enum {
 	tfxParticleControlFlags_kill                                = 1 << 8,
 	tfxParticleControlFlags_letFree                             = 1 << 9,
 	tfxParticleControlFlags_edge_traversal                      = 1 << 10,
-	tfxParticleControlFlags_remove                              = 1 << 11,
+	tfxParticleControlFlags_random_color                        = 1 << 11,
 	tfxParticleControlFlags_base_uniform_size                   = 1 << 12,
 	tfxParticleControlFlags_lifetime_uniform_size               = 1 << 13,
 	tfxParticleControlFlags_animate                             = 1 << 14,
@@ -2977,9 +3004,8 @@ typedef enum {
 
 typedef enum {
 	tfxParticleFlags_none                                       = 0,
-	tfxParticleFlags_remove                                     = 1 << 4,       //Particle will be removed this or next frame
-	tfxParticleFlags_capture_after_transform                    = 1 << 15,      //Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
-																				//*Important* This needs to stay 15 as it's a bit field in the texture index that gets set in the sprite instance
+	tfxParticleFlags_capture_after_transform                    = tfxSharedFlag_capture_after_transform,    //Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
+	tfxParticleFlags_remove                                     = tfxSharedFlag_remove						//Particle will be removed this or next frame
 } tfx_particle_flag_bits;
 
 typedef enum {
@@ -6181,7 +6207,6 @@ typedef struct tfx_unique_sprite_id_s {
 typedef struct tfx_particle_soa_s {
 	tfxU32 *uid;
 	tfxU32 *sprite_index;
-	tfxParticleFlags *flags;
 	float *age;
 	float *max_age;
 	float *position_x;
@@ -6195,22 +6220,32 @@ typedef struct tfx_particle_soa_s {
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
-	float *base_weight;
 	union {
 		float *base_velocity;
 		float *path_scale_variation;
 	};
-	float *base_spin;
-	float *base_pitch_spin;
-	float *base_yaw_spin;
+	float *base_weight;
+	tfxU32 *flags_single_loop_count;
+#ifdef tfxHALFFLOATS
+	tfxHalf *base_size_x;
+	tfxHalf *base_size_y;
+	tfxHalf *noise_offset;
+	tfxHalf *noise_resolution;
+	tfxHalf *base_roll_spin;
+	tfxHalf *base_pitch_spin;
+	tfxHalf *base_yaw_spin;
+#else
 	float *base_size_x;
 	float *base_size_y;
 	float *noise_offset;
 	float *noise_resolution;
+	float *base_roll_spin;
+	float *base_pitch_spin;
+	float *base_yaw_spin;
+#endif
 	float *intensity_factor;
 	float *random_color;
 	float *image_frame;
-	tfxU32 *single_loop_count;
 } tfx_particle_soa_t;
 
 typedef struct tfx_spawn_points_soa_s {
@@ -6425,7 +6460,7 @@ typedef struct tfx_compute_particle_s {
 	tfx_vec2_t base_size;
 
 	float base_velocity;
-	float base_spin;
+	float base_roll_spin;
 	float base_weight;
 
 	float age;                            //The age of the particle, used by the controller to look up the current state on the graphs
@@ -7580,6 +7615,161 @@ tfxINTERNAL inline float tfx__length_vec3_nosqr(tfx_vec3_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z;
 }
 
+typedef union 
+{
+	unsigned int i;
+	float f;
+} tfx_uint_float;
+
+//Exponent lookup table for converting floats to halfs
+static const unsigned short tfx_exponent_lookup[1 << 9] = {
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,  1024,  2048,  3072,  4096,  5120,  6144,  7168,
+	 8192,  9216, 10240, 11264, 12288, 13312, 14336, 15360,
+	16384, 17408, 18432, 19456, 20480, 21504, 22528, 23552,
+	24576, 25600, 26624, 27648, 28672, 29696,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0, 33792, 34816, 35840, 36864, 37888, 38912, 39936,
+	40960, 41984, 43008, 44032, 45056, 46080, 47104, 48128,
+	49152, 50176, 51200, 52224, 53248, 54272, 55296, 56320,
+	57344, 58368, 59392, 60416, 61440, 62464,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+		0,     0,     0,     0,     0,     0,     0,     0,
+};
+
+tfxAPI inline unsigned short tfx__float_to_half(float f) {
+	tfx_uint_float float_int_union;
+
+	//Use memcpy if this causes issues at some point
+	float_int_union.f = f;
+
+	if (f == 0)
+	{
+		//We don't care about saving the sign, just return 0;
+		return 0;
+	} else {
+		int exponent = (float_int_union.i >> 23) & 0x000001ff;
+		int e = tfx_exponent_lookup[exponent];
+		if (e)
+		{
+			int mantissa = float_int_union.i & 0x007fffff;
+			return (unsigned short)(e + ((mantissa + 0x00000fff + ((mantissa >> 13) & 1)) >> 13));
+		} else if (exponent == 0xFF || exponent == 0x1FF) {
+			//inf/nan
+			return 0;
+		} else if (exponent > 142) {
+			//Overflow, return max half value 
+			return 0x7BFF;
+		} else {
+			//all other cases
+			return 0;
+		}
+	}
+}
+
+tfxINTERNAL inline tfxWideInt tfx__load_bytes(tfxU8 *bytes) {
+#ifdef tfxUSEAVX2
+	tfx128i loaded_bytes = tfx128Load64bytes((tfx128i *)bytes);
+	return _mm256_cvtepu8_epi32(loaded_bytes);
+#else
+	tfx128i loaded_bytes = tfx128Load64bytes((tfx128i *)bytes);
+	tfx128i zero = tfx128SetZeroi;
+	loaded_bytes = tfx128UnpackLo8(loaded_bytes, zero);
+	tfx128i lo_bytes = tfx128UnpackLo16(loaded_bytes, zero);
+	tfx128i hi_bytes = tfx128UnpackHi16(loaded_bytes, zero);
+	return tfxWideSet128i(hi_bytes, lo_bytes);
+#endif
+}
+
+tfxINTERNAL inline void tfx__store_bytes(tfxU8 *dst, tfxWideInt wide_bytes) {
+#ifdef tfxUSEAVX2
+	// wide_bytes = [ d7 d6 d5 d4 | d3 d2 d1 d0 ] (__m256i)
+
+	// Pack 8x32-bit integers down to 8x16-bit words (using unsigned saturation).
+	// Packing against self places words [w7..w4 | w3..w0] in the low half of EACH 128-bit lane.
+	// Result: [ w7 w6 w5 w4 w3 w2 w1 w0 | w7 w6 w5 w4 w3 w2 w1 w0 ]
+	__m256i packed_words = _mm256_packus_epi32(wide_bytes, wide_bytes);
+
+	// Pack 16x16-bit words down to 16x8-bit bytes (using unsigned saturation).
+	// Packing against self places bytes [b7..b0] in the low half of EACH 128-bit lane.
+	// Result: [ b7..b0 b7..b0 | b7..b0 b7..b0 ] (where each b7..b0 is 64 bits)
+	__m256i packed_bytes = _mm256_packus_epi16(packed_words, packed_words);
+
+	// The bytes we want (b0 to b7) are now conveniently located in the
+	// lowest 64 bits of the combined 256-bit result.
+
+	// Extract the low 128-bit lane containing the bytes [b7..b0 | b7..b0].
+	// This cast is typically zero-cost.
+	__m128i bytes_128 = _mm256_castsi256_si128(packed_bytes);
+
+	// Store the lowest 64 bits (which contain b0..b7) to the destination.
+	// _mm_storel_epi64 handles potential unaligned access.
+	_mm_storel_epi64((__m128i *)dst, bytes_128); // Stores 8 bytes
+#else
+	tfx128i lo = tfxWideExtract128i(wide_bytes, 0);
+	tfx128i hi = tfxWideExtract128i(wide_bytes, 1);
+	tfx128i zero = tfx128SetZeroi;
+	lo = tfx128Packus32(lo, zero);
+	tfx128i lo_bytes = tfx128Packus16(lo, zero);
+	hi = tfx128Packus32(hi, zero);
+	tfx128i hi_bytes = tfx128Packus16(hi, zero);
+	tfxU64 packed_flags = ((tfxU64)tfx128Convert32(hi_bytes) << 32) | tfx128Convert32(lo_bytes);
+	*(tfxU64 *)dst = packed_flags;
+#endif
+}
+
 typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
 typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
 
@@ -7772,8 +7962,16 @@ struct tfx_apply_simplex_noise {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
+#ifdef tfxHALFFLOATS
+		const tfx128i half_noise_resolution = tfxWideLoadHalfs(&bank.noise_resolution[index]);
+		const tfx128i half_base_noise_offset = tfxWideLoadHalfs(&bank.noise_offset[index]);
+		const tfxWideFloat noise_resolution = tfxWideConvertHalfsToFloats(half_noise_resolution);
+		const tfxWideFloat base_noise_offset = tfxWideConvertHalfsToFloats(half_base_noise_offset);
+#else
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+#endif
+
 		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
 
 		tfx__readbarrier;
@@ -7826,8 +8024,17 @@ struct tfx_apply_curl_noise {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
+
+#ifdef tfxHALFFLOATS
+		const tfx128i half_noise_resolution = tfxWideLoadHalfs(&bank.noise_resolution[index]);
+		const tfx128i half_base_noise_offset = tfxWideLoadHalfs(&bank.noise_offset[index]);
+		const tfxWideFloat noise_resolution = tfxWideConvertHalfsToFloats(half_noise_resolution);
+		const tfxWideFloat base_noise_offset = tfxWideConvertHalfsToFloats(half_base_noise_offset);
+#else
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+#endif
+
 		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
 
 		tfx__readbarrier;
@@ -7950,7 +8157,13 @@ struct tfx_apply_motion_randomness {
 
 		tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
 		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
+#ifdef tfxHALFFLOATS
+		tfx128i half_speed = tfxWideLoadHalfs(&bank.noise_offset[index]);
+		tfxWideFloat speed = tfxWideConvertHalfsToFloats(half_speed);
+#else
 		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
+#endif
+
 		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
 		tfxWideFloat lookup_motion_randomness = (ctx.flags & tfx_ctx_policy_flag_motion_randomness_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(motion_randomness_time, ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.curve1, ctx.motion_randomness_graph->wide_graph.curve2, ctx.motion_randomness_graph->wide_graph.to) :
@@ -8021,7 +8234,11 @@ struct tfx_apply_motion_randomness {
 			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 			//--
 		}
+#ifdef tfxHALFFLOATS
+		tfxWideStoreHalfs((tfx128i*)&bank.noise_offset[index], tfxWideConvertFloatsToHalfs(speed));
+#else
 		tfxWideStore(&bank.noise_offset[index], speed);
+#endif
 
 		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
 		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
@@ -8073,9 +8290,9 @@ struct tfx_apply_path_end_kill {
 		tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 		tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(ctx.path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(ctx.path_position, ctx.node_count))));
 		ctx.path_position = tfxWideMax(ctx.path_position, tfxWideSetZero);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 		flags = tfxWideOri(flags, remove_flags);
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
 	}
 };
 
@@ -8084,12 +8301,12 @@ struct tfx_apply_path_end_loop {
 		//Reposition if the particle is travelling along the path
 		tfxWideFloat at_end = tfxWideGreaterEqual(ctx.path_position, ctx.node_count);
 		ctx.path_position = tfxWideSub(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
 		at_end = tfxWideLess(ctx.path_position, tfxWideSetZero);
 		ctx.path_position = tfxWideAdd(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
 	}
 };
 
@@ -8260,13 +8477,13 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_ef
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
-		tfxU32 capture = flags.a[j];
+		tfxU32 capture = flags.a[j] << 7;
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm->current_sprite_buffer << 30) + running_sprite_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
-		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
+		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
 		running_sprite_index++;
 	}
 }
@@ -8277,13 +8494,13 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data_ordered(T *sprites
 		int index_j = index + j;
 		tfxU32 sprite_depth_index = bank.depth_index[index_j] + instance_offset;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
-		tfxU32 capture = flags.a[j];
-		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm->current_sprite_buffer << 30) + sprite_depth_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		tfxU32 capture = flags.a[j] << 7;
+		sprites[sprite_depth_index].captured_index = capture == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) == 0 ? (pm->current_sprite_buffer << 30) + sprite_depth_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[sprite_depth_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + sprite_depth_index;
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
 		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
-		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
+		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
 		running_sprite_index++;
 	}
 }

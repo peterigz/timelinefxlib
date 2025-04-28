@@ -3045,7 +3045,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		if (flags & tfxEffectCloningFlags_history) {
 			clone->effect_flags |= tfxEffectPropertyFlags_history_effect;
 		}
-		if (clone->effect_flags & tfxEffectCloningFlags_clone_camera_settings && effect_to_clone->preview_camera_settings != tfxINVALID) {
+		if (flags & tfxEffectCloningFlags_clone_camera_settings && effect_to_clone->preview_camera_settings != tfxINVALID) {
 			tfx__add_library_preview_camera_settings_effect(destination_library, clone);
 			destination_library->preview_camera_settings[clone->preview_camera_settings] = effect_to_clone->library->preview_camera_settings[effect_to_clone->preview_camera_settings];
 		}
@@ -11114,7 +11114,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 
 		tfx__readbarrier;
 
@@ -11123,7 +11123,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 		flags = tfxWideOri(flags, remove_flags);
 		remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_y, tfxWideSetZero)));
 		flags = tfxWideOri(flags, remove_flags);
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
+		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -11139,7 +11139,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 
 		tfx__readbarrier;
 
@@ -11147,8 +11147,8 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 		tfxWideFloat at_end = tfxWideGreater(local_position_y, emitter_size_y);
 		local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
 		flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
 		tfxWideStore(&bank.position_y[index], local_position_y);
+		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -11214,7 +11214,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 		tfxWideArray capture_flag;
 		tfx__readbarrier;
 		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi));
@@ -11554,7 +11554,12 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfx__readbarrier;
 			tfxWideFloat life = tfxWideDiv(age, max_age);
-			tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
+#ifdef tfxHALFFLOATS
+			tfx128i half_base_roll_spin = tfxWideLoadHalfs(&bank.base_roll_spin[index]);
+			tfxWideFloat base_roll_spin = tfxWideConvertHalfsToFloats(half_base_roll_spin);
+#else
+			tfxWideFloat base_roll_spin = tfxWideLoad(&bank.base_roll_spin[index]);
+#endif
 			tfxWideFloat spin_roll_time = spin_roll_easing(life);
 			tfxWideFloat lookup_roll_spin = spin_roll_is_bezier_graph ?
 				tfx__wide_bezier_sampler(spin_roll_time, spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.curve1, spin_roll_graph->wide_graph.curve2, spin_roll_graph->wide_graph.to) :
@@ -11564,7 +11569,7 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			}
 
 			//----Spin and angle Changes
-			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_spin);
+			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
@@ -11656,9 +11661,19 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 			tfx__readbarrier;
 			tfxWideFloat life = tfxWideDiv(age, max_age);
 
-			tfxWideFloat base_roll_spin = tfxWideLoad(&bank.base_spin[index]);
+
+#ifdef tfxHALFFLOATS
+			tfx128i half_base_roll_spin = tfxWideLoadHalfs(&bank.base_roll_spin[index]);
+			tfx128i half_base_pitch_spin = tfxWideLoadHalfs(&bank.base_pitch_spin[index]);
+			tfx128i half_base_yaw_spin = tfxWideLoadHalfs(&bank.base_yaw_spin[index]);
+			tfxWideFloat base_roll_spin = tfxWideConvertHalfsToFloats(half_base_roll_spin);
+			tfxWideFloat base_pitch_spin = tfxWideConvertHalfsToFloats(half_base_pitch_spin);
+			tfxWideFloat base_yaw_spin = tfxWideConvertHalfsToFloats(half_base_yaw_spin);
+#else
+			tfxWideFloat base_roll_spin = tfxWideLoad(&bank.base_roll_spin[index]);
 			tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
 			tfxWideFloat base_yaw_spin = tfxWideLoad(&bank.base_yaw_spin[index]);
+#endif
 
 			tfxWideFloat spin_roll_time = spin_roll_easing(life);
 			tfxWideFloat lookup_roll_spin = spin_roll_is_bezier_graph ?
@@ -11824,7 +11839,6 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideDiv(age, max_age);
 		}
 
-
 		tfxWideFloat width_time = width_easing(life);
 		lookup_width = width_is_bezier_graph ?		tfx__wide_bezier_sampler(width_time, width_graph->wide_graph.from, width_graph->wide_graph.curve1, width_graph->wide_graph.curve2, width_graph->wide_graph.to) : 
 													tfx__wide_linear_sampler(width_graph->wide_graph.from, width_graph->wide_graph.to, width_time);
@@ -11841,8 +11855,15 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			lookup_height = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(height_graph->wide_oscillator.offset_x, height_graph->wide_oscillator.frequency), height_graph->wide_oscillator.amplitude), lookup_height), height_graph->wide_oscillator.offset_y);
 		}
 
+#ifdef tfxHALFFLOATS
+		tfx128i half_base_size_x = tfxWideLoadHalfs(&bank.base_size_x[index]);
+		tfx128i half_base_size_y = tfxWideLoadHalfs(&bank.base_size_y[index]);
+		tfxWideFloat base_size_x = tfxWideConvertHalfsToFloats(half_base_size_x);
+		tfxWideFloat base_size_y = tfxWideConvertHalfsToFloats(half_base_size_y);
+#else
 		tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
+#endif
 
 		tfx__readbarrier;
 
@@ -12045,12 +12066,9 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
-		tfxWideArrayi single_loop_count;
-		single_loop_count.m = tfxWideLoadi((tfxWideIntLoader *)&bank.single_loop_count[index]);
 		//We only want to not capture if single loop count is 0.
-		flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		flags.m = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
-		//flags.m = tfxWideOri(flags.m, tfxWideAndi(capture_after_transform_flag, tfxWideGreateri(single_loop_count.m, tfxWideSetZeroi)));
 
 		tfx__readbarrier;
 
@@ -12129,7 +12147,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
+				bool new_id = bank.age[index_j] == 0 && bank.flags_single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
 				sprite_uids[sprite_depth_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
@@ -12140,7 +12158,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
+				bool new_id = bank.age[index_j] == 0 && bank.flags_single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
 				sprite_uids[running_sprite_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[running_sprite_index].uid;
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
@@ -12809,7 +12827,7 @@ void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	for (int i = index; i != buffer->capacity; ++i) {
 		particles->max_age[i] = 1.f;
 		particles->age[i] = 1.f;
-		particles->flags[i] = 0;
+		particles->flags_single_loop_count[i] = 0;
 	}
 }
 
@@ -13761,11 +13779,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &age = entry->particle_data->age[index];
 		float &max_age = entry->particle_data->max_age[index];
-		tfxU32 &single_loop_count = entry->particle_data->single_loop_count[index];
-
-		tfxParticleFlags &flags = entry->particle_data->flags[index];
-
-		flags = tfxParticleFlags_capture_after_transform;
+		entry->particle_data->flags_single_loop_count[index] = tfxParticleFlags_capture_after_transform;
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
@@ -13781,7 +13795,6 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		} else {
 			max_age = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
 		}
-		single_loop_count = 0;
 
 		float alpha = 255.f * first_alpha_value;
 
@@ -13915,8 +13928,13 @@ void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data) {
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+#ifdef tfxHALFFLOATS	
+		float base_size_x = 0.f;
+		float base_size_y = 0.f;
+#else
 		float &base_size_x = entry->particle_data->base_size_x[index];
 		float &base_size_y = entry->particle_data->base_size_y[index];
+#endif
 
 		//----Size
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -13975,9 +13993,11 @@ void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data) {
 			base_size_x *= size_factor;
 			base_size_y *= size_factor;
 		}
-
+#ifdef tfxHALFFLOATS
+		entry->particle_data->base_size_x[index] = tfx__float_to_half(base_size_x);
+		entry->particle_data->base_size_y[index] = tfx__float_to_half(base_size_y);
+#endif
 	}
-
 }
 
 void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
@@ -13999,13 +14019,15 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		float &noise_offset = entry->particle_data->noise_offset[index];
-		float &noise_resolution = entry->particle_data->noise_resolution[index];
-
-		//----Motion randomness
-		noise_offset = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
-		noise_resolution = emitter_noise_resolution + 0.01f;
-
+#ifdef tfxHALFFLOATS
+		float noise_offset = noise_offset = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
+		float noise_resolution = emitter_noise_resolution + 0.01f;
+		entry->particle_data->noise_offset[index] = tfx__float_to_half(noise_offset);
+		entry->particle_data->noise_resolution[index] = tfx__float_to_half(noise_resolution);
+#else
+		entry->particle_data->noise_offset[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
+		entry->particle_data->noise_resolution[index] = emitter_noise_resolution + 0.01f;
+#endif
 	}
 }
 
@@ -14018,8 +14040,13 @@ void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data) 
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&entry->pm->particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+#ifdef tfxHALFFLOATS
+		entry->particle_data->noise_offset[index] = 0;
+		entry->particle_data->noise_resolution[index] = 0;
+#else
 		entry->particle_data->noise_offset[index] = 0.f;
 		entry->particle_data->noise_resolution[index] = 0.f;
+#endif
 	}
 }
 
@@ -14045,19 +14072,28 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		float &base_spin = entry->particle_data->base_spin[index];
 		float &rotation_offset_pitch = entry->particle_data->rotation_offset_pitch[index];
 		float &rotation_offset_yaw = entry->particle_data->rotation_offset_yaw[index];
 		float &rotation_offset_roll = entry->particle_data->rotation_offset_roll[index];
 
-		//----Spin
-		base_spin = tfx_RandomRangeFromTo(&random, -spin_variation, spin_variation) + roll_spin;
+#ifdef tfxHALFFLOATS
+		float base_roll_spin = tfx_RandomRangeFromTo(&random, -spin_variation, spin_variation) + roll_spin;
+		entry->particle_data->base_roll_spin[index] = tfx__float_to_half(base_roll_spin);
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
-			float &base_pitch_spin = entry->particle_data->base_pitch_spin[index];
-			float &base_yaw_spin = entry->particle_data->base_yaw_spin[index];
-			base_pitch_spin = tfx_RandomRangeFromTo(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
-			base_yaw_spin = tfx_RandomRangeFromTo(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+			 float base_pitch_spin = tfx_RandomRangeFromTo(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
+			 float base_yaw_spin = tfx_RandomRangeFromTo(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+			entry->particle_data->base_pitch_spin[index] = tfx__float_to_half(base_pitch_spin);
+			entry->particle_data->base_yaw_spin[index] = tfx__float_to_half(base_yaw_spin);
 		}
+#else
+		float &base_roll_spin = entry->particle_data->base_roll_spin[index];
+		base_roll_spin = tfx_RandomRangeFromTo(&random, -spin_variation, spin_variation) + roll_spin;
+		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+			 entry->particle_data->base_yaw_spin[index] = tfx_RandomRangeFromTo(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
+			 entry->particle_data->base_pitch_spin[index] = tfx_RandomRangeFromTo(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+		}
+#endif
+
 		if (angle_settings & tfxAngleSettingFlags_specify_roll)
 			rotation_offset_roll = emitter.angle_offsets.roll;
 		if (angle_settings & tfxAngleSettingFlags_specify_pitch)
@@ -15025,7 +15061,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 					else {
 						dead_paths++;
 						emitter.path_state.path_quaternions[qi].cycles = tfxINVALID;
-						entry->particle_data->flags[index] |= tfxParticleFlags_remove;
+						entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
 					}
 				}
 				else {
@@ -15083,7 +15119,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && emitter.path_state.active_paths > 0) {
 			if (emitter.path_state.path_quaternions[qi].cycles == tfxINVALID) {
-				entry->particle_data->flags[index] |= tfxParticleFlags_remove;
+				entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
 				emitter.path_state.last_path_index++;
 				emitter.path_state.last_path_index %= emitter.path_state.active_paths;
 				qi = (emitter.path_state.path_start_index + emitter.path_state.last_path_index) % path->settings.maximum_active_paths;
@@ -15960,6 +15996,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 
 	const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+	const tfxWideInt count_mask = tfxWideSetSinglei(0xFF);
 	const tfxWideInt remove = tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_remove);
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
@@ -15977,25 +16014,23 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		tfxWideInt single_loop_count = tfxWideLoadi((tfxWideIntLoader *)&bank.single_loop_count[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags[index]);
+		tfxWideInt flags_single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
 		age = tfxWideAdd(age, pm.frame_length_wide);
 
 		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
-		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi.m, expired));
-		tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
+		flags_single_loop_count = tfxWideAddi(flags_single_loop_count, tfxWideAndi(tfxWIDEONEi.m, expired));
+		tfxWideInt loop_limit = tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
-		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi)));
-		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
-		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
-		flags = tfxWideOri(flags, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi)));
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
 
 		tfxWideStore(&bank.age[index], age);
-		tfxWideStorei((tfxWideIntLoader *)&bank.flags[index], flags);
-		tfxWideStorei((tfxWideIntLoader *)&bank.single_loop_count[index], single_loop_count);
+		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags_single_loop_count);
 	}
 
 	if (tfx__is_ordered_effect_state(&effect)) { 
@@ -16008,8 +16043,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxU32 max_index = 0;
 	for (int i = work_entry->start_index; i >= 0; --i) {
 		const tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i);
-		tfxParticleFlags &flags = bank.flags[index];
-		if (flags & tfxParticleFlags_remove) {
+		tfxU32 &flags_single_loop_count = bank.flags_single_loop_count[index];
+		if (flags_single_loop_count & tfxParticleFlags_remove) {
 			offset++;
 			if (is_ordered) {
 				(*depth_indexes)[bank.depth_index[index]].particle_id = tfxINVALID;
@@ -16038,7 +16073,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 			bank.depth_index[next_index] = bank.depth_index[index];
 			bank.uid[next_index] = bank.uid[index];
 			bank.uid[index] = 0;
-			bank.flags[next_index] = bank.flags[index];
+			bank.flags_single_loop_count[next_index] = bank.flags_single_loop_count[index];
 			bank.age[next_index] = bank.age[index];
 			bank.max_age[next_index] = bank.max_age[index];
 			bank.position_x[next_index] = bank.position_x[index];
@@ -16048,7 +16083,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 			bank.velocity_normal[next_index] = bank.velocity_normal[index];
 			bank.base_weight[next_index] = bank.base_weight[index];
 			bank.base_velocity[next_index] = bank.base_velocity[index];
-			bank.base_spin[next_index] = bank.base_spin[index];
+			bank.base_roll_spin[next_index] = bank.base_roll_spin[index];
 			bank.intensity_factor[next_index] = bank.intensity_factor[index];
 			bank.rotation_offset_yaw[next_index] = bank.rotation_offset_yaw[index];
 			bank.position_z[next_index] = bank.position_z[index];
@@ -16071,7 +16106,6 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 			bank.image_frame[next_index] = bank.image_frame[index];
 			bank.base_size_x[next_index] = bank.base_size_x[index];
 			bank.base_size_y[next_index] = bank.base_size_y[index];
-			bank.single_loop_count[next_index] = bank.single_loop_count[index];
 		}
 	}
 
@@ -16742,7 +16776,7 @@ void tfx__init_sprite_data_soa(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *
 void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
-	tfx__add_struct_array(buffer, sizeof(tfxParticleFlags), offsetof(tfx_particle_soa_t, flags));
+	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, flags_single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, max_age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_x));
@@ -16755,13 +16789,15 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, depth_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_weight));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_velocity));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_spin));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, intensity_factor));
 	if (tfx__control_profile_has_noise(control_profile)) {
+#ifdef tfxHALFFLOATS
+		tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, noise_offset));
+		tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, noise_resolution));
+#else
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
+#endif
 	}
 	if (control_profile & tfxEmitterControlProfile_path || control_profile & tfxEmitterControlProfile_other_ribbon_emitter_path) {
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, path_position));
@@ -16772,9 +16808,19 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	}
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
+#ifdef tfxHALFFLOATS
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_x));
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_y));
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_roll_spin));
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_pitch_spin));
+	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_yaw_spin));
+#else
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
-	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, single_loop_count));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_roll_spin));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
+#endif
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
