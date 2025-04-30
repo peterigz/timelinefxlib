@@ -9777,7 +9777,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 
 	new_effect.source_effect = effect;
 	new_effect.graph_list_index = effect->graph_list_index;
-	new_effect.shared_index = effect->shared_index;
 	new_effect.transform_index = effect->transform_index;
 	new_effect.library = effect->library;
 	new_effect.user_data = effect->user_data;

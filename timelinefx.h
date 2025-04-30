@@ -6,10 +6,15 @@
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
-//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
-#define tfxUSEAVX
+
+//Enable this to process 8 particles at a time.
+//#define tfxUSEAVX
+
+//Enable fused multiply add in simd calculations
 #define tfxUSEFMA
-#define tfxHALFFLOATS
+
+//Using half floats uses less memory and runs things a bit faster but has more system requirements, namely F16C for float to half conversion which has ~95% coverage
+//#define tfxHALFFLOATS
 
 //#define TFX_MEMORY_TRACKING
 
@@ -1235,6 +1240,7 @@ tfx_allocator *tfxGetAllocator();
 typedef uint16_t tfxU16;
 typedef unsigned short tfxHalf;
 typedef uint32_t tfxU32;
+typedef uint32_t tfxIndex;
 typedef unsigned char tfxU8;
 typedef unsigned int tfxEmitterID;
 typedef int32_t tfxS32;
@@ -1642,8 +1648,10 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideCast _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
 #define tfxWideConvert _mm256_cvtepi32_ps 
+#ifdef tfxHALFFLOATS
 #define tfxWideConvertHalfsToFloats _mm256_cvtph_ps 
 #define tfxWideConvertFloatsToHalfs(floats) _mm256_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
+#endif
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
@@ -1710,8 +1718,10 @@ typedef __m128i tfxWideIntLoader;
 #endif
 #define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
 #define tfxWideStoreHalfs _mm_store_si128
+#ifdef tfxHALFFLOATS
 #define tfxWideConvertHalfsToFloats _mm_cvtph_ps 
 #define tfxWideConvertFloatsToHalfs(floats) _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
+#endif
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mullo_epi32
@@ -5962,27 +5972,30 @@ typedef struct tfx_particle_emitter_state_s {
 	float oscillator_time;
 	tfxU64 image_handle_packed;
 
-	tfxU32 graph_list_index;
-	tfxU32 transform_index;
-	tfxU32 path_attributes;
-	tfxU32 root_index;
-	tfxU32 parent_index;
-	tfxU32 properties_index;
-	tfxU32 shared_index;
-	tfxU32 info_index;
+	//Indexes
+	tfxIndex graph_list_index;
+	tfxIndex transform_index;
+	tfxIndex path_attributes;
+	tfxIndex root_index;
+	tfxIndex parent_index;
+	tfxIndex properties_index;
+	tfxIndex shared_index;
+	tfxIndex info_index;
+	tfxIndex sprites_index;
+	tfxIndex seed_index;
+	tfxIndex spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
+	tfxIndex other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the effect manager
+	tfxIndex particles_index;
+
 	tfxU32 sprites_count;
-	tfxU32 sprites_index;
-	tfxU32 seed_index;
+
 	tfxParticleEmitterFlags property_flags;
 	tfxSharedEmitterFlags shared_flags;
 	tfx_effect_descriptor source_emitter;
 	tfx_library library;
 
 	//Control Data (May change frame by frame
-	tfxU32 particles_index;
-	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
 	tfxKey ribbon_bucket_id;		 //For spawn on ribbon emission type and storing the last known position of the particle
-	tfxU32 other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the effect manager
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t grid_coords;
@@ -6020,9 +6033,9 @@ typedef struct tfx_effect_state_s {
 	tfx_bounding_box_t bounding_box;
 
 	//Static data
-	tfxU32 graph_list_index;
-	tfxU32 transform_index;
-	tfxU32 shared_index;
+	tfxIndex graph_list_index;
+	tfxIndex transform_index;
+
 	tfx_library library;
 	tfx_effect_descriptor source_effect;
 	//User Data
@@ -6112,18 +6125,20 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	tfx_bounding_box_t bounding_box;
 
-	tfxU32 graph_list_index;
-	tfxU32 transform_index;
-	tfxU32 path_attributes;
-	tfxU32 seed_index;
+	tfxIndex graph_list_index;
+	tfxIndex transform_index;
+	tfxIndex path_attributes;
+	tfxIndex seed_index;
+	tfxIndex parent_index;
+	tfxIndex properties_index;
+	tfxIndex shared_index;
+	tfxIndex info_index;
+	tfxIndex spawn_locations_index;					//For other_emitter emission type and storing the last known position of the particle
 
 	tfx_path_state_t path_state;
 
 	tfxRibbonEmitterStateFlags state_flags;
-	tfxU32 parent_index;
-	tfxU32 properties_index;
-	tfxU32 shared_index;
-	tfxU32 info_index;
+
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
 	tfx_effect_descriptor source_ribbon;
@@ -6138,7 +6153,6 @@ typedef struct tfx_ribbon_emitter_state_s {
 	//Control Data
 	tfxKey ribbon_bucket_id;
 	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
-	tfxU32 spawn_locations_index;					//For other_emitter emission type and storing the last known position of the particle
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t emitter_size;
@@ -6159,17 +6173,17 @@ typedef struct tfx_effect_descriptor_s {
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
 	float max_radius;
 	//Index to sprite sheet settings stored in the effect library. 
-	tfxU32 sprite_sheet_settings_index;
+	tfxIndex sprite_sheet_settings_index;
 	//Index to sprite data settings stored in the effect library. 
-	tfxU32 sprite_data_settings_index;
+	tfxIndex sprite_data_settings_index;
 	//Index to preview camera settings stored in the effect library. Would like to move this at some point
-	tfxU32 preview_camera_settings;
+	tfxIndex preview_camera_settings;
 	//The current state of the effect/emitter used in the editor only at this point
 	tfxEmitterStateFlags state_flags;
 	//Is this an tfxEffectType or tfxEmitterType
 	tfx_effect_descriptor_type type;
 	//The index within the library that this exists at
-	tfxU32 library_index;
+	tfxIndex library_index;
 	//A hash of the directory path to the effect ie Flare/spark, and also a UID for the effect/emitter
 	tfxKey path_hash;
 	//Pointer to the immediate parent
@@ -6177,19 +6191,19 @@ typedef struct tfx_effect_descriptor_s {
 
 	//All the below fields will be used by the effect/emitter states when added to a effect manager
 	//Indexes into library storage
-	tfxU32 property_index;		//this will be the index to either particle emitter, ribbon emitter properties. Effects don't have any properties that aren't shared.
-	//Shared properties used by all emitter/effect/ribbon types
-	tfxU32 shared_index;
+	tfxIndex property_index;		//this will be the index to either particle emitter, ribbon emitter properties. Effects don't have any properties that aren't shared.
+	//Shared properties used by all emitter/ribbon types. Doesn't apply to effects
+	tfxIndex shared_index;
 	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
 	float loop_length;
 	//All graphs that the effect uses to lookup attribute values are stored in the library. 
 	//Effects, particle emitters and ribbon emitters get their own set of graphs 
-	tfxU32 graph_list_index;
+	tfxIndex graph_list_index;
 	//Index to the graph list storing all of the transform graphs.
 	//Transform graphs are shared by all descriptor types (except folders)
-	tfxU32 transform_index;
+	tfxIndex transform_index;
 	//If the emitter uses a path for emission then the index to the path in the library is stored here.
-	tfxU32 path_attributes;
+	tfxIndex path_attributes;
 	//Graph data is compiled and uploaded to the GPU (currently for ribbons only) this is the offset into the buffer where the data starts for this emitter
 	tfxU32 gpu_lookup_offset;
 	//The type of function that should be called to update particle positions
@@ -6246,7 +6260,7 @@ typedef struct tfx_particle_soa_s {
 	float *rotation_offset_pitch;    
 	float *rotation_offset_yaw;
 	float *rotation_offset_roll;    
-	tfxU32 *velocity_normal;
+	tfxU32 *velocity_normal;		//Packed into 10bit ints for each axis
 	tfxU32 *quaternion;				//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
@@ -6257,11 +6271,11 @@ typedef struct tfx_particle_soa_s {
 		tfxHalf *base_velocity;
 		tfxHalf *path_scale_variation;
 	};
+	tfxHalf *noise_offset;
+	tfxHalf *noise_resolution;
 	tfxHalf *base_weight;
 	tfxHalf *base_size_x;
 	tfxHalf *base_size_y;
-	tfxHalf *noise_offset;
-	tfxHalf *noise_resolution;
 	tfxHalf *base_roll_spin;
 	tfxHalf *base_pitch_spin;
 	tfxHalf *base_yaw_spin;
