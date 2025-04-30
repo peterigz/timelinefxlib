@@ -5,10 +5,10 @@
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
-#define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025
+#define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 #define tfxUSEAVX
-#define tfxUSEAVX2
+#define tfxUSEFMA
 #define tfxHALFFLOATS
 
 //#define TFX_MEMORY_TRACKING
@@ -1615,7 +1615,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSub _mm256_sub_ps
 #define tfxWideMul _mm256_mul_ps
 #define tfxWideDiv _mm256_div_ps
-#ifdef tfxUSEAVX2
+#ifdef tfxUSEFMA
 #define tfxWideMulAdd(a, b, c) _mm256_fmadd_ps(a, b, c)
 #else
 #define tfxWideMulAdd(a, b, c) tfxWideAdd(tfxWideMul(a, b), c)
@@ -1703,11 +1703,15 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideSub _mm_sub_ps
 #define tfxWideMul _mm_mul_ps
 #define tfxWideDiv _mm_div_ps
-#ifdef tfxUSEAVX2
+#ifdef tfxUSEFMA
 #define tfxWideMulAdd(a, b, c) _mm_fmadd_ps(a, b, c)
 #else
 #define tfxWideMulAdd(a, b, c) tfxWideAdd(tfxWideMul(a, b), c)
 #endif
+#define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
+#define tfxWideStoreHalfs _mm_store_si128
+#define tfxWideConvertHalfsToFloats _mm_cvtph_ps 
+#define tfxWideConvertFloatsToHalfs(floats) _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mullo_epi32
@@ -7453,17 +7457,19 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 //--------------------------------
 //Control particle inline functions and policies
 //--------------------------------
-#define tfx__wide_dp_xyz(x1,y1,z1,x2,y2,z2) tfxWideAdd(tfxWideMul(x1, x2), tfxWideAdd(tfxWideMul(y1, y2), tfxWideMul(z1, z2)))
-#define tfx__wide_dp_xy(x1,y1,x2,y2) tfxWideAdd(tfxWideMul(x1, x2), tfxWideMul(y1, y2))
+#define tfx__wide_dp_xyz(x1,y1,z1,x2,y2,z2) tfxWideMulAdd(x1, x2, tfxWideMulAdd(y1, y2, tfxWideMul(z1, z2)))
+#define tfx__wide_dp_xy(x1,y1,x2,y2) tfxWideMulAdd(x1, x2, tfxWideMul(y1, y2))
 
 tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-	const tfxWideInt w511 = tfxWideSetSinglei(511);
-	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
-	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
-	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
-	x = tfxWideMul(x, one_div_511_wide.m);
-	y = tfxWideMul(y, one_div_511_wide.m);
-	z = tfxWideMul(z, one_div_511_wide.m);
+	const tfxWideInt mask_x = tfxWideSetSinglei(0x3FF00000);
+	const tfxWideInt mask_y = tfxWideSetSinglei(0x000FFC00);
+	const tfxWideInt mask_z = tfxWideSetSinglei(0x000003FF);
+	x = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_x), 20));
+	y = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_y), 10));
+	z = tfxWideConvert(tfxWideAndi(in, mask_z));
+	x = tfxWideMulAdd(x, one_div_511_wide.m, tfxWIDEMINUSONE.m);
+	y = tfxWideMulAdd(y, one_div_511_wide.m, tfxWIDEMINUSONE.m);
+	z = tfxWideMulAdd(z, one_div_511_wide.m, tfxWIDEMINUSONE.m);
 }
 
 tfxINTERNAL inline void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
@@ -7471,29 +7477,28 @@ tfxINTERNAL inline void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfx
 	const tfxWideInt mask_z = tfxWideSetSinglei(0x00FF0000);
 	const tfxWideInt mask_y = tfxWideSetSinglei(0x0000FF00);
 	const tfxWideInt mask_x = tfxWideSetSinglei(0x000000FF);
-	const tfxWideInt w127 = tfxWideSetSinglei(127);
 
-	w = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_w), 24), w127));
-	z = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_z), 16), w127));
-	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_y), 8), w127));
-	x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, mask_x), w127));
+	w = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_w), 24));
+	z = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_z), 16));
+	y = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_y), 8));
+	x = tfxWideConvert(tfxWideAndi(in, mask_x));
 
-	x = tfxWideMul(x, one_div_127_wide.m);
-	y = tfxWideMul(y, one_div_127_wide.m);
-	z = tfxWideMul(z, one_div_127_wide.m);
-	w = tfxWideMul(w, one_div_127_wide.m);
+	x = tfxWideMulAdd(x, one_div_127_wide.m, tfxWIDEMINUSONE.m);
+	y = tfxWideMulAdd(y, one_div_127_wide.m, tfxWIDEMINUSONE.m);
+	z = tfxWideMulAdd(z, one_div_127_wide.m, tfxWIDEMINUSONE.m);
+	w = tfxWideMulAdd(w, one_div_127_wide.m, tfxWIDEMINUSONE.m);
 }
 
 tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
 	const tfxWideFloat w511 = tfxWideSetSingle(511.f);
 	const tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMulAdd(v_x, w511, w511));
 	converted_x = tfxWideAndi(converted_x, bits10);
 	converted_x = tfxWideShiftLeft(converted_x, 20);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMulAdd(v_y, w511, w511));
 	converted_y = tfxWideAndi(converted_y, bits10);
 	converted_y = tfxWideShiftLeft(converted_y, 10);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMulAdd(v_z, w511, w511));
 	converted_z = tfxWideAndi(converted_z, bits10);
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
 }
@@ -7527,8 +7532,8 @@ tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *q
 }
 
 tfxINTERNAL inline tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat v_y) {
-	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	const tfxWideFloat w32k = tfxWideSetSingle(32767.f);
+	const tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
 	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
 	converted_y = tfxWideAndi(converted_y, bits16);
 	converted_y = tfxWideShiftLeft(converted_y, 16);
@@ -7537,13 +7542,12 @@ tfxINTERNAL inline tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat
 	return tfxWideOri(converted_x, converted_y);
 }
 
-tfxINTERNAL inline tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat v_y, float max_value) {
-	tfxWideFloat w32k = tfxWideSetSingle(32767.f / max_value);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+tfxINTERNAL inline tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat v_y, tfxWideFloat max_value) {
+	const tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, max_value));
 	converted_y = tfxWideAndi(converted_y, bits16);
 	converted_y = tfxWideShiftLeft(converted_y, 16);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, max_value));
 	converted_x = tfxWideAndi(converted_x, bits16);
 	return tfxWideOri(converted_x, converted_y);
 }
@@ -7641,6 +7645,17 @@ tfxINTERNAL inline tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tf
 	converted_z = tfxWideAndi(converted_z, bits8);
 	converted_z = tfxWideShiftLeft(converted_z, 16);
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+tfxINTERNAL inline tfxWideInt tfx__wide_pack16bit_unorm(tfxWideFloat v_x, tfxWideFloat v_y) {
+	const tfxWideFloat w65k = tfxWideSetSingle(65535.f);
+	const tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w65k));
+	converted_y = tfxWideAndi(converted_y, bits16);
+	converted_y = tfxWideShiftLeft(converted_y, 16);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w65k));
+	converted_x = tfxWideAndi(converted_x, bits16);
+	return tfxWideOri(converted_x, converted_y);
 }
 
 tfxINTERNAL inline float tfx__length_vec3_nosqr(tfx_vec3_t const *v) {
@@ -7752,51 +7767,55 @@ tfxAPI inline unsigned short tfx__float_to_half(float f) {
 }
 
 tfxINTERNAL inline tfxWideInt tfx__load_half_ints(tfxU16 *half_ints) {
-	// For AVX target (e.g., inside #ifdef tfxUSEAVX ... #endif block)
-	// Processes 8 elements (uint16_t) = 16 bytes
-
-	// Step 1: Load all 16 bytes (8x uint16_t) into a 128-bit register
-	tfx128i loaded_16_bytes = _mm_loadu_si128((tfx128i const *)half_ints);
-	// loaded_16_bytes = [ w7 w6 w5 w4 | w3 w2 w1 w0 ]
-
-	// Step 2: Expand the lower 4 words (w0..w3) using the SSE4.1 instruction
-	tfx128i dwords_0_3 = _mm_cvtepu16_epi32(loaded_16_bytes); // SSE4.1 ok
-	// dwords_0_3 = [ d3 d2 d1 d0 ]
-
-	// Step 3: Isolate the upper 4 words (w4..w7) into the lower part of another register
-	// Shift the original loaded bytes right by 8 bytes (64 bits)
+#ifdef tfxUSEAVX
+	tfx128i loaded_16_bytes = _mm_loadu_si128((tfx128i*)half_ints);
+	tfx128i dwords_0_3 = _mm_cvtepu16_epi32(loaded_16_bytes); 
 	tfx128i packed_words_4_7_shifted = _mm_srli_si128(loaded_16_bytes, 8);
-	// packed_words_4_7_shifted = [ 00...00 | w7 w6 w5 w4 ]
-
-	// Step 4: Expand these shifted words (w4..w7) using the SSE4.1 instruction
-	tfx128i dwords_4_7 = _mm_cvtepu16_epi32(packed_words_4_7_shifted); // SSE4.1 ok
-	// dwords_4_7 = [ d7 d6 d5 d4 ]
-
-	// Step 5: Combine the two 128-bit results into a 256-bit register using AVX1 instruction
-	// _mm256_set_m128i places the first argument in the high lane, second in the low lane.
-	return tfxWideSet128i(dwords_4_7, dwords_0_3); // AVX1
+	tfx128i dwords_4_7 = _mm_cvtepu16_epi32(packed_words_4_7_shifted); 
+	return tfxWideSet128i(dwords_4_7, dwords_0_3); 
+#else
+	tfx128i loaded_16_bytes = _mm_loadu_si64((tfx128i*)half_ints);
+	return _mm_cvtepu16_epi32(loaded_16_bytes); 
+#endif
 }
 
-tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt half_ints) {
-	tfx128i lo = tfxWideExtract128i(half_ints, 0);
-	tfx128i hi = tfxWideExtract128i(half_ints, 1);
+tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt wide_ints) {
+#ifdef tfxUSEAVX
+	tfx128i lo = tfxWideExtract128i(wide_ints, 0);
+	tfx128i hi = tfxWideExtract128i(wide_ints, 1);
 	tfx128i zero = tfx128SetZeroi;
 	lo = tfx128Packus32(lo, zero);
 	hi = tfx128Packus32(hi, zero);
 	tfx128i packed = _mm_unpacklo_epi64(lo, hi);
 	*(tfx128i*)dst = packed;
+#else
+	/*
+	wide ints contains 4 16bit ints:
+	[ 0000 FFFF, 0000 FFFF, 0000 FFFF, 0000 FFFF ]
+	Pack them with _mm_packus_epi32 into the lower 64 bits of the register to end up with
+	[ 0000, 0000, 0000, 0000, FFFF, FFFF, FFFF, FFFF ]
+	Can then use _mm_storel_epi64 to store the lower 64 bits.
+	*/
+	tfxWideInt zero = tfxWideSetZeroi;						// SSE2
+	tfxWideInt packed = _mm_packus_epi32(wide_ints, zero);	// SSE4.1
+
+	_mm_storel_epi64((tfxWideInt*)dst, packed); // SSE2
+#endif
 }
 
 tfxINTERNAL inline tfxWideInt tfx__load_bytes(tfxU8 *bytes) {
+#ifdef tfxUSEAVX
 	tfx128i loaded_bytes = tfx128Load64bytes((tfx128i *)bytes);
 	tfx128i zero = tfx128SetZeroi;
 	loaded_bytes = tfx128UnpackLo8(loaded_bytes, zero);
 	tfx128i lo_bytes = tfx128UnpackLo16(loaded_bytes, zero);
 	tfx128i hi_bytes = tfx128UnpackHi16(loaded_bytes, zero);
 	return tfxWideSet128i(hi_bytes, lo_bytes);
+#endif
 }
 
 tfxINTERNAL inline void tfx__store_bytes(tfxU8 *dst, tfxWideInt wide_bytes) {
+#ifdef tfxUSEAVX
 	tfx128i lo = tfxWideExtract128i(wide_bytes, 0);
 	tfx128i hi = tfxWideExtract128i(wide_bytes, 1);
 	tfx128i zero = tfx128SetZeroi;
@@ -7806,6 +7825,7 @@ tfxINTERNAL inline void tfx__store_bytes(tfxU8 *dst, tfxWideInt wide_bytes) {
 	tfx128i hi_bytes = tfx128Packus16(hi, zero);
 	tfxU64 packed_flags = ((tfxU64)tfx128Convert32(hi_bytes) << 32) | tfx128Convert32(lo_bytes);
 	*(tfxU64 *)dst = packed_flags;
+#endif
 }
 
 #define sectorize(value) step(0.0, (value))*2.0-1.0

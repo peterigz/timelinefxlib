@@ -338,16 +338,10 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxWideFloat n2 = tfxWideMul(t2q, tfx__wide_dp_xyz(gi2x.m, gi2y.m, gi2z.m, x2, y2, z2));
 		tfxWideFloat n3 = tfxWideMul(t3q, tfx__wide_dp_xyz(gi3x.m, gi3y.m, gi3z.m, x3, y3, z3));
 
-		tfxWideFloat cond;
-
-		cond = tfxWideLess(t0, tfxZERO.m);
-		n0 = tfxWideOr(tfxWideAndNot(cond, n0), tfxWideAnd(cond, tfxZERO.m));
-		cond = tfxWideLess(t1, tfxZERO.m);
-		n1 = tfxWideOr(tfxWideAndNot(cond, n1), tfxWideAnd(cond, tfxZERO.m));
-		cond = tfxWideLess(t2, tfxZERO.m);
-		n2 = tfxWideOr(tfxWideAndNot(cond, n2), tfxWideAnd(cond, tfxZERO.m));
-		cond = tfxWideLess(t3, tfxZERO.m);
-		n3 = tfxWideOr(tfxWideAndNot(cond, n3), tfxWideAnd(cond, tfxZERO.m));
+		n0 = tfxWideBlendv(n0, tfxZERO.m, tfxWideLess(t0, tfxZERO.m));
+		n1 = tfxWideBlendv(n1, tfxZERO.m, tfxWideLess(t1, tfxZERO.m));
+		n2 = tfxWideBlendv(n2, tfxZERO.m, tfxWideLess(t2, tfxZERO.m));
+		n3 = tfxWideBlendv(n3, tfxZERO.m, tfxWideLess(t3, tfxZERO.m));
 
 		tfxWideFloat result;
 		result = tfxWideMul(tfxTHIRTYTWO.m, tfxWideAdd(n0, tfxWideAdd(n1, tfxWideAdd(n2, n3))));
@@ -1446,7 +1440,10 @@ void tfx__transform_matrix4_vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWide
 }
 
 tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
-	tfx_vec3_t converted = *v * 511.f + 511.f;
+	tfx_vec3_t converted;
+	converted.x = fmaf(v->x, 511.f, 511.f);
+	converted.y = fmaf(v->y, 511.f, 511.f);
+	converted.z = fmaf(v->z, 511.f, 511.f);
 	tfxUInt10bit result;
 	result.pack = 0;
 	result.data.x = (tfxU32)converted.z;
@@ -1516,17 +1513,6 @@ tfx_quaternion_t tfx__unpack8bit_quaternion_from_gpu(tfxU32 packed) {
 	int8_t w = static_cast<int8_t>((packed >> 24) & 0xFF);
 
 	return { w / 127.0f, x / 127.0f, y / 127.0f, z / 127.0f };
-}
-
-tfxWideInt tfx__wide_pack16bit_unorm(tfxWideFloat v_x, tfxWideFloat v_y) {
-	tfxWideFloat w65k = tfxWideSetSingle(65535.f);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w65k));
-	converted_y = tfxWideAndi(converted_y, bits16);
-	converted_y = tfxWideShiftLeft(converted_y, 16);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w65k));
-	converted_x = tfxWideAndi(converted_x, bits16);
-	return tfxWideOri(converted_x, converted_y);
 }
 
 tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
@@ -11775,7 +11761,7 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 
 	tfx_emitter_path_t *path;
 	tfxWideFloat life;
-	float packed_scale_amount = 64.f;
+	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 64.f);
 
 	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling && work_entry->shared_properties->emission_type == tfxPath;
 
@@ -11913,6 +11899,7 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
 	bool is_mixed_color = emitter.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint;
 	tfxWideArrayi curved_alpha;
+	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
 
 	tfx_graph_t *intensity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_intensity_index];
 	tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
@@ -11990,7 +11977,7 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
 		tfxWideArrayi packed_intensity_life;
-		packed_intensity_life.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, 128.f);
+		packed_intensity_life.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, packed_scale_amount);
         curved_alpha.m = tfx__wide_pack8bitunorm_xyz(lookup_curved_alpha, lookup_alpha_sharpness, life);
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -15182,6 +15169,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	const float life = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
 	const float life_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
 	float base_width = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->size_x;
+	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
 
 	if (ribbon_emitter.static_segment_start_index == tfxINVALID) {
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
@@ -15278,7 +15266,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				}
 
 				tfxWideArrayi packed_intensity_gradient_mapper;
-				packed_intensity_gradient_mapper.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, 128.f);
+				packed_intensity_gradient_mapper.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, packed_scale_amount);
 				tfxWideArrayi packed_curved_alpha_sharpness;
 				packed_curved_alpha_sharpness.m = tfx__wide_pack16bit_unorm(lookup_curved_alpha, lookup_alpha_sharpness);
 				
