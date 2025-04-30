@@ -6245,7 +6245,7 @@ typedef struct tfx_unique_sprite_id_s {
 	tfxU32 property_index;
 }tfx_unique_sprite_id_t;
 
-//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 116 bytes in total. Or if half-floats are used: 98 bytes
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 108 bytes in total. Or if half-floats are used: 90 bytes
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
@@ -6257,9 +6257,10 @@ typedef struct tfx_particle_soa_s {
 	float *position_x;
 	float *position_y;
 	float *position_z;
-	float *rotation_offset_pitch;    
-	float *rotation_offset_yaw;
-	float *rotation_offset_roll;    
+	union {
+		tfxU32 *rotation_offsets;		//Packed into 10bit ints for each axis
+		float *rotation_offset;			//Just use a float if the particle always faces the camera
+	};
 	tfxU32 *velocity_normal;		//Packed into 10bit ints for each axis
 	tfxU32 *quaternion;				//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
@@ -8731,7 +8732,6 @@ tfxINTERNAL void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__spawn_particle_roll(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_image_frame(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data);
 
