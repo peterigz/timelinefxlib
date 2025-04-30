@@ -6246,6 +6246,7 @@ typedef struct tfx_unique_sprite_id_s {
 }tfx_unique_sprite_id_t;
 
 //These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 108 bytes in total. Or if half-floats are used: 90 bytes
+//Unfortunately in order make the most use of half floats the minimum requirements become AVX + F16C for half float conversion in simd which is around ~95% according to steam survey.
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
@@ -6261,12 +6262,12 @@ typedef struct tfx_particle_soa_s {
 		tfxU32 *rotation_offsets;		//Packed into 10bit ints for each axis
 		float *rotation_offset;			//Just use a float if the particle always faces the camera
 	};
-	tfxU32 *velocity_normal;		//Packed into 10bit ints for each axis
-	tfxU32 *quaternion;				//Used for paths where the path can be rotated per particle based on the emission direction
+	tfxU32 *velocity_normal;			//Packed into 10bit ints for each axis
+	tfxU32 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
-	tfxU32 *flags_single_loop_count;
+	tfxU32 *flags_single_loop_count;	//Packed flags and single loop count
 #ifdef tfxHALFFLOATS
 	union {
 		tfxHalf *base_velocity;
