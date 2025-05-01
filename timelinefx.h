@@ -1257,7 +1257,7 @@ typedef unsigned short tfxUShort;
 //Macros
 
 #define tfxTWO63 0x8000000000000000u 
-#define tfxTWO64f (tfxTWO63*2.0)
+#define tfxTWO64f 1.8446744073709552E19		//tfxTWO63 * 2
 #define tfxPI 3.14159265359f
 #define tfxHALFPI 1.570796f
 #define tfxPI2 6.283185307f 
@@ -6332,7 +6332,7 @@ typedef struct tfx_frame_meta_s {
 typedef struct tfx_instance_s {		//56 bytes + padding to 64
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
 	tfx_vec3_t rotations;				            //Rotation of the billboard 
-	//tfxU32 quaternion;				            //Rotation of the billboard stored as a quaternion (not enough resolution?)
+	//tfxU32 quaternion;								//Rotation of the billboard stored as a quaternion
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
