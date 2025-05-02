@@ -1150,6 +1150,35 @@ tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll) {
 	return q;
 }
 
+tfxWideInt tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll) {
+	const tfxWideFloat w127 = tfxWideSetSingle(127.f);
+	const tfxWideFloat half = tfxWideSetSingle(.5f);
+
+	tfxWideFloat cp, sp, cy, sy, cr, sr;
+	tfxWideSinCos(tfxWideMul(pitch, half), &sp, &cp);
+	tfxWideSinCos(tfxWideMul(yaw, half), &sy, &cy);
+	tfxWideSinCos(tfxWideMul(roll, half), &sr, &cr);
+
+	tfxWideFloat cpcy = tfxWideMul(cp, cy);
+	tfxWideFloat spsy = tfxWideMul(sp, sy);
+	tfxWideFloat spcy = tfxWideMul(sp, cy);
+	tfxWideFloat cpsy = tfxWideMul(cp, sy);
+
+	tfxWideFloat w = tfxWideMulAdd(cr, cpcy, tfxWideMul(sr, spsy));
+	tfxWideFloat z = tfxWideMulSub(sr, cpcy, tfxWideMul(cr, spsy));
+	tfxWideFloat x = tfxWideMulAdd(cr, spcy, tfxWideMul(sr, cpsy));
+	tfxWideFloat y = tfxWideMulSub(cr, cpsy, tfxWideMul(sr, spcy));
+
+	const tfxWideInt mask_ff = tfxWideSetSinglei(0xFF); 
+
+	tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(x, w127)), mask_ff);
+	tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(y, w127)), mask_ff), 8);
+	tfxWideInt p_z = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(z, w127)), mask_ff), 16);
+	tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(w, w127)), mask_ff), 24);
+
+	return tfxWideOri(tfxWideOri(tfxWideOri(p_x, p_y), p_z), p_w);
+}
+
 tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle) {
 	float half_angle = angle * .5f;
 	float sin_half_angle = sinf(half_angle);
@@ -11510,8 +11539,7 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-		tfxWideArray rotation_roll;
-		rotation_roll.m = tfxWideSetZero;
+		tfxWideFloat rotation_roll = tfxWideSetZero;
 		tfxWideFloat roll_offset = tfxWideLoad(&bank.rotation_offset[index]);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_spin) {
@@ -11531,14 +11559,17 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			}
 
 			//----Spin and angle Changes
-			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_roll_spin);
+			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_roll.m = tfxWideAdd(rotation_roll.m, e_world_rotations_z);
+			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
 		}
 
-		rotation_roll.m = tfxWideAdd(rotation_roll.m, roll_offset);
+		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
+
+		tfxWideArrayi packed_quaternion;
+		packed_quaternion.m = tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll);
 
 		tfx__readbarrier;
 
@@ -11547,17 +11578,13 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].rotations.x = 0.f;
-				sprites[sprite_depth_index].rotations.y = 0.f;
-				sprites[sprite_depth_index].rotations.z = rotation_roll.a[j];
+				sprites[sprite_depth_index].quaternion = packed_quaternion.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].rotations.x = 0.f;
-				sprites[running_sprite_index].rotations.y = 0.f;
-				sprites[running_sprite_index++].rotations.z = rotation_roll.a[j];
+				sprites[running_sprite_index++].quaternion = packed_quaternion.a[j];
 			}
 		}
 		start_diff = 0;
@@ -11607,13 +11634,9 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-		tfxWideArray rotation_pitch;
-		tfxWideArray rotation_yaw;
-		tfxWideArray rotation_roll;
-
-		rotation_pitch.m = tfxWideSetZero;
-		rotation_yaw.m = tfxWideSetZero;
-		rotation_roll.m = tfxWideSetZero;
+		tfxWideFloat rotation_pitch = tfxWideSetZero;
+		tfxWideFloat rotation_yaw = tfxWideSetZero;
+		tfxWideFloat rotation_roll = tfxWideSetZero;
 
 		tfxWideInt offsets = tfxWideLoadi((tfxWideInt*)&bank.rotation_offsets[index]);
 		tfxWideFloat pitch_offset, yaw_offset, roll_offset;
@@ -11666,20 +11689,23 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 			}
 
 			//----Spin and angle Changes
-			rotation_pitch.m = tfxWideMul(lookup_pitch_spin, base_pitch_spin);
-			rotation_yaw.m = tfxWideMul(lookup_yaw_spin, base_yaw_spin);
-			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_roll_spin);
+			rotation_pitch = tfxWideMul(lookup_pitch_spin, base_pitch_spin);
+			rotation_yaw = tfxWideMul(lookup_yaw_spin, base_yaw_spin);
+			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
 		if (!relative_position && emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_pitch.m = tfxWideAdd(rotation_pitch.m, e_world_rotations_x);
-			rotation_yaw.m = tfxWideAdd(rotation_yaw.m, e_world_rotations_y);
-			rotation_roll.m = tfxWideAdd(rotation_roll.m, e_world_rotations_z);
+			rotation_pitch = tfxWideAdd(rotation_pitch, e_world_rotations_x);
+			rotation_yaw = tfxWideAdd(rotation_yaw, e_world_rotations_y);
+			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
 		}
 
-		rotation_pitch.m = tfxWideAdd(rotation_pitch.m, pitch_offset);
-		rotation_yaw.m = tfxWideAdd(rotation_yaw.m, yaw_offset);
-		rotation_roll.m = tfxWideAdd(rotation_roll.m, roll_offset);
+		rotation_pitch = tfxWideAdd(rotation_pitch, pitch_offset);
+		rotation_yaw = tfxWideAdd(rotation_yaw, yaw_offset);
+		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
+
+		tfxWideArrayi packed_quaternion;
+		packed_quaternion.m = tfx__wide_euler_to_packed_quaternion(rotation_pitch, rotation_yaw, rotation_roll);
 
 		tfx__readbarrier;
 
@@ -11688,17 +11714,13 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].rotations.x = rotation_pitch.a[j];
-				sprites[sprite_depth_index].rotations.y = rotation_yaw.a[j];
-				sprites[sprite_depth_index].rotations.z = rotation_roll.a[j];
+				sprites[sprite_depth_index].quaternion = packed_quaternion.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].rotations.x = rotation_pitch.a[j];
-				sprites[running_sprite_index].rotations.y = rotation_yaw.a[j];
-				sprites[running_sprite_index].rotations.z = rotation_roll.a[j];
+				sprites[running_sprite_index].quaternion = packed_quaternion.a[j];
 				running_sprite_index++;
 			}
 		}
