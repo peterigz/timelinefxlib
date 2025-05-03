@@ -11507,11 +11507,12 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 	tfxU32 start_index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], work_entry->start_index) / tfxDataWidth * tfxDataWidth;
 	tfxU32 end_index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], work_entry->wide_end_index) / tfxDataWidth * tfxDataWidth;
 
+	const tfxWideFloat r_pi2 = tfxWideSetSingle(1.f / tfxPI2);
+
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-		tfxWideArray rotation_roll;
-		rotation_roll.m = tfxWideSetZero;
+		tfxWideFloat rotation_roll = tfxWideSetZero;
 		tfxWideFloat roll_offset = tfxWideLoad(&bank.rotation_offset[index]);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_spin) {
@@ -11531,14 +11532,18 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			}
 
 			//----Spin and angle Changes
-			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_roll_spin);
+			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_roll.m = tfxWideAdd(rotation_roll.m, e_world_rotations_z);
+			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
 		}
 
-		rotation_roll.m = tfxWideAdd(rotation_roll.m, roll_offset);
+		rotation_roll = tfxWideMul(tfxWideAdd(rotation_roll, roll_offset), r_pi2);
+		rotation_roll = tfxWideSub(rotation_roll, tfxWideFloor(rotation_roll));
+
+		tfxWideArrayi packed_rotation;
+		packed_rotation.m = tfx__wide_pack10bit_z_unsigned(rotation_roll);
 
 		tfx__readbarrier;
 
@@ -11547,17 +11552,13 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].rotations.x = 0.f;
-				sprites[sprite_depth_index].rotations.y = 0.f;
-				sprites[sprite_depth_index].rotations.z = rotation_roll.a[j];
+				sprites[sprite_depth_index].rotations = packed_rotation.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].rotations.x = 0.f;
-				sprites[running_sprite_index].rotations.y = 0.f;
-				sprites[running_sprite_index++].rotations.z = rotation_roll.a[j];
+				sprites[running_sprite_index++].rotations = packed_rotation.a[j];
 			}
 		}
 		start_diff = 0;
@@ -11602,25 +11603,25 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	bool spin_yaw_is_bezier_graph = tfx__graph_has_bezier_curves(spin_yaw_graph);
 	bool spin_yaw_has_oscillator = tfx__graph_can_oscillate(spin_yaw_graph);
 
-	const tfxWideFloat Wide360 = tfxWideSetSingle(360.f);
+	const tfxWideFloat r_pi2 = tfxWideSetSingle(1 / tfxPI2);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-		tfxWideArray rotation_pitch;
-		tfxWideArray rotation_yaw;
-		tfxWideArray rotation_roll;
+		tfxWideFloat rotation_pitch;
+		tfxWideFloat rotation_yaw;
+		tfxWideFloat rotation_roll;
 
-		rotation_pitch.m = tfxWideSetZero;
-		rotation_yaw.m = tfxWideSetZero;
-		rotation_roll.m = tfxWideSetZero;
+		rotation_pitch = tfxWideSetZero;
+		rotation_yaw = tfxWideSetZero;
+		rotation_roll = tfxWideSetZero;
 
 		tfxWideInt offsets = tfxWideLoadi((tfxWideInt*)&bank.rotation_offsets[index]);
 		tfxWideFloat pitch_offset, yaw_offset, roll_offset;
 		tfx__wide_unpack10bit(offsets, pitch_offset, yaw_offset, roll_offset);
-		pitch_offset = tfxWideMul(pitch_offset, Wide360);
-		yaw_offset = tfxWideMul(yaw_offset, Wide360);
-		roll_offset = tfxWideMul(roll_offset, Wide360);
+		pitch_offset = tfxWideMul(pitch_offset, tfxWIDEPI2.m);
+		yaw_offset = tfxWideMul(yaw_offset, tfxWIDEPI2.m);
+		roll_offset = tfxWideMul(roll_offset, tfxWIDEPI2.m);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_spin3d) {
 			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
@@ -11666,20 +11667,27 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 			}
 
 			//----Spin and angle Changes
-			rotation_pitch.m = tfxWideMul(lookup_pitch_spin, base_pitch_spin);
-			rotation_yaw.m = tfxWideMul(lookup_yaw_spin, base_yaw_spin);
-			rotation_roll.m = tfxWideMul(lookup_roll_spin, base_roll_spin);
+			rotation_pitch = tfxWideMul(lookup_pitch_spin, base_pitch_spin);
+			rotation_yaw = tfxWideMul(lookup_yaw_spin, base_yaw_spin);
+			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
 		if (!relative_position && emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_pitch.m = tfxWideAdd(rotation_pitch.m, e_world_rotations_x);
-			rotation_yaw.m = tfxWideAdd(rotation_yaw.m, e_world_rotations_y);
-			rotation_roll.m = tfxWideAdd(rotation_roll.m, e_world_rotations_z);
+			rotation_pitch = tfxWideAdd(rotation_pitch, e_world_rotations_x);
+			rotation_yaw = tfxWideAdd(rotation_yaw, e_world_rotations_y);
+			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
 		}
 
-		rotation_pitch.m = tfxWideAdd(rotation_pitch.m, pitch_offset);
-		rotation_yaw.m = tfxWideAdd(rotation_yaw.m, yaw_offset);
-		rotation_roll.m = tfxWideAdd(rotation_roll.m, roll_offset);
+		rotation_pitch = tfxWideMul(tfxWideAdd(rotation_pitch, pitch_offset), r_pi2);
+		rotation_yaw = tfxWideMul(tfxWideAdd(rotation_yaw, yaw_offset), r_pi2);
+		rotation_roll = tfxWideMul(tfxWideAdd(rotation_roll, roll_offset), r_pi2);
+
+		rotation_pitch = tfxWideSub(rotation_pitch, tfxWideFloor(rotation_pitch));
+		rotation_yaw = tfxWideSub(rotation_yaw, tfxWideFloor(rotation_yaw));
+		rotation_roll = tfxWideSub(rotation_roll, tfxWideFloor(rotation_roll));
+
+		tfxWideArrayi packed_rotation;
+		packed_rotation.m = tfx__wide_pack10bit_unsigned(rotation_pitch, rotation_yaw, rotation_roll);
 
 		tfx__readbarrier;
 
@@ -11688,17 +11696,13 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].rotations.x = rotation_pitch.a[j];
-				sprites[sprite_depth_index].rotations.y = rotation_yaw.a[j];
-				sprites[sprite_depth_index].rotations.z = rotation_roll.a[j];
+				sprites[sprite_depth_index].rotations = packed_rotation.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].rotations.x = rotation_pitch.a[j];
-				sprites[running_sprite_index].rotations.y = rotation_yaw.a[j];
-				sprites[running_sprite_index].rotations.z = rotation_roll.a[j];
+				sprites[running_sprite_index].rotations = packed_rotation.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14032,6 +14036,7 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 	const float spin_yaw_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index], emitter.age, emitter.oscillator_time) * entry->parent_spawn_controls->yaw_spin;
 	const tfxAngleSettingFlags angle_settings = entry->properties->angle_settings;
 
+	const float rPI = 1.f / tfxPI2;
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14057,7 +14062,6 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			tfxU32 &rotation_offsets = entry->particle_data->rotation_offsets[index];
 			tfx_vec3_t offsets;
-			const float rPI = 1.f / tfxPI2;
 			if (angle_settings & tfxAngleSettingFlags_specify_pitch) {
 				offsets.pitch = emitter.angle_offsets.pitch;
 			} else {

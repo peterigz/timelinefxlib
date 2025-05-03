@@ -6329,17 +6329,15 @@ typedef struct tfx_frame_meta_s {
 	float radius;									//The radius of the bounding box
 } tfx_frame_meta_t;
 
-typedef struct tfx_instance_s {		//56 bytes + padding to 64
+typedef struct tfx_instance_s {		//48 bytes
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
-	tfx_vec3_t rotations;				            //Rotation of the billboard 
-	//tfxU32 quaternion;								//Rotation of the billboard stored as a quaternion
+	tfxU32 rotations;					            //Rotation of the billboard packed into 10bit snorm
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 padding[2];
 } tfx_instance_t;
 
 //These structs are for animation sprite data that you can upload to the gpu
@@ -7480,12 +7478,13 @@ tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tf
 	const tfxWideInt mask_x = tfxWideSetSinglei(0x3FF00000);
 	const tfxWideInt mask_y = tfxWideSetSinglei(0x000FFC00);
 	const tfxWideInt mask_z = tfxWideSetSinglei(0x000003FF);
-	x = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_x), 20));
-	y = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_y), 10));
-	z = tfxWideConvert(tfxWideAndi(in, mask_z));
-	x = tfxWideMulAdd(x, one_div_511_wide.m, tfxWIDEMINUSONE.m);
-	y = tfxWideMulAdd(y, one_div_511_wide.m, tfxWIDEMINUSONE.m);
-	z = tfxWideMulAdd(z, one_div_511_wide.m, tfxWIDEMINUSONE.m);
+	tfxWideInt w511 = tfxWideSetSinglei(511);
+	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_x), 20), w511));
+	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_y), 10), w511));
+	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, mask_z), w511));
+	x = tfxWideMul(x, one_div_511_wide.m);
+	y = tfxWideMul(y, one_div_511_wide.m);
+	z = tfxWideMul(z, one_div_511_wide.m);
 }
 
 tfxINTERNAL inline void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
@@ -7517,6 +7516,14 @@ tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v
 	tfxWideInt converted_z = tfxWideConverti(tfxWideMulAdd(v_z, w511, w511));
 	converted_z = tfxWideAndi(converted_z, bits10);
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_z_unsigned(tfxWideFloat const &v_z) {
+	const tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	const tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMulAdd(v_z, w511, w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	return converted_z;
 }
 
 tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
