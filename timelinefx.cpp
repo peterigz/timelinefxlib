@@ -9419,6 +9419,8 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		sprite.indexes &= 0x0000FFFF;
 		sprite.indexes |= (tfxColorRampIndex(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 24);
 		sprite.indexes |= (tfxColorRampLayer(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 16);
+		sprite.padding[0] = 1;
+		sprite.padding[1] = 2;
 		animation_manager->sprite_data.push_back_copy(sprite);
 	}
 	metrics.total_memory_for_sprites = sizeof(tfx_sprite_instance_data_t) * metrics.total_sprites;

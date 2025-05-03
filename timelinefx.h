@@ -6333,7 +6333,7 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
 	tfxU32 rotations;					            //Rotation of the billboard packed into 10bit snorm
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
-	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x4_t size_handle;					//Size of the sprite in and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
@@ -6341,17 +6341,17 @@ typedef struct tfx_instance_s {		//48 bytes
 } tfx_instance_t;
 
 //These structs are for animation sprite data that you can upload to the gpu
-typedef struct tfx_sprite_instance_data_s {    //60 bytes aligning to 64
+typedef struct tfx_sprite_instance_data_s {    //52 bytes aligning to 64
 	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfx_vec3_t rotations;				            //Rotations of the sprite
+	tfxU32 rotations;					            //Rotations of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
-	tfx_float16x2_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
-	tfxU32 padding;
+	tfxU32 padding[2];
 } tfx_sprite_instance_data_t;
 
 //Animation sprite data that is used on the cpu to bake the data
