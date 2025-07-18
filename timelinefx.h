@@ -1093,6 +1093,7 @@ tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
 		if (ptr && size == 0) {
 			tfx__unlock_thread_access(allocator);
 			tfx_Free(allocator, ptr);
+			tfx__lock_thread_access(allocator);
 		}
 
 		if (!ptr) {
