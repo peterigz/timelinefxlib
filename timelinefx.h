@@ -1531,7 +1531,7 @@ tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, 
 	return 1;
 }
 
-tfxINTERNAL inline tfxU64 tfx__get_hash(tfx_hasher_t *hasher)
+tfxINTERNAL tfxU64 tfx__get_hash(tfx_hasher_t *hasher)
 {
 	tfxU64 result;
 	if (hasher->total_length >= tfx__HASH_MAX_BUFFER_SIZE)
@@ -7821,34 +7821,6 @@ tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt wide_ints) 
 	_mm_storel_epi64((tfxWideInt*)dst, packed); // SSE2
 #endif
 }
-
-tfxINTERNAL inline tfxWideInt tfx__load_bytes(tfxU8 *bytes) {
-#ifdef tfxUSEAVX
-	tfx128i loaded_bytes = tfx128Load64bytes((tfx128i *)bytes);
-	tfx128i zero = tfx128SetZeroi;
-	loaded_bytes = tfx128UnpackLo8(loaded_bytes, zero);
-	tfx128i lo_bytes = tfx128UnpackLo16(loaded_bytes, zero);
-	tfx128i hi_bytes = tfx128UnpackHi16(loaded_bytes, zero);
-	return tfxWideSet128i(hi_bytes, lo_bytes);
-#endif
-}
-
-tfxINTERNAL inline void tfx__store_bytes(tfxU8 *dst, tfxWideInt wide_bytes) {
-#ifdef tfxUSEAVX
-	tfx128i lo = tfxWideExtract128i(wide_bytes, 0);
-	tfx128i hi = tfxWideExtract128i(wide_bytes, 1);
-	tfx128i zero = tfx128SetZeroi;
-	lo = tfx128Packus32(lo, zero);
-	tfx128i lo_bytes = tfx128Packus16(lo, zero);
-	hi = tfx128Packus32(hi, zero);
-	tfx128i hi_bytes = tfx128Packus16(hi, zero);
-	tfxU64 packed_flags = ((tfxU64)tfx128Convert32(hi_bytes) << 32) | tfx128Convert32(lo_bytes);
-	*(tfxU64 *)dst = packed_flags;
-#endif
-}
-
-#define sectorize(value) step(0.0, (value))*2.0-1.0
-#define sum(value) dot(clamp((value), 1.0, 1.0), (value))
 
 //Pack a vec3 into a u16 using octahedral mapping
 tfxAPI_EDITOR inline tfxU16 tfx__pack_octahedral_vec3(tfx_vec3_t v) {
