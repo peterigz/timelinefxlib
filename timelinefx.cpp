@@ -1080,11 +1080,11 @@ tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v) {
 	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
 }
 
-tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t *a, tfx_vec3_t *b) {
+tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t a, tfx_vec3_t b) {
 	tfx_vec3_t result;
-	result.x = a->y * b->z - a->z * b->y;
-	result.y = a->z * b->x - a->x * b->z;
-	result.z = a->x * b->y - a->y * b->x;
+	result.x = a.y * b.z - a.z * b.y;
+	result.y = a.z * b.x - a.x * b.z;
+	result.z = a.x * b.y - a.y * b.x;
 	return(result);
 }
 
@@ -1120,8 +1120,8 @@ tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t *q, tfx_vec2_t v) {
 }
 
 tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t *quat, tfx_vec3_t point) {
-	tfx_vec3_t cross = tfx__cross_product_vec3(&point, &quat->xyz()) + (point * quat->w);
-    return point + (tfx__cross_product_vec3(&cross, &quat->xyz()) * 2.f);
+	tfx_vec3_t cross = tfx__cross_product_vec3(point, quat->xyz()) + (point * quat->w);
+    return point + (tfx__cross_product_vec3(cross, quat->xyz()) * 2.f);
 }
 
 tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q) {
@@ -1191,7 +1191,7 @@ tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir) {
 	tfx_vec3_t initial_dir = { 0.0f, 1.0f, 0.0f };
 
 	// Calculate rotation axis
-	tfx_vec3_t rotation_axis = tfx__cross_product_vec3(&initial_dir, normalised_dir);
+	tfx_vec3_t rotation_axis = tfx__cross_product_vec3(initial_dir, *normalised_dir);
 	rotation_axis = tfx__normalize_vec3_fast(&rotation_axis);
 
 	// Calculate dot product
@@ -1624,6 +1624,10 @@ void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotation
 	tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&parent->rotation, translated_vec);
 
 	*out_position = parent->world_position + rotatevec;
+}
+
+tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
+	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher);
 }
 
 int tfx_FormatString(char *buf, size_t buf_size, const char *fmt, va_list args) {
@@ -2420,7 +2424,7 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 
 	// Rotate the random vector to align with the cone direction
 	// Use Rodrigues' rotation formula
-	tfx_vec3_t rotated_vector = random_vector * cos + tfx__cross_product_vec3(&rotation_axis, &random_vector) * sin + rotation_axis * dot * (1.f - cos);
+	tfx_vec3_t rotated_vector = random_vector * cos + tfx__cross_product_vec3(rotation_axis, random_vector) * sin + rotation_axis * dot * (1.f - cos);
 
 	return rotated_vector;
 }
@@ -3061,7 +3065,8 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 			tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->graph_list_index]);
 		}
 		if (clone->path_attributes != tfxINVALID) {
-			tfx_emitter_path_t &path_copy = destination_library->paths.push_back({});
+			tfx_emitter_path_t new_path = {};
+			tfx_emitter_path_t &path_copy = destination_library->paths.push_back(new_path);
 			tfx__init_soa_buffer(&path_copy.buffers.node_buffer);
 			tfx_emitter_path_t &src_path = library->paths[clone->path_attributes];
 			tfx__copy_path(&library->paths[clone->path_attributes], "", &path_copy);
@@ -3221,7 +3226,7 @@ tfx_graph_t *tfx__get_effect_transform_graph_by_index(tfx_effect_descriptor effe
 }
 
 tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor effect, tfx_graph_type type) {
-	if (type < tfxTransform_start) {
+	if ((int)type < (int)tfxTransform_start) {
 		return effect->graph_list_index;
 	}
 	else {
@@ -3364,7 +3369,8 @@ bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs) {
 tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node) {
 	if (emitter->path_attributes == tfxINVALID) {
 		emitter->path_attributes = emitter->library->paths.size();
-		tfx_emitter_path_t &path = emitter->library->paths.push_back({});
+		tfx_emitter_path_t new_path = {};
+		tfx_emitter_path_t &path = emitter->library->paths.push_back(new_path);
 		tfx__initialise_path(&path);
 		path.settings.flags = 0;
 		path.settings.node_count = 32;
@@ -3384,7 +3390,8 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool a
 }
 
 tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
-	tfx_emitter_path_t &path = library->paths.push_back({});
+	tfx_emitter_path_t new_path = {};
+	tfx_emitter_path_t &path = library->paths.push_back(new_path);
 	tfx__initialise_path(&path);
 	path.settings.flags = 0;
 	path.settings.name.Clear();
@@ -4202,7 +4209,8 @@ tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type t
 	if (library->free_graph_lists.size()) {
 		index = library->free_graph_lists.pop_back();
 	} else {
-		library->graphs.push_back({});
+		tfx_graph_list_t new_graph_list = {};
+		library->graphs.push_back(new_graph_list);
 		index = library->graphs.size() - 1;
 	}
 	tfx_graph_list_t &graph_list = library->graphs[index];
@@ -4277,7 +4285,8 @@ tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 sourc
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT_HANDLE(destination_library);		//Not a valid library handle
 	tfxU32 new_graph_index = tfx__add_library_transform_graphs(destination_library);
-	tfx_graph_list_t &graph_list = library->graphs.push_back({});
+	tfx_graph_list_t new_graph_list = {};
+	tfx_graph_list_t &graph_list = library->graphs.push_back(new_graph_list);
 	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
 	TFX_ASSERT(dst_list.graphs.current_size == library->graphs[source_index].graphs.current_size);	//dst and src graph list must be the same size at this point!
 	tfx__copy_graph_list(&library->graphs[source_index], &dst_list);
@@ -4324,7 +4333,8 @@ tfxU32 tfx__add_library_transform_graphs(tfx_library library) {
 	if (library->free_graph_lists.size()) {
 		index = library->free_graph_lists.pop_back();
 	} else {
-		library->graphs.push_back({});
+		tfx_graph_list_t new_graph_list = {};
+		library->graphs.push_back(new_graph_list);
 		index = library->graphs.size() - 1;
 	}
 	tfx_graph_list_t &graph_list = library->graphs[index];
@@ -6434,27 +6444,27 @@ bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right)
 }
 
 bool tfx__is_lerp_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxGPU_lookup_start && graph->type <= tfxGPU_lookup_end;
+	return (int)graph->type >= (int)tfxGPU_lookup_start && (int)graph->type <= (int)tfxGPU_lookup_end;
 }
 
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
-	return (graph->type >= tfxOvertime_start && graph->type <= tfxOvertime_end && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
+	return ((int)graph->type >= (int)tfxOvertime_start && (int)graph->type <= (int)tfxOvertime_end && (int)graph->type != (int)tfxOvertime_velocity_adjuster) || (int)graph->type > (int)tfxEmitterGraphMaxIndex;
 }
 
 bool tfx__is_overlength_graph(tfx_graph_t *graph) {
-	return (graph->type >= tfxOverlength_start && graph->type <= tfxOverlength_end);
+	return ((int)graph->type >= (int)tfxOverlength_start && (int)graph->type <= (int)tfxOverlength_end);
 }
 
 bool tfx__is_factor_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxFactor_start && graph->type <= tfxFactor_end;
+	return (int)graph->type >= (int)tfxFactor_start && (int)graph->type <= (int)tfxFactor_end;
 }
 
 bool tfx__color_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxOvertime_color_start && graph->type <= tfxOvertime_color_end;
+	return (int)graph->type >= (int)tfxOvertime_color_start && (int)graph->type <= (int)tfxOvertime_color_end;
 }
 
 bool tfx__gpu_overtime_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxGPU_lookup_start && graph->type <= tfxGPU_lookup_end;
+	return (int)graph->type >= (int)tfxGPU_lookup_start && (int)graph->type <= (int)tfxGPU_lookup_end;
 }
 
 bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
@@ -6462,7 +6472,7 @@ bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
 }
 
 bool tfx__is_global_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxGlobal_start && graph->type <= tfxGlobal_end;
+	return (int)graph->type >= (int)tfxGlobal_start && (int)graph->type <= (int)tfxGlobal_end;
 }
 
 bool tfx__is_angle_graph(tfx_graph_t *graph) {
@@ -7371,12 +7381,12 @@ void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool include_types) {
 }
 
 void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to, tfx_effect_descriptor_type from_type, tfx_effect_descriptor_type to_type) {
-	tfxU32 from_red_index = from_type == tfxEmitterType ? tfxEmitter_overtime_red_index : tfxRibbon_overtime_red_index;
-	tfxU32 from_green_index = from_type == tfxEmitterType ? tfxEmitter_overtime_green_index : tfxRibbon_overtime_green_index;
-	tfxU32 from_blue_index = from_type == tfxEmitterType ? tfxEmitter_overtime_blue_index : tfxRibbon_overtime_blue_index;
-	tfxU32 to_red_index = to_type == tfxEmitterType ? tfxEmitter_overtime_red_index : tfxRibbon_overtime_red_index;
-	tfxU32 to_green_index = to_type == tfxEmitterType ? tfxEmitter_overtime_green_index : tfxRibbon_overtime_green_index;
-	tfxU32 to_blue_index = to_type == tfxEmitterType ? tfxEmitter_overtime_blue_index : tfxRibbon_overtime_blue_index;
+	tfxU32 from_red_index = from_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_red_index : (tfxU32)tfxRibbon_overtime_red_index;
+	tfxU32 from_green_index = from_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_green_index : (tfxU32)tfxRibbon_overtime_green_index;
+	tfxU32 from_blue_index = from_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_blue_index : (tfxU32)tfxRibbon_overtime_blue_index;
+	tfxU32 to_red_index = to_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_red_index : (tfxU32)tfxRibbon_overtime_red_index;
+	tfxU32 to_green_index = to_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_green_index : (tfxU32)tfxRibbon_overtime_green_index;
+	tfxU32 to_blue_index = to_type == tfxEmitterType ? (tfxU32)tfxEmitter_overtime_blue_index : (tfxU32)tfxRibbon_overtime_blue_index;
 	tfx__clear_graph(&to->graphs[to_red_index]);
 	tfx__clear_graph(&to->graphs[to_green_index]);
 	tfx__clear_graph(&to->graphs[to_blue_index]);
@@ -7728,27 +7738,27 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 }
 
 bool tfx__is_path_graph_type(tfx_graph_type type) {
-	return type >= tfxPath_start && type <= tfxPath_end;
+	return (int)type >= (int)tfxPath_start && (int)type <= (int)tfxPath_end;
 }
 
 bool tfx__is_gpu_graph_type(tfx_graph_type type) {
-	return type >= tfxGPU_lookup_start && type <= tfxGPU_lookup_end;
+	return (int)type >= (int)tfxGPU_lookup_start && (int)type <= (int)tfxGPU_lookup_end;
 }
 
 bool tfx__is_overtime_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_start && type != tfxOvertime_noise_resolution && type <= tfxOvertime_end;
+	return (int)type >= (int)tfxOvertime_start && type != tfxOvertime_noise_resolution && type <= (int)tfxOvertime_end;
 }
 
 bool tfx__is_color_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_color_start && type <= tfxOvertime_color_end;
+	return (int)type >= (int)tfxOvertime_color_start && (int)type <= (int)tfxOvertime_color_end;
 }
 
 bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_start && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_end;
+	return (int)type >= (int)tfxOvertime_start && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && (int)type <= (int)tfxOvertime_end;
 }
 
 bool tfx__is_global_graph_type(tfx_graph_type type) {
-	return type >= tfxGlobal_start && type <= tfxGlobal_end;
+	return (int)type >= (int)tfxGlobal_start && (int)type <= (int)tfxGlobal_end;
 }
 
 bool tfx__is_transform_graph_type(tfx_graph_type type) {
@@ -7756,7 +7766,7 @@ bool tfx__is_transform_graph_type(tfx_graph_type type) {
 }
 
 bool tfx__is_global_percentage_graph_type(tfx_graph_type type) {
-	return type >= tfxGlobal_start && type <= tfxGlobal_end;
+	return (int)type >= (int)tfxGlobal_start && (int)type <= (int)tfxGlobal_end;
 }
 
 bool tfx__is_emitter_size_graph_type(tfx_graph_type type) {
@@ -9980,8 +9990,8 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				ribbon_emitter.spawn_quantity = 0.f;
 				ribbon_emitter.delay_spawning = shared_properties->delay_spawning;
 				ribbon_emitter.source_ribbon = child;
-				ribbon_emitter.local_position = {};
-				ribbon_emitter.local_rotations = {};
+				ribbon_emitter.local_position = tfx_vec3_t();
+				ribbon_emitter.local_rotations = tfx_vec3_t();
 				ribbon_emitter.loop_length = child->loop_length;
 				ribbon_emitter.age = 0.f;
 				ribbon_emitter.max_life = child->max_life;
@@ -11023,8 +11033,8 @@ void tfx_setup_orbital_policy::apply(tfx_control_work_entry_t *work_entry, tfx_p
 	tfx_effect_manager_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count);
-	ctx.emitter_offset_x = {};
-	ctx.emitter_offset_z = {};
+	ctx.emitter_offset_x = tfxWideSetZero;
+	ctx.emitter_offset_z = tfxWideSetZero;
 	if (!(ctx.emitter->shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		ctx.emitter_offset_x = tfxWideSetSingle(ctx.emitter->world_position.x);
 		ctx.emitter_offset_z = tfxWideSetSingle(ctx.emitter->world_position.z);
@@ -12841,7 +12851,8 @@ tfxU32 tfx__grab_gpu_emitter(tfx_effect_manager pm) {
 	if (pm->free_gpu_emitters.current_size) {
 		return pm->free_gpu_emitters.pop_back();
 	}
-	pm->gpu_emitters.push_back({});
+	tfx_gpu_emitter_t new_gpu_emitter = {};
+	pm->gpu_emitters.push_back(new_gpu_emitter);
 	return pm->gpu_emitters.current_size - 1;
 }
 
@@ -15354,7 +15365,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_emitter.ribbon_indexes[pm.current_ebuff].push_back(ribbon_index);
 			tfx_ribbon_t &ribbon = ribbon_bucket->ribbons.ribbon_instances[ribbon_index];
 			if (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
-				ribbon.position = {};
+				ribbon.position = tfx_vec4_t();
 			} else {
 				ribbon.position = ribbon_emitter.world_position;
 			}

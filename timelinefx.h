@@ -1574,9 +1574,7 @@ tfxAPI_EDITOR inline void tfx__hash_initialise(tfx_hasher_t *hasher, tfxU64 seed
 }
 
 //The only command you need for the hasher. Just used internally by the hash map.
-tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
-	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher);
-}
+tfxAPI tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed);
 //-- End of Pocket Hasher
 
 //----------------------------------------------------------
@@ -7423,7 +7421,7 @@ tfxINTERNAL float tfx__length_vec4(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__has_length_vec3(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v);
 tfxINTERNAL tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v);
-tfxINTERNAL tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t *a, tfx_vec3_t *b);
+tfxINTERNAL tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t a, tfx_vec3_t b);
 tfxINTERNAL float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
 tfxINTERNAL float tfx__dot_product_vec3(const tfx_vec3_t *a, const tfx_vec3_t *b) { return (a->x * b->x + a->y * b->y + a->z * b->z); }
 tfxINTERNAL float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length);
