@@ -107,6 +107,7 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 
 #if defined(_WIN32)
 #include <process.h>
