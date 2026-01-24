@@ -16672,6 +16672,18 @@ void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 	return;
 }
 
+#ifdef _WIN32
+unsigned WINAPI tfx__thread_worker(void *arg) {
+#else
+void *tfx__thread_worker(void *arg) {
+#endif
+	tfx_queue_processor_t *queue_processor = (tfx_queue_processor_t *)arg;
+	while (!tfx__do_next_work_queue(queue_processor)) {
+		// Continue processing
+	}
+	return 0;
+}
+
 // Safe version that always returns at least 1
 unsigned int tfx_HardwareConcurrencySafe(void) {
     unsigned int count = tfx_HardwareConcurrency();

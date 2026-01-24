@@ -11,7 +11,7 @@
 //#define tfxUSEAVX
 
 //Enable fused multiply add in simd calculations
-#define tfxUSEFMA
+//#define tfxUSEFMA
 
 //Using half floats uses less memory and runs things a bit faster but has more system requirements, namely F16C for float to half conversion which has ~95% coverage
 //#define tfxHALFFLOATS
@@ -4635,11 +4635,6 @@ tfx_str_(256);
 tfx_str_(512);
 
 typedef struct tfx_storage_map_s {
-	struct pair {
-		tfxKey key;
-		tfxU32 index;
-	};
-
 	tfx_hasher_t hasher;
 	tfx_vector_t map;
 	tfx_vector_t data;
@@ -4913,16 +4908,10 @@ tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
 }
 
 #ifdef _WIN32
-tfxINTERNAL inline unsigned WINAPI tfx__thread_worker(void *arg) {
+unsigned WINAPI tfx__thread_worker(void *arg);
 #else
-inline void *tfx__thread_worker(void *arg) {
+void *tfx__thread_worker(void *arg);
 #endif
-	tfx_queue_processor_t *queue_processor = (tfx_queue_processor_t *)arg;
-	while (!tfx__do_next_work_queue(queue_processor)) {
-		// Continue processing
-	}
-	return 0;
-}
 
 // Thread creation helper function
 tfxINTERNAL inline int tfx__create_worker_thread(tfx_storage_t * storage, int thread_index) {
