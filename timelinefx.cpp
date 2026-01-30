@@ -418,7 +418,10 @@ tfx_storage_t *tfx_GetGlobals() {
 
 #elif defined(tfxARM)
 
-	tfx128Array tfx__simd_noise_2d(const tfx128 x4, const tfx128 y4) {
+	tfx128 tfx__dot128_xy(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2);
+	tfx128 tfx__dot128_xyz(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2);
+
+	tfxWideFloat tfx__simd_noise_2d(const tfx128 x4, const tfx128 y4) {
 		tfxPROFILE;
 
 		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4.m);
@@ -447,7 +450,7 @@ tfx_storage_t *tfx_GetGlobals() {
 		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF.m);
 		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF.m);
 
-		int gi0[4], gi1[4], gi2[4];
+		tfx128iArray gi0, gi1, gi2;
 
 		tfxNoise2dPermMOD12LoopUnroll(0);
 		tfxNoise2dPermMOD12LoopUnroll(1);
@@ -456,12 +459,12 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128 n0, n1, n2;
 		tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
-		gx0 = tfx128Set(gradX[gi0[3]], gradX[gi0[2]], gradX[gi0[1]], gradX[gi0[0]]);
-		gy0 = tfx128Set(gradY[gi0[3]], gradY[gi0[2]], gradY[gi0[1]], gradY[gi0[0]]);
-		gx1 = tfx128Set(gradX[gi1[3]], gradX[gi1[2]], gradX[gi1[1]], gradX[gi1[0]]);
-		gy1 = tfx128Set(gradY[gi1[3]], gradY[gi1[2]], gradY[gi1[1]], gradY[gi1[0]]);
-		gx2 = tfx128Set(gradX[gi2[3]], gradX[gi2[2]], gradX[gi2[1]], gradX[gi2[0]]);
-		gy2 = tfx128Set(gradY[gi2[3]], gradY[gi2[2]], gradY[gi2[1]], gradY[gi2[0]]);
+		gx0 = tfx128Set(gradX[gi0.a[3]], gradX[gi0.a[2]], gradX[gi0.a[1]], gradX[gi0.a[0]]);
+		gy0 = tfx128Set(gradY[gi0.a[3]], gradY[gi0.a[2]], gradY[gi0.a[1]], gradY[gi0.a[0]]);
+		gx1 = tfx128Set(gradX[gi1.a[3]], gradX[gi1.a[2]], gradX[gi1.a[1]], gradX[gi1.a[0]]);
+		gy1 = tfx128Set(gradY[gi1.a[3]], gradY[gi1.a[2]], gradY[gi1.a[1]], gradY[gi1.a[0]]);
+		gx2 = tfx128Set(gradX[gi2.a[3]], gradX[gi2.a[2]], gradX[gi2.a[1]], gradX[gi2.a[0]]);
+		gy2 = tfx128Set(gradY[gi2.a[3]], gradY[gi2.a[2]], gradY[gi2.a[1]], gradY[gi2.a[0]]);
 
 		tfx128 t0 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x0, x0)), vmulq_f32(y0, y0));
 		tfx128 t02 = vmulq_f32(t0, t0);
@@ -475,12 +478,12 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128 t22 = vmulq_f32(t2, t2);
 		n2 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t22, t22), tfx__dot128_xy(&gx2, &gy2, &x2, &y2)), vcgeq_f32(t2, vdupq_n_f32(0.f)));
 
-		tfx128Array result;
-		result.m = vmulq_f32(vdupq_n_f32(45.23065f), vaddq_f32(n0, vaddq_f32(n1, n2)));
+		tfxWideFloat result;
+		result = vmulq_f32(vdupq_n_f32(45.23065f), vaddq_f32(n0, vaddq_f32(n1, n2)));
 		return result;
 	}
 
-	tfx128Array tfx__simd_noise_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
+	tfxWideFloat tfx__simd_noise_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
 		tfxPROFILE;
 
 		// Skewing/Unskewing factors for 3D
@@ -583,8 +586,8 @@ tfx_storage_t *tfx_GetGlobals() {
 		cond = vcltq_f32(t3, tfxZERO.m);
 		n3 = vbslq_f32(cond, tfxZERO.m, n3);
 
-		tfx128Array result;
-		result.m = vmulq_f32(tfxTHIRTYTWO.m, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
+		tfxWideFloat result;
+		result = vmulq_f32(tfxTHIRTYTWO.m, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
 		return result;
 	}
 
@@ -3036,6 +3039,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	case tfxRibbonType:
 		clone->property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, effect_to_clone->property_index, destination_library);
 		break;
+		default: break;
 	}
 	clone->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 	if (!(flags & tfxEffectCloningFlags_keep_user_data))
@@ -4225,6 +4229,7 @@ tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type t
 	case tfxRibbonType:
 		tfx__initialise_ribbon_graphs(&graph_list);
 		break;
+	default: break;
 	}
 	return index;
 }
@@ -5300,6 +5305,7 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 		case tfxEffectType: graph_property_name.Setf("%s", graph_name); break;
 		case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name); break;
 		case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name); break;
+		default: break;
 		}
 	} else {
 		graph_property_name.Setf("%s", graph_name);
@@ -5320,6 +5326,7 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 	switch (data_type) {
 	case tfxAttributeGraph: graph = &effect->library->graphs[effect->graph_list_index].graphs[graph_index]; break;
 	case tfxTransformGraph: graph = &effect->library->graphs[effect->transform_index].graphs[graph_index]; break;
+	default: break;
 	}
 
 	tmpStack(tfx_str256_t, pair);
@@ -5361,6 +5368,7 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 				}
 			}
 			break;
+			default: break;
 		}
 	}
 	tfx__update_graph_wide_oscillator(graph);
@@ -5396,6 +5404,7 @@ void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_
 				switch (effect->type) {
 				case tfxEmitterType: property_name.Setf("emitter_%s", (*values)[0]); break;
 				case tfxRibbonType: property_name.Setf("ribbon_%s", (*values)[0]); break;
+				default: break;
 				}
 			}
 			if (tfxStore->graph_indexes.ValidName(property_name.c_str())) {
@@ -5405,6 +5414,7 @@ void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_
 				switch (data_type) {
 				case tfxAttributeGraph: tfx__add_graph_node(&effect->library->graphs[graph_list_index].graphs[graph_index], &n); break;
 				case tfxTransformGraph: tfx__add_graph_node(&effect->library->graphs[transform_index].graphs[graph_index], &n); break;
+				default: break;
 				}
 			} else {
 				tfxPrint("%s graph index was found to be invalid.", property_name.c_str());
@@ -5468,6 +5478,7 @@ tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
 	case tfxRibbonType: name.Set("Ribbon Emitter"); break;
 	case tfxFolder: name.Set("Folder"); break;
 	case tfxStage: name.Set("Stage"); break;
+	default: break;
 	}
 	return name;
 }
@@ -5482,6 +5493,7 @@ tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	case tfxGraphEasingType_out_in	            : name.Set("Ease Out In Cubic"); break;
 	case tfxGraphEasingType_smoothstep		    : name.Set("Smooth Step"); break;
 	case tfxGraphEasingType_linear              : name.Set("Linear"); break;
+	default: break;
 	}
 	return name;
 }
@@ -5684,6 +5696,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxPath_offset_y: return "path_offset_y"; break;
 	case tfxPath_offset_z: return "path_offset_z"; break;
 	case tfxPath_distance: return "path_distance"; break;
+	default: break;
 	}
 	return "";
 }
@@ -5980,6 +5993,7 @@ void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t
 			tfx__assign_graph_node_data(effect, &values);
 			break;
 		}
+		default: break;
 	}
 
 }
@@ -7470,7 +7484,7 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 		graph->nodes[1].index = 1;
 		graph->wide_graph.from = tfxWideSetSingle(graph->nodes[0].value);
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
-		if (!graph->flags & tfxGraphFlags_use_bezier_sampling) {
+		if (!(graph->flags & tfxGraphFlags_use_bezier_sampling)) {
 			graph->wide_graph.curve1 = tfxWideSetSingle(tfx__linear_sampler( graph->nodes[0].value, graph->nodes[1].value, (1.f / 3.f)));
 			graph->wide_graph.curve2 = tfxWideSetSingle(tfx__linear_sampler( graph->nodes[0].value, graph->nodes[1].value, (2.f / 3.f)));
 		} else {
@@ -8882,6 +8896,8 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
 		&pm->effects[preview_effect_index].overal_scale,
@@ -8891,6 +8907,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		&pm->effects[preview_effect_index].rotation,
 		&pm->effects[preview_effect_index]
 	);
+#pragma clang diagnostic pop
 
 	frame = 0;
 	total_sprites = 0;
@@ -9000,6 +9017,8 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tfx_SetSeed(pm, settings->seed);
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
 		&pm->effects[preview_effect_index].overal_scale,
@@ -9009,6 +9028,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		&pm->effects[preview_effect_index].rotation,
 		&pm->effects[preview_effect_index]
 	);
+#pragma clang diagnostic pop
 
 	if (total_sprites == 0) {
 		return;
@@ -10490,7 +10510,10 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
 		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 		if (tfx__is_ordered_effect_state(&pm->effects[effect_index.index])) {
+#pragma clang diagnostic pop
 			for (tfxEachLayer) {
 				tfx__order_effect_sprites(&sprites, layer, pm);
 			}
@@ -10903,6 +10926,7 @@ tfxAPI tfx_effect_descriptor tfx_NewEffectDescriptor(tfx_effect_descriptor_type 
 			tfxEmitterPropertyFlags_lifetime_uniform_size;
 		break;
 	break;
+	default: break;
 	}
 	new_effect->shared_flags = tfxSharedEmitterPropertyFlags_grid_spawn_clockwise | tfxSharedEmitterPropertyFlags_emitter_handle_auto_center;
 	new_effect->state_flags = 0;
@@ -11083,7 +11107,10 @@ void tfx_setup_transform_policy::apply(tfx_control_work_entry_t *work_entry, tfx
 	ctx.emission_type = work_entry->shared_properties->emission_type;
 	ctx.sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	ctx.flags |= tfx__is_ordered_effect_state(&work_entry->pm->effects[ctx.emitter->root_index]) ? tfx_ctx_policy_flag_is_ordered : 0;
+#pragma clang diagnostic pop
 	ctx.flags |= (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type != tfxPath && ctx.emission_type != tfxOtherEmitter && ctx.emission_type != tfxSpawnOnRibbon) || ctx.emitter->state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative ? 
 					tfx_ctx_policy_flag_transform_relative : 0;
 }
@@ -11125,7 +11152,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 
 		tfx__readbarrier;
 
@@ -11134,7 +11161,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 		flags = tfxWideOri(flags, remove_flags);
 		remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_y, tfxWideSetZero)));
 		flags = tfxWideOri(flags, remove_flags);
-		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags);
+		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -11150,7 +11177,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 
 		tfx__readbarrier;
 
@@ -11159,7 +11186,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 		local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
 		flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 		tfxWideStore(&bank.position_y[index], local_position_y);
-		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -11192,7 +11219,10 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 	const tfxU32 sprite_layer = work_entry->shared_properties->layer;
 	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 
 	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
@@ -11222,7 +11252,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		tfx__readbarrier;
 
 		tfxWideFloat alignment_vector_x;
@@ -11535,7 +11565,10 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
 	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
@@ -11623,7 +11656,10 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
 	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
@@ -11648,7 +11684,7 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat rotation_yaw = tfxWideSetZero;
 		tfxWideFloat rotation_roll = tfxWideSetZero;
 
-		tfxWideInt offsets = tfxWideLoadi((tfxWideInt*)&bank.rotation_offsets[index]);
+		tfxWideInt offsets = tfxWideLoadi((tfxWideIntLoader*)&bank.rotation_offsets[index]);
 		tfxWideFloat pitch_offset, yaw_offset, roll_offset;
 		tfx__wide_unpack10bit(offsets, pitch_offset, yaw_offset, roll_offset);
 		pitch_offset = tfxWideMul(pitch_offset, Wide360);
@@ -11747,7 +11783,10 @@ void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 	tfxU32 start_diff = work_entry->start_diff;
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
@@ -11807,7 +11846,10 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
 	}
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 
 	tfx_graph_t *width_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_width_index];
 	tfx_wide_easing_function width_easing = tfx__get_wide_easing_function(width_graph->easing_type);
@@ -11932,7 +11974,10 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		path = &library->paths[emitter.path_attributes];
 		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
 	}
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
+#pragma clang diagnostic pop
 	bool is_mixed_color = emitter.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint;
 	tfxWideArrayi curved_alpha;
 	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
@@ -12054,7 +12099,10 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && !(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
+#pragma clang diagnostic pop
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -12062,7 +12110,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
 		//We only want to not capture if single loop count is 0.
-		flags.m = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
 
 		tfx__readbarrier;
@@ -12111,7 +12159,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	/*
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 		flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 	}
@@ -12131,7 +12179,10 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer][work_entry->layer];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Walign-mismatch"
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
+#pragma clang diagnostic pop
 	bool is_wrapped = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -16019,7 +16070,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		tfxWideStore(&bank.life[index], life);
-		tfxWideInt flags_single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags_single_loop_count = tfxWideLoadi((tfxWideIntLoader*)&bank.flags_single_loop_count[index]);
 		age = tfxWideAdd(age, pm.frame_length_wide);
 
 		tfx__readbarrier;
@@ -16035,7 +16086,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
 
 		tfxWideStore(&bank.age[index], age);
-		tfxWideStorei((tfxWideInt*)&bank.flags_single_loop_count[index], flags_single_loop_count);
+		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags_single_loop_count);
 	}
 
 	if (tfx__is_ordered_effect_state(&effect)) { 
@@ -16366,6 +16417,7 @@ tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type typ
 	case tfxGraphEasingType_out: return tfx__wide_ease_out_cubic;
 	case tfxGraphEasingType_in_out: return tfx__wide_ease_in_out_cubic;
 	case tfxGraphEasingType_out_in: return tfx__wide_ease_out_in;
+	default: break;
 	}
 	return tfx__wide_ease_linear;
 }
@@ -16378,6 +16430,7 @@ tfx_easing_function tfx__get_easing_function(tfx_graph_easing_type type) {
 	case tfxGraphEasingType_out: return tfx__ease_out_cubic;
 	case tfxGraphEasingType_in_out: return tfx__ease_in_out_cubic;
 	case tfxGraphEasingType_out_in: return tfx__ease_out_in;
+	default: break;
 	}
 	return tfx__ease_linear;
 }

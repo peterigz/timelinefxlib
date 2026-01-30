@@ -1705,7 +1705,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideSeti _mm_set_epi32
 #define tfxWideSetSinglei _mm_set1_epi32
 #define tfxWideBlend _mm_blend_ps
-#define tfxWideBlendv _mm_blendv_ps
+#define tfxWideBlendv(a, b, mask) _mm_blendv_ps(a, b, mask)
 #define tfxWideAdd _mm_add_ps
 #define tfxWideSub _mm_sub_ps
 #define tfxWideMul _mm_mul_ps
@@ -1806,11 +1806,14 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideSetSingle vdupq_n_f32
 #define tfxWideSeti vld1q_s32
 #define tfxWideSetSinglei vdupq_n_s32
+#define tfxWideBlendv(a, b, mask) vbslq_f32(vreinterpretq_u32_f32(mask), b, a)
 #define tfxWideAdd vaddq_f32
 #define tfxWideSub vsubq_f32
 #define tfxWideMul vmulq_f32
 #define tfxWideDiv vdivq_f32
-#define tfxWideMulAdd(a, b, c) vfmaq_f32(a, b, c)
+#define tfxWideMulAdd(a, b, c) vfmaq_f32(c, a, b)
+#define tfxWideMulSub(a, b, c) vsubq_f32(vmulq_f32(a, b), c)
+#define tfxWideFloor vrndmq_f32
 #define tfxWideAddi vaddq_s32
 #define tfxWideSubi vsubq_s32
 #define tfxWideMuli vmulq_s32
@@ -3511,7 +3514,10 @@ struct tfx_vector_t {
 	inline const tfxU32		size_in_bytes() const { return current_size * sizeof(T); }
 	inline T &operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
 	inline const T &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
-	inline T &ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
+	inline T &ts_at(tfxU32 i) { while (locked > 0)
+		; 
+		return data[i]; 
+	}
 
 	inline void				free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void				clear() { if (data) { current_size = 0; } }
@@ -7773,6 +7779,7 @@ tfxAPI inline unsigned short tfx__float_to_half(float f) {
 	}
 }
 
+/*
 tfxINTERNAL inline tfxWideInt tfx__load_half_ints(tfxU16 *half_ints) {
 #ifdef tfxUSEAVX
 	tfx128i loaded_16_bytes = _mm_loadu_si128((tfx128i*)half_ints);
@@ -7796,6 +7803,7 @@ tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt wide_ints) 
 	tfx128i packed = _mm_unpacklo_epi64(lo, hi);
 	*(tfx128i*)dst = packed;
 #else
+*/
 	/*
 	wide ints contains 4 16bit ints:
 	[ 0000 FFFF, 0000 FFFF, 0000 FFFF, 0000 FFFF ]
@@ -7803,12 +7811,14 @@ tfxINTERNAL inline void tfx__store_half_ints(tfxU16 *dst, tfxWideInt wide_ints) 
 	[ 0000, 0000, 0000, 0000, FFFF, FFFF, FFFF, FFFF ]
 	Can then use _mm_storel_epi64 to store the lower 64 bits.
 	*/
+/*
 	tfxWideInt zero = tfxWideSetZeroi;						// SSE2
 	tfxWideInt packed = _mm_packus_epi32(wide_ints, zero);	// SSE4.1
 
 	_mm_storel_epi64((tfxWideInt*)dst, packed); // SSE2
 #endif
 }
+*/
 
 //Pack a vec3 into a u16 using octahedral mapping
 tfxAPI_EDITOR inline tfxU16 tfx__pack_octahedral_vec3(tfx_vec3_t v) {
@@ -8420,9 +8430,9 @@ struct tfx_apply_path_end_kill {
 		tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 		tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(ctx.path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(ctx.path_position, ctx.node_count))));
 		ctx.path_position = tfxWideMax(ctx.path_position, tfxWideSetZero);
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		flags = tfxWideOri(flags, remove_flags);
-		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
 	}
 };
 
@@ -8431,12 +8441,12 @@ struct tfx_apply_path_end_loop {
 		//Reposition if the particle is travelling along the path
 		tfxWideFloat at_end = tfxWideGreaterEqual(ctx.path_position, ctx.node_count);
 		ctx.path_position = tfxWideSub(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
-		tfxWideInt flags = tfxWideLoadi((tfxWideInt *)&bank.flags_single_loop_count[index]);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
 		at_end = tfxWideLess(ctx.path_position, tfxWideSetZero);
 		ctx.path_position = tfxWideAdd(ctx.path_position, tfxWideAnd(at_end, ctx.node_count));
 		flags = tfxWideOri(flags, tfxWideAndi(ctx.capture_after_transform_flag, tfxWideCasti(at_end)));
-		tfxWideStorei((tfxWideInt *)&bank.flags_single_loop_count[index], flags);
+		tfxWideStorei((tfxWideIntLoader *)&bank.flags_single_loop_count[index], flags);
 	}
 };
 
@@ -9108,7 +9118,10 @@ Get a particle image from a library by it's index
 * @param tfx_library                A valid pointer to a tfx_library
 * @return image						A tfx_image_data_t object with all the details of the image
 */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
 tfxAPI tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index);
+#pragma clang diagnostic pop
 
 /*
 Output all the effect names in a library to the console
