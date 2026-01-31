@@ -1,6 +1,24 @@
 #ifndef TFX_LIBRARY_HEADER
 #define TFX_LIBRARY_HEADER
 
+#define TFX_STRINGIFY(x) #x
+#if defined(__clang__)
+#define TFX_DISABLE_COMPILER_WARNING(w) \
+	_Pragma("clang diagnostic push") \
+	_Pragma(TFX_STRINGIFY(clang diagnostic ignored w))
+#define TFX_ENABLE_COMPILER_WARNING() \
+	_Pragma("clang diagnostic pop")
+#elif defined(__GNUC__)
+#define TFX_DISABLE_COMPILER_WARNING(w) \
+	_Pragma("GCC diagnostic push") \
+	_Pragma(TFX_STRINGIFY(GCC diagnostic ignored w))
+#define TFX_ENABLE_COMPILER_WARNING() \
+	_Pragma("GCC diagnostic pop")
+#else
+#define TFX_DISABLE_COMPILER_WARNING(w)
+#define TFX_ENABLE_COMPILER_WARNING()
+#endif
+
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
@@ -9118,10 +9136,9 @@ Get a particle image from a library by it's index
 * @param tfx_library                A valid pointer to a tfx_library
 * @return image						A tfx_image_data_t object with all the details of the image
 */
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+TFX_DISABLE_COMPILER_WARNING("-Wreturn-type-c-linkage")
 tfxAPI tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 /*
 Output all the effect names in a library to the console

@@ -8896,8 +8896,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
 		&pm->effects[preview_effect_index].overal_scale,
@@ -8907,7 +8906,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		&pm->effects[preview_effect_index].rotation,
 		&pm->effects[preview_effect_index]
 	);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	frame = 0;
 	total_sprites = 0;
@@ -9017,8 +9016,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tfx_SetSeed(pm, settings->seed);
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
 		&pm->effects[preview_effect_index].overal_scale,
@@ -9028,7 +9026,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 		&pm->effects[preview_effect_index].rotation,
 		&pm->effects[preview_effect_index]
 	);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	if (total_sprites == 0) {
 		return;
@@ -10510,10 +10508,9 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
 		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 		if (tfx__is_ordered_effect_state(&pm->effects[effect_index.index])) {
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 			for (tfxEachLayer) {
 				tfx__order_effect_sprites(&sprites, layer, pm);
 			}
@@ -11107,10 +11104,9 @@ void tfx_setup_transform_policy::apply(tfx_control_work_entry_t *work_entry, tfx
 	ctx.emission_type = work_entry->shared_properties->emission_type;
 	ctx.sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	ctx.flags |= tfx__is_ordered_effect_state(&work_entry->pm->effects[ctx.emitter->root_index]) ? tfx_ctx_policy_flag_is_ordered : 0;
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 	ctx.flags |= (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ctx.emission_type != tfxPath && ctx.emission_type != tfxOtherEmitter && ctx.emission_type != tfxSpawnOnRibbon) || ctx.emitter->state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative ? 
 					tfx_ctx_policy_flag_transform_relative : 0;
 }
@@ -11219,10 +11215,9 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 	const tfxU32 sprite_layer = work_entry->shared_properties->layer;
 	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 
 	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
@@ -11565,10 +11560,9 @@ void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
 	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
@@ -11656,10 +11650,9 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
 	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
@@ -11783,10 +11776,9 @@ void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 	tfxU32 start_diff = work_entry->start_diff;
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
@@ -11846,10 +11838,9 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
 	}
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	tfx_graph_t *width_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_width_index];
 	tfx_wide_easing_function width_easing = tfx__get_wide_easing_function(width_graph->easing_type);
@@ -11974,10 +11965,9 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		path = &library->paths[emitter.path_attributes];
 		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
 	}
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 	bool is_mixed_color = emitter.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint;
 	tfxWideArrayi curved_alpha;
 	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
@@ -12099,10 +12089,9 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && !(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -12179,10 +12168,9 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer][work_entry->layer];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Walign-mismatch"
+TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.root_index]);
-#pragma clang diagnostic pop
+TFX_ENABLE_COMPILER_WARNING()
 	bool is_wrapped = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
