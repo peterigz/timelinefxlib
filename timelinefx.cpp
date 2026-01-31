@@ -4343,6 +4343,7 @@ tfxU32 tfx__add_library_transform_graphs(tfx_library library) {
 		index = library->graphs.size() - 1;
 	}
 	tfx_graph_list_t &graph_list = library->graphs[index];
+    graph_list.graphs.set_alignment(16);
 	graph_list.graphs.resize(tfxTransformGraphs_max_index);
 	for (tfx_graph_t &graph : graph_list.graphs) {
 		tfx__init_graph(&graph, 8);
@@ -5302,13 +5303,13 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 	tfx_str256_t graph_property_name;
 	if (data_type == tfxAttributeGraph) {
 		switch (effect->type) {
-		case tfxEffectType: graph_property_name.Setf("%s", graph_name); break;
-		case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name); break;
-		case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name); break;
+		case tfxEffectType: graph_property_name.Setf("%s", graph_name.c_str()); break;
+		case tfxEmitterType: graph_property_name.Setf("emitter_%s", graph_name.c_str()); break;
+		case tfxRibbonType: graph_property_name.Setf("ribbon_%s", graph_name.c_str()); break;
 		default: break;
 		}
 	} else {
-		graph_property_name.Setf("%s", graph_name);
+		graph_property_name.Setf("%s", graph_name.c_str());
 	}
 
 	if (!tfxStore->graph_indexes.ValidName(graph_property_name.c_str())) {
@@ -5339,7 +5340,9 @@ void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx
 			case tfxUInt: {
 				tfxU32 converted_value;
 				if (tfx__string_to_u32(pair[1].c_str(), &converted_value)) {
-					if (pair[0] == "easing_type") graph->easing_type = (tfx_graph_easing_type)converted_value;
+					if (pair[0] == "easing_type") {
+                        graph->easing_type = (tfx_graph_easing_type)converted_value;
+                    }
 					else if (pair[0] == "oscillator_type") graph->oscillator.type = (tfx_oscillator_type)converted_value;
 					else if (pair[0] == "sampling_type") graph->easing_type = (tfx_graph_easing_type)converted_value;
 				}
@@ -5402,8 +5405,8 @@ void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_
 		} else {
 			if (data_type != tfxTransformGraph) {
 				switch (effect->type) {
-				case tfxEmitterType: property_name.Setf("emitter_%s", (*values)[0]); break;
-				case tfxRibbonType: property_name.Setf("ribbon_%s", (*values)[0]); break;
+				case tfxEmitterType: property_name.Setf("emitter_%s", (*values)[0].c_str()); break;
+				case tfxRibbonType: property_name.Setf("ribbon_%s", (*values)[0].c_str()); break;
 				default: break;
 				}
 			}

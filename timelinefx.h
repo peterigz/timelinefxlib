@@ -3561,7 +3561,7 @@ struct tfx_vector_t {
 		if (new_capacity <= capacity)
 			return;
 		T *new_data;
-		if (alignment != 0) {
+		if (alignment > 0) {
 			new_data = (T *)tfxALLOCATE_ALIGNED((size_t)new_capacity * sizeof(T), alignment);
 		} else {
 			new_data = (T *)tfxALLOCATE((size_t)new_capacity * sizeof(T));
@@ -5686,7 +5686,7 @@ typedef struct tfx_graph_s {
 	float gamma;
 	tfx_oscillator_t oscillator;
 	tfxGraphFlags flags;
-} tfx_graph_t;
+} tfx_graph_t TFX_ALIGN_AFFIX(16);
 
 typedef struct tfx_graph_list_s {
 #ifdef __cplusplus
