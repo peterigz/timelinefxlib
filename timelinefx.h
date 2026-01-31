@@ -9,11 +9,8 @@
 #define TFX_ENABLE_COMPILER_WARNING() \
 	_Pragma("clang diagnostic pop")
 #elif defined(__GNUC__)
-#define TFX_DISABLE_COMPILER_WARNING(w) \
-	_Pragma("GCC diagnostic push") \
-	_Pragma(TFX_STRINGIFY(GCC diagnostic ignored w))
-#define TFX_ENABLE_COMPILER_WARNING() \
-	_Pragma("GCC diagnostic pop")
+#define TFX_DISABLE_COMPILER_WARNING(w)
+#define TFX_ENABLE_COMPILER_WARNING()
 #else
 #define TFX_DISABLE_COMPILER_WARNING(w)
 #define TFX_ENABLE_COMPILER_WARNING()
