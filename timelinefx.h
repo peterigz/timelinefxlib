@@ -5187,7 +5187,7 @@ tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t * q, tfx
 tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t * q, tfx_vec3_t v);
 tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t * q);
 tfxAPI_EDITOR tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
-tfxAPI_EDITOR tfxWideInt tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll);
+tfxAPI_EDITOR void tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll, tfxWideInt *out_xy, tfxWideInt *out_zw);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t * normalised_dir);
 
@@ -5261,12 +5261,13 @@ typedef struct tfx_float8x4_s {
 
 const tfxWideArray one_div_127_wide = tfxWideSetConst(1 / 127.f);
 const tfxWideArray one_div_511_wide = tfxWideSetConst(1 / 511.f);
+const tfxWideArray one_div_32767_wide = tfxWideSetConst(1 / 32767.f);
 
 #define tfxPACKED_X_NORMAL_3D 0x3FE7FDFF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
 #define tfxPACKED_Y_NORMAL_2D 32767
-#define tfxPACKED_W_QUATERNION 4286545791
+#define tfxPACKED_W_QUATERNION 0x7FFF000000000000ULL
 typedef struct tfx_rgba_s {
 	float r, g, b, a;
 } tfx_rgba_t;
@@ -5709,7 +5710,7 @@ typedef struct tfx_path_nodes_soa_s {
 } tfx_path_nodes_soa_t;
 
 typedef struct tfx_path_quaternion_s {
-	tfxU32 quaternion;
+	tfxU64 quaternion;
 	float grid_coord;
 	float age;
 	tfxU32 cycles;
@@ -6076,16 +6077,18 @@ typedef struct tfx_effect_state_s {
 
 }tfx_effect_state_t TFX_ALIGN_AFFIX(16);
 
-typedef struct tfx_ribbon_s {
+typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
 	tfx_vec4_t position;
     float width;
 	tfxU32 start_index;
 	tfxU32 flags;
-	tfxU32 quaternion;
+	tfxU32 _padding_pre_quat;				//Padding for 8-byte alignment of quaternion
+	tfxU64 quaternion;
 	tfxU32 emitter_index;
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
+	tfxU32 _padding[2];						//Padding to 64 bytes for std430 alignment with vec4
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
@@ -6275,7 +6278,7 @@ typedef struct tfx_particle_soa_s {
 		float *rotation_offset;			//Just use a float if the particle always faces the camera
 	};
 	tfxU32 *velocity_normal;			//Packed into 10bit ints for each axis
-	tfxU32 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
+	tfxU64 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
@@ -6341,30 +6344,30 @@ typedef struct tfx_frame_meta_s {
 	float radius;									//The radius of the bounding box
 } tfx_frame_meta_t;
 
-typedef struct tfx_instance_s {		//48 bytes
+typedef struct tfx_instance_s {		//64 bytes (52 bytes data + 12 padding for std430 alignment)
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
-	//tfx_vec3_t rotations;				            //Rotation of the billboard 
-	tfxU32 quaternion;								//Rotation of the billboard stored as a quaternion
-	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
+	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	tfxU32 _padding[3];								//Padding to 64 bytes for std430 alignment with vec4
 } tfx_instance_t;
 
 //These structs are for animation sprite data that you can upload to the gpu
-typedef struct tfx_sprite_instance_data_s {    //52 bytes padding to 64
+typedef struct tfx_sprite_instance_data_s {    //56 bytes padding to 64
 	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfxU32 quaternion;								//Rotation of the billboard stored as a quaternion
-	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
+	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
-	tfxU32 padding[3];
+	tfxU32 padding[2];
 } tfx_sprite_instance_data_t;
 
 //Animation sprite data that is used on the cpu to bake the data
@@ -7150,12 +7153,12 @@ tfxINTERNAL tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emi
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxAPI_EDITOR tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z);
-tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
-tfxAPI_EDITOR tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q);
-tfxINTERNAL tfx_quaternion_t tfx__unpack8bit_quaternion_from_gpu(tfxU32 q);
+tfxINTERNAL tfxU64 tfx__pack16bit_quaternion(tfx_quaternion_t v);
+tfxAPI_EDITOR tfxU64 tfx__pack16bit_quaternion_for_gpu(tfx_quaternion_t q);
+tfxAPI_EDITOR tfx_quaternion_t tfx__unpack16bit_quaternion_from_gpu(tfxU64 q);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
-tfxINTERNAL void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
-tfxINTERNAL tfx_quaternion_t tfx__unpack8bit_quaternion(tfxU32 in);
+tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
+tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
 tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth);
@@ -7511,21 +7514,34 @@ tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tf
 	z = tfxWideMulAdd(z, one_div_511_wide.m, tfxWIDEMINUSONE.m);
 }
 
-tfxINTERNAL inline void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
-	const tfxWideInt mask_w = tfxWideSetSinglei(0xFF000000);
-	const tfxWideInt mask_z = tfxWideSetSinglei(0x00FF0000);
-	const tfxWideInt mask_y = tfxWideSetSinglei(0x0000FF00);
-	const tfxWideInt mask_x = tfxWideSetSinglei(0x000000FF);
+tfxINTERNAL inline void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
+	const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
+	const tfxWideInt sign_bit = tfxWideSetSinglei(0x8000);
 
-	w = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_w), 24));
-	z = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_z), 16));
-	y = tfxWideConvert(tfxWideShiftRight(tfxWideAndi(in, mask_y), 8));
-	x = tfxWideConvert(tfxWideAndi(in, mask_x));
+	// Extract and sign-extend x (low 16 bits of xy)
+	tfxWideInt x_val = tfxWideAndi(xy, mask_ffff);
+	tfxWideInt x_sign = tfxWideShiftRight(tfxWideAndi(x_val, sign_bit), 15);
+	x_val = tfxWideSubi(x_val, tfxWideShiftLeft(x_sign, 16));
 
-	x = tfxWideMulAdd(x, one_div_127_wide.m, tfxWIDEMINUSONE.m);
-	y = tfxWideMulAdd(y, one_div_127_wide.m, tfxWIDEMINUSONE.m);
-	z = tfxWideMulAdd(z, one_div_127_wide.m, tfxWIDEMINUSONE.m);
-	w = tfxWideMulAdd(w, one_div_127_wide.m, tfxWIDEMINUSONE.m);
+	// Extract and sign-extend y (high 16 bits of xy)
+	tfxWideInt y_val = tfxWideShiftRight(xy, 16);
+	tfxWideInt y_sign = tfxWideShiftRight(tfxWideAndi(y_val, sign_bit), 15);
+	y_val = tfxWideSubi(y_val, tfxWideShiftLeft(y_sign, 16));
+
+	// Extract and sign-extend z (low 16 bits of zw)
+	tfxWideInt z_val = tfxWideAndi(zw, mask_ffff);
+	tfxWideInt z_sign = tfxWideShiftRight(tfxWideAndi(z_val, sign_bit), 15);
+	z_val = tfxWideSubi(z_val, tfxWideShiftLeft(z_sign, 16));
+
+	// Extract and sign-extend w (high 16 bits of zw)
+	tfxWideInt w_val = tfxWideShiftRight(zw, 16);
+	tfxWideInt w_sign = tfxWideShiftRight(tfxWideAndi(w_val, sign_bit), 15);
+	w_val = tfxWideSubi(w_val, tfxWideShiftLeft(w_sign, 16));
+
+	x = tfxWideMul(tfxWideConvert(x_val), one_div_32767_wide.m);
+	y = tfxWideMul(tfxWideConvert(y_val), one_div_32767_wide.m);
+	z = tfxWideMul(tfxWideConvert(z_val), one_div_32767_wide.m);
+	w = tfxWideMul(tfxWideConvert(w_val), one_div_32767_wide.m);
 }
 
 tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
@@ -7542,9 +7558,9 @@ tfxINTERNAL inline tfxWideInt tfx__wide_pack10bit_unsigned(tfxWideFloat const &v
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
 }
 
-tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion_xy, tfxWideInt *quaternion_zw, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat q_x, q_y, q_z, q_w;
-	tfx__wide_unpack8bit(*quaternion, q_x, q_y, q_z, q_w);
+	tfx__wide_unpack16bit(*quaternion_xy, *quaternion_zw, q_x, q_y, q_z, q_w);
 
 	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
 	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
@@ -7555,9 +7571,9 @@ tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *q
 	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
-tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y) {
+tfxINTERNAL inline void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion_xy, tfxWideInt *quaternion_zw, tfxWideFloat *x, tfxWideFloat *y) {
 	tfxWideFloat q_x, q_y, q_z, q_w;
-	tfx__wide_unpack8bit(*quaternion, q_x, q_y, q_z, q_w);
+	tfx__wide_unpack16bit(*quaternion_xy, *quaternion_zw, q_x, q_y, q_z, q_w);
 
 	tfxWideFloat s2 = tfxWideMul(q_z, q_z);
 	tfxWideFloat c2 = tfxWideMul(q_w, q_w);
@@ -8506,8 +8522,13 @@ struct tfx_apply_path_position {
 		ctx.position_y.m = tfxWideAdd(ctx.position_y.m, ctx.emitter_offset_y);
 		ctx.position_z.m = tfxWideAdd(ctx.position_z.m, ctx.emitter_offset_z);
 		if (ctx.emitter->state_flags & tfxEmitterStateFlags_has_rotated_path) {
-			tfxWideInt quaternion = tfxWideLoadi((tfxWideIntLoader*)&bank.quaternion[index]);
-			tfx__wide_transform_packed_quaternion_vec3(&quaternion, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
+			tfxWideArrayi quat_xy, quat_zw;
+			for (int i = 0; i < tfxDataWidth; i++) {
+				tfxU64 q = bank.quaternion[index + i];
+				quat_xy.a[i] = (int)(uint32_t)(q & 0xFFFFFFFF);
+				quat_zw.a[i] = (int)(uint32_t)(q >> 32);
+			}
+			tfx__wide_transform_packed_quaternion_vec3(&quat_xy.m, &quat_zw.m, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
 		}
 	}
 };
@@ -8602,8 +8623,13 @@ struct tfx_apply_position_line_trajectory {
 		ctx.position_y.m = tfxWideMul(tfxWideMul(tfxWideMul(ctx.lookup_velocity, ctx.emitter_height), ctx.overal_scale_wide), path_scale_variation);
 		ctx.position_z.m = tfxWideSetZero;
 		if (ctx.emitter->control_profile & tfxEmitterControlProfile_rotated_line) {
-			tfxWideInt quaternion = tfxWideLoadi((tfxWideIntLoader *)&bank.quaternion[index]);
-			tfx__wide_transform_packed_quaternion_vec3(&quaternion, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
+			tfxWideArrayi quat_xy, quat_zw;
+			for (int i = 0; i < tfxDataWidth; i++) {
+				tfxU64 q = bank.quaternion[index + i];
+				quat_xy.a[i] = (int)(uint32_t)(q & 0xFFFFFFFF);
+				quat_zw.a[i] = (int)(uint32_t)(q >> 32);
+			}
+			tfx__wide_transform_packed_quaternion_vec3(&quat_xy.m, &quat_zw.m, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
 		}
 	}
 };

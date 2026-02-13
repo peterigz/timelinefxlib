@@ -1153,8 +1153,8 @@ tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll) {
 	return q;
 }
 
-tfxWideInt tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll) {
-	const tfxWideFloat w127 = tfxWideSetSingle(127.f);
+void tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll, tfxWideInt *out_xy, tfxWideInt *out_zw) {
+	const tfxWideFloat w32767 = tfxWideSetSingle(32767.f);
 	const tfxWideFloat half = tfxWideSetSingle(.5f);
 
 	tfxWideFloat cp, sp, cy, sy, cr, sr;
@@ -1172,14 +1172,15 @@ tfxWideInt tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat
 	tfxWideFloat x = tfxWideMulAdd(cr, spcy, tfxWideMul(sr, cpsy));
 	tfxWideFloat y = tfxWideMulSub(cr, cpsy, tfxWideMul(sr, spcy));
 
-	const tfxWideInt mask_ff = tfxWideSetSinglei(0xFF); 
+	const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
 
-	tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(x, w127)), mask_ff);
-	tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(y, w127)), mask_ff), 8);
-	tfxWideInt p_z = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(z, w127)), mask_ff), 16);
-	tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(w, w127)), mask_ff), 24);
+	tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(x, w32767)), mask_ffff);
+	tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(y, w32767)), mask_ffff), 16);
+	tfxWideInt p_z = tfxWideAndi(tfxWideConverti(tfxWideMul(z, w32767)), mask_ffff);
+	tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(w, w32767)), mask_ffff), 16);
 
-	return tfxWideOri(tfxWideOri(tfxWideOri(p_x, p_y), p_z), p_w);
+	*out_xy = tfxWideOri(p_x, p_y);
+	*out_zw = tfxWideOri(p_z, p_w);
 }
 
 tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle) {
@@ -1512,39 +1513,41 @@ tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z) {
 	return x_scaled | y_scaled | z_scaled;
 }
 
-tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t q) {
-	uint8_t x = static_cast<uint8_t>((q.x * 0.5f + 0.5f) * 255.0f);
-	uint8_t y = static_cast<uint8_t>((q.y * 0.5f + 0.5f) * 255.0f);
-	uint8_t z = static_cast<uint8_t>((q.z * 0.5f + 0.5f) * 255.0f);
-	uint8_t w = static_cast<uint8_t>((q.w * 0.5f + 0.5f) * 255.0f);
+tfxU64 tfx__pack16bit_quaternion(tfx_quaternion_t q) {
+	int16_t x = static_cast<int16_t>(q.x * 32767.0f);
+	int16_t y = static_cast<int16_t>(q.y * 32767.0f);
+	int16_t z = static_cast<int16_t>(q.z * 32767.0f);
+	int16_t w = static_cast<int16_t>(q.w * 32767.0f);
 
-	// Pack into a single 32-bit unsigned integer
-	tfxU32 result = (w << 24) | (z << 16) | (y << 8) | x;
+	uint64_t ux = static_cast<uint16_t>(x);
+	uint64_t uy = static_cast<uint16_t>(y);
+	uint64_t uz = static_cast<uint16_t>(z);
+	uint64_t uw = static_cast<uint16_t>(w);
 
-	return result;
+	return ux | (uy << 16) | (uz << 32) | (uw << 48);
 }
 
-tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q) {
-	int8_t x = static_cast<int8_t>(q.x * 127.0f);
-	int8_t y = static_cast<int8_t>(q.y * 127.0f);
-	int8_t z = static_cast<int8_t>(q.z * 127.0f);
-	int8_t w = static_cast<int8_t>(q.w * 127.0f);
+tfxU64 tfx__pack16bit_quaternion_for_gpu(tfx_quaternion_t q) {
+	int16_t x = static_cast<int16_t>(q.x * 32767.0f);
+	int16_t y = static_cast<int16_t>(q.y * 32767.0f);
+	int16_t z = static_cast<int16_t>(q.z * 32767.0f);
+	int16_t w = static_cast<int16_t>(q.w * 32767.0f);
 
-	uint32_t ux = static_cast<uint8_t>(x);
-	uint32_t uy = static_cast<uint8_t>(y);
-	uint32_t uz = static_cast<uint8_t>(z);
-	uint32_t uw = static_cast<uint8_t>(w);
+	uint64_t ux = static_cast<uint16_t>(x);
+	uint64_t uy = static_cast<uint16_t>(y);
+	uint64_t uz = static_cast<uint16_t>(z);
+	uint64_t uw = static_cast<uint16_t>(w);
 
-	return (uw << 24) | (uz << 16) | (uy << 8) | ux;
+	return ux | (uy << 16) | (uz << 32) | (uw << 48);
 }
 
-tfx_quaternion_t tfx__unpack8bit_quaternion_from_gpu(tfxU32 packed) {
-	int8_t x = static_cast<int8_t>(packed & 0xFF);
-	int8_t y = static_cast<int8_t>((packed >> 8) & 0xFF);
-	int8_t z = static_cast<int8_t>((packed >> 16) & 0xFF);
-	int8_t w = static_cast<int8_t>((packed >> 24) & 0xFF);
+tfx_quaternion_t tfx__unpack16bit_quaternion_from_gpu(tfxU64 packed) {
+	int16_t x = static_cast<int16_t>(packed & 0xFFFF);
+	int16_t y = static_cast<int16_t>((packed >> 16) & 0xFFFF);
+	int16_t z = static_cast<int16_t>((packed >> 32) & 0xFFFF);
+	int16_t w = static_cast<int16_t>((packed >> 48) & 0xFFFF);
 
-	return { w / 127.0f, x / 127.0f, y / 127.0f, z / 127.0f };
+	return { w / 32767.0f, x / 32767.0f, y / 32767.0f, z / 32767.0f };
 }
 
 tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
@@ -1565,22 +1568,13 @@ tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in) {
 	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide.m);
 }
 
-tfx_quaternion_t tfx__unpack8bit_quaternion(tfxU32 packed) {
-	// Extract each component by shifting and masking
-	uint8_t x = packed & 0xFF;
-	uint8_t y = (packed >> 8) & 0xFF;
-	uint8_t z = (packed >> 16) & 0xFF;
-	uint8_t w = (packed >> 24) & 0xFF;
+tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 packed) {
+	int16_t x = static_cast<int16_t>(packed & 0xFFFF);
+	int16_t y = static_cast<int16_t>((packed >> 16) & 0xFFFF);
+	int16_t z = static_cast<int16_t>((packed >> 32) & 0xFFFF);
+	int16_t w = static_cast<int16_t>((packed >> 48) & 0xFFFF);
 
-	// Convert from 0-255 back to -1 to 1 range
-	tfx_quaternion_t q;
-	q.x = (x / 255.0f) * 2.0f - 1.0f;
-	q.y = (y / 255.0f) * 2.0f - 1.0f;
-	q.z = (z / 255.0f) * 2.0f - 1.0f;
-	q.w = (w / 255.0f) * 2.0f - 1.0f;
-
-	// Return the unpacked quaternion
-	return q;
+	return { w / 32767.0f, x / 32767.0f, y / 32767.0f, z / 32767.0f };
 }
 
 tfx_vec2_t tfx__interpolate_vec2(float tween, tfx_vec2_t from, tfx_vec2_t to) {
@@ -9957,7 +9951,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 						}
 						for (int qi = 0; qi != path_state.active_paths; ++qi) {
 							tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-							path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+							path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 							path_state.path_quaternions[qi].grid_coord = (emitter.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
 							path_state.path_quaternions[qi].age = 0.f;
 							path_state.path_quaternions[qi].cycles = 0;
@@ -11608,8 +11602,8 @@ TFX_ENABLE_COMPILER_WARNING()
 
 		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
 
-		tfxWideArrayi packed_quaternion;
-		packed_quaternion.m = tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll);
+		tfxWideArrayi packed_quat_xy, packed_quat_zw;
+		tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll, &packed_quat_xy.m, &packed_quat_zw.m);
 
 		tfx__readbarrier;
 
@@ -11618,13 +11612,13 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].quaternion = packed_quaternion.a[j];
+				sprites[sprite_depth_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index++].quaternion = packed_quaternion.a[j];
+				sprites[running_sprite_index++].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
 			}
 		}
 		start_diff = 0;
@@ -11746,8 +11740,8 @@ TFX_ENABLE_COMPILER_WARNING()
 		rotation_yaw = tfxWideAdd(rotation_yaw, yaw_offset);
 		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
 
-		tfxWideArrayi packed_quaternion;
-		packed_quaternion.m = tfx__wide_euler_to_packed_quaternion(rotation_pitch, rotation_yaw, rotation_roll);
+		tfxWideArrayi packed_quat_xy, packed_quat_zw;
+		tfx__wide_euler_to_packed_quaternion(rotation_pitch, rotation_yaw, rotation_roll, &packed_quat_xy.m, &packed_quat_zw.m);
 
 		tfx__readbarrier;
 
@@ -11756,13 +11750,13 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].quaternion = packed_quaternion.a[j];
+				sprites[sprite_depth_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
 				running_sprite_index++;
 			}
 		} else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].quaternion = packed_quaternion.a[j];
+				sprites[running_sprite_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14274,7 +14268,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 
 		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
 
-		tfx_quaternion_t q = tfx__unpack8bit_quaternion_from_gpu(ribbon_instance.quaternion);
+		tfx_quaternion_t q = tfx__unpack16bit_quaternion_from_gpu(ribbon_instance.quaternion);
 		entry->particle_data->quaternion[index] = ribbon_instance.quaternion;
 		tfx_vec3_t rp = point;
 		rp = tfx__rotate_vector_quaternion(&q, rp) + ribbon_instance.position.xyz();
@@ -14542,7 +14536,7 @@ void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data) {
 
 		if (has_rotated_emission) {
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, emission_range, emission_pitch, emission_yaw, false);
-			entry->particle_data->quaternion[index] = tfx__pack8bit_quaternion(q);
+			entry->particle_data->quaternion[index] = tfx__pack16bit_quaternion(q);
 		} else {
 			entry->particle_data->quaternion[index] = tfxPACKED_W_QUATERNION;
 		}
@@ -14998,7 +14992,7 @@ void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data) {
 
 		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-			entry->particle_data->quaternion[index] = tfx__pack8bit_quaternion(q);
+			entry->particle_data->quaternion[index] = tfx__pack16bit_quaternion(q);
 		}
 	}
 }
@@ -15046,7 +15040,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 				emitter.path_state.path_quaternions[qi].age += pm.frame_length;
 				if (emitter.path_state.path_quaternions[qi].age >= path->settings.rotation_cycle_length) {
 					tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-					emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+					emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 					emitter.path_state.path_quaternions[qi].age = 0.f;
 					emitter.path_state.path_cycle_count--;
 				}
@@ -15063,7 +15057,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			qi = (emitter.path_state.path_start_index + emitter.path_state.active_paths++) % path->settings.maximum_active_paths;
 			TFX_ASSERT(qi < path->settings.maximum_active_paths);
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-			emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+			emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 			emitter.path_state.path_quaternions[qi].cycles = 0;
 			if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
 				emitter.path_state.path_quaternions[qi].grid_coord = 0.f;
@@ -15115,7 +15109,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && path->settings.rotation_stagger == 0) {
 					if (path->settings.maximum_paths == 0 || emitter.path_state.path_cycle_count > 0) {
 						tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-						emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+						emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 						emitter.path_state.path_cycle_count--;
 					}
 					else {
@@ -15186,7 +15180,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 				TFX_ASSERT(qi < path->settings.maximum_active_paths);
 				continue;
 			}
-			tfx_quaternion_t q = tfx__unpack8bit_quaternion(emitter.path_state.path_quaternions[qi].quaternion);
+			tfx_quaternion_t q = tfx__unpack16bit_quaternion(emitter.path_state.path_quaternions[qi].quaternion);
 			entry->particle_data->quaternion[index] = emitter.path_state.path_quaternions[qi].quaternion;
 			tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
 			rp = tfx__rotate_vector_quaternion(&q, rp);
@@ -15447,7 +15441,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			} else {
 				q = q * ribbon_emitter.rotation;
 			}
-			ribbon.quaternion = tfx__pack8bit_quaternion_for_gpu(q);
+			ribbon.quaternion = tfx__pack16bit_quaternion_for_gpu(q);
 			ribbon.emitter_index = ribbon_emitter.gpu_emitter_index;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
@@ -16866,7 +16860,7 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, path_offset));
 	}
 	if (control_profile & tfxEmitterControlProfile_has_rotated_path_or_line || control_profile & tfxEmitterControlProfile_other_ribbon_emitter_path) {
-		tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, quaternion));
+		tfx__add_struct_array(buffer, sizeof(tfxU64), offsetof(tfx_particle_soa_t, quaternion));
 	}
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
