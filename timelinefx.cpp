@@ -11665,7 +11665,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	bool spin_yaw_is_bezier_graph = tfx__graph_has_bezier_curves(spin_yaw_graph);
 	bool spin_yaw_has_oscillator = tfx__graph_can_oscillate(spin_yaw_graph);
 
-	const tfxWideFloat Wide360 = tfxWideSetSingle(360.f);
+	const tfxWideFloat WideTwoPi = tfxWideSetSingle(tfxPI2);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -11677,9 +11677,9 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfxWideInt offsets = tfxWideLoadi((tfxWideIntLoader*)&bank.rotation_offsets[index]);
 		tfxWideFloat pitch_offset, yaw_offset, roll_offset;
 		tfx__wide_unpack10bit(offsets, pitch_offset, yaw_offset, roll_offset);
-		pitch_offset = tfxWideMul(pitch_offset, Wide360);
-		yaw_offset = tfxWideMul(yaw_offset, Wide360);
-		roll_offset = tfxWideMul(roll_offset, Wide360);
+		pitch_offset = tfxWideMul(pitch_offset, WideTwoPi);
+		yaw_offset = tfxWideMul(yaw_offset, WideTwoPi);
+		roll_offset = tfxWideMul(roll_offset, WideTwoPi);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_spin3d) {
 			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
