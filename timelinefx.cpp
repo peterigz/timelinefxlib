@@ -11642,9 +11642,10 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
-	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
-	const tfxWideFloat e_world_rotations_y = tfxWideSetSingle(emitter.world_rotations.y);
-	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
+	const tfxWideFloat e_qw = tfxWideSetSingle(emitter.rotation.w);
+	const tfxWideFloat e_qx = tfxWideSetSingle(emitter.rotation.x);
+	const tfxWideFloat e_qy = tfxWideSetSingle(emitter.rotation.y);
+	const tfxWideFloat e_qz = tfxWideSetSingle(emitter.rotation.z);
 	bool relative_position = emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
 
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -11730,18 +11731,53 @@ TFX_ENABLE_COMPILER_WARNING()
 			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
 		}
 
-		if (!relative_position && emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_pitch = tfxWideAdd(rotation_pitch, e_world_rotations_x);
-			rotation_yaw = tfxWideAdd(rotation_yaw, e_world_rotations_y);
-			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
-		}
-
 		rotation_pitch = tfxWideAdd(rotation_pitch, pitch_offset);
 		rotation_yaw = tfxWideAdd(rotation_yaw, yaw_offset);
 		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
 
+		// Convert particle euler angles to quaternion
+		const tfxWideFloat half = tfxWideSetSingle(.5f);
+		tfxWideFloat cp, sp, cy, sy, cr, sr;
+		tfxWideSinCos(tfxWideMul(rotation_pitch, half), &sp, &cp);
+		tfxWideSinCos(tfxWideMul(rotation_yaw, half), &sy, &cy);
+		tfxWideSinCos(tfxWideMul(rotation_roll, half), &sr, &cr);
+
+		tfxWideFloat cpcy = tfxWideMul(cp, cy);
+		tfxWideFloat spsy = tfxWideMul(sp, sy);
+		tfxWideFloat spcy = tfxWideMul(sp, cy);
+		tfxWideFloat cpsy = tfxWideMul(cp, sy);
+
+		tfxWideFloat qw = tfxWideMulAdd(cr, cpcy, tfxWideMul(sr, spsy));
+		tfxWideFloat qz = tfxWideMulSub(sr, cpcy, tfxWideMul(cr, spsy));
+		tfxWideFloat qx = tfxWideMulAdd(cr, spcy, tfxWideMul(sr, cpsy));
+		tfxWideFloat qy = tfxWideMulSub(cr, cpsy, tfxWideMul(sr, spcy));
+
+		// Compose with emitter rotation if relative_angle is set
+		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			// Multiply conj(q_emitter) * q_particle to properly compose rotations.
+			// Conjugate is needed because the CPU position transform uses a reversed
+			// quaternion rotation convention compared to the shader.
+			tfxWideFloat rw = tfxWideAdd(tfxWideAdd(tfxWideMul(e_qw, qw), tfxWideMul(e_qx, qx)),
+			                             tfxWideAdd(tfxWideMul(e_qy, qy), tfxWideMul(e_qz, qz)));
+			tfxWideFloat rx = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qx), tfxWideMul(e_qx, qw)),
+			                             tfxWideSub(tfxWideMul(e_qz, qy), tfxWideMul(e_qy, qz)));
+			tfxWideFloat ry = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qy), tfxWideMul(e_qy, qw)),
+			                             tfxWideSub(tfxWideMul(e_qx, qz), tfxWideMul(e_qz, qx)));
+			tfxWideFloat rz = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qz), tfxWideMul(e_qz, qw)),
+			                             tfxWideSub(tfxWideMul(e_qy, qx), tfxWideMul(e_qx, qy)));
+			qw = rw; qx = rx; qy = ry; qz = rz;
+		}
+
+		// Pack quaternion to 16-bit
+		const tfxWideFloat w32767 = tfxWideSetSingle(32767.f);
+		const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
 		tfxWideArrayi packed_quat_xy, packed_quat_zw;
-		tfx__wide_euler_to_packed_quaternion(rotation_pitch, rotation_yaw, rotation_roll, &packed_quat_xy.m, &packed_quat_zw.m);
+		tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(qx, w32767)), mask_ffff);
+		tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qy, w32767)), mask_ffff), 16);
+		tfxWideInt p_z = tfxWideAndi(tfxWideConverti(tfxWideMul(qz, w32767)), mask_ffff);
+		tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qw, w32767)), mask_ffff), 16);
+		packed_quat_xy.m = tfxWideOri(p_x, p_y);
+		packed_quat_zw.m = tfxWideOri(p_z, p_w);
 
 		tfx__readbarrier;
 
