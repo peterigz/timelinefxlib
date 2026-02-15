@@ -6429,6 +6429,7 @@ typedef struct tfx_sprite_data_push_s {
 	tfxU32 sprite_data_index;
 	tfxU32 image_data_index;
 	tfxU32 emitter_properties_index;
+	tfxU32 bounding_boxes_index;
 } tfx_sprite_data_push_t;
 
 typedef struct tfx_ribbon_segment_s {
@@ -6448,6 +6449,17 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 ribbon_count;
 	tfxU32 ribbon_offset;
 	tfxU32 segment_offset;
+	tfxU32 uniform_index;
+	tfxU32 emitters_index;
+	tfxU32 graphs_index;
+	tfxU32 ribbons_index;
+	tfxU32 ribbon_segments_index;
+	tfxU32 vertexes_index;
+	tfxU32 indexes_index;
+	tfxU32 image_data_index;
+	tfxU32 sampler_index;
+	tfxU32 particle_texture_index;
+	tfxU32 color_ramp_texture_index;
 	float lerp;
 } tfx_ribbon_bucket_globals_t;
 
