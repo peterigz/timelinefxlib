@@ -1646,6 +1646,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSqrt _mm256_sqrt_ps
 #define tfxWideRSqrt _mm256_rsqrt_ps
 #define tfxWideMoveMask _mm256_movemask_epi8
+#define tfxWideMovemasKps _mm256_movemask_ps
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
@@ -1744,6 +1745,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideSqrt _mm_sqrt_ps
 #define tfxWideRSqrt _mm_rsqrt_ps
 #define tfxWideMoveMask _mm_movemask_epi8
+#define tfxWideMovemasKps _mm_movemask_ps
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
@@ -1864,6 +1866,11 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideSetZero vdupq_n_f32(0.0f)
 #define tfxWideEqualsi vceqq_s32
 #define tfxWideEquals(a, b) vreinterpretq_f32_u32(vceqq_f32(a, b))
+static inline int tfx__neon_movemask_ps(float32x4_t v) {
+	uint32x4_t s = vshrq_n_u32(vreinterpretq_u32_f32(v), 31);
+	return (int)(vgetq_lane_u32(s, 0) | (vgetq_lane_u32(s, 1) << 1) | (vgetq_lane_u32(s, 2) << 2) | (vgetq_lane_u32(s, 3) << 3));
+}
+#define tfxWideMovemasKps tfx__neon_movemask_ps
 
 #define tfxSIMD_AND(a,b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 #define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
@@ -5982,6 +5989,7 @@ typedef struct tfx_particle_emitter_state_s {
 	//Static data that won't change frame by frame
 	float loop_length;
 	float max_life;
+	float max_possible_life;	//Upper bound: any particle from this emitter is guaranteed expired once age >= max_possible_life
 	float oscillator_time;
 	tfxU64 image_handle_packed;
 
@@ -6113,6 +6121,60 @@ typedef struct tfx_gpu_emitter_s {
 	tfx_vec3_t fixed_angle_normal;
 	tfxU32 padding3;
 } tfx_gpu_emitter_t;
+
+//---- GPU compute particle buffer management ----
+//Power-of-two particle count size classes for the GPU ring buffer allocator.
+#define tfxGPU_NUM_SIZE_CLASSES 9
+static const tfxU32 tfxGPU_SIZE_CLASSES[tfxGPU_NUM_SIZE_CLASSES] = {64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384};
+
+//Free-list pool for one size class within a GPU profile block.
+typedef struct tfx_gpu_size_class_pool_s {
+	tfxU32 slot_size;					//Particles per slot (power of 2, equals tfxGPU_SIZE_CLASSES[i])
+#ifdef __cplusplus
+	tfx_vector_t<tfxU32> free_slots;	//Stack of available slot indices (O(1) push/pop)
+#else
+	tfx_vector_t free_slots;
+#endif
+	tfxU32 total_slots;					//How many slots are currently allocated in the block
+} tfx_gpu_size_class_pool_t;
+
+//One large GPU-side SoA region per unique emitter control profile.
+typedef struct tfx_gpu_profile_block_s {
+	tfxU32 profile_hash;											//Hash of control profile flags
+	tfxEmitterControlProfileFlags profile_flags;
+	tfx_gpu_size_class_pool_t pools[tfxGPU_NUM_SIZE_CLASSES];		//Free list per size class
+	tfxU32 total_particle_capacity;									//Total particle slots across all size classes
+	tfxU64 block_size_bytes;										//Total bytes allocated for this block (set by renderer callback)
+} tfx_gpu_profile_block_t;
+
+//Tracks a single CPU-side spawn batch so we can advance the ring-buffer head deterministically
+//without per-particle timestamps.
+typedef struct tfx_gpu_spawn_batch_s {
+	float spawn_time_ms;	//Absolute time (ms) when this batch was spawned
+	tfxU32 count;			//How many particles were spawned in this batch
+} tfx_gpu_spawn_batch_t;
+
+//Per-active-emitter allocation in the GPU particle ring buffer.
+typedef struct tfx_gpu_emitter_allocation_s {
+	tfxU32 profile_hash;				//Which profile block owns this slot
+	tfxU32 emitter_index;				//Emitter index in pm->emitters (cached for stable lookup during expiry)
+	tfxU32 size_class_index;			//Index into tfxGPU_SIZE_CLASSES
+	tfxU32 slot_index;					//Which slot within the size-class pool
+	tfxU32 ring_head;					//Oldest live particle index within the slot (CPU-tracked)
+	tfxU32 ring_tail;					//Next write position within the slot (CPU-tracked)
+	tfxU32 ring_capacity;				//Max particles (== tfxGPU_SIZE_CLASSES[size_class_index])
+	float expiry_time_ms;				//Absolute time (ms) when all particles are guaranteed expired
+	tfxU32 block_byte_offset;			//Byte offset of this slot's data within the profile block
+	tfxU32 active_particle_count;		//Live + visually-dead-but-in-buffer particle count
+	float max_possible_life_ms;			//Cached from emitter.max_life + frame padding at allocation time
+	bool is_dying;						//True once the emitter has been removed; slot freed after expiry_time_ms
+#ifdef __cplusplus
+	tfx_vector_t<tfx_gpu_spawn_batch_t> spawn_batches;	//FIFO queue for deterministic head advancement
+#else
+	tfx_vector_t spawn_batches;
+#endif
+} tfx_gpu_emitter_allocation_t;
+//---- end GPU compute particle buffer management ----
 
 typedef struct tfx_ribbon_emitter_state_s {
 	//State data
@@ -6960,6 +7022,17 @@ typedef struct tfx_effect_manager_s {
 
 	//These can possibly be removed at some point, they're debugging variables
 	tfxU32 particle_id;
+
+	//GPU compute particle buffer management
+#ifdef __cplusplus
+	tfx_storage_map_t<tfx_gpu_profile_block_t> gpu_profile_blocks;		//Keyed by profile_hash; one block per unique control profile
+	tfx_storage_map_t<tfx_gpu_emitter_allocation_t> gpu_allocations;	//Keyed by emitter_index; one entry per live GPU-path emitter
+#else
+	tfx_storage_map_t gpu_profile_blocks;
+	tfx_storage_map_t gpu_allocations;
+#endif
+	float gpu_current_time_ms;											//Running absolute time in ms used for GPU slot expiry bookkeeping
+
 	tfxEffectManagerFlags flags;
 	//The length of time that passed since the last time Update() was called
 	float frame_length;
@@ -7262,6 +7335,15 @@ tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *r
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
 tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, float osc_t);
+
+//---- GPU compute particle buffer management functions ----
+tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
+tfxINTERNAL tfxU32 tfx__gpu_size_class_for(tfxU32 particle_count);
+tfxINTERNAL bool tfx__allocate_gpu_emitter_slot(tfx_effect_manager pm, tfxU32 emitter_index);
+tfxINTERNAL void tfx__free_gpu_emitter_slot(tfx_effect_manager pm, tfxU32 emitter_index);
+tfxINTERNAL void tfx__update_gpu_ring_buffer(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 new_particles, float current_time_ms);
+tfxINTERNAL void tfx__tick_gpu_slot_expiry(tfx_effect_manager pm, float current_time_ms);
+//---- end GPU compute particle buffer management functions ----
 
 //Node Manipulation
 tfxAPI_EDITOR void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index);
