@@ -16,6 +16,7 @@
 #define TFX_ENABLE_COMPILER_WARNING()
 #endif
 
+#define tfxGPU_VALIDATION
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
@@ -3094,7 +3095,6 @@ typedef enum {
 	tfxEmitterStateFlags_align_with_velocity                    = 1 << 21,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw                 = 1 << 24,      //For 3d emitters that have free alignment and not always facing the camera
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
-	tfxEmitterStateFlags_is_bottom_emitter                      = 1 << 26,      //This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path                       = 1 << 27,
 	tfxEmitterStateFlags_max_active_paths_reached               = 1 << 28,
 	tfxEmitterStateFlags_is_in_ordered_effect                   = 1 << 29,
@@ -6007,6 +6007,7 @@ typedef struct tfx_particle_emitter_state_s {
 	tfxIndex spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
 	tfxIndex other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the effect manager
 	tfxIndex particles_index;
+	tfxIndex gpu_group_index;          //Index into pm->gpu_groups; tfxINVALID if not on the GPU path
 
 	tfxU32 sprites_count;
 
@@ -6123,58 +6124,77 @@ typedef struct tfx_gpu_emitter_s {
 } tfx_gpu_emitter_t;
 
 //---- GPU compute particle buffer management ----
-//Power-of-two particle count size classes for the GPU ring buffer allocator.
-#define tfxGPU_NUM_SIZE_CLASSES 9
-static const tfxU32 tfxGPU_SIZE_CLASSES[tfxGPU_NUM_SIZE_CLASSES] = {64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384};
+// Uncomment to enable Phase 3 CPU-side shadow buffer that mirrors GPU ring buffer layout for validation.
+// Compiles away to nothing when not defined.
+// #define tfxGPU_VALIDATION
 
-//Free-list pool for one size class within a GPU profile block.
-typedef struct tfx_gpu_size_class_pool_s {
-	tfxU32 slot_size;					//Particles per slot (power of 2, equals tfxGPU_SIZE_CLASSES[i])
+//Life bucket ceilings in ms. Particles are assigned to the smallest bucket whose ceiling >= max_possible_life.
+//All particles in a group are guaranteed expired after life_ceiling_ms, enabling uniform head bumping.
+//These can be tuned; add more buckets for finer granularity at the cost of more groups.
+#define tfxGPU_NUM_LIFE_BUCKETS 12
+static const float tfxGPU_LIFE_BUCKET_CEILINGS_MS[tfxGPU_NUM_LIFE_BUCKETS] = {
+	100.f, 200.f, 500.f, 750.f, 1000.f, 1500.f, 2000.f, 3000.f, 4000.f, 6000.f, 10000.f, 20000.f};
+
+//Per-frame spawn record used by the group tracking ring to drive deterministic head bumping.
+//One entry is sealed per update tick; the ring is sized to hold life_ceiling_ms worth of ticks.
+typedef struct tfx_gpu_spawn_tracking_s {
+	float  spawn_time_ms;    //Absolute time (ms) when this batch of particles was spawned
+	tfxU32 particle_count;  //Total particles spawned into this group during that tick
+} tfx_gpu_spawn_tracking_t;
+
+//One GPU particle ring buffer shared by all emitters with the same control profile and life bucket.
+//Particles from different emitters are interleaved; each particle carries its emitter param index
+//so the compute shader can look up the correct graphs for that particle.
+typedef struct tfx_gpu_particle_group_s {
+	tfxEmitterControlProfileFlags profile_flags;	//Determines which compute shader variant is dispatched
+	tfxU32  bucket_index;			//Index into tfxGPU_LIFE_BUCKET_CEILINGS_MS
+	float   life_ceiling_ms;		//All particles guaranteed expired after this many ms from spawn
+	tfxU32  ring_head;				//Oldest live particle position in the group ring
+	tfxU32  ring_tail;				//Next write position in the group ring
+	tfxU32  ring_capacity;			//Total particle slots; grows as emitters join during initialisation
+	tfxU64  gpu_buffer_size_bytes;	//Set by renderer when the GPU buffer is allocated
+	//Tracking ring: one entry per update tick; capacity = ceil(life_ceiling_ms / 8ms) + 2
 #ifdef __cplusplus
-	tfx_vector_t<tfxU32> free_slots;	//Stack of available slot indices (O(1) push/pop)
+	tfx_vector_t<tfx_gpu_spawn_tracking_t> tracking;
 #else
-	tfx_vector_t free_slots;
+	tfx_vector_t tracking;
 #endif
-	tfxU32 total_slots;					//How many slots are currently allocated in the block
-} tfx_gpu_size_class_pool_t;
-
-//One large GPU-side SoA region per unique emitter control profile.
-typedef struct tfx_gpu_profile_block_s {
-	tfxU32 profile_hash;											//Hash of control profile flags
-	tfxEmitterControlProfileFlags profile_flags;
-	tfx_gpu_size_class_pool_t pools[tfxGPU_NUM_SIZE_CLASSES];		//Free list per size class
-	tfxU32 total_particle_capacity;									//Total particle slots across all size classes
-	tfxU64 block_size_bytes;										//Total bytes allocated for this block (set by renderer callback)
-} tfx_gpu_profile_block_t;
-
-//Tracks a single CPU-side spawn batch so we can advance the ring-buffer head deterministically
-//without per-particle timestamps.
-typedef struct tfx_gpu_spawn_batch_s {
-	float spawn_time_ms;	//Absolute time (ms) when this batch was spawned
-	tfxU32 count;			//How many particles were spawned in this batch
-} tfx_gpu_spawn_batch_t;
-
-//Per-active-emitter allocation in the GPU particle ring buffer.
-typedef struct tfx_gpu_emitter_allocation_s {
-	tfxU32 profile_hash;				//Which profile block owns this slot
-	tfxU32 emitter_index;				//Emitter index in pm->emitters (cached for stable lookup during expiry)
-	tfxU32 size_class_index;			//Index into tfxGPU_SIZE_CLASSES
-	tfxU32 slot_index;					//Which slot within the size-class pool
-	tfxU32 ring_head;					//Oldest live particle index within the slot (CPU-tracked)
-	tfxU32 ring_tail;					//Next write position within the slot (CPU-tracked)
-	tfxU32 ring_capacity;				//Max particles (== tfxGPU_SIZE_CLASSES[size_class_index])
-	float expiry_time_ms;				//Absolute time (ms) when all particles are guaranteed expired
-	tfxU32 block_byte_offset;			//Byte offset of this slot's data within the profile block
-	tfxU32 active_particle_count;		//Live + visually-dead-but-in-buffer particle count
-	float max_possible_life_ms;			//Cached from emitter.max_life + frame padding at allocation time
-	bool is_dying;						//True once the emitter has been removed; slot freed after expiry_time_ms
-#ifdef __cplusplus
-	tfx_vector_t<tfx_gpu_spawn_batch_t> spawn_batches;	//FIFO queue for deterministic head advancement
-#else
-	tfx_vector_t spawn_batches;
-#endif
-} tfx_gpu_emitter_allocation_t;
+	tfxU32  tracking_head;			//Index of the oldest valid tracking entry
+	tfxU32  tracking_count;			//Number of valid entries currently in the tracking ring
+	tfxU32  tracking_capacity;		//Fixed at creation; sized for minimum 8ms tick (120fps)
+	tfxU32  frame_spawn_count;		//Particles spawned into this group this frame; sealed into tracking at tick
+	tfxU32  active_emitter_count;	//Number of emitters currently assigned to this group
+} tfx_gpu_particle_group_t;
 //---- end GPU compute particle buffer management ----
+
+//---- GPU Validation Shadow Mode (Phase 3) ----
+//All particle fields that the GPU ring buffer will hold, one uint32 slot each.
+typedef enum tfx_gpu_particle_field_e {
+	tfx_gpu_field_position_x = 0,
+	tfx_gpu_field_position_y,
+	tfx_gpu_field_position_z,
+	tfx_gpu_field_age,
+	tfx_gpu_field_max_age,
+	tfx_gpu_field_life,
+	tfx_gpu_field_velocity_normal,          //packed uint (stored as float-sized slot)
+	tfx_gpu_field_base_velocity,
+	tfx_gpu_field_base_weight,
+	tfx_gpu_field_base_size_x,
+	tfx_gpu_field_base_size_y,
+	tfx_gpu_field_base_roll_spin,
+	tfx_gpu_field_intensity_factor,
+	tfx_gpu_field_random_color,
+	tfx_gpu_field_image_frame,
+	tfx_gpu_field_flags_single_loop_count,  //uint, stored as float-sized slot
+	tfx_gpu_field_noise_offset,
+	tfx_gpu_field_noise_resolution,
+	tfx_gpu_field_count
+} tfx_gpu_particle_field_t;
+
+//Index into the shadow_buffer uint32 array.
+//Shadow buffer layout: [field_0: capacity uint32s][field_1: capacity uint32s]...[field_N-1: capacity uint32s]
+#define tfxGPU_SHADOW_OFFSET(field, pos, capacity) ((field) * (capacity) + (pos))
+//---- end GPU Validation Shadow Mode ----
 
 typedef struct tfx_ribbon_emitter_state_s {
 	//State data
@@ -7025,13 +7045,11 @@ typedef struct tfx_effect_manager_s {
 
 	//GPU compute particle buffer management
 #ifdef __cplusplus
-	tfx_storage_map_t<tfx_gpu_profile_block_t> gpu_profile_blocks;		//Keyed by profile_hash; one block per unique control profile
-	tfx_storage_map_t<tfx_gpu_emitter_allocation_t> gpu_allocations;	//Keyed by emitter_index; one entry per live GPU-path emitter
+	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
 #else
-	tfx_storage_map_t gpu_profile_blocks;
-	tfx_storage_map_t gpu_allocations;
+	tfx_vector_t gpu_groups;
 #endif
-	float gpu_current_time_ms;											//Running absolute time in ms used for GPU slot expiry bookkeeping
+	float gpu_current_time_ms;										//Running absolute time in ms, used for group tracking head bumps
 
 	tfxEffectManagerFlags flags;
 	//The length of time that passed since the last time Update() was called
@@ -7338,11 +7356,11 @@ tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, 
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
-tfxINTERNAL tfxU32 tfx__gpu_size_class_for(tfxU32 particle_count);
-tfxINTERNAL bool tfx__allocate_gpu_emitter_slot(tfx_effect_manager pm, tfxU32 emitter_index);
-tfxINTERNAL void tfx__free_gpu_emitter_slot(tfx_effect_manager pm, tfxU32 emitter_index);
-tfxINTERNAL void tfx__update_gpu_ring_buffer(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 new_particles, float current_time_ms);
-tfxINTERNAL void tfx__tick_gpu_slot_expiry(tfx_effect_manager pm, float current_time_ms);
+tfxINTERNAL tfxU32 tfx__gpu_life_bucket_for(float max_life_ms);
+tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlProfileFlags profile_flags, tfxU32 bucket_index);
+tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index);
+tfxINTERNAL void   tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
+tfxINTERNAL void   tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms);
 //---- end GPU compute particle buffer management functions ----
 
 //Node Manipulation
