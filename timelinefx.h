@@ -16,7 +16,6 @@
 #define TFX_ENABLE_COMPILER_WARNING()
 #endif
 
-#define tfxGPU_VALIDATION
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
@@ -3754,6 +3753,7 @@ struct tfx_storage_map_t {
 	tfx_vector_t<pair> map;
 	tfx_vector_t<T> data;
 	tfxU32 iterator_index;
+	tfxU32 last_insert_index;
 
 	tfx_storage_map_t() {}
 
@@ -3914,6 +3914,7 @@ struct tfx_storage_map_t {
 			map.insert(it, pair(key, data.current_size - 1));
 			return data.back();
 		}
+		last_insert_index = it->index;
 		data[it->index] = value;
 		return data[it->index];
 	}
@@ -5989,7 +5990,6 @@ typedef struct tfx_particle_emitter_state_s {
 	//Static data that won't change frame by frame
 	float loop_length;
 	float max_life;
-	float max_possible_life;	//Upper bound: any particle from this emitter is guaranteed expired once age >= max_possible_life
 	float oscillator_time;
 	tfxU64 image_handle_packed;
 
@@ -6151,6 +6151,7 @@ typedef struct tfx_gpu_particle_group_s {
 	float   life_ceiling_ms;		//All particles guaranteed expired after this many ms from spawn
 	tfxU32  ring_head;				//Oldest live particle position in the group ring
 	tfxU32  ring_tail;				//Next write position in the group ring
+	tfxU32  current_size;			//The current number of particles in the buffer.
 	tfxU32  ring_capacity;			//Total particle slots; grows as emitters join during initialisation
 	tfxU64  gpu_buffer_size_bytes;	//Set by renderer when the GPU buffer is allocated
 	//Tracking ring: one entry per update tick; capacity = ceil(life_ceiling_ms / 8ms) + 2
@@ -6350,8 +6351,7 @@ typedef struct tfx_particle_soa_s {
 	tfxU32 *uid;
 	tfxU32 *sprite_index;
 	float *age;
-	float *max_age;
-	float *life;
+	float *inv_max_age;
 	float *position_x;
 	float *position_y;
 	float *position_z;
@@ -6959,6 +6959,8 @@ typedef struct tfx_effect_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
+	//GPU compute particle buffer management
+	tfx_storage_map_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
 
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
@@ -7043,12 +7045,6 @@ typedef struct tfx_effect_manager_s {
 	//These can possibly be removed at some point, they're debugging variables
 	tfxU32 particle_id;
 
-	//GPU compute particle buffer management
-#ifdef __cplusplus
-	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
-#else
-	tfx_vector_t gpu_groups;
-#endif
 	float gpu_current_time_ms;										//Running absolute time in ms, used for group tracking head bumps
 
 	tfxEffectManagerFlags flags;
@@ -7359,7 +7355,7 @@ tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
 tfxINTERNAL tfxU32 tfx__gpu_life_bucket_for(float max_life_ms);
 tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlProfileFlags profile_flags, tfxU32 bucket_index);
 tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index);
-tfxINTERNAL void   tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
+tfxINTERNAL tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
 tfxINTERNAL void   tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms);
 //---- end GPU compute particle buffer management functions ----
 
@@ -8183,7 +8179,9 @@ struct tfx_setup_transform_policy {
 //variations based on the control profile of the emitter.
 struct tfx_apply_load_life {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		ctx.life = tfxWideLoad(&bank.life[index]);
+		ctx.age = tfxWideLoad(&bank.age[index]);
+		tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
+		ctx.life = tfxWideMul(ctx.age, inv_max_age);
 	}
 };
 
@@ -8865,7 +8863,7 @@ tfxINTERNAL void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL tfx_effect_manager tfx__next_global_effect_manager();
 tfxINTERNAL tfx_library tfx__next_global_library();
 
-tfxINTERNAL tfxU32 tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_entry);
 tfxINTERNAL void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data);
