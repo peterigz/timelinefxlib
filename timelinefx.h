@@ -3001,6 +3001,7 @@ typedef enum {
 	tfxEmitterPropertyFlags_use_spawn_ratio					    = 1 << 7,       //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 	tfxEmitterPropertyFlags_area_open_ends					    = 1 << 8,       //Only sides of the area/cylinder are spawned on when fill area is not checked
 	tfxEmitterPropertyFlags_match_amount_to_grid_points		    = 1 << 9,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+	tfxEmitterPropertyFlags_run_on_gpu						    = 1 << 10,		//Makes this emitter a custom GPU emitter
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling	    = 1 << 11,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling		    = 1 << 12,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		    = 1 << 13,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
@@ -3912,6 +3913,7 @@ struct tfx_storage_map_t {
 		{
 			data.push_back(value);
 			map.insert(it, pair(key, data.current_size - 1));
+			last_insert_index = data.current_size - 1;
 			return data.back();
 		}
 		last_insert_index = it->index;
@@ -5864,7 +5866,7 @@ typedef struct tfx_image_data_s {
 #endif // tfxCUSTOM_IMAGE_DATA
 } tfx_image_data_t;
 
-typedef struct tfx_emitter_emitter_properties_s {
+typedef struct tfx_particle_emitter_properties_s {
 	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
 	tfx_vec3_t angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
@@ -6128,13 +6130,6 @@ typedef struct tfx_gpu_emitter_s {
 // Compiles away to nothing when not defined.
 // #define tfxGPU_VALIDATION
 
-//Life bucket ceilings in ms. Particles are assigned to the smallest bucket whose ceiling >= max_possible_life.
-//All particles in a group are guaranteed expired after life_ceiling_ms, enabling uniform head bumping.
-//These can be tuned; add more buckets for finer granularity at the cost of more groups.
-#define tfxGPU_NUM_LIFE_BUCKETS 12
-static const float tfxGPU_LIFE_BUCKET_CEILINGS_MS[tfxGPU_NUM_LIFE_BUCKETS] = {
-	100.f, 200.f, 500.f, 750.f, 1000.f, 1500.f, 2000.f, 3000.f, 4000.f, 6000.f, 10000.f, 20000.f};
-
 //Per-frame spawn record used by the group tracking ring to drive deterministic head bumping.
 //One entry is sealed per update tick; the ring is sized to hold life_ceiling_ms worth of ticks.
 typedef struct tfx_gpu_spawn_tracking_s {
@@ -6146,8 +6141,7 @@ typedef struct tfx_gpu_spawn_tracking_s {
 //Particles from different emitters are interleaved; each particle carries its emitter param index
 //so the compute shader can look up the correct graphs for that particle.
 typedef struct tfx_gpu_particle_group_s {
-	tfxEmitterControlProfileFlags profile_flags;	//Determines which compute shader variant is dispatched
-	tfxU32  bucket_index;			//Index into tfxGPU_LIFE_BUCKET_CEILINGS_MS
+	tfxU32  property_index;			//The property index of the emitter to identify it
 	float   life_ceiling_ms;		//All particles guaranteed expired after this many ms from spawn
 	tfxU32  ring_head;				//Oldest live particle position in the group ring
 	tfxU32  ring_tail;				//Next write position in the group ring
@@ -7352,11 +7346,12 @@ tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, 
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
-tfxINTERNAL tfxU32 tfx__gpu_life_bucket_for(float max_life_ms);
-tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlProfileFlags profile_flags, tfxU32 bucket_index);
+tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxU32 property_index, float max_life);
 tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index);
 tfxINTERNAL tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
 tfxINTERNAL void   tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms);
+tfxINTERNAL void   tfx__free_gpu_groups(tfx_effect_manager pm);
+tfxINTERNAL void   tfx__clear_gpu_groups(tfx_effect_manager pm);
 //---- end GPU compute particle buffer management functions ----
 
 //Node Manipulation

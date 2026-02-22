@@ -4986,6 +4986,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("random_color", tfxBool);
 	names_and_types.Insert("exclude_from_global_hue", tfxBool);
 	names_and_types.Insert("relative_position", tfxBool);
+	names_and_types.Insert("run_on_gpu", tfxBool);
 	names_and_types.Insert("relative_angle", tfxBool);
 	names_and_types.Insert("match_amount_to_grid_points", tfxBool);
 	names_and_types.Insert("image_handle_auto_center", tfxBool);
@@ -5877,6 +5878,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "random_color") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_random_color);
 	else if (property_name == "exclude_from_global_hue") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
 	else if (property_name == "relative_position") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
+	else if (property_name == "run_on_gpu") value.Setf("%i", effect->shared_flags & tfxEmitterPropertyFlags_run_on_gpu);
 	else if (property_name == "hidden") value.Setf("%i", effect->shared_flags & tfxSharedEmitterPropertyFlags_hidden);
 	else if (property_name == "relative_angle") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_relative_angle);
 	else if (property_name == "match_amount_to_grid_points") value.Setf("%i", effect->property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
@@ -6191,6 +6193,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments; }
 	} else if (*field == "relative_position") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_relative_position; } else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position; }
+	} else if (*field == "run_on_gpu") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_run_on_gpu; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_run_on_gpu; }
 	} else if (*field == "relative_angle") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
 	} else if (*field == "match_amount_to_grid_points") {
@@ -6275,6 +6279,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
 	file->AddLine("use_color_hint=%i", (shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint));
 	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
+	file->AddLine("run_on_gpu=%i", (shared_flags & tfxEmitterPropertyFlags_run_on_gpu));
 	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
 	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
 	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
@@ -9978,8 +9983,10 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				emitter.highest_particle_age = pm->frame_length * 2.f;
 				state_flags |= tfx__is_ordered_effect(effect) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 
-				//Assign emitter to its GPU particle group (matched by control profile + life bucket)
-				tfx__assign_emitter_to_gpu_group(pm, index);
+				if (emitter.property_flags & tfxEmitterPropertyFlags_run_on_gpu) {
+					//Assign emitter to its GPU particle group (matched by control profile + life bucket)
+					tfx__assign_emitter_to_gpu_group(pm, index);
+				}
 
 				if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 					source_emitters.push_back({ emitter.source_emitter->path_hash, index, tfxEmitterType });
@@ -12639,6 +12646,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 		ribbon_bucket.globals.ribbon_offset = 0;
 		ribbon_bucket.flags = 0;
 	}
+	tfx__clear_gpu_groups(pm);
 	pm->ribbon_segment_buckets.Clear();
 	pm->gpu_emitters.clear();
 	pm->free_ribbon_segment_lists.Clear();
@@ -13720,7 +13728,7 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 		}
 	} 
 
-	if (work_entry->amount_to_spawn > 0) {
+	if ((emitter.property_flags & tfxEmitterPropertyFlags_run_on_gpu) && work_entry->amount_to_spawn > 0) {
 		work_entry->amount_to_spawn -= tfx__gpu_group_record_spawns(pm, work_entry->emitter_index, work_entry->amount_to_spawn, pm->gpu_current_time_ms);
 	}
 
@@ -16130,26 +16138,16 @@ tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
 	}
 }
 
-//Return the index of the smallest life bucket whose ceiling covers max_life_ms.
-tfxU32 tfx__gpu_life_bucket_for(float max_life_ms) {
-	for (tfxU32 i = 0; i < tfxGPU_NUM_LIFE_BUCKETS; ++i) {
-		if (max_life_ms <= tfxGPU_LIFE_BUCKET_CEILINGS_MS[i]) {
-			return i;
-		}
-	}
-	return tfxGPU_NUM_LIFE_BUCKETS - 1;
-}
-
-//Find an existing group matching (profile_flags, bucket_index), or create a new one.
+//Find an existing group matching (property index to identify the emitter, bucket_index), or create a new one.
 //Returns the index into pm->gpu_groups.
-tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlProfileFlags profile_flags, tfxU32 bucket_index) {
+tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxU32 property_index, float max_life) {
 	struct group_key_t {
-		tfxEmitterControlProfileFlags flags;
-		tfxU32 bucket_index;
+		tfxU32 property_index;
+		float max_life;
 	};
 	group_key_t group_key = {
-		profile_flags,
-		bucket_index
+		property_index,
+		max_life
 	};
 	tfxKey group_hash = tfx_Hash(&tfxStore->hasher, &group_key, sizeof(group_key_t), 0);
 	int group_index = pm->gpu_groups.GetIndex(group_hash);
@@ -16158,9 +16156,8 @@ tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlPro
 	}
 	tfx_gpu_particle_group_t new_group = {};
 	tfx_gpu_particle_group_t &group = pm->gpu_groups.Insert(group_hash, new_group);
-	group.profile_flags          = profile_flags;
-	group.bucket_index           = bucket_index;
-	group.life_ceiling_ms        = tfxGPU_LIFE_BUCKET_CEILINGS_MS[bucket_index];
+	group.property_index   		 = property_index;
+	group.life_ceiling_ms        = max_life;
 	group.ring_head              = 0;
 	group.ring_tail              = 0;
 	group.ring_capacity          = 0;
@@ -16181,8 +16178,7 @@ tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxEmitterControlPro
 void tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index) {
 	if (emitter_index == tfxINVALID) return;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-	tfxU32 bucket_index = tfx__gpu_life_bucket_for(emitter.max_life);
-	tfxU32 group_index  = tfx__find_or_create_gpu_group(pm, emitter.control_profile, bucket_index);
+	tfxU32 group_index  = tfx__find_or_create_gpu_group(pm, emitter.properties_index, emitter.max_life);
 	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
 	//Capacity may only grow while the ring is empty (no active tracking entries)
 	//TFX_ASSERT(group.tracking_count == 0 && "GPU group capacity cannot grow while particles are in flight");
@@ -16192,7 +16188,7 @@ void tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_inde
 }
 
 //Record new spawns into the emitter's group: advance ring_tail and accumulate this frame's count.
-//Returns the number of particles that could NOT be spawn if the gpu buffer ran out of space
+//Returns the number of particles that could NOT be spawned if the gpu buffer ran out of space
 tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms) {
 	tfxU32 group_index = pm->emitters[emitter_index].gpu_group_index;
 	if (group_index == tfxINVALID) return count;
@@ -16245,6 +16241,20 @@ void tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms) {
 			}
 		}
 	}
+}
+
+void tfx__clear_gpu_groups(tfx_effect_manager pm) {
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups.data) {
+		group.tracking.free();
+	}
+	pm->gpu_groups.Clear();
+}
+
+void tfx__free_gpu_groups(tfx_effect_manager pm) {
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups.data) {
+		group.tracking.free();
+	}
+	pm->gpu_groups.FreeAll();
 }
 //---- end GPU compute particle buffer management ----
 
@@ -16321,8 +16331,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		}
 	}
 
-	if (bump_count > 0) {
-		tfx__bump_soa_buffer_amount(&work_entry->pm->particle_array_buffers[emitter.particles_index], bump_count);
+	if (bump_count > work_entry->start_diff) {
+		tfx__bump_soa_buffer_amount(&work_entry->pm->particle_array_buffers[emitter.particles_index], bump_count - work_entry->start_diff);
 	}
 
 	if (tfx__is_ordered_effect_state(&effect)) {
@@ -16801,7 +16811,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_simplex_noise,
 					tfx_apply_position
 				>(work_entry, ctx);
-			} else if (emitter.control_profile & tfxEmitterControlProfile_simplex_noise) {
+			} else if (emitter.control_profile & tfxEmitterControlProfile_curl_noise) {
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
 				tfx__update_particles_position<
 					tfx_apply_load_life,
