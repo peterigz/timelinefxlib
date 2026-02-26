@@ -17134,7 +17134,6 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
 #endif
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
-	tfxPrint("Struct size: %i", (int)buffer->struct_size);
 }
 
 void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount) {
