@@ -9331,11 +9331,15 @@ void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float upd
 				tfx_instance_t &instance = sprite_data->real_time_sprites.billboard_instance[j];
 				if (instance.captured_index == tfxINVALID) continue;
 				if (instance.alignment.packed == 0) {
-					tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
-					motion.z += 0.000001f;
-					instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion) / update_time;  
-					motion = tfx__normalize_vec3(&motion);
-					instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
+					if (instance.captured_index < sprite_data->normal.total_sprites) {
+						tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
+						motion.z += 0.000001f;
+						instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion) / update_time;
+						motion = tfx__normalize_vec3(&motion);
+						instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
+					} else {
+						tfxPrint("Error: instance.captured_index out of range.");
+					}
 				}
 			}
 		}
