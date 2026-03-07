@@ -28,9 +28,6 @@
 //Enable fused multiply add in simd calculations
 //#define tfxUSEFMA
 
-//Using half floats uses less memory and runs things a bit faster but has more system requirements, namely F16C for float to half conversion which has ~95% coverage
-//#define tfxHALFFLOATS
-
 //#define TFX_MEMORY_TRACKING
 
 /*
@@ -2767,11 +2764,7 @@ typedef tfxU32 tfxSharedEmitterFlags;			//tfx_shared_emitter_flag_bits
 typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
-#ifdef tfxHALFFLOATS
-typedef tfxU8 tfxParticleFlags;                 //tfx_particle_flag_bits
-#else
 typedef tfxU32 tfxParticleFlags;                 //tfx_particle_flag_bits
-#endif
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonFlags;		            //tfx_ribbon_flag_bits
@@ -6359,20 +6352,6 @@ typedef struct tfx_particle_soa_s {
 	float *path_position;
 	float *path_offset;
 	tfxU32 *flags_single_loop_count;	//Packed flags and single loop count
-#ifdef tfxHALFFLOATS
-	union {
-		tfxHalf *base_velocity;
-		tfxHalf *path_scale_variation;
-	};
-	tfxHalf *noise_offset;
-	tfxHalf *noise_resolution;
-	tfxHalf *base_weight;
-	tfxHalf *base_size_x;
-	tfxHalf *base_size_y;
-	tfxHalf *base_roll_spin;
-	tfxHalf *base_pitch_spin;
-	tfxHalf *base_yaw_spin;
-#else
 	union {
 		float *base_velocity;
 		float *path_scale_variation;
@@ -6385,7 +6364,6 @@ typedef struct tfx_particle_soa_s {
 	float *base_roll_spin;
 	float *base_pitch_spin;
 	float *base_yaw_spin;
-#endif
 	float *intensity_factor;
 	float *random_color;
 	float *image_frame;
@@ -6481,9 +6459,10 @@ typedef struct tfx_sprite_data_metrics_s {
 #else
 	tfx_vector_t frame_meta;
 #endif
+	float frame_duration;
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
-}tfx_sprite_data_metrics_t;
+} tfx_sprite_data_metrics_t;
 
 typedef struct tfx_sprite_data_s {
 	float frame_compression;
@@ -6493,7 +6472,7 @@ typedef struct tfx_sprite_data_s {
 	tfx_sprite_data_soa_t real_time_sprites;
 	tfx_soa_buffer_t compressed_sprites_buffer;
 	tfx_sprite_data_soa_t compressed_sprites;
-}tfx_sprite_data_t;
+} tfx_sprite_data_t;
 
 typedef struct tfx_sprite_data_push_s {
 	tfxU32 animation_instances_total;
@@ -6799,11 +6778,12 @@ typedef struct tfx_animation_instance_s {
 	tfx_vec3_t position;                //position that the instance should be played at
 	float scale;                        //Scales the overal size of the animation
 	tfxU32 sprite_count;                //The number of instance_data to be drawn
-	tfxU32 frame_count;                    //The number of frames in the animation
-	tfxU32 offset_into_sprite_data;        //The starting ofset in the buffer that contains all the sprite data
-	tfxU32 info_index;                    //Index into the effect_animation_info storage map to get at the frame meta
-	float current_time;                    //Current point of time in the animation
-	float animation_length_in_time;        //Total time that the animation lasts for
+	tfxU32 frame_count;                 //The number of frames in the animation
+	tfxU32 offset_into_sprite_data;     //The starting ofset in the buffer that contains all the sprite data
+	tfxU32 info_index;                  //Index into the effect_animation_info storage map to get at the frame meta
+	float current_time;                 //Current point of time in the animation
+	float animation_length_in_time;     //Total time that the animation lasts for
+	float frame_duration;				//Length of 1 frame when the animation was recorded. 60fps = 1/60.
 	float tween;                        //The point time within the frame (0..1)
 	tfxAnimationInstanceFlags flags;    //Flags associated with the instance
 }tfx_animation_instance_t;
@@ -8190,12 +8170,7 @@ struct tfx_apply_life_based_on_path {
 
 struct tfx_apply_lookup_velocity {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-#ifdef tfxHALFFLOATS
-		const tfx128i half_base_velocity = tfxWideLoadHalfs(&bank.base_velocity[index]);
-		const tfxWideFloat base_velocity = tfxWideConvertHalfsToFloats(half_base_velocity);
-#else
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
-#endif
 		tfxWideFloat velocity_time = ctx.velocity_easing(ctx.life);
 		ctx.lookup_velocity = (ctx.flags & tfx_ctx_policy_flag_velocity_is_bezier_graph) ?
 			tfx__wide_bezier_sampler(velocity_time, ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.curve1, ctx.velocity_graph->wide_graph.curve2, ctx.velocity_graph->wide_graph.to) :
@@ -8209,12 +8184,7 @@ struct tfx_apply_lookup_velocity {
 
 struct tfx_apply_lookup_weight {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-#ifdef tfxHALFFLOATS
-		const tfx128i half_base_weight = tfxWideLoadHalfs(&bank.base_weight[index]);
-		const tfxWideFloat base_weight = tfxWideConvertHalfsToFloats(half_base_weight);
-#else
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
-#endif
 		tfxWideFloat weight_time = ctx.weight_easing(ctx.life);
 		ctx.lookup_weight = (ctx.flags & tfx_ctx_policy_flag_weight_is_bezier_graph) ? 
 			tfx__wide_bezier_sampler(weight_time, ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.curve1, ctx.weight_graph->wide_graph.curve2, ctx.weight_graph->wide_graph.to) :
@@ -8244,15 +8214,8 @@ struct tfx_apply_simplex_noise {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
-#ifdef tfxHALFFLOATS
-		const tfx128i half_noise_resolution = tfxWideLoadHalfs(&bank.noise_resolution[index]);
-		const tfx128i half_base_noise_offset = tfxWideLoadHalfs(&bank.noise_offset[index]);
-		const tfxWideFloat noise_resolution = tfxWideConvertHalfsToFloats(half_noise_resolution);
-		const tfxWideFloat base_noise_offset = tfxWideConvertHalfsToFloats(half_base_noise_offset);
-#else
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
-#endif
 
 		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
 
@@ -8306,16 +8269,8 @@ struct tfx_apply_curl_noise {
 			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
 		}
 
-
-#ifdef tfxHALFFLOATS
-		const tfx128i half_noise_resolution = tfxWideLoadHalfs(&bank.noise_resolution[index]);
-		const tfx128i half_base_noise_offset = tfxWideLoadHalfs(&bank.noise_offset[index]);
-		const tfxWideFloat noise_resolution = tfxWideConvertHalfsToFloats(half_noise_resolution);
-		const tfxWideFloat base_noise_offset = tfxWideConvertHalfsToFloats(half_base_noise_offset);
-#else
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
-#endif
 
 		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overal_scale_wide);
 
@@ -8439,12 +8394,7 @@ struct tfx_apply_motion_randomness {
 
 		tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
 		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
-#ifdef tfxHALFFLOATS
-		tfx128i half_speed = tfxWideLoadHalfs(&bank.noise_offset[index]);
-		tfxWideFloat speed = tfxWideConvertHalfsToFloats(half_speed);
-#else
 		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
-#endif
 
 		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
 		tfxWideFloat lookup_motion_randomness = (ctx.flags & tfx_ctx_policy_flag_motion_randomness_is_bezier_graph) ?
@@ -8516,11 +8466,7 @@ struct tfx_apply_motion_randomness {
 			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 			//--
 		}
-#ifdef tfxHALFFLOATS
-		tfxWideStoreHalfs((tfx128i*)&bank.noise_offset[index], tfxWideConvertFloatsToHalfs(speed));
-#else
 		tfxWideStore(&bank.noise_offset[index], speed);
-#endif
 
 		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
 		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
@@ -8550,12 +8496,7 @@ struct tfx_apply_load_path {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		ctx.path_position = tfxWideLoad(&bank.path_position[index]);
 		ctx.path_offset = tfxWideLoad(&bank.path_offset[index]);
-#ifdef tfxHALFFLOATS
-		const tfx128i half_path_scale_velocity = tfxWideLoadHalfs(&bank.base_velocity[index]);
-		ctx.path_scale_variation = tfxWideConvertHalfsToFloats(half_path_scale_velocity);
-#else
 		ctx.path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
-#endif
 	}
 };
 
@@ -8718,12 +8659,7 @@ struct tfx_apply_pack_velocity {
 
 struct tfx_apply_position_line_trajectory {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-#ifdef tfxHALFFLOATS
-		const tfx128i half_path_scale_velocity = tfxWideLoadHalfs(&bank.base_velocity[index]);
-		tfxWideFloat path_scale_variation = tfxWideConvertHalfsToFloats(half_path_scale_velocity);
-#else
 		tfxWideFloat path_scale_variation = tfxWideLoad(&bank.path_scale_variation[index]);
-#endif
 		ctx.position_x.m = tfxWideSetZero;
 		ctx.position_y.m = tfxWideMul(tfxWideMul(tfxWideMul(ctx.lookup_velocity, ctx.emitter_height), ctx.overal_scale_wide), path_scale_variation);
 		ctx.position_z.m = tfxWideSetZero;
