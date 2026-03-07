@@ -5198,6 +5198,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("animation_flags", tfxUInt);
 	names_and_types.Insert("animation_time", tfxFloat);
 	names_and_types.Insert("animation_length_in_time", tfxFloat);
+	names_and_types.Insert("frame_duration", tfxFloat);
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("path_hash", tfxUInt64);
 
@@ -6009,6 +6010,7 @@ void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *met
 
 void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_length_in_time") metrics->animation_length_in_time = value;
+	if (*field == "frame_duration") metrics->frame_duration = value;
 }
 
 void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, const char *value, tfxU32 file_version) {
@@ -8993,6 +8995,8 @@ TFX_ENABLE_COMPILER_WARNING()
 	settings->real_frames = frames;
 	settings->animation_length_in_time = sprite_data->normal.animation_length_in_time;
 	sprite_data->frame_compression = settings->playback_speed;
+	sprite_data->compressed.frame_duration = frame_length;
+	sprite_data->normal.frame_duration = frame_length;
 
 	tfx_vector_t<tfx_frame_meta_t> &frame_meta = sprite_data->normal.frame_meta;
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
@@ -9329,17 +9333,19 @@ void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float upd
 		for (tfxEachLayer) {
 			for (int j = sprite_data->normal.frame_meta[frame].index_offset[layer]; j != sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer]; ++j) {
 				tfx_instance_t &instance = sprite_data->real_time_sprites.billboard_instance[j];
-				if (instance.captured_index == tfxINVALID) continue;
+				if (instance.captured_index == tfxINVALID) { instance.position.w = 0; continue; }
 				if (instance.alignment.packed == 0) {
 					if (instance.captured_index < sprite_data->normal.total_sprites) {
 						tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
 						motion.z += 0.000001f;
-						instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion) / update_time;
+						instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion);
 						motion = tfx__normalize_vec3(&motion);
 						instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
 					} else {
 						tfxPrint("Error: instance.captured_index out of range.");
 					}
+				} else {
+					instance.position.w = 0;
 				}
 			}
 		}
@@ -9542,6 +9548,7 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_man
 	instance.offset_into_sprite_data = metrics.start_offset;
 	instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
 	instance.frame_count = metrics.frame_count;
+	instance.frame_duration = metrics.frame_duration;
 	return index;
 }
 
