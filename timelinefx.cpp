@@ -5198,7 +5198,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("animation_flags", tfxUInt);
 	names_and_types.Insert("animation_time", tfxFloat);
 	names_and_types.Insert("animation_length_in_time", tfxFloat);
-	names_and_types.Insert("frame_duration", tfxFloat);
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("path_hash", tfxUInt64);
 
@@ -6010,7 +6009,6 @@ void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *met
 
 void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_length_in_time") metrics->animation_length_in_time = value;
-	if (*field == "frame_duration") metrics->frame_duration = value;
 }
 
 void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, const char *value, tfxU32 file_version) {
@@ -8995,8 +8993,6 @@ TFX_ENABLE_COMPILER_WARNING()
 	settings->real_frames = frames;
 	settings->animation_length_in_time = sprite_data->normal.animation_length_in_time;
 	sprite_data->frame_compression = settings->playback_speed;
-	sprite_data->compressed.frame_duration = frame_length;
-	sprite_data->normal.frame_duration = frame_length;
 
 	tfx_vector_t<tfx_frame_meta_t> &frame_meta = sprite_data->normal.frame_meta;
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
@@ -9548,7 +9544,6 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_man
 	instance.offset_into_sprite_data = metrics.start_offset;
 	instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
 	instance.frame_count = metrics.frame_count;
-	instance.frame_duration = metrics.frame_duration;
 	return index;
 }
 

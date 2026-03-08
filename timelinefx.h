@@ -6459,7 +6459,6 @@ typedef struct tfx_sprite_data_metrics_s {
 #else
 	tfx_vector_t frame_meta;
 #endif
-	float frame_duration;
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
 } tfx_sprite_data_metrics_t;
@@ -6783,7 +6782,6 @@ typedef struct tfx_animation_instance_s {
 	tfxU32 info_index;                  //Index into the effect_animation_info storage map to get at the frame meta
 	float current_time;                 //Current point of time in the animation
 	float animation_length_in_time;     //Total time that the animation lasts for
-	float frame_duration;				//Length of 1 frame when the animation was recorded. 60fps = 1/60.
 	float tween;                        //The point time within the frame (0..1)
 	tfxAnimationInstanceFlags flags;    //Flags associated with the instance
 }tfx_animation_instance_t;
