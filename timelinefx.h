@@ -3039,6 +3039,14 @@ typedef enum {
 } tfx_color_ramp_flag_bits;
 
 typedef enum {
+	tfxColorInterpolation_linear_srgb = 0,
+	tfxColorInterpolation_oklch,
+	tfxColorInterpolation_hsl,
+	tfxColorInterpolation_linear_rgb,
+	tfxColorInterpolation_max
+} tfx_color_interpolation_mode;
+
+typedef enum {
 	tfxGraphFlags_none                                          = 0,
 	tfxGraphFlags_use_bezier_sampling                           = 1 << 0,	
 	tfxGraphFlags_enable_oscillator                             = 1 << 1,	
@@ -5625,6 +5633,7 @@ typedef struct tfx_color_ramp_s {
 	tfx_vec3_t frequency;
 	tfx_vec3_t offsets;
 	tfxColorRampFlags flags;
+	tfx_color_interpolation_mode interpolation_mode;
 	tfx_rgba8_t colors[tfxCOLOR_RAMP_WIDTH];
 }tfx_color_ramp_t;
 

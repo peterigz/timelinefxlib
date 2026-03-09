@@ -1598,6 +1598,129 @@ float tfx__gamma_correct(float color, float gamma) {
 	return powf(color, gamma);
 }
 
+float tfx__srgb_to_linear(float c) {
+	return c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+float tfx__linear_to_srgb(float c) {
+	return c <= 0.0031308f ? c * 12.92f : 1.055f * powf(c, 1.0f / 2.4f) - 0.055f;
+}
+
+tfx_vec3_t tfx__srgb_to_oklch(float r, float g, float b) {
+	float lr = tfx__srgb_to_linear(r);
+	float lg = tfx__srgb_to_linear(g);
+	float lb = tfx__srgb_to_linear(b);
+
+	float l = 0.4122214708f * lr + 0.5363325363f * lg + 0.0514459929f * lb;
+	float m = 0.2119034982f * lr + 0.6806995451f * lg + 0.1073969566f * lb;
+	float s = 0.0883024619f * lr + 0.2817188376f * lg + 0.6299787005f * lb;
+
+	float l_ = cbrtf(l);
+	float m_ = cbrtf(m);
+	float s_ = cbrtf(s);
+
+	tfx_vec3_t lab;
+	lab.x = 0.2104542553f * l_ + 0.7936177850f * m_ - 0.0040720468f * s_;
+	lab.y = 1.9779984951f * l_ - 2.4285922050f * m_ + 0.4505937099f * s_;
+	lab.z = 0.0259040371f * l_ + 0.7827717662f * m_ - 0.8086757660f * s_;
+	return lab;
+}
+
+tfx_vec3_t tfx__oklch_to_srgb(float L, float a, float b) {
+	float l_ = L + 0.3963377774f * a + 0.2158037573f * b;
+	float m_ = L - 0.1055613458f * a - 0.0638541728f * b;
+	float s_ = L - 0.0894841775f * a - 1.2914855480f * b;
+
+	float l = l_ * l_ * l_;
+	float m = m_ * m_ * m_;
+	float s = s_ * s_ * s_;
+
+	float r = +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+	float g = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+	float bl = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+
+	tfx_vec3_t rgb;
+	rgb.x = tfx__Clamp(0.f, 1.f, tfx__linear_to_srgb(tfx__Max(0.f, r)));
+	rgb.y = tfx__Clamp(0.f, 1.f, tfx__linear_to_srgb(tfx__Max(0.f, g)));
+	rgb.z = tfx__Clamp(0.f, 1.f, tfx__linear_to_srgb(tfx__Max(0.f, bl)));
+	return rgb;
+}
+
+tfx_vec3_t tfx__srgb_to_hsl(float r, float g, float b) {
+	float max_c = tfx__Max(r, tfx__Max(g, b));
+	float min_c = tfx__Min(r, tfx__Min(g, b));
+	float delta = max_c - min_c;
+	float l = (max_c + min_c) * 0.5f;
+	tfx_vec3_t hsl;
+	if (delta < 0.00001f) {
+		hsl.x = 0.f;
+		hsl.y = 0.f;
+		hsl.z = l;
+		return hsl;
+	}
+	hsl.y = delta / (1.f - fabsf(2.f * l - 1.f));
+	if (max_c == r) {
+		hsl.x = fmodf((g - b) / delta, 6.f);
+		if (hsl.x < 0.f) hsl.x += 6.f;
+	} else if (max_c == g) {
+		hsl.x = (b - r) / delta + 2.f;
+	} else {
+		hsl.x = (r - g) / delta + 4.f;
+	}
+	hsl.x /= 6.f;
+	hsl.z = l;
+	return hsl;
+}
+
+tfx_vec3_t tfx__hsl_to_srgb(float h, float s, float l) {
+	tfx_vec3_t rgb;
+	if (s < 0.00001f) {
+		rgb.x = rgb.y = rgb.z = l;
+		return rgb;
+	}
+	float c = (1.f - fabsf(2.f * l - 1.f)) * s;
+	float hp = h * 6.f;
+	float x = c * (1.f - fabsf(fmodf(hp, 2.f) - 1.f));
+	float m = l - c * 0.5f;
+	float r1 = 0, g1 = 0, b1 = 0;
+	if (hp < 1.f)      { r1 = c; g1 = x; b1 = 0; }
+	else if (hp < 2.f) { r1 = x; g1 = c; b1 = 0; }
+	else if (hp < 3.f) { r1 = 0; g1 = c; b1 = x; }
+	else if (hp < 4.f) { r1 = 0; g1 = x; b1 = c; }
+	else if (hp < 5.f) { r1 = x; g1 = 0; b1 = c; }
+	else               { r1 = c; g1 = 0; b1 = x; }
+	rgb.x = tfx__Clamp(0.f, 1.f, r1 + m);
+	rgb.y = tfx__Clamp(0.f, 1.f, g1 + m);
+	rgb.z = tfx__Clamp(0.f, 1.f, b1 + m);
+	return rgb;
+}
+
+float tfx__lerp_hue_shortest(float h1, float h2, float t) {
+	float diff = h2 - h1;
+	if (diff > 0.5f) diff -= 1.f;
+	else if (diff < -0.5f) diff += 1.f;
+	float result = h1 + diff * t;
+	if (result < 0.f) result += 1.f;
+	else if (result >= 1.f) result -= 1.f;
+	return result;
+}
+
+float tfx__get_linear_rgb_graph_value(tfx_graph_t *graph, float t) {
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		if (t < curr->frame) {
+			float p = (t - prev->frame) / (curr->frame - prev->frame);
+			float linear_prev = tfx__srgb_to_linear(prev->value);
+			float linear_curr = tfx__srgb_to_linear(curr->value);
+			float linear_result = linear_prev - p * (linear_prev - linear_curr);
+			return tfx__linear_to_srgb(linear_result);
+		}
+		prev = curr;
+	}
+	return prev->value;
+}
+
 tfxWideFloat tfx__wide_interpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
 	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE.m, tween);
 	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
@@ -4962,6 +5085,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("emission_type", tfxSInt);
 	names_and_types.Insert("emission_direction", tfxSInt);
 	names_and_types.Insert("noise_algorithm", tfxSInt);
+	names_and_types.Insert("color_interpolation_mode", tfxSInt);
 	names_and_types.Insert("delay_spawning", tfxFloat);
 	names_and_types.Insert("grid_rows", tfxFloat);
 	names_and_types.Insert("grid_columns", tfxFloat);
@@ -6088,6 +6212,8 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
 	} else if (*field == "path_generator_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.generator_type = (tfx_path_generator_type)value;
+	} else if (*field == "color_interpolation_mode") {
+		effect->library->graphs[effect->graph_list_index].color_ramps.interpolation_mode = (tfx_color_interpolation_mode)value;
 	}
 }
 void tfx__assign_effector_property_str(tfx_effect_descriptor effect, tfx_str256_t *field, const char *value) {
@@ -6333,6 +6459,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_path_as_trajectory=%i", (flags & tfxEmitterPropertyFlags_use_path_as_trajectory));
+	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->graph_list_index].color_ramps.interpolation_mode);
 }
 
 void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
@@ -6372,6 +6499,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("ribbon_fixed_angle_normal_z=%f", ribbon_properties->fixed_angle_normal.z);
 
 	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
+	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->graph_list_index].color_ramps.interpolation_mode);
 }
 
 void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file) {
@@ -7594,12 +7722,101 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
 			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
 		}
+	} else if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch || color_ramp->interpolation_mode == tfxColorInterpolation_hsl) {
+		// Collect all unique node frame positions from R, G, B graphs
+		float stop_frames[256];
+		tfxU32 stop_count = 0;
+		tfx_graph_t *channels[3] = { red, green, blue };
+		for (int c = 0; c < 3; c++) {
+			for (tfxU32 n = 0; n < channels[c]->nodes.current_size; n++) {
+				float frame = channels[c]->nodes[n].frame;
+				bool found = false;
+				for (tfxU32 s = 0; s < stop_count; s++) {
+					if (fabsf(stop_frames[s] - frame) < 0.0001f) { found = true; break; }
+				}
+				if (!found && stop_count < 256) {
+					stop_frames[stop_count++] = frame;
+				}
+			}
+		}
+		// Sort stops
+		for (tfxU32 i = 0; i < stop_count; i++) {
+			for (tfxU32 j = i + 1; j < stop_count; j++) {
+				if (stop_frames[j] < stop_frames[i]) {
+					float tmp = stop_frames[i];
+					stop_frames[i] = stop_frames[j];
+					stop_frames[j] = tmp;
+				}
+			}
+		}
+		// Sample RGB at each stop and convert to target space
+		tfx_vec3_t stop_colors[256];
+		for (tfxU32 s = 0; s < stop_count; s++) {
+			float sr = tfx__get_linear_graph_value_by_percent_of_life(red, stop_frames[s]);
+			float sg = tfx__get_linear_graph_value_by_percent_of_life(green, stop_frames[s]);
+			float sb = tfx__get_linear_graph_value_by_percent_of_life(blue, stop_frames[s]);
+			if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch) {
+				stop_colors[s] = tfx__srgb_to_oklch(sr, sg, sb);
+			} else {
+				stop_colors[s] = tfx__srgb_to_hsl(sr, sg, sb);
+			}
+		}
+		// Generate ramp pixels
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
+			a = tfx__sample_multi_node_graph(blendfactor, t, t);
+			// Find surrounding stops
+			tfxU32 s0 = 0, s1 = 0;
+			for (tfxU32 s = 0; s < stop_count; s++) {
+				if (stop_frames[s] <= t) s0 = s;
+				if (stop_frames[s] >= t) { s1 = s; break; }
+				s1 = s;
+			}
+			tfx_vec3_t color;
+			if (s0 == s1 || fabsf(stop_frames[s1] - stop_frames[s0]) < 0.0001f) {
+				color = stop_colors[s0];
+			} else {
+				float p = (t - stop_frames[s0]) / (stop_frames[s1] - stop_frames[s0]);
+				if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch) {
+					color.x = stop_colors[s0].x + p * (stop_colors[s1].x - stop_colors[s0].x);
+					color.y = stop_colors[s0].y + p * (stop_colors[s1].y - stop_colors[s0].y);
+					color.z = stop_colors[s0].z + p * (stop_colors[s1].z - stop_colors[s0].z);
+				} else {
+					color.x = tfx__lerp_hue_shortest(stop_colors[s0].x, stop_colors[s1].x, p);
+					color.y = stop_colors[s0].y + p * (stop_colors[s1].y - stop_colors[s0].y);
+					color.z = stop_colors[s0].z + p * (stop_colors[s1].z - stop_colors[s0].z);
+				}
+			}
+			tfx_vec3_t rgb;
+			if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch) {
+				rgb = tfx__oklch_to_srgb(color.x, color.y, color.z);
+			} else {
+				rgb = tfx__hsl_to_srgb(color.x, color.y, color.z);
+			}
+			r = tfx__gamma_correct(rgb.x, gamma);
+			g = tfx__gamma_correct(rgb.y, gamma);
+			b = tfx__gamma_correct(rgb.z, gamma);
+			color_ramp->colors[f].r = tfxU32(r * 255.f);
+			color_ramp->colors[f].g = tfxU32(g * 255.f);
+			color_ramp->colors[f].b = tfxU32(b * 255.f);
+			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
+		}
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(red) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(green) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(blue) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(blendfactor) * 255.f);
 	} else {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
-			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), gamma);
-			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), gamma);
-			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), gamma);
+			if (color_ramp->interpolation_mode == tfxColorInterpolation_linear_rgb) {
+				r = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(red, t), gamma);
+				g = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(green, t), gamma);
+				b = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(blue, t), gamma);
+			} else {
+				r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), gamma);
+				g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), gamma);
+				b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), gamma);
+			}
 			a = tfx__sample_multi_node_graph(blendfactor, t, t);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
