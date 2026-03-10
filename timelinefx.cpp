@@ -9625,7 +9625,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.handle = effect->library->emitter_properties[effect->property_index].image_handle;
 			properties.handle_packed = effect->library->emitter_properties[effect->property_index].image_handle_packed;
 			properties.flags = effect->property_flags;
-			tfx_image_data_t &image = *effect->library->shared_properties[effect->property_index].image;
+			tfx_image_data_t &image = *effect->library->shared_properties[effect->shared_index].image;
 			properties.animation_frames = image.animation_frames;
 			if (properties.animation_frames > 1 && effect->shared_flags & tfxSharedEmitterPropertyFlags_animate) {
 				*has_animated_shape = true;

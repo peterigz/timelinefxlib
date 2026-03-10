@@ -5784,7 +5784,7 @@ typedef struct tfx_camera_settings_s {
 	float camera_isometric_scale;
 	bool camera_isometric;
 	bool camera_hide_floor;
-}tfx_camera_settings_t;
+} tfx_camera_settings_t;
 
 //Only in the editor?
 typedef struct tfx_preview_camera_settings_s {
@@ -5793,7 +5793,7 @@ typedef struct tfx_preview_camera_settings_s {
 	float effect_z_offset;
 	float camera_speed;
 	bool attach_effect_to_camera;
-}tfx_preview_camera_settings_t;
+} tfx_preview_camera_settings_t;
 
 //todo: this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 typedef struct tfx_sprite_sheet_settings_s {
