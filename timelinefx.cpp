@@ -5347,6 +5347,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("position_x", tfxFloat);
 	names_and_types.Insert("position_y", tfxFloat);
 	names_and_types.Insert("position_z", tfxFloat);
+	names_and_types.Insert("animation_offset_into_camera", tfxFloat);
 	names_and_types.Insert("frame_width", tfxFloat);
 	names_and_types.Insert("frame_height", tfxFloat);
 	names_and_types.Insert("animation_flags", tfxUInt);
@@ -6227,6 +6228,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	if (*field == "position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.x = value;
 	else if (*field == "position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.y = value;
 	else if (*field == "position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.z = value;
+	else if (*field == "animation_offset_into_camera") {
+		effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].effect_z_offset = value;
+	}
 	else if (*field == "frame_width") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_size.x = value;
 	else if (*field == "frame_height") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_size.y = value;
 	else if (*field == "zoom") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].zoom = value;
@@ -8186,7 +8190,7 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 		pair.clear();
 		tfx__split_string_vec(line.start, line.length, &pair, 61);
 		if (pair.size() == 2) {
-			if (names_and_types.ValidName(pair[0].c_str()), pair[0].Length()) {
+			if (names_and_types.ValidName(pair[0].c_str()) && pair[0].Length()) {
 				tfx_data_type t = names_and_types.At(pair[0].c_str());
 				if (t == tfxBool) {
 					tfx__add_data_value_bool(config, pair[0].c_str(), (bool)atoi(pair[1].c_str()));
