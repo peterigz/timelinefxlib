@@ -2368,14 +2368,6 @@ typedef enum {
 	tfxTransform_translate_z,
 	tfxEmitterGraphMaxIndex,
 
-	tfxPath_angle_x,
-	tfxPath_angle_y,
-	tfxPath_angle_z,
-	tfxPath_offset_x,
-	tfxPath_offset_y,
-	tfxPath_offset_z,
-	tfxPath_distance,
-
 	tfxGraphMaxIndex
 } tfx_graph_type;
 
@@ -2414,13 +2406,6 @@ typedef enum {
 } tfx_transform_graph_index;
 
 typedef enum {
-	tfxPath_angle_x_index,
-	tfxPath_angle_y_index,
-	tfxPath_angle_z_index,
-	tfxPath_offset_x_index,
-	tfxPath_offset_y_index,
-	tfxPath_offset_z_index,
-	tfxPath_distance_index,
 	tfxPath_rotation_range_index,
 	tfxPath_rotation_pitch_index,
 	tfxPath_rotation_yaw_index,
@@ -2566,8 +2551,6 @@ typedef enum {
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
 	tfxTransform_end = tfxTransform_translate_z,
-	tfxPath_start = tfxPath_angle_x,
-	tfxPath_end = tfxPath_distance,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
 	tfxGPU_lookup_end = tfxFactor_intensity,
 } tfx_graph_ranges;
@@ -2677,7 +2660,6 @@ typedef enum {
 	tfxFloat2,
 	tfxAttributeGraph,
 	tfxTransformGraph,
-	tfxPathGraph,
 	tfxGraphProperty,
 } tfx_data_type;
 
@@ -5721,26 +5703,29 @@ typedef struct tfx_path_nodes_soa_s {
 	float *length;
 } tfx_path_nodes_soa_t;
 
+typedef struct tfx_path_control_node_s {
+	float pitch;
+	float yaw;
+	float roll;
+	float distance;
+	float offset_x;
+	float offset_y;
+	float offset_z;
+} tfx_path_control_node_t;
+
 typedef struct tfx_path_quaternion_s {
 	tfxU64 quaternion;
 	float grid_coord;
 	float age;
 	tfxU32 cycles;
-}tfx_path_quaternion_t;
+} tfx_path_quaternion_t;
 
 typedef struct tfx_path_buffers_s {
 #ifdef __cplusplus
-	tfx_vector_t<tfx_vec4_t> nodes;
+	tfx_vector_t<tfx_path_control_node_t> nodes;
 #else
 	tfx_vector_t nodes;
 #endif
-	tfx_graph_t angle_x;
-	tfx_graph_t angle_y;
-	tfx_graph_t angle_z;
-	tfx_graph_t offset_x;
-	tfx_graph_t offset_y;
-	tfx_graph_t offset_z;
-	tfx_graph_t distance;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
 } tfx_path_buffers_t;
@@ -5749,6 +5734,7 @@ typedef struct tfx_path_settings_s {
 	tfxKey key;
 	tfx_str32_t name;
 	int node_count;
+	int nodes_to_commit;
 	tfxEmitterPathFlags flags;
 	tfx_path_generator_type generator_type;
 	float rotation_range;
@@ -5761,6 +5747,7 @@ typedef struct tfx_path_settings_s {
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
 	tfx_path_extrusion_type extrusion_type;
+	tfx_path_control_node_t end_node;
 } tfx_path_settings_t;
 
 typedef struct tfx_emitter_path_s {
@@ -7348,7 +7335,6 @@ tfxAPI_EDITOR void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribu
 tfxAPI_EDITOR void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value);
 tfxAPI_EDITOR bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort = true);
 tfxAPI_EDITOR void tfx__clamp_graph_nodes(tfx_graph_t *graph);
-tfxAPI_EDITOR bool tfx__is_path_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_gpu_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_overtime_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type);
@@ -7379,8 +7365,7 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor 
 	return &effect->library->graphs[effect->graph_list_index].graphs[graph_index];
 }
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
-tfxAPI_EDITOR void tfx__initialise_path_graphs(tfx_emitter_path_t *path, bool add_node, tfxU32 bucket_size = 8);
-tfxAPI_EDITOR void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
+tfxAPI_EDITOR void tfx__commit_control_nodes(tfx_emitter_path_t *path, tfx_path_control_node_t start_node, tfx_path_control_node_t end_node, int start_index, int node_count);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
@@ -7426,7 +7411,6 @@ tfxAPI_EDITOR void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t 
 tfxAPI_EDITOR tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
-tfxINTERNAL void tfx__build_path_nodes_complex(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__init_graph_list(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index);
 tfxINTERNAL void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index);
@@ -8971,8 +8955,6 @@ tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
 		type == tfxOvertime_width || type == tfxOvertime_height;
 }
 
-tfxAPI_EDITOR void tfx__free_path_graphs(tfx_emitter_path_t *path);
-tfxAPI_EDITOR void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst);
 tfxAPI_EDITOR tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node);
 tfxINTERNAL void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
