@@ -2890,17 +2890,6 @@ typedef enum {
 } tfx_vector_align_type;
 
 typedef enum {
-	tfxPathGenerator_spiral,
-	tfxPathGenerator_loop,
-	tfxPathGenerator_arc,
-	tfxPathGenerator_s_curve,
-	tfxPathGenerator_bend,
-	tfxPathGenerator_free_mode_origin,
-	tfxPathGenerator_free_mode_distance,
-	tfxPathGenerator_max,
-} tfx_path_generator_type;
-
-typedef enum {
 	tfxPathFlags_none,
 	tfxPathFlags_mode_origin                                    = 1 << 1,
 	tfxPathFlags_mode_node                                      = 1 << 2,
@@ -5703,16 +5692,6 @@ typedef struct tfx_path_nodes_soa_s {
 	float *length;
 } tfx_path_nodes_soa_t;
 
-typedef struct tfx_path_control_node_s {
-	float pitch;
-	float yaw;
-	float roll;
-	float distance;
-	float offset_x;
-	float offset_y;
-	float offset_z;
-} tfx_path_control_node_t;
-
 typedef struct tfx_path_quaternion_s {
 	tfxU64 quaternion;
 	float grid_coord;
@@ -5722,7 +5701,7 @@ typedef struct tfx_path_quaternion_s {
 
 typedef struct tfx_path_buffers_s {
 #ifdef __cplusplus
-	tfx_vector_t<tfx_path_control_node_t> nodes;
+	tfx_vector_t<tfx_vec3_t> nodes;
 #else
 	tfx_vector_t nodes;
 #endif
@@ -5736,7 +5715,6 @@ typedef struct tfx_path_settings_s {
 	int node_count;
 	int nodes_to_commit;
 	tfxEmitterPathFlags flags;
-	tfx_path_generator_type generator_type;
 	float rotation_range;
 	float rotation_pitch;      
 	float rotation_yaw;
@@ -5747,7 +5725,6 @@ typedef struct tfx_path_settings_s {
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
 	tfx_path_extrusion_type extrusion_type;
-	tfx_path_control_node_t end_node;
 } tfx_path_settings_t;
 
 typedef struct tfx_emitter_path_s {
@@ -7365,7 +7342,6 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor 
 	return &effect->library->graphs[effect->graph_list_index].graphs[graph_index];
 }
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
-tfxAPI_EDITOR void tfx__commit_control_nodes(tfx_emitter_path_t *path, tfx_path_control_node_t start_node, tfx_path_control_node_t end_node, int start_index, int node_count);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);

@@ -3385,7 +3385,6 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool a
 		path.buffers.nodes.resize(32);
 		path.buffers.nodes.zero();
 		path.settings.extrusion_type = tfxExtrusionArc;
-		path.settings.generator_type = tfxPathGenerator_spiral;
 		path.settings.maximum_active_paths = 1;
 		path.settings.maximum_paths = 1;
 		path.settings.offset = { 0 };
@@ -3409,7 +3408,6 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	path.buffers.nodes.resize(32);
 	path.buffers.nodes.zero();
 	path.settings.extrusion_type = tfxExtrusionArc;
-	path.settings.generator_type = tfxPathGenerator_spiral;
 	path.settings.maximum_active_paths = 1;
 	path.settings.maximum_paths = 1;
 	path.settings.offset = { 0 };
@@ -3436,24 +3434,6 @@ float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	return (float)i + ((*nodes)[i].w > 0 ? (length / (*nodes)[i].w) : 0.f);
 }
 
-void tfx__commit_control_nodes(tfx_emitter_path_t *path, tfx_path_control_node_t start_node, tfx_path_control_node_t end_node, int start_index, int node_count) {
-	TFX_ASSERT(node_count > 0);	//node_count must be at least 1
-	path->buffers.nodes.resize((tfxU32)start_index + node_count);
-	float inv = node_count > 1 ? 1.f / (float)(node_count - 1) : 0.f;
-	for (int i = 0; i < node_count; i++) {
-		float t = (float)i * inv;
-		tfx_path_control_node_t n;
-		n.pitch = start_node.pitch + (end_node.pitch - start_node.pitch) * t;
-		n.yaw = start_node.yaw + (end_node.yaw - start_node.yaw) * t;
-		n.roll = start_node.roll + (end_node.roll - start_node.roll) * t;
-		n.distance = start_node.distance + (end_node.distance - start_node.distance) * t;
-		n.offset_x = start_node.offset_x + (end_node.offset_x - start_node.offset_x) * t;
-		n.offset_y = start_node.offset_y + (end_node.offset_y - start_node.offset_y) * t;
-		n.offset_z = start_node.offset_z + (end_node.offset_z - start_node.offset_z) * t;
-		path->buffers.nodes[start_index + i] = n;
-	}
-}
-
 void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
 	if (node_count == 0) return;
@@ -3477,24 +3457,8 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfx_quaternion_t orientation(1.f, 0.f, 0.f, 0.f);
 	tfx_vec3_t position = {0.f, 0.f, 0.f};
 	int i = 0;
-	for (tfx_path_control_node_t &node : path->buffers.nodes) {
-		tfx_quaternion_t yaw_q = tfx__quaternion_from_axis_angle(0.f, 1.f, 0.f, node.yaw);
-		tfx_quaternion_t pitch_q = tfx__quaternion_from_axis_angle(1.f, 0.f, 0.f, node.pitch);
-		tfx_quaternion_t roll_q = tfx__quaternion_from_axis_angle(0.f, 0.f, 1.f, node.roll);
-		tfx_quaternion_t local_rot = yaw_q * pitch_q * roll_q;
-		orientation = orientation * local_rot;
-		// Renormalize periodically to prevent floating-point drift
-		if ((i & 31) == 31) {
-			orientation = tfx__normalize_quaternion(&orientation);
-		}
-		tfx_vec3_t forward = {0.f, 0.f, node.distance};
-		tfx_vec3_t step = tfx__rotate_vector_quaternion(&orientation, forward);
-		position = position + step;
-		// Apply world-space offset per node
-		position.x += node.offset_x;
-		position.y += node.offset_y;
-		position.z += node.offset_z;
-		path_nodes[i] = {position.x + path->settings.offset.x, position.y + path->settings.offset.y, position.z + path->settings.offset.z, 0.f};
+	for (tfx_vec3_t &node : path->buffers.nodes) {
+		path_nodes[i] = {node.x + path->settings.offset.x, node.y + path->settings.offset.y, node.z + path->settings.offset.z, 0.f};
 		i++;
 	}
 
@@ -5577,8 +5541,6 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "extra_frames_count") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].extra_frames_count);
 	else if (property_name == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];  value.Setf("%i", path->settings.extrusion_type);
-	} else if (property_name == "path_generator_type") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];  value.Setf("%i", path->settings.generator_type);
 	}
 
 	//Float values
@@ -5872,8 +5834,6 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "animation_view_mode") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].view_mode = (tfx_render_view_mode)value;
 	else if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
-	} else if (*field == "path_generator_type") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.generator_type = (tfx_path_generator_type)value;
 	} else if (*field == "color_interpolation_mode") {
 		effect->library->graphs[effect->graph_list_index].color_ramps.interpolation_mode = (tfx_color_interpolation_mode)value;
 	}
@@ -6190,7 +6150,6 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 		file->AddLine("path_mode_origin=%i", (path->settings.flags & tfxPathFlags_mode_origin));
 		file->AddLine("path_mode_node=%i", (path->settings.flags & tfxPathFlags_mode_node));
 		file->AddLine("path_space_nodes_evenly=%i", (path->settings.flags & tfxPathFlags_space_nodes_evenly));
-		file->AddLine("path_generator_type=%i", (path->settings.generator_type));
 		file->AddLine("path_extrusion_type=%i", (path->settings.extrusion_type));
 		file->AddLine("path_rotation_range=%f", (path->settings.rotation_range));
 		file->AddLine("path_rotation_pitch=%f", (path->settings.rotation_pitch));
