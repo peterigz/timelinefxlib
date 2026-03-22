@@ -3434,6 +3434,47 @@ float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	return (float)i + ((*nodes)[i].w > 0 ? (length / (*nodes)[i].w) : 0.f);
 }
 
+void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path) {
+	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
+	if (node_count == 0) return;
+	tfx_vector_t<tfx_vec4_t> path_nodes;
+	path_nodes.resize(node_count);
+	int i = 0;
+	for (tfx_vec3_t &node : path->buffers.nodes) {
+		path_nodes[i] = {node.x, node.y, node.z, 0.f};
+		i++;
+	}
+	float length = 0.f;
+	for (int j = 0; j != (int)node_count - 3; ++j) {
+		float s = 0.05f;
+		path_nodes[j].w = 0.f;
+		for (float t = 0.0f; t <= 1.0f - s; t += s) {
+			tfx_vec3_t p1, p2;
+			tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t, &p1.x);
+			tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t + s, &p2.x);
+			tfx_vec3_t segment = p2 - p1;
+			path_nodes[j].w += tfx__length_vec3(&segment);
+		}
+		length += path_nodes[j].w;
+	}
+	float segment_length = length / (float)(node_count - 1);
+	float segment = 0.f;
+	int j = 0;
+	while (j != (int)node_count) {
+		float ni = tfx__catmull_rom_segment(&path_nodes, segment);
+		if (ni >= (float)node_count - 3.f) {
+			ni = (float)node_count - 3.f - 0.0001f;
+		}
+		tfx_vec3_t position;
+		tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
+		path->buffers.nodes[j] = position;
+		segment += segment_length;
+		j++;
+	}
+	tfx__build_path_nodes(path);
+	path_nodes.free();
+}
+
 void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
 	if (node_count == 0) return;
@@ -3463,59 +3504,20 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	}
 
 	// Post-processing: space nodes evenly along the spline if flagged
-	if (path->settings.flags & tfxPathFlags_space_nodes_evenly) {
-		float length = 0.f;
-		for (int j = 0; j != (int)node_count - 3; ++j) {
-			float s = 0.05f;
-			path_nodes[j].w = 0.f;
-			for (float t = 0.0f; t <= 1.0f - s; t += s) {
-				tfx_vec3_t p1, p2;
-				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t, &p1.x);
-				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t + s, &p2.x);
-				tfx_vec3_t segment = p2 - p1;
-				path_nodes[j].w += tfx__length_vec3(&segment);
-			}
-			length += path_nodes[j].w;
-		}
-		float segment_length = length / (float)(node_count - 1);
-		float segment = 0.f;
-		int j = 0;
-		while (j != (int)node_count) {
-			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
-			if (ni >= (float)node_count - 3.f) {
-				ni = (float)node_count - 3.f - 0.0001f;
-			}
-			tfx_vec3_t pos;
-			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &pos.x);
-			if (path->settings.flags & tfxPathFlags_reverse_direction) {
-				int last = (int)node_count - 1;
-				path->buffers.node_soa.x[last - j] = pos.x;
-				path->buffers.node_soa.y[last - j] = pos.y;
-				path->buffers.node_soa.z[last - j] = pos.z;
-			} else {
-				path->buffers.node_soa.x[j] = pos.x;
-				path->buffers.node_soa.y[j] = pos.y;
-				path->buffers.node_soa.z[j] = pos.z;
-			}
-			segment += segment_length;
-			j++;
+	if (path->settings.flags & tfxPathFlags_reverse_direction) {
+		int last = (int)node_count - 1;
+		for (int j = 0; j != (int)node_count; ++j) {
+			path->buffers.node_soa.x[last - j] = path_nodes[j].x;
+			path->buffers.node_soa.y[last - j] = path_nodes[j].y;
+			path->buffers.node_soa.z[last - j] = path_nodes[j].z;
+			path->buffers.node_soa.length[last - j] = path_nodes[j].w;
 		}
 	} else {
-		if (path->settings.flags & tfxPathFlags_reverse_direction) {
-			int last = (int)node_count - 1;
-			for (int j = 0; j != (int)node_count; ++j) {
-				path->buffers.node_soa.x[last - j] = path_nodes[j].x;
-				path->buffers.node_soa.y[last - j] = path_nodes[j].y;
-				path->buffers.node_soa.z[last - j] = path_nodes[j].z;
-				path->buffers.node_soa.length[last - j] = path_nodes[j].w;
-			}
-		} else {
-			for (int j = 0; j != (int)node_count; ++j) {
-				path->buffers.node_soa.x[j] = path_nodes[j].x;
-				path->buffers.node_soa.y[j] = path_nodes[j].y;
-				path->buffers.node_soa.z[j] = path_nodes[j].z;
-				path->buffers.node_soa.length[j] = path_nodes[j].w;
-			}
+		for (int j = 0; j != (int)node_count; ++j) {
+			path->buffers.node_soa.x[j] = path_nodes[j].x;
+			path->buffers.node_soa.y[j] = path_nodes[j].y;
+			path->buffers.node_soa.z[j] = path_nodes[j].z;
+			path->buffers.node_soa.length[j] = path_nodes[j].w;
 		}
 	}
 	path_nodes.free();
@@ -4944,7 +4946,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
 	names_and_types.Insert("path_node_count", tfxUInt);
-	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
 	names_and_types.Insert("path_reverse_direction", tfxBool);
 	names_and_types.Insert("path_extrusion_type", tfxSInt);
 	names_and_types.Insert("path_generator_type", tfxSInt);
@@ -5663,8 +5664,6 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_origin);
 	} else if (property_name == "path_mode_node") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_node);
-	} else if (property_name == "path_space_nodes_evenly") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_space_nodes_evenly);
 	} else if (property_name == "path_rotation_range_yaw_only") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_rotation_range_yaw_only);
 	} else if (property_name == "path_reverse_direction") {
@@ -6012,8 +6011,6 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_mode_origin; path->settings.flags &= ~tfxPathFlags_mode_node; } else { path->settings.flags &= ~tfxPathFlags_mode_origin; }
 	} else if (*field == "path_mode_node") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_mode_node; path->settings.flags &= ~tfxPathFlags_mode_origin; } else { path->settings.flags &= ~tfxPathFlags_mode_node; }
-	} else if (*field == "path_space_nodes_evenly") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_space_nodes_evenly; } else { path->settings.flags &= ~tfxPathFlags_space_nodes_evenly; }
 	} else if (*field == "path_rotation_range_yaw_only") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_rotation_range_yaw_only; } else { path->settings.flags &= ~tfxPathFlags_rotation_range_yaw_only; }
 	} else if (*field == "path_reverse_direction") {
@@ -6149,7 +6146,6 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];
 		file->AddLine("path_mode_origin=%i", (path->settings.flags & tfxPathFlags_mode_origin));
 		file->AddLine("path_mode_node=%i", (path->settings.flags & tfxPathFlags_mode_node));
-		file->AddLine("path_space_nodes_evenly=%i", (path->settings.flags & tfxPathFlags_space_nodes_evenly));
 		file->AddLine("path_extrusion_type=%i", (path->settings.extrusion_type));
 		file->AddLine("path_rotation_range=%f", (path->settings.rotation_range));
 		file->AddLine("path_rotation_pitch=%f", (path->settings.rotation_pitch));

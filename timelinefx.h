@@ -1277,6 +1277,7 @@ typedef unsigned short tfxUShort;
 #define tfxINVTWOPI 0.1591549f
 #define tfxTHREEHALFPI 4.7123889f
 #define tfxQUARTERPI 0.7853982f
+#define tfx720Radians 12.56638f
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
@@ -2893,7 +2894,6 @@ typedef enum {
 	tfxPathFlags_none,
 	tfxPathFlags_mode_origin                                    = 1 << 1,
 	tfxPathFlags_mode_node                                      = 1 << 2,
-	tfxPathFlags_space_nodes_evenly                             = 1 << 3,
 	tfxPathFlags_reverse_direction                              = 1 << 4,
 	tfxPathFlags_rotation_range_yaw_only                        = 1 << 5
 } tfx_emitter_path_flag_bits;
@@ -7342,6 +7342,7 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor 
 	return &effect->library->graphs[effect->graph_list_index].graphs[graph_index];
 }
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
