@@ -3444,6 +3444,19 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path) {
 		path_nodes[i] = {node.x, node.y, node.z, 0.f};
 		i++;
 	}
+
+	// Check if the path forms a closed loop (on-curve endpoints node[1] and node[N-2] at the same position)
+	float close_threshold = 0.001f;
+	bool is_closed = false;
+	if (node_count >= 4) {
+		tfx_vec3_t first_on_curve = path->buffers.nodes[1];
+		tfx_vec3_t last_on_curve = path->buffers.nodes[node_count - 2];
+		float dx = last_on_curve.x - first_on_curve.x;
+		float dy = last_on_curve.y - first_on_curve.y;
+		float dz = last_on_curve.z - first_on_curve.z;
+		is_closed = (dx * dx + dy * dy + dz * dz) < (close_threshold * close_threshold);
+	}
+
 	float length = 0.f;
 	for (int j = 0; j != (int)node_count - 3; ++j) {
 		float s = 0.05f;
@@ -3457,20 +3470,45 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path) {
 		}
 		length += path_nodes[j].w;
 	}
-	float segment_length = length / (float)(node_count - 1);
-	float segment = 0.f;
-	int j = 0;
-	while (j != (int)node_count) {
-		float ni = tfx__catmull_rom_segment(&path_nodes, segment);
-		if (ni >= (float)node_count - 3.f) {
-			ni = (float)node_count - 3.f - 0.0001f;
+	if (is_closed) {
+		// Closed loop: N-3 unique on-curve positions (nodes[1] through nodes[N-3])
+		// evenly spaced around the full loop length
+		float segment_length = length / (float)(node_count - 3);
+		float segment = 0.f;
+		for (int k = 1; k <= (int)node_count - 3; k++) {
+			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
+			if (ni >= (float)node_count - 3.f) {
+				ni = (float)node_count - 3.f - 0.0001f;
+			}
+			tfx_vec3_t position;
+			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
+			path->buffers.nodes[k] = position;
+			segment += segment_length;
 		}
-		tfx_vec3_t position;
-		tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
-		path->buffers.nodes[j] = position;
-		segment += segment_length;
-		j++;
+		// Close the loop: last on-curve node matches first
+		path->buffers.nodes[node_count - 2] = path->buffers.nodes[1];
+		// Control points for tangent continuity at the junction:
+		// node[N-1] mirrors node[2] so the spline exits node[1] correctly
+		// node[0] mirrors node[N-3] so the spline arrives at node[1] correctly
+		path->buffers.nodes[node_count - 1] = path->buffers.nodes[2];
+		path->buffers.nodes[0] = path->buffers.nodes[node_count - 3];
+	} else {
+		float segment_length = length / (float)(node_count - 1);
+		float segment = 0.f;
+		int j = 0;
+		while (j != (int)node_count) {
+			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
+			if (ni >= (float)node_count - 3.f) {
+				ni = (float)node_count - 3.f - 0.0001f;
+			}
+			tfx_vec3_t position;
+			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
+			path->buffers.nodes[j] = position;
+			segment += segment_length;
+			j++;
+		}
 	}
+
 	tfx__build_path_nodes(path);
 	path_nodes.free();
 }
