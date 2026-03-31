@@ -3382,8 +3382,6 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool a
 		path.settings.flags = 0;
 		path.settings.node_count = 32;
 		path.settings.nodes_to_commit = 32;
-		path.buffers.nodes.resize(32);
-		path.buffers.nodes.zero();
 		path.settings.extrusion_type = tfxExtrusionArc;
 		path.settings.maximum_active_paths = 1;
 		path.settings.maximum_paths = 1;
@@ -3405,8 +3403,6 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	path.settings.name.Clear();
 	path.settings.node_count = 32;
 	path.settings.nodes_to_commit = 32;
-	path.buffers.nodes.resize(32);
-	path.buffers.nodes.zero();
 	path.settings.extrusion_type = tfxExtrusionArc;
 	path.settings.maximum_active_paths = 1;
 	path.settings.maximum_paths = 1;
@@ -3434,7 +3430,7 @@ float tfx__catmull_rom_segment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	return (float)i + ((*nodes)[i].w > 0 ? (length / (*nodes)[i].w) : 0.f);
 }
 
-void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path) {
+void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start, int range_end) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
 	if (node_count == 0) return;
 	tfx_vector_t<tfx_vec4_t> path_nodes;
@@ -3445,67 +3441,111 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path) {
 		i++;
 	}
 
-	// Check if the path forms a closed loop (on-curve endpoints node[1] and node[N-2] at the same position)
-	float close_threshold = 0.001f;
-	bool is_closed = false;
-	if (node_count >= 4) {
-		tfx_vec3_t first_on_curve = path->buffers.nodes[1];
-		tfx_vec3_t last_on_curve = path->buffers.nodes[node_count - 2];
-		float dx = last_on_curve.x - first_on_curve.x;
-		float dy = last_on_curve.y - first_on_curve.y;
-		float dz = last_on_curve.z - first_on_curve.z;
-		is_closed = (dx * dx + dy * dy + dz * dz) < (close_threshold * close_threshold);
-	}
+	bool use_range = range_start >= 0 && range_end >= 0 && range_end - range_start >= 2
+		&& !(range_start == 0 && range_end >= (int)node_count - 1);
 
-	float length = 0.f;
-	for (int j = 0; j != (int)node_count - 3; ++j) {
-		float s = 0.05f;
-		path_nodes[j].w = 0.f;
-		for (float t = 0.0f; t <= 1.0f - s; t += s) {
-			tfx_vec3_t p1, p2;
-			tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t, &p1.x);
-			tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t + s, &p2.x);
-			tfx_vec3_t segment = p2 - p1;
-			path_nodes[j].w += tfx__length_vec3(&segment);
-		}
-		length += path_nodes[j].w;
-	}
-	if (is_closed) {
-		// Closed loop: N-3 unique on-curve positions (nodes[1] through nodes[N-3])
-		// evenly spaced around the full loop length
-		float segment_length = length / (float)(node_count - 3);
-		float segment = 0.f;
-		for (int k = 1; k <= (int)node_count - 3; k++) {
-			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
-			if (ni >= (float)node_count - 3.f) {
-				ni = (float)node_count - 3.f - 0.0001f;
+	if (use_range) {
+		// Space only the selected range evenly along the existing sub-path
+		// Segment j uses control points [j, j+1, j+2, j+3], curve from j+1 to j+2
+		// Sub-path from range_start to range_end uses segments (range_start-1) to (range_end-2)
+		int first_segment = range_start - 1;
+		if (first_segment < 0) first_segment = 0;
+		int last_segment = range_end - 2;
+		if (last_segment > (int)node_count - 4) last_segment = (int)node_count - 4;
+
+		float sub_length = 0.f;
+		for (int j = first_segment; j <= last_segment; ++j) {
+			float s = 0.05f;
+			path_nodes[j].w = 0.f;
+			for (float t = 0.0f; t <= 1.0f - s; t += s) {
+				tfx_vec3_t p1, p2;
+				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t, &p1.x);
+				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t + s, &p2.x);
+				tfx_vec3_t segment = p2 - p1;
+				path_nodes[j].w += tfx__length_vec3(&segment);
 			}
-			tfx_vec3_t position;
-			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
-			path->buffers.nodes[k] = position;
-			segment += segment_length;
+			sub_length += path_nodes[j].w;
 		}
-		// Close the loop: last on-curve node matches first
-		path->buffers.nodes[node_count - 2] = path->buffers.nodes[1];
-		// Control points for tangent continuity at the junction:
-		// node[N-1] mirrors node[2] so the spline exits node[1] correctly
-		// node[0] mirrors node[N-3] so the spline arrives at node[1] correctly
-		path->buffers.nodes[node_count - 1] = path->buffers.nodes[2];
-		path->buffers.nodes[0] = path->buffers.nodes[node_count - 3];
+
+		// Redistribute interior nodes, keeping range_start and range_end fixed
+		int num_intervals = range_end - range_start;
+		float interval_length = sub_length / (float)num_intervals;
+		for (int k = 1; k < num_intervals; ++k) {
+			float target = k * interval_length;
+			float remaining = target;
+			int seg = first_segment;
+			while (remaining > path_nodes[seg].w && seg < last_segment) {
+				remaining -= path_nodes[seg].w;
+				seg++;
+			}
+			float t = path_nodes[seg].w > 0.f ? (remaining / path_nodes[seg].w) : 0.f;
+			tfx_vec3_t position;
+			tfx__catmull_rom_spline_3d(&path_nodes[seg], &path_nodes[seg + 1], &path_nodes[seg + 2], &path_nodes[seg + 3], t, &position.x);
+			path->buffers.nodes[range_start + k] = position;
+		}
 	} else {
-		float segment_length = length / (float)(node_count - 1);
-		float segment = 0.f;
-		int j = 0;
-		while (j != (int)node_count) {
-			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
-			if (ni >= (float)node_count - 3.f) {
-				ni = (float)node_count - 3.f - 0.0001f;
+		// Check if the path forms a closed loop (on-curve endpoints node[1] and node[N-2] at the same position)
+		float close_threshold = 0.001f;
+		bool is_closed = false;
+		if (node_count >= 4) {
+			tfx_vec3_t first_on_curve = path->buffers.nodes[1];
+			tfx_vec3_t last_on_curve = path->buffers.nodes[node_count - 2];
+			float dx = last_on_curve.x - first_on_curve.x;
+			float dy = last_on_curve.y - first_on_curve.y;
+			float dz = last_on_curve.z - first_on_curve.z;
+			is_closed = (dx * dx + dy * dy + dz * dz) < (close_threshold * close_threshold);
+		}
+
+		float length = 0.f;
+		for (int j = 0; j != (int)node_count - 3; ++j) {
+			float s = 0.05f;
+			path_nodes[j].w = 0.f;
+			for (float t = 0.0f; t <= 1.0f - s; t += s) {
+				tfx_vec3_t p1, p2;
+				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t, &p1.x);
+				tfx__catmull_rom_spline_3d(&path_nodes[j], &path_nodes[j + 1], &path_nodes[j + 2], &path_nodes[j + 3], t + s, &p2.x);
+				tfx_vec3_t segment = p2 - p1;
+				path_nodes[j].w += tfx__length_vec3(&segment);
 			}
-			tfx_vec3_t position;
-			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
-			path->buffers.nodes[j] = position;
-			segment += segment_length;
-			j++;
+			length += path_nodes[j].w;
+		}
+		if (is_closed) {
+			// Closed loop: N-3 unique on-curve positions (nodes[1] through nodes[N-3])
+			// evenly spaced around the full loop length
+			float segment_length = length / (float)(node_count - 3);
+			float segment = 0.f;
+			for (int k = 1; k <= (int)node_count - 3; k++) {
+				float ni = tfx__catmull_rom_segment(&path_nodes, segment);
+				if (ni >= (float)node_count - 3.f) {
+					ni = (float)node_count - 3.f - 0.0001f;
+				}
+				tfx_vec3_t position;
+				tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
+				path->buffers.nodes[k] = position;
+				segment += segment_length;
+			}
+			// Close the loop: last on-curve node matches first
+			path->buffers.nodes[node_count - 2] = path->buffers.nodes[1];
+			// Control points for tangent continuity at the junction:
+			// node[N-1] mirrors node[2] so the spline exits node[1] correctly
+			// node[0] mirrors node[N-3] so the spline arrives at node[1] correctly
+			path->buffers.nodes[node_count - 1] = path->buffers.nodes[2];
+			path->buffers.nodes[0] = path->buffers.nodes[node_count - 3];
+		} else {
+			float segment_length = length / (float)(node_count - 1);
+			float segment = 0.f;
+			int j = 0;
+			while (j != (int)node_count) {
+				float ni = tfx__catmull_rom_segment(&path_nodes, segment);
+				if (ni >= (float)node_count - 3.f) {
+					ni = (float)node_count - 3.f - 0.0001f;
+				}
+				tfx_vec3_t position;
+				tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - (int)ni, &position.x);
+				path->buffers.nodes[j] = position;
+				segment += segment_length;
+				j++;
+			}
 		}
 	}
 
@@ -6201,6 +6241,36 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 	}
 }
 
+static int tfx__format_compact_float(char *buffer, int buffer_size, float value) {
+	int length = snprintf(buffer, buffer_size, "%.6f", value);
+	char *dot = strchr(buffer, '.');
+	if (dot) {
+		char *end = buffer + length - 1;
+		while (end > dot + 1 && *end == '0') {
+			*end-- = '\0';
+			length--;
+		}
+	}
+	return length;
+}
+
+void tfx__stream_path_nodes(tfx_effect_descriptor effect, tfx_stream_t *file) {
+	if (effect->path_attributes != tfxINVALID) {
+		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];
+		if (path->buffers.nodes.current_size > 0) {
+			file->AddLine("%i", tfxStartPathNodes);
+			for (tfx_vec3_t &node : path->buffers.nodes) {
+				char fx[32], fy[32], fz[32];
+				tfx__format_compact_float(fx, sizeof(fx), node.x);
+				tfx__format_compact_float(fy, sizeof(fy), node.y);
+				tfx__format_compact_float(fz, sizeof(fz), node.z);
+				file->AddLine("%s,%s,%s", fx, fy, fz);
+			}
+			file->AddLine("%i", tfxEndPathNodes);
+		}
+	}
+}
+
 void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file) {
 	for (tfxBucketLoop(graph->nodes, i)) {
 		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", 
@@ -8490,6 +8560,18 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			} else if (context == tfxStartGraphs && effect_stack.back()->type == tfxEffectType) {
 				if (effect_stack.size() <= 2) {
 					tfx__assign_graph_node_data(effect_stack.back(), &pair);
+				}
+			} else if (context == tfxStartPathNodes) {
+				if (pair.size() >= 3) {
+					tfx_effect_descriptor emitter = effect_stack.back();
+					if (emitter->path_attributes != tfxINVALID) {
+						tfx_emitter_path_t *path = &emitter->library->paths[emitter->path_attributes];
+						tfx_vec3_t node;
+						node.x = (float)atof(pair[0].c_str());
+						node.y = (float)atof(pair[1].c_str());
+						node.z = (float)atof(pair[2].c_str());
+						path->buffers.nodes.push_back(node);
+					}
 				}
 			} else if (context == tfxStartGraphProperties) {
 				tfx__assign_graph_properties(effect_stack.back(), &pair);
@@ -15098,11 +15180,10 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			path_offset = tfx_RandomRangeZeroToMax(&random, arc_size) + arc_offset;
-			float length_squared = point.x * point.x + point.z * point.z;
-			float radius = length_squared == 0.f ? 0.f : 1.f / tfx__quake_sqrt(length_squared);
-			float len = sqrtf(point.x * point.x + point.z * point.z);
-			float norm_x = point.x / len;
-			float norm_z = point.z / len;
+			float length = tfx__quake_sqrt(point.x * point.x + point.z * point.z);
+			float radius = 1.f / length;
+			float norm_x = point.x * length;
+			float norm_z = point.z * length;
 			float sin_path_offset = sinf(path_offset);
 			float cos_path_offset = cosf(path_offset);
 			float rx = norm_x * cos_path_offset - norm_z * sin_path_offset;

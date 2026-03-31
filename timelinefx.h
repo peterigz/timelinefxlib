@@ -2696,6 +2696,8 @@ typedef enum {
 	tfxEndRibbonEmitter,
 	tfxStartGraphProperties,
 	tfxEndGraphProperties,
+	tfxStartPathNodes,
+	tfxEndPathNodes,
 } tfx_effect_library_stream_context;
 
 typedef enum {
@@ -7155,6 +7157,7 @@ tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_effect_descriptor
 tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_path_nodes(tfx_effect_descriptor effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -7342,7 +7345,7 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor 
 	return &effect->library->graphs[effect->graph_list_index].graphs[graph_index];
 }
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
-tfxAPI_EDITOR void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start = -1, int range_end = -1);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
