@@ -10002,8 +10002,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				const tfxEmitterStateFlags &parent_state_flags = new_effect.state_flags;
 				if (shared_properties->emission_type == tfxPath) {
 					tfx_emitter_path_t *path = &ribbon_emitter.library->paths[ribbon_emitter.path_attributes];
-					tfxKey cached_static_path_segments_key = (ribbon_emitter.path_attributes << 16) | ribbon_emitter.segment_count;
-					tfxU32 *cached_path_segment_index = pm->cached_static_path_segments.AtPtr(cached_static_path_segments_key);
+					tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(ribbon_emitter.path_attributes);
 					ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
 				}
 
@@ -12599,6 +12598,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 		ribbon_bucket.ribbon_emitter_indexes[0].free();
 		ribbon_bucket.ribbon_emitter_indexes[1].free();
 		ribbon_bucket.control_ribbon_queue.free();
+		ribbon_bucket.cached_static_path_segments.Clear();
 		ribbon_bucket.active_ribbons = 0;
 		ribbon_bucket.globals.ribbon_count = 0;
 		ribbon_bucket.globals.segment_offset = 0;
@@ -12609,7 +12609,6 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 	pm->ribbon_segment_buckets.Clear();
 	pm->gpu_emitters.clear();
 	pm->free_ribbon_segment_lists.Clear();
-	pm->cached_static_path_segments.Clear();
 	pm->free_effects.clear();
 	pm->free_emitters.clear();
 	pm->free_gpu_emitters.clear();
@@ -12682,9 +12681,9 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 		bucket.ribbon_emitter_indexes[0].free();
 		bucket.ribbon_emitter_indexes[1].free();
 		bucket.control_ribbon_queue.free();
+		bucket.cached_static_path_segments.FreeAll();
 	}
 	pm->ribbon_segment_buckets.FreeAll();
-	pm->cached_static_path_segments.FreeAll();
 	pm->emitters_check_capture.free();
 	pm->free_effects.free();
 	pm->free_gpu_emitters.free();
@@ -13028,6 +13027,7 @@ void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tf
 	bucket.free_ribbons.init();
 	bucket.ribbon_emitter_indexes[0].init();
 	bucket.ribbon_emitter_indexes[1].init();
+	bucket.cached_static_path_segments.init();
 	bucket.flags = tfxRibbonBucketFlags_initialised;
 	bucket.globals.ribbon_count = 1;
 	bucket.globals.index_offset = 0;
@@ -15405,7 +15405,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				}
 			}
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
-			pm.cached_static_path_segments.Insert(ribbon_emitter.source_ribbon->path_hash + ribbon_emitter.segment_count, ribbon_emitter.static_segment_start_index);
+			ribbon_bucket->cached_static_path_segments.Insert(ribbon_emitter.path_attributes, ribbon_emitter.static_segment_start_index);
 		} else {
 			ribbon_emitter.static_segment_start_index = tfxINVALID;
 		}

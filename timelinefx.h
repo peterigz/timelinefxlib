@@ -2713,7 +2713,6 @@ typedef enum {
 	tfx_free_particle_lists_mb,
 	tfx_free_particle_location_lists_mb,
 	tfx_free_ribbon_segment_lists_mb,
-	tfx_cached_static_path_segments_mb,
 	tfx_ribbon_segment_buckets_mb,
 	tfx_sorting_work_entry_mb,
 	tfx_spawn_work_mb,
@@ -6703,11 +6702,13 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t<tfxU32> free_ribbons;
 	tfx_vector_t<tfxU32> ribbon_emitter_indexes[2];
 	tfx_vector_t<tfxU32> control_ribbon_queue;
+	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 #else
 	tfx_vector_t segments;
 	tfx_vector_t free_ribbons;
 	tfx_vector_t ribbon_emitter_indexes[2];
 	tfx_vector_t control_ribbon_queue;
+	tfx_storage_map_t cached_static_path_segments;
 #endif
 	tfxRibbonBucketFlags flags;
 	tfxRibbonBucketComputeShaderType shader_type;
@@ -7075,7 +7076,6 @@ typedef struct tfx_effect_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
-	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
 	//GPU compute particle buffer management
 	tfx_storage_map_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
