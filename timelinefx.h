@@ -2644,7 +2644,9 @@ typedef enum {
 	tfxCalculateFrames,
 	tfxBakeSpriteData,
 	tfxLinkUpSprites,
-	tfxCompressFrames,
+	tfxLinkUpRibbons,
+	tfxCompressSpriteFrames,
+	tfxCompressRibbonFrames,
 	tfxBakingDone
 } tfx_record_progress;
 
@@ -4375,8 +4377,9 @@ inline void tfx__bump_soa_buffer_amount(tfx_soa_buffer_t *buffer, tfxU32 amount)
 //Free the SoA buffer
 inline void tfx__free_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
-	if (buffer->data)
+	if (buffer->data) {
 		tfxFREE(buffer->data);
+	}
 	buffer->array_ptrs.free();
 	tfx__init_soa_buffer(buffer);
 }
@@ -6077,6 +6080,7 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_ribbon_bucket_info_t bucket_info;
 	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
+	tfxU32 animation_property_index;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6224,14 +6228,14 @@ typedef struct tfx_effect_state_s {
 #endif
 	tfxU32 emitter_start_size;
 
-}tfx_effect_state_t TFX_ALIGN_AFFIX(16);
+} tfx_effect_state_t TFX_ALIGN_AFFIX(16);
 
 typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
 	tfx_vec4_t position;
     float width;
 	tfxU32 start_index;
 	tfxU32 flags;
-	tfxU32 _padding_pre_quat;				//Padding for 8-byte alignment of quaternion
+	tfxU32 captured_index;				
 	tfxU64 quaternion;
 	tfxU32 emitter_index;
 	tfxU32 texture_indexes;
@@ -6249,6 +6253,7 @@ typedef struct tfx_ribbon_soa_s {
 	tfxU32 *path_index;
 	float *grid_index;
 	tfxU32 *single_loop_count;
+	tfxU32 *uid;
 } tfx_ribbon_soa_t;
 
 typedef struct tfx_gpu_emitter_s {
@@ -6543,6 +6548,12 @@ typedef struct tfx_frame_meta_s {
 	float radius;									//The radius of the bounding box
 } tfx_frame_meta_t;
 
+typedef struct tfx_ribbon_frame_meta_s {
+	tfxU32 index_offset;
+	tfxU32 captured_offset;
+	tfxU32 ribbon_count;
+} tfx_ribbon_frame_meta_t;
+
 typedef struct tfx_instance_s {		//64 bytes (52 bytes data + 12 padding for std430 alignment)
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
 	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
@@ -6569,12 +6580,33 @@ typedef struct tfx_sprite_instance_data_s {    //56 bytes padding to 64
 	tfxU32 padding[2];
 } tfx_sprite_instance_data_t;
 
+typedef struct tfx_ribbon_instance_data_s {	//64 bytes, mirrors tfx_ribbon_t layout
+	tfx_vec4_t position;						//xyz position, w = normalised age
+	float width;
+	tfxU32 start_index;							//Into shared segment data
+	tfxU32 flags;
+	tfxU32 captured_index;						//Previous frame ribbon for interpolation (was _padding_pre_quat)
+	tfxU64 quaternion;							//16-bit snorm packed rotation
+	tfxU32 emitter_index;
+	tfxU32 texture_indexes;
+	tfxU32 intensity_gradient_map;
+	tfxU32 curved_alpha;
+	tfxU32 additional;							//lerp_offset (low 16) + property_index (high 16)
+	tfxU32 padding;
+} tfx_ribbon_instance_data_t;
+
 //Animation sprite data that is used on the cpu to bake the data
 typedef struct tfx_sprite_data_soa_s {
 	tfx_instance_t *billboard_instance;
 	tfx_unique_sprite_id_t *uid;
 	float *lerp_offset;
 }tfx_sprite_data_soa_t;
+
+typedef struct tfx_ribbon_data_soa_s {
+	tfx_ribbon_t *ribbon_instance;
+	tfx_unique_sprite_id_t *uid;
+	float *lerp_offset;
+}tfx_ribbon_data_soa_t;
 
 typedef struct tfx_wide_lerp_transform_result_s {
 	float position[3];
@@ -6601,12 +6633,26 @@ typedef struct tfx_sprite_data_metrics_s {
 	tfxU32 total_memory_for_sprites;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_frame_meta_t> frame_meta;
+	tfx_vector_t<tfx_ribbon_frame_meta_t> ribbon_frame_meta;
 #else
 	tfx_vector_t frame_meta;
+	tfx_vector_t ribbon_frame_meta;
 #endif
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
+	//Ribbon Specific metrics
+	tfxU32 total_ribbons;
+	tfxU32 total_memory_for_ribbons;
+	tfxU32 ribbon_start_offset;
+	tfxU32 ribbon_segment_start_offset;
 } tfx_sprite_data_metrics_t;
+
+typedef struct tfx_ribbon_segment_s {
+	tfx_vec3_t position;
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
+	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfxU32 padding[3];
+} tfx_ribbon_segment_t;
 
 typedef struct tfx_sprite_data_s {
 	float frame_compression;
@@ -6616,6 +6662,18 @@ typedef struct tfx_sprite_data_s {
 	tfx_sprite_data_soa_t real_time_sprites;
 	tfx_soa_buffer_t compressed_sprites_buffer;
 	tfx_sprite_data_soa_t compressed_sprites;
+	//Ribbon specific data
+	tfx_soa_buffer_t real_time_ribbons_buffer;
+	tfx_ribbon_data_soa_t real_time_ribbons;
+	tfx_soa_buffer_t compressed_ribbons_buffer;
+	tfx_ribbon_data_soa_t compressed_ribbons;
+#ifdef __cplusplus
+	tfx_vector_t<tfx_ribbon_segment_t> shared_segments;
+#else
+	tfx_vector_t shared_segments;
+#endif
+	tfxU32 total_ribbons;
+	bool has_ribbons;
 } tfx_sprite_data_t;
 
 typedef struct tfx_sprite_data_push_s {
@@ -6631,12 +6689,15 @@ typedef struct tfx_sprite_data_push_s {
 	tfxU32 bounding_boxes_index;
 } tfx_sprite_data_push_t;
 
-typedef struct tfx_ribbon_segment_s {
-	tfx_vec3_t position;
-	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
-	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
-	tfxU32 padding[3];
-} tfx_ribbon_segment_t;
+typedef struct tfx_ribbon_data_push_s {
+	tfxU32 animation_instances_total;
+	tfxU32 ribbons_total;
+	tfxU32 offset_index;
+	tfxU32 animation_instances_index;
+	tfxU32 ribbon_data_index;
+	tfxU32 ribbon_output_index;
+	tfxU32 ribbon_properties_index;
+} tfx_ribbon_data_push_t;
 
 //This can be sent as a push constant to the gpu
 typedef struct tfx_ribbon_bucket_globals_s  {
@@ -6924,8 +6985,10 @@ typedef struct tfx_animation_instance_s {
 	tfx_vec3_t position;                //position that the instance should be played at
 	float scale;                        //Scales the overal size of the animation
 	tfxU32 sprite_count;                //The number of instance_data to be drawn
+	tfxU32 ribbon_count;                //The number of ribbons to be drawn
 	tfxU32 frame_count;                 //The number of frames in the animation
 	tfxU32 offset_into_sprite_data;     //The starting ofset in the buffer that contains all the sprite data
+	tfxU32 offset_into_ribbon_data;     //The starting ofset in the buffer that contains all the ribbon data
 	tfxU32 info_index;                  //Index into the effect_animation_info storage map to get at the frame meta
 	float current_time;                 //Current point of time in the animation
 	float animation_length_in_time;     //Total time that the animation lasts for
@@ -6940,6 +7003,12 @@ typedef struct tfx_animation_buffer_metrics_s {
 	size_t offsets_size_in_bytes;
 	size_t instances_size_in_bytes;
 	tfxU32 total_sprites_to_draw;
+	//Ribbon Metrics
+	size_t ribbon_data_size;
+	tfxU32 ribbon_offsets_size;
+	tfxU32 ribbon_offsets_size_in_bytes;
+	tfxU32 total_ribbons_to_draw;
+	size_t ribbon_segment_data_size;
 }tfx_animation_buffer_metrics_t;
 
 typedef struct tfx_animation_emitter_properties_s {
@@ -6951,6 +7020,18 @@ typedef struct tfx_animation_emitter_properties_s {
 	float animation_frames;
 	float padding;
 }tfx_animation_emitter_properties_t;
+
+typedef struct tfx_animation_ribbon_properties_s {
+	tfxU32 segment_count;
+	tfxU32 tessellation;
+	tfxRibbonBucketComputeShaderType shader_type;
+	tfxU32 color_ramp_index;
+	tfxU32 segment_data_offset;
+	float animation_frames;
+	tfxU32 start_frame_index;
+	tfxU32 flags;
+	tfxU32 graph_lookup_offset;
+} tfx_animation_ribbon_properties_t;
 
 typedef struct tfx_color_ramp_bitmap_data_t {
 #ifdef __cplusplus
@@ -6986,7 +7067,7 @@ typedef struct tfx_animation_manager_s {
 	//global index is more than or equal to the next element then we start on the next animation
 	//instance and draw those instance_data.
 	tfx_vector_t<tfxU32> offsets;
-	//We also need to upload some emitter properties to the GPU as well such as the sprite handle.
+	//We also need to upload some emitter/ribbon properties to the GPU as well such as the sprite handle.
 	//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
 	//before going to the vertex shader
 	tfx_vector_t<tfx_animation_emitter_properties_t> emitter_properties;
@@ -7018,6 +7099,13 @@ typedef struct tfx_animation_manager_s {
 	//the next frame. This callback is called inside the tfx_UpdateAnimationManager function. Set the callback
 	//with SetAnimationManagerCallback
 	bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
+
+	//Ribbon management
+	tfx_vector_t<tfxU32> ribbon_offsets;
+	tfx_vector_t<tfx_ribbon_instance_data_t> ribbon_data;
+	tfx_vector_t<tfx_ribbon_segment_t> ribbon_segment_data;
+	tfx_vector_t<tfx_animation_ribbon_properties_t> ribbon_properties;
+	tfx_vector_t<tfx_gpu_graph_data_t> ribbon_graph_data;
 } tfx_animation_manager_t;
 #endif
 
@@ -7156,6 +7244,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_vec3_t camera_position;
 
 	tfxU32 unique_particle_id;    //Used when recording sprite data
+	tfxU32 unique_ribbon_id;      //Used when recording ribbon data
 	//When using single particles, you can flag the emitter to set the max_age of the particle to the 
 	//length in time of the animation so that it maps nicely to the animation
 	float animation_length_in_time;
@@ -7363,7 +7452,6 @@ tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_unorm(float x, float y);
 tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter);
-tfxAPI_EDITOR void tfx__complete_effect_manager_work(tfx_effect_manager pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -7465,7 +7553,8 @@ tfxINTERNAL void tfx__plot_color_ramp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ra
 tfxINTERNAL void tfx__create_color_ramp_bitmaps(tfx_library library);
 tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *list);
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
-tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
+tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
+tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
 tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, float osc_t);
 
@@ -8905,6 +8994,7 @@ tfxINTERNAL inline void tfx__wrap_single_particle_instances(T *instance, tfx_spr
 template<typename T> tfxINTERNAL void tfx__clear_wrap_bit(T* instance, tfx_sprite_data_t *sprite_data);
 template<typename T> tfxINTERNAL void tfx__sprite_data_offset_captured_indexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 previous_frame, tfxU32 current_frame);
 template<typename T> tfxINTERNAL void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data);
+tfxINTERNAL void tfx__ribbon_data_set_captured_indexes(tfx_sprite_data_t *sprite_data);
 
 template<typename T>
 tfxINTERNAL inline void tfx__invalidate_new_captured_index(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_effect_manager pm, tfxU32 layer) {
@@ -9063,11 +9153,11 @@ tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_effect_manager pm);
 tfxAPI_EDITOR bool tfx__next_ribbon_bucket(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 tfxINTERNAL bool tfx__control_profile_has_noise(tfxEmitterControlProfileFlags flags);
-tfxINTERNAL void tfx__init_sprite_data_soa_compression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties);
@@ -9163,7 +9253,9 @@ tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx
 //--------------------------------
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
+tfxINTERNAL void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, float frame_length, int *progress);
+tfxINTERNAL void tfx__compress_ribbon_data(tfx_sprite_data_t *sprite_data, tfx_sprite_data_settings_t *settings, float frame_length, int *progress);
 tfxINTERNAL void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float update_time);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
@@ -9465,6 +9557,8 @@ in mind that you can just use more than one effect manager and utilised differen
 * @param sort_passes              The number of sort passes if you're using depth sorted effects
 */
 tfxAPI void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 sort_passes);
+
+tfxAPI void tfx_CompleteEffectManagerWork(tfx_effect_manager pm);
 
 /*
 Set the staging buffer used in the effect manager. The effect manager flags must be set with tfxEffectManagerFlags_direct_to_staging_buffer when the particle
@@ -9776,7 +9870,7 @@ Get the transform vectors for a sprite's previous position so that you can use t
 tfxAPI void tfx_GetCapturedInstanceTransform(tfx_effect_manager pm, tfxU32 layer, tfxU32 index, float out_position[3]);
 
 /*
-Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
+Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation. 
 a for loop to iterate over the instance_data in a pre-recorded effect
 * @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
 * @param frame            The index of the frame you want the end index for
@@ -9784,6 +9878,15 @@ a for loop to iterate over the instance_data in a pre-recorded effect
 * @returns                tfxU32 containing the end offset
 */
 tfxAPI tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
+
+/*
+Get the end index offset into the ribbon memory for ribbon data containing a pre recorded effect animation. 
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
+* @param frame            The index of the frame you want the end index for
+* @returns                tfxU32 containing the end offset
+*/
+tfxAPI tfxU32 tfx_RibbonDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame);
 
 /*
 Make a effect manager stop spawning. This will mean that all emitters in the effect manager will no longer spawn any particles so all currently running effects will expire
@@ -10116,6 +10219,15 @@ a for loop to iterate over the instance_data in a pre-recorded effect
 tfxAPI tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
+Get the index offset into the ribbon memory for ribbon data containing a pre recorded effect animation. Can be used along side tfx_RibbonDataEndIndex to create
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data      A pointer to tfx_sprite_data_t containing all the instance_data and frame data
+* @param frame            The index of the frame you want the offset for
+* @returns                tfxU32 containing the index offset
+*/
+tfxAPI tfxU32 tfx_RibbonDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame);
+
+/*
 Set the user data in a tfx_animation_manager_t which can get passed through to callback functions when updated the animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param user_data                void* pointer to the data that you want to set
@@ -10213,6 +10325,14 @@ to draw your sprite instances
 tfxAPI tfxU32 tfx_GetTotalSpritesThatNeedDrawing(tfx_animation_manager animation_manager);
 
 /*
+Get the total number of ribbons that need to be drawn by an animation manager this frame. You can use this in your renderer
+to draw your sprite instances
+* @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @returns                        tfxU32 of the number of ribbons to draw
+*/
+tfxAPI tfxU32 tfx_GetTotalRibbonsThatNeedDrawing(tfx_animation_manager animation_manager);
+
+/*
 Get the total number of instances being processed by an animation manager. This will not necessarily be the same number as
 the instances being rendered if some are being culled in your custom callback if your using one.
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to clear
@@ -10243,11 +10363,18 @@ Get the total number of instance_data in an animation manger's sprite data buffe
 tfxAPI tfxU32 tfx_GetTotalSpriteDataCount(tfx_animation_manager animation_manager);
 
 /*
-Get the total number of instance_data in an animation manger's sprite data buffer
+Get the total byte size of instance_data in an animation manger's sprite data buffer
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns size_t                 The number of instance_data in the buffer
+*/
+tfxAPI size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager animation_manager);
+
+/*
+Get the total byte size of ribbon_data in an animation manger's ribbon data buffer
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                The number of instance_data in the buffer
 */
-tfxAPI size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager animation_manager);
+tfxAPI size_t tfx_GetRibbonDataSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
@@ -10257,11 +10384,39 @@ Get the buffer memory address for the sprite data in an animation manager
 tfxAPI void *tfx_GetSpriteDataBufferPointer(tfx_animation_manager animation_manager);
 
 /*
-Get the size in bytes of the offsets buffer in an animation manager
+Get the buffer memory address for the ribbon data in an animation manager
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns void*                  A pointer to the sprite data memory
+*/
+tfxAPI void *tfx_GetRibbonDataBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Get the size in bytes of the offsets buffer in an animation manager for sprite data
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the offsets buffer
 */
 tfxAPI size_t tfx_GetOffsetsSizeInBytes(tfx_animation_manager animation_manager);
+
+/*
+Get the buffer pointer for the offsets buffer in an animation manager for sprite data
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns size_t                Size in bytes of the offsets buffer
+*/
+tfxAPI void *tfx_GetOffsetsBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Get the size in bytes of the offsets buffer in an animation manager for ribbons
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns size_t                Size in bytes of the offsets buffer
+*/
+tfxAPI size_t tfx_GetRibbonOffsetsSizeInBytes(tfx_animation_manager animation_manager);
+
+/*
+Get the buffer pointer for the offsets buffer in an animation manager for ribbon data
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns size_t                Size in bytes of the offsets buffer
+*/
+tfxAPI void *tfx_GetRibbonOffsetsBufferPointer(tfx_animation_manager animation_manager);
 
 /*
 Get the size in bytes of the render queue of animation instances buffer in an animation manager
@@ -10278,6 +10433,27 @@ Get the size in bytes of the animation emitter properties list
 tfxAPI size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager animation_manager);
 
 /*
+Get the size in bytes of the animation ribbon properties list
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns size_t                Size in bytes of the properties bufffer
+*/
+tfxAPI size_t tfx_GetAnimationRibbonPropertySizeInBytes(tfx_animation_manager animation_manager);
+
+/*
+Get the size in bytes of the animation ribbon segments list
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon segment data from
+* @returns size_t                Size in bytes of the ribbon segments bufffer
+*/
+tfxAPI size_t tfx_GetAnimationRibbonSegmentsSizeInBytes(tfx_animation_manager animation_manager);
+
+/*
+Get the size in bytes of the animation ribbon data list
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns size_t                Size in bytes of the ribbon segments bufffer
+*/
+tfxAPI size_t tfx_GetAnimationRibbonDataSizeInBytes(tfx_animation_manager animation_manager);
+
+/*
 Get the number of emitter properties being using by the animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                Number of emitter properties
@@ -10285,11 +10461,39 @@ Get the number of emitter properties being using by the animation manager
 tfxAPI tfxU32 tfx_GetAnimationEmitterPropertyCount(tfx_animation_manager animation_manager);
 
 /*
-Get the buffer memory address for the sprite data in an animation manager
+Get the buffer memory address for the sprite emitter properties in an animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
-* @returns void*                A pointer to the sprite data memory
+* @returns void*                A pointer to the sprite emitter properties data memory
 */
 tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Get the buffer memory address for the ribbon property data in an animation manager
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns void*                A pointer to the ribbon properties data memory
+*/
+tfxAPI void *tfx_GetAnimationRibbonPropertiesBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Get the buffer memory address for the ribbon segments data in an animation manager
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns void*                  A pointer to the ribbon segments data memory
+*/
+tfxAPI void *tfx_GetAnimationRibbonSegmentsBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Get the buffer memory address for the ribbon segments data in an animation manager
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns void*                  A pointer to the ribbon segments data memory
+*/
+tfxAPI void *tfx_GetAnimationRibbonDataBufferPointer(tfx_animation_manager animation_manager);
+
+/*
+Returns true or false if the animation manager contains effects with ribbons
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns bool 	              True if the animation manager has ribbons
+*/
+tfxAPI bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager);
 
 //--------------------------------
 //Effect_templates
