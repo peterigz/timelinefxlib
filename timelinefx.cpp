@@ -9099,6 +9099,15 @@ TFX_ENABLE_COMPILER_WARNING()
 	tfx_DisablePMSpawning(pm, false);
 	total_sprites = 0;
 	tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
+	tfx_vector_t<tfxU32> running_ribbon_count;
+	tfx_vector_t<tfxU32> running_ribbon_count_per_bucket;
+	tfxU32 bucket_count = pm->ribbon_segment_buckets.Size();
+	if (total_ribbons > 0) {
+		running_ribbon_count.resize(frames);
+		running_ribbon_count.zero();
+		running_ribbon_count_per_bucket.resize(frames * bucket_count);
+		running_ribbon_count_per_bucket.zero();
+	}
 	pm->unique_particle_id = 0;
 
 	while (frame < frames && offset < 99999) {
@@ -9166,9 +9175,34 @@ TFX_ENABLE_COMPILER_WARNING()
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
 			if (total_ribbons > 0) {
-				//Copy fresh ribbons instance_data this frame
-				tfxU32 ribbon_write_index = ribbon_frame_meta[frame].index_offset;
+				//Count fresh ribbons per bucket this frame
+				tfxU32 fresh_per_bucket[64] = {};
+				TFX_ASSERT(bucket_count <= 64);
+				tfxU32 fresh_ribbon_count = 0;
+				tfxU32 bucket_idx = 0;
 				for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
+					for (int emitter_index : bucket.control_ribbon_queue) {
+						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[emitter_index];
+						fresh_per_bucket[bucket_idx] += ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size;
+					}
+					fresh_ribbon_count += fresh_per_bucket[bucket_idx];
+					bucket_idx++;
+				}
+
+				if (running_ribbon_count[frame] > 0 && fresh_ribbon_count > 0) {
+					//Save ALL existing ribbon data for this frame to a temporary buffer
+					tfxU32 existing_count = running_ribbon_count[frame];
+					tfx__resize_soa_buffer(&temp_ribbons_buffer, existing_count);
+					memcpy(temp_ribbons.ribbon_instance, sprite_data->real_time_ribbons.ribbon_instance + ribbon_frame_meta[frame].index_offset, sizeof(tfx_ribbon_t) * existing_count);
+					memcpy(temp_ribbons.uid, sprite_data->real_time_ribbons.uid + ribbon_frame_meta[frame].index_offset, sizeof(tfx_unique_sprite_id_t) * existing_count);
+				}
+
+				//Write ribbons bucket by bucket, merging fresh and old per-bucket to maintain grouping
+				tfxU32 ribbon_write_index = ribbon_frame_meta[frame].index_offset;
+				tfxU32 old_read_offset = 0;
+				bucket_idx = 0;
+				for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
+					//Write fresh ribbons for this bucket
 					for (int emitter_index : bucket.control_ribbon_queue) {
 						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[emitter_index];
 						for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
@@ -9184,7 +9218,21 @@ TFX_ENABLE_COMPILER_WARNING()
 							ribbon_write_index++;
 						}
 					}
+
+					//Append old ribbons for this bucket from the temp buffer to keep bucket grouping
+					tfxU32 old_bucket_count = running_ribbon_count_per_bucket[frame * bucket_count + bucket_idx];
+					if (old_bucket_count > 0 && fresh_ribbon_count > 0) {
+						memcpy(sprite_data->real_time_ribbons.ribbon_instance + ribbon_write_index, temp_ribbons.ribbon_instance + old_read_offset, sizeof(tfx_ribbon_t) * old_bucket_count);
+						memcpy(sprite_data->real_time_ribbons.uid + ribbon_write_index, temp_ribbons.uid + old_read_offset, sizeof(tfx_unique_sprite_id_t) * old_bucket_count);
+						ribbon_write_index += old_bucket_count;
+					}
+					old_read_offset += old_bucket_count;
+
+					running_ribbon_count_per_bucket[frame * bucket_count + bucket_idx] += fresh_per_bucket[bucket_idx];
+					bucket_idx++;
 				}
+
+				running_ribbon_count[frame] += fresh_ribbon_count;
 			}
 		}
 
@@ -9297,6 +9345,8 @@ TFX_ENABLE_COMPILER_WARNING()
 	for (tfxEachLayer) {
 		running_count[layer].free();
 	}
+	running_ribbon_count.free();
+	running_ribbon_count_per_bucket.free();
 }
 
 void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, float frame_length, int *progress) {
@@ -9586,7 +9636,7 @@ void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU3
 	animation_manager->free_instances.push_back(index);
 }
 
-void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, bool *has_animated_shape) {
+void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfxU32 &ribbon_indexes, bool *has_animated_shape) {
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type == tfxEmitterType) {
 		if (effect->library->emitter_properties[effect->property_index].animation_property_index != tfxINVALID) {
@@ -9632,6 +9682,31 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			} else {
 				properties.start_frame_index = image.compute_shape_index;
 			}
+			//Find or create a compatible animation ribbon bucket
+			tfxKey bucket_id = (tfxKey)properties.segment_count | ((tfxKey)properties.shader_type << 16);
+			tfxU32 found_bucket_index = tfxINVALID;
+			for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
+				if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
+					found_bucket_index = b;
+					break;
+				}
+			}
+			if (found_bucket_index == tfxINVALID) {
+				tfx_animation_ribbon_bucket_t bucket{};
+				bucket.bucket_id = bucket_id;
+				bucket.segment_count = properties.segment_count;
+				bucket.tessellation = properties.tessellation;
+				bucket.shader_type = properties.shader_type;
+				bucket.max_ribbon_count = 0;
+				bucket.ribbon_count = 0;
+				bucket.ribbon_offset = 0;
+				bucket.index_offset = 0;
+				bucket.vertex_offset = 0;
+				found_bucket_index = animation_manager->animation_ribbon_buckets.current_size;
+				animation_manager->animation_ribbon_buckets.push_back(bucket);
+			}
+			properties.bucket_index = found_bucket_index;
+
 			tfxU32 index = animation_manager->ribbon_properties.current_size;
 			effect->library->ribbon_properties[effect->property_index].animation_property_index = index;
 			tfx__readbarrier;
@@ -9641,7 +9716,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		}
 	} else {
 		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_effect_emitter_properties(animation_manager, sub, has_animated_shape);
+			tfx__add_effect_emitter_properties(animation_manager, sub, ribbon_indexes, has_animated_shape);
 		}
 	}
 }
@@ -9672,7 +9747,9 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	}
 
 	bool has_animated_shape = false;
-	tfx__add_effect_emitter_properties(animation_manager, effect, &has_animated_shape);
+	tfxU32 ribbon_indexes = tfxINVALID;
+	tfxU32 ribbon_property_start = animation_manager->ribbon_properties.current_size;
+	tfx__add_effect_emitter_properties(animation_manager, effect, ribbon_indexes, &has_animated_shape);
 
 	tfx_sprite_data_t &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 	animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
@@ -9711,6 +9788,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 
 	//Ribbon data
 	if (metrics.total_ribbons) {
+		//Add the property indexes that were added into the metrics
 		tfx_ribbon_data_soa_t &ribbons = sprite_data.compressed_ribbons;
 		metrics.ribbon_start_offset = animation_manager->ribbon_data.current_size;
 		metrics.ribbon_segment_start_offset = animation_manager->ribbon_segment_data.current_size;
@@ -9730,6 +9808,45 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 			animation_manager->ribbon_data.push_back_copy(ribbon);
 		}
 		metrics.total_memory_for_ribbons = sizeof(tfx_ribbon_instance_data_t) * metrics.total_ribbons;
+
+		//Precompute per-property per-frame ribbon counts and aggregate max counts per bucket
+		//ribbon_property_start and local_property_count scope this effect's properties within the global list
+		tfxU32 local_property_count = animation_manager->ribbon_properties.current_size - ribbon_property_start;
+		tfxU32 frame_count = metrics.ribbon_frame_meta.current_size;
+		metrics.ribbon_property_start = ribbon_property_start;
+		metrics.ribbon_property_count = local_property_count;
+		metrics.per_property_ribbon_counts.resize(frame_count * local_property_count);
+		memset(metrics.per_property_ribbon_counts.data, 0, frame_count * local_property_count * sizeof(tfxU32));
+
+		//Count ribbons per property per frame using local indices (0..local_property_count)
+		tfxU32 max_per_property[64] = {};
+		TFX_ASSERT(local_property_count <= 64);
+		for (tfxU32 f = 0; f < frame_count; f++) {
+			tfx_ribbon_frame_meta_t &meta = metrics.ribbon_frame_meta[f];
+			for (tfxU32 i = 0; i < meta.ribbon_count; ++i) {
+				tfxU32 compressed_index = meta.index_offset + i;
+				tfxU32 library_property_index = ribbons.uid[compressed_index].property_index;
+				tfx_ribbon_emitter_properties_t &ribbon_emitter_properties = effect->library->ribbon_properties[library_property_index];
+				tfxU32 animation_property_index = ribbon_emitter_properties.animation_property_index;
+				TFX_ASSERT(animation_property_index >= ribbon_property_start && animation_property_index < ribbon_property_start + local_property_count);
+				tfxU32 local_index = animation_property_index - ribbon_property_start;
+				metrics.per_property_ribbon_counts[f * local_property_count + local_index]++;
+			}
+			//Track max per local property
+			for (tfxU32 p = 0; p < local_property_count; p++) {
+				tfxU32 count = metrics.per_property_ribbon_counts[f * local_property_count + p];
+				if (count > max_per_property[p]) {
+					max_per_property[p] = count;
+				}
+			}
+		}
+
+		//Aggregate max counts per bucket from this effect's properties
+		for (tfxU32 p = 0; p < local_property_count; p++) {
+			tfxU32 bucket_index = animation_manager->ribbon_properties[ribbon_property_start + p].bucket_index;
+			animation_manager->animation_ribbon_buckets[bucket_index].max_ribbon_count += max_per_property[p];
+		}
+
 		for (tfx_ribbon_frame_meta_t &meta : metrics.ribbon_frame_meta) {
 			meta.index_offset += metrics.ribbon_start_offset;
 		}
@@ -9801,6 +9918,10 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 	tfxU32 running_sprite_count = 0;
 	tfxU32 running_ribbon_count = 0;
 	animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
+	//Zero bucket ribbon counts for this frame
+	for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
+		animation_manager->animation_ribbon_buckets[b].ribbon_count = 0;
+	}
 	for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
 		tfx_animation_instance_t &instance = animation_manager->instances[i];
 		tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[instance.info_index];
@@ -9814,12 +9935,29 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 				instance.sprite_count = metrics.frame_meta[0].total_sprites;
 				instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 				instance.current_time -= instance.animation_length_in_time;
+				if (metrics.ribbon_frame_meta.current_size > 0) {
+					instance.ribbon_count = metrics.ribbon_frame_meta[0].ribbon_count;
+					instance.offset_into_ribbon_data = metrics.ribbon_frame_meta[0].index_offset;
+				} else {
+					instance.ribbon_count = 0;
+					instance.offset_into_ribbon_data = 0;
+				}
 				animation_manager->instances_in_use[next_buffer].push_back(i);
 				if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[0], animation_manager->user_data)) {
 					continue;
 				}
+				//Accumulate per-property ribbon counts into buckets for frame 0
+				if (metrics.ribbon_property_count > 0) {
+					for (tfxU32 p = 0; p < metrics.ribbon_property_count; p++) {
+						tfxU32 count = metrics.per_property_ribbon_counts[0 * metrics.ribbon_property_count + p];
+						tfxU32 bucket_index = animation_manager->ribbon_properties[metrics.ribbon_property_start + p].bucket_index;
+						animation_manager->animation_ribbon_buckets[bucket_index].ribbon_count += count;
+					}
+				}
 				running_sprite_count += instance.sprite_count;
+				running_ribbon_count += instance.ribbon_count;
 				animation_manager->offsets.push_back(running_sprite_count);
+				animation_manager->ribbon_offsets.push_back(running_ribbon_count);
 				animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
 				animation_manager->render_queue.push_back(instance);
 				tfx_UpdateAnimationManagerBufferMetrics(animation_manager);
@@ -9842,6 +9980,14 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 			if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[frame], animation_manager->user_data)) {
 				continue;
 			}
+			//Accumulate per-property ribbon counts into buckets for this frame
+			if (metrics.ribbon_property_count > 0) {
+				for (tfxU32 p = 0; p < metrics.ribbon_property_count; p++) {
+					tfxU32 count = metrics.per_property_ribbon_counts[frame * metrics.ribbon_property_count + p];
+					tfxU32 bucket_index = animation_manager->ribbon_properties[metrics.ribbon_property_start + p].bucket_index;
+					animation_manager->animation_ribbon_buckets[bucket_index].ribbon_count += count;
+				}
+			}
 			animation_manager->render_queue.push_back(instance);
 			running_sprite_count += instance.sprite_count;
 			running_ribbon_count += instance.ribbon_count;
@@ -9853,6 +9999,22 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 	}
 	animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
 	animation_manager->buffer_metrics.total_ribbons_to_draw = running_ribbon_count;
+	//Compute per-bucket offsets
+	{
+		tfxU32 running_ribbon = 0;
+		tfxU32 running_vertex = 0;
+		tfxU32 running_index = 0;
+		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
+			tfx_animation_ribbon_bucket_t &bucket = animation_manager->animation_ribbon_buckets[b];
+			bucket.ribbon_offset = running_ribbon;
+			bucket.vertex_offset = running_vertex;
+			bucket.index_offset = running_index;
+			tfx_ribbon_buffer_info_t info = tfx__generate_ribbon_buffer_info(bucket.tessellation);
+			running_ribbon += bucket.ribbon_count;
+			running_vertex += bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment;
+			running_index += bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment;
+		}
+	}
 	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
@@ -9867,7 +10029,11 @@ void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
 	tfxU32 running_sprite_count = 0;
 	animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
 	tfxU32 running_ribbon_count = 0;
-	for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
+	//Zero bucket ribbon counts for this frame
+	for (tfx_animation_ribbon_bucket_t &bucket : animation_manager->animation_ribbon_buckets) {
+		bucket.ribbon_count = 0;
+	}
+	for (tfxU32 i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
 		tfx_animation_instance_t &instance = animation_manager->instances[i];
 		tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
@@ -9882,6 +10048,14 @@ void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
 			instance.ribbon_count = 0;
 			instance.offset_into_ribbon_data = 0;
 		}
+		//Accumulate per-property ribbon counts into buckets for this frame
+		if (metrics.ribbon_property_count > 0) {
+			for (tfxU32 p = 0; p < metrics.ribbon_property_count; p++) {
+				tfxU32 count = metrics.per_property_ribbon_counts[frame * metrics.ribbon_property_count + p];
+				tfxU32 bucket_index = animation_manager->ribbon_properties[metrics.ribbon_property_start + p].bucket_index;
+				animation_manager->animation_ribbon_buckets[bucket_index].ribbon_count += count;
+			}
+		}
 		animation_manager->instances_in_use[next_buffer].push_back(i);
 		animation_manager->render_queue.push_back(instance);
 		running_sprite_count += instance.sprite_count;
@@ -9893,6 +10067,21 @@ void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
 	}
 	animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
 	animation_manager->buffer_metrics.total_ribbons_to_draw = running_ribbon_count;
+	//Compute per-bucket offsets
+	{
+		tfxU32 running_ribbon = 0;
+		tfxU32 running_vertex = 0;
+		tfxU32 running_index = 0;
+		for (tfx_animation_ribbon_bucket_t &bucket : animation_manager->animation_ribbon_buckets) {
+			bucket.ribbon_offset = running_ribbon;
+			bucket.vertex_offset = running_vertex;
+			bucket.index_offset = running_index;
+			tfx_ribbon_buffer_info_t info = tfx__generate_ribbon_buffer_info(bucket.tessellation);
+			running_ribbon += bucket.ribbon_count;
+			running_vertex += bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment;
+			running_index += bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment;
+		}
+	}
 	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
@@ -9921,6 +10110,7 @@ void tfx_ResetAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->ribbon_offsets.clear();
 	animation_manager->emitter_properties.clear();
 	animation_manager->ribbon_properties.clear();
+	animation_manager->animation_ribbon_buckets.clear();
 	animation_manager->sprite_data_settings.clear();
 	animation_manager->effect_animation_info.Clear();
 	animation_manager->particle_shapes.Clear();
@@ -9945,6 +10135,13 @@ void tfx_FreeAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->offsets.free();
 	animation_manager->sprite_data.free();
 	animation_manager->emitter_properties.free();
+	animation_manager->ribbon_properties.free();
+	animation_manager->animation_ribbon_buckets.free();
+	animation_manager->ribbon_data.free();
+	animation_manager->ribbon_segment_data.free();
+	animation_manager->ribbon_graph_data.free();
+	animation_manager->ribbon_offsets.free();
+	animation_manager->ribbon_property_metrics.free();
 	animation_manager->effect_animation_info.FreeAll();
 	animation_manager->sprite_data_settings.free();
 	animation_manager->particle_shapes.FreeAll();

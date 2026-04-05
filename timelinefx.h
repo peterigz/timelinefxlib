@@ -6645,6 +6645,13 @@ typedef struct tfx_sprite_data_metrics_s {
 	tfxU32 total_memory_for_ribbons;
 	tfxU32 ribbon_start_offset;
 	tfxU32 ribbon_segment_start_offset;
+#ifdef __cplusplus
+	tfx_vector_t<tfxU32> per_property_ribbon_counts;
+#else
+	tfx_vector_t per_property_ribbon_counts;
+#endif
+	tfxU32 ribbon_property_start;
+	tfxU32 ribbon_property_count;
 } tfx_sprite_data_metrics_t;
 
 typedef struct tfx_ribbon_segment_s {
@@ -6978,7 +6985,12 @@ typedef struct tfx_effect_data_s {
 	float *intensity;
 	float *splatter;
 	float *weight;
-}tfx_effect_data_t;
+} tfx_effect_data_t;
+
+typedef struct tfx_animation_instance_ribbon_data_s {
+	tfxU32 ribbon_count;                //The number of ribbons to be drawn per emitter
+	tfxU32 offset_into_ribbon_data;     //The starting ofset in the buffer that contains all the ribbon data
+} tfx_animation_instance_ribbon_data_t;
 
 //An anim instance is used to let the gpu know where to draw an animation with sprite data. 48 bytes
 typedef struct tfx_animation_instance_s {
@@ -6994,7 +7006,7 @@ typedef struct tfx_animation_instance_s {
 	float animation_length_in_time;     //Total time that the animation lasts for
 	float tween;                        //The point time within the frame (0..1)
 	tfxAnimationInstanceFlags flags;    //Flags associated with the instance
-}tfx_animation_instance_t;
+} tfx_animation_instance_t;
 
 typedef struct tfx_animation_buffer_metrics_s {
 	size_t sprite_data_size;
@@ -7031,7 +7043,21 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 start_frame_index;
 	tfxU32 flags;
 	tfxU32 graph_lookup_offset;
+	tfxU32 bucket_index;
 } tfx_animation_ribbon_properties_t;
+
+typedef struct tfx_animation_ribbon_bucket_s {
+	tfxKey bucket_id;
+	tfxU32 segment_count;
+	tfxU32 tessellation;
+	tfxRibbonBucketComputeShaderType shader_type;
+	tfxU32 max_ribbon_count;
+	//Per-frame dynamic (set during Update/Cycle):
+	tfxU32 ribbon_count;
+	tfxU32 ribbon_offset;
+	tfxU32 index_offset;
+	tfxU32 vertex_offset;
+} tfx_animation_ribbon_bucket_t;
 
 typedef struct tfx_color_ramp_bitmap_data_t {
 #ifdef __cplusplus
@@ -7105,7 +7131,9 @@ typedef struct tfx_animation_manager_s {
 	tfx_vector_t<tfx_ribbon_instance_data_t> ribbon_data;
 	tfx_vector_t<tfx_ribbon_segment_t> ribbon_segment_data;
 	tfx_vector_t<tfx_animation_ribbon_properties_t> ribbon_properties;
+	tfx_vector_t<tfx_animation_instance_ribbon_data_t> ribbon_property_metrics;
 	tfx_vector_t<tfx_gpu_graph_data_t> ribbon_graph_data;
+	tfx_vector_t<tfx_animation_ribbon_bucket_t> animation_ribbon_buckets;
 } tfx_animation_manager_t;
 #endif
 
@@ -9208,7 +9236,7 @@ tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *parti
 //--------------------------------
 tfxINTERNAL tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager animation_manager);
 tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU32 index);
-tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, bool *has_animated_shape);
+tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfxU32 &ribbon_indexes, bool *has_animated_shape);
 tfxINTERNAL bool tfx__free_pm_effect_capacity(tfx_effect_manager pm);
 tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances);
 
