@@ -2344,6 +2344,11 @@ tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect
 	ribbon->shared_index = tfx__allocate_library_shared_properties(ribbon->library);
 	ribbon->path_attributes = tfx__add_emitter_path_attributes(ribbon->library);
 	tfx_emitter_path_t *path = &ribbon->library->paths[ribbon->path_attributes];
+	const float *nodes = tfx__path_preset_vline;
+	int node_count = tfx__array_size(tfx__path_preset_vline) / 3;
+	path->buffers.nodes.resize(node_count); 
+	memcpy(path->buffers.nodes.data, nodes, path->buffers.nodes.size_in_bytes());
+	path->settings.node_count = node_count;
 	path->settings.extrusion_type = tfxExtrusionLinear;
 	tfx__build_path_nodes(path);
 	ribbon->ribbon_flags |= tfxRibbonPropertyFlags_static;
@@ -2680,7 +2685,6 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library lib
 }
 
 tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only) {
-	tfx_vec3_t direction;
 	if (y_axis_only) {
 		range *= 0.5f;
 		yaw += tfx_RandomRangeFromTo(random, -range, range);
@@ -2690,15 +2694,28 @@ tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, fl
 		return combined_quaternion;
 	}
 	else {
-		pitch -= tfx90Radians;
-		direction.z = cosf(yaw) * cosf(pitch);
-		direction.y = -sinf(pitch);
-		direction.x = sinf(yaw) * cosf(pitch);
-		tfx_vec3_t v = direction;
+		tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, yaw);
+		tfx_quaternion_t pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, pitch);
+		tfx_quaternion_t base_quaternion = yaw_quaternion * pitch_quaternion;
 		if (range != 0) {
-			v = tfx__random_vector_in_cone(random, v, range * .5f);
+			float half_range = range * 0.5f;
+			// Random roll to randomize path orientation before tilting.
+			// This ensures non-symmetric paths (flat, curved etc.) get full 3D coverage.
+			float roll = tfx_RandomRangeFromTo(random, 0.0f, 2.0f * tfxPI);
+			// Random azimuthal angle (full circle around cone axis)
+			float phi = tfx_RandomRangeFromTo(random, 0.0f, 2.0f * tfxPI);
+			// Cos-weighted polar angle sampling for uniform distribution on spherical cap
+			float cos_half_range = cosf(half_range);
+			float random_cos = tfx_RandomRangeFromTo(random, cos_half_range, 1.0f);
+			float theta = acosf(random_cos);
+			// Build perturbation: roll the path shape around Y, tilt by theta, then distribute azimuthally
+			tfx_quaternion_t roll_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, roll);
+			tfx_quaternion_t perturbation_pitch = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, theta);
+			tfx_quaternion_t perturbation_yaw = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, phi);
+			tfx_quaternion_t perturbation = roll_quaternion * perturbation_pitch * perturbation_yaw;
+			return perturbation * base_quaternion;
 		}
-		return tfx__quaternion_from_direction(&v);
+		return base_quaternion;
 	}
 }
 
@@ -5063,7 +5080,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("path_handle_y", tfxFloat);
 	names_and_types.Insert("path_handle_z", tfxFloat);
 
-	//Sprite data settings
+	//Sprite/Ribbon data settings
 	names_and_types.Insert("start_offset", tfxUInt);
 	names_and_types.Insert("frames_after_compression", tfxUInt);
 	names_and_types.Insert("real_frames", tfxUInt);
@@ -5077,10 +5094,22 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("path_hash", tfxUInt64);
 
+	names_and_types.Insert("total_ribbons", tfxUInt);
+	names_and_types.Insert("total_memory_for_ribbons", tfxUInt);
+	names_and_types.Insert("ribbon_start_offset", tfxUInt);
+	names_and_types.Insert("ribbon_segment_start_offset", tfxUInt);
+	names_and_types.Insert("ribbon_property_start", tfxUInt);
+	names_and_types.Insert("ribbon_property_count", tfxUInt);
+
 	//Frame meta
 	names_and_types.Insert("total_sprites", tfxUInt);
 	names_and_types.Insert("min_corner", tfxFloat3);
 	names_and_types.Insert("max_corner", tfxFloat3);
+
+	//Ribbon frame meta
+	names_and_types.Insert("index_offset", tfxUInt);
+	names_and_types.Insert("ribbon_count", tfxUInt);
+	names_and_types.Insert("captured_offset", tfxUInt);
 
 	//Sprite data emitter properties
 	names_and_types.Insert("animation_frames", tfxFloat);
@@ -5440,6 +5469,18 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 		metrics->flags = value;
 	if (*field == "animation_flags")
 		metrics->animation_flags = value;
+	if (*field == "total_ribbons")
+		metrics->total_ribbons = value;
+	if (*field == "total_memory_for_ribbons")
+		metrics->total_memory_for_ribbons = value;
+	if (*field == "ribbon_start_offset")
+		metrics->ribbon_start_offset = value;
+	if (*field == "ribbon_segment_start_offset")
+		metrics->ribbon_segment_start_offset = value;
+	if (*field == "ribbon_property_start")
+		metrics->ribbon_property_start = value;
+	if (*field == "ribbon_property_count")
+		metrics->ribbon_property_count = value;
 }
 
 tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
@@ -8233,9 +8274,30 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	animation_manager->sprite_data.resize((tfxU32)(sprite_data->file_size / package->header.user_data1));
 	memcpy(animation_manager->sprite_data.data, sprite_data->data.data, sprite_data->file_size);
 
+	tfx_package_entry_info_t *ribbon_data = tfx__get_package_file(package, "ribbon_data");
+	if (ribbon_data && ribbon_data->file_size > 0) {
+		animation_manager->ribbon_data.resize((tfxU32)(ribbon_data->file_size / sizeof(tfx_ribbon_instance_data_t)));
+		memcpy(animation_manager->ribbon_data.data, ribbon_data->data.data, ribbon_data->file_size);
+	}
+
+	tfx_package_entry_info_t *ribbon_segment_data = tfx__get_package_file(package, "ribbon_segment_data");
+	if (ribbon_segment_data && ribbon_segment_data->file_size > 0) {
+		animation_manager->ribbon_segment_data.resize((tfxU32)(ribbon_segment_data->file_size / sizeof(tfx_ribbon_segment_t)));
+		memcpy(animation_manager->ribbon_segment_data.data, ribbon_segment_data->data.data, ribbon_segment_data->file_size);
+	}
+
+	tfx_package_entry_info_t *ribbon_properties_data = tfx__get_package_file(package, "ribbon_properties");
+	if (ribbon_properties_data && ribbon_properties_data->file_size > 0) {
+		animation_manager->ribbon_properties.resize((tfxU32)(ribbon_properties_data->file_size / sizeof(tfx_animation_ribbon_properties_t)));
+		memcpy(animation_manager->ribbon_properties.data, ribbon_properties_data->data.data, ribbon_properties_data->file_size);
+	}
+
 	tmpStack(tfx_sprite_data_metrics_t, metrics_stack);
 	tmpStack(tfx_frame_meta_t, frame_meta_stack);
+	tmpStack(tfx_ribbon_frame_meta_t, ribbon_frame_meta_stack);
+	tmpStack(tfxU32, ribbon_count_stack);
 	tmpStack(tfx_animation_emitter_properties_t, emitter_properties_stack);
+	tmpStack(tfx_animation_ribbon_properties_t, ribbon_properties_stack);
 	tmpStack(tfx_str256_t, pair);
 	tmpStack(tfx_str256_t, multi);
 
@@ -8263,6 +8325,13 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				tfx_frame_meta_t frame_meta;
 				frame_meta_stack.push_back_copy(frame_meta);
 			}
+			else if (context == tfxStartRibbonFrameMeta) {
+				tfx_ribbon_frame_meta_t frame_meta;
+				ribbon_frame_meta_stack.push_back_copy(frame_meta);
+			}
+			else if (context == tfxStartRibbonEmitterCount) {
+				//Value will be parsed on the next line
+			}
 			else if (context == tfxStartEmitter) {
 				tfx_animation_emitter_properties_t emitter_properties;
 				emitter_properties_stack.push_back_copy(emitter_properties);
@@ -8270,6 +8339,13 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		}
 
 		if (context_set == false) {
+			//Ribbon emitter count is a bare value, not a key=value pair
+			if (context == tfxStartRibbonEmitterCount) {
+				tfxU32 ribbon_count = (tfxU32)atoi(line.start);
+				ribbon_count_stack.push_back(ribbon_count);
+				continue;
+			}
+
 			pair.clear();
 			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
@@ -8353,6 +8429,16 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 					//Not enougn layers, set tfxLAYERS to the required amount. The default is 4.
 				}
 			}
+			else if (context == tfxStartRibbonFrameMeta) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
+					if (pair[0] == "index_offset")
+						ribbon_frame_meta_stack.back().index_offset = (tfxU32)atoi(pair[1].c_str());
+					else if (pair[0] == "ribbon_count")
+						ribbon_frame_meta_stack.back().ribbon_count = (tfxU32)atoi(pair[1].c_str());
+					else if (pair[0] == "captured_offset")
+						ribbon_frame_meta_stack.back().captured_offset = (tfxU32)atoi(pair[1].c_str());
+				}
+			}
 
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
@@ -8403,6 +8489,16 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			TFX_ASSERT(frame_meta_stack.current_size);
 			metrics_stack.back().frame_meta.push_back_copy(frame_meta_stack.pop_back());
 		}
+		else if (context == tfxEndRibbonFrameMeta) {
+			TFX_ASSERT(metrics_stack.current_size);
+			TFX_ASSERT(ribbon_frame_meta_stack.current_size);
+			metrics_stack.back().ribbon_frame_meta.push_back_copy(ribbon_frame_meta_stack.pop_back());
+		}
+		else if (context == tfxEndRibbonEmitterCount) {
+			TFX_ASSERT(metrics_stack.current_size);
+			TFX_ASSERT(ribbon_count_stack.current_size);
+			metrics_stack.back().per_property_ribbon_counts.push_back(ribbon_count_stack.pop_back());
+		}
 		else if (context == tfxEndEffectAnimationInfo) {
 			TFX_ASSERT(metrics_stack.current_size);
 			animation_manager->effect_animation_info.Insert(metrics_stack.back().name.c_str(), metrics_stack.back());
@@ -8439,7 +8535,10 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 	metrics_stack.free();
 	frame_meta_stack.free();
+	ribbon_frame_meta_stack.free();
+	ribbon_count_stack.free();
 	emitter_properties_stack.free();
+	ribbon_properties_stack.free();
 	pair.free();
 	multi.free();
 

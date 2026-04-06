@@ -2701,6 +2701,10 @@ typedef enum {
 	tfxEndGraphProperties,
 	tfxStartPathNodes,
 	tfxEndPathNodes,
+	tfxStartRibbonFrameMeta,
+	tfxEndRibbonFrameMeta,
+	tfxStartRibbonEmitterCount,
+	tfxEndRibbonEmitterCount
 } tfx_effect_library_stream_context;
 
 typedef enum {
