@@ -16018,21 +16018,21 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z)
 				};
 				ribbon.position += offset;
-				if (splatter) {
-					tfx_vec3_t splat = {
-						tfx_RandomRangeFromTo(&random, -splatter, splatter),
-						tfx_RandomRangeFromTo(&random, -splatter, splatter),
-						tfx_RandomRangeFromTo(&random, -splatter, splatter)
-					};
-
-					while (powf(splat.x / splatter, 2.f) + powf(splat.y / splatter, 2.f) + powf(splat.z / splatter, 2.f) > 1.f) {
-						splat.x = tfx_RandomRangeFromTo(&random, -splatter, splatter);
-						splat.y = tfx_RandomRangeFromTo(&random, -splatter, splatter);
-						splat.z = tfx_RandomRangeFromTo(&random, -splatter, splatter);
-					}
-					ribbon.position += splat;
-				}
 			} 
+			if (splatter) {
+				tfx_vec3_t splat = {
+					tfx_RandomRangeFromTo(&random, -splatter, splatter),
+					tfx_RandomRangeFromTo(&random, -splatter, splatter),
+					tfx_RandomRangeFromTo(&random, -splatter, splatter)
+				};
+
+				while (powf(splat.x / splatter, 2.f) + powf(splat.y / splatter, 2.f) + powf(splat.z / splatter, 2.f) > 1.f) {
+					splat.x = tfx_RandomRangeFromTo(&random, -splatter, splatter);
+					splat.y = tfx_RandomRangeFromTo(&random, -splatter, splatter);
+					splat.z = tfx_RandomRangeFromTo(&random, -splatter, splatter);
+				}
+				ribbon.position += splat;
+			}
 			float image_frame = (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && entry->shared_properties->image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, entry->shared_properties->image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + tfxU32(image_frame));
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
