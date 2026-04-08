@@ -3199,6 +3199,8 @@ typedef tfxU32 tfxAddress;
 #define tfxSPRITE_SIZE_SSCALE	0.25000762962736f
 #define tfxSPRITE_HANDLE_SSCALE 0.00390636921292f
 
+#define tfxMAX_PATH_NODES 1024
+
 //These constants are the min an max levels for the emitter attribute graphs
 const float tfxLIFE_MIN = 0.f;
 const float tfxLIFE_MAX = 100000.f;

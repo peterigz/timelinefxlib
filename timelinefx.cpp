@@ -3442,7 +3442,11 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	tfx__initialise_path(&path);
 	path.settings.flags = 0;
 	path.settings.name.Clear();
-	path.settings.node_count = 32;
+	const float *nodes = tfx__path_preset_vline;
+	int node_count = tfx__array_size(tfx__path_preset_vline) / 3;
+	path.buffers.nodes.resize(node_count); 
+	memcpy(path.buffers.nodes.data, nodes, path.buffers.nodes.size_in_bytes());
+	path.settings.node_count = node_count;
 	path.settings.nodes_to_commit = 32;
 	path.settings.extrusion_type = tfxExtrusionArc;
 	path.settings.maximum_active_paths = 1;
