@@ -2304,7 +2304,7 @@ void tfx__update_source_emitter_flags(tfx_effect_descriptor effect) {
 	tmpStack(tfxKey, stack);
 	for(tfx_effect_descriptor child : effect->children) {
 		child->shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source;
-		if(tfx__get_shared_emitter_properties(child)->emission_type == tfxOtherEmitter) {
+		if(tfx__get_shared_emitter_properties(child)->emission_type == tfxOtherEmitter || tfx__get_shared_emitter_properties(child)->emission_type == tfxSpawnOnRibbon) {
 			stack.push_back(tfx__get_shared_emitter_properties(child)->paired_emitter_hash);
 		}
 	}
@@ -3600,7 +3600,13 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start, int
 
 void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
-	if (node_count == 0) return;
+	if (node_count == 0) {
+		//Add a small dummy path if the node count is 0
+		path->buffers.nodes.resize(4);
+		path->buffers.nodes.zero();
+		node_count = 4;
+		path->settings.node_count = 4;
+	}
 	path->settings.node_count = node_count;
 	if (!path->buffers.node_buffer.capacity) {
 		tfx__init_paths_soa(&path->buffers.node_buffer, &path->buffers.node_soa, node_count);
@@ -10943,16 +10949,20 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
-void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
+void tfx__update_effect_manager(void *data) {
+	tfx_effect_manager pm = (tfx_effect_manager)data;
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfxPROFILE;
+
+	double elapsed_time = pm->manager_work.elapsed_time;
 
 	if (pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer) {
 		TFX_ASSERT(pm->instance_buffer.data);	//You must call tfx_SetStagingBuffer if flagging the particle manager to write direct to staging buffer
 	}
 	if(elapsed_time <= 0) return;
 
-	tfx__complete_all_work(&pm->work_queue);
+	tfx__sync_lock(&pm->updating);
+	pm->flags |= tfxEffectManagerFlags_updating;
 
 	if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
 		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
@@ -10967,9 +10977,9 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 		}
 	}
 
-	pm->frame_length = tfx__Min(elapsed_time, pm->max_frame_length);
+	pm->frame_length = tfx__Min((float)elapsed_time, pm->max_frame_length);
 	pm->frame_length_wide = tfxWideSetSingle(pm->frame_length);
-	pm->update_frequency = 1000.f / elapsed_time;
+	pm->update_frequency = 1000.f / (float)elapsed_time;
 	pm->update_time = 1.f / pm->update_frequency;
 	pm->update_time_wide = tfxWideSetSingle(pm->update_time);
 	pm->new_compute_particle_index = 0;
@@ -11119,13 +11129,13 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed_time) {
 
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
 		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-		if (tfx__is_ordered_effect_state(&pm->effects[effect_index.index])) {
-TFX_ENABLE_COMPILER_WARNING()
-			for (tfxEachLayer) {
-				tfx__order_effect_sprites(&sprites, layer, pm);
+		TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
+			if (tfx__is_ordered_effect_state(&pm->effects[effect_index.index])) {
+				TFX_ENABLE_COMPILER_WARNING()
+					for (tfxEachLayer) {
+						tfx__order_effect_sprites(&sprites, layer, pm);
+					}
 			}
-		}
 	}
 
 	bool is_recording = (pm->flags & tfxEffectManagerFlags_recording_sprites) > 0 && (pm->flags & tfxEffectManagerFlags_using_uids) > 0;
@@ -11140,16 +11150,16 @@ TFX_ENABLE_COMPILER_WARNING()
 			tfxU32 first_index = tfx__get_circular_index(&bank, 0) / tfxDataWidth * tfxDataWidth;
 			tfxU32 running_sprite_index = 0;
 			/*
-			There's a surprising amount of problems to solve here to make sure that all particles are updated and all sprites are correctly updated too.
-			The main problem comes from the fact that the particle buffer is a ring buffer that is udpated using SIMD at a rate of 4 or 8 particles at a time. The sprite
-			buffer is a simpler linear buffer that gets written to from the start of the buffer each update. The main issue to solve is how to account for the rounding
-			of the particle indexes to to nearest tfxDataWidth multiple so that SIMD instructions are properly aligned and to take into account when paricles are updated
-			that have expired because it rounds down or up. We don't mind udpating a few extra particles that have expired because we won't write the sprite data for them so it
-			doesn't matter. For example the start index in the ring buffer might be 20 with a data width of 8, so in this instance it rounds down to 16 and starts from there. 
-			We need to be aware of this so that we don't write that particle data to the sprites, they need to update from 20 where the particles which
-			are still active start from.  This starting offset which is measured on the first batch only needs to be carried over to the next batches to ensure that all sprites are written to.
-			To ensure there's no overlap in the ring buffer when rounding the capacity is always ensured to be greater then the number of particles in the buffer + tfxDataWidth.
-			*/
+There's a surprising amount of problems to solve here to make sure that all particles are updated and all sprites are correctly updated too.
+The main problem comes from the fact that the particle buffer is a ring buffer that is udpated using SIMD at a rate of 4 or 8 particles at a time. The sprite
+buffer is a simpler linear buffer that gets written to from the start of the buffer each update. The main issue to solve is how to account for the rounding
+of the particle indexes to to nearest tfxDataWidth multiple so that SIMD instructions are properly aligned and to take into account when paricles are updated
+that have expired because it rounds down or up. We don't mind udpating a few extra particles that have expired because we won't write the sprite data for them so it
+doesn't matter. For example the start index in the ring buffer might be 20 with a data width of 8, so in this instance it rounds down to 16 and starts from there. 
+We need to be aware of this so that we don't write that particle data to the sprites, they need to update from 20 where the particles which
+are still active start from.  This starting offset which is measured on the first batch only needs to be carried over to the next batches to ensure that all sprites are written to.
+To ensure there's no overlap in the ring buffer when rounding the capacity is always ensured to be greater then the number of particles in the buffer + tfxDataWidth.
+*/
 			while (particles_to_update > 0) {
 				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
 				//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
@@ -11334,6 +11344,34 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 
 	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
+	pm->flags &= ~tfxEffectManagerFlags_updating;
+	tfx__sync_unlock(&pm->updating);
+}
+
+#ifdef _WIN32
+unsigned WINAPI tfx__update_effect_manager_thread(void *data) {
+#else
+void *tfx__update_effect_manager_thread(void *data) {
+#endif
+	tfx_effect_manager pm = (tfx_effect_manager)data;
+	tfx__update_effect_manager(pm);
+	return 0;
+}
+
+void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed_time) {
+	//Wait for the previous frame's update thread to finish
+	tfx__complete_all_work(&pm->work_queue);
+	tfx__wait_for_effect_manager_update(pm);
+
+	pm->manager_work.elapsed_time = elapsed_time;
+	pm->manager_work.pm = pm;
+
+	if ((pm->flags & tfxEffectManagerFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
+		tfx__update_effect_manager(pm);
+	} else {
+		tfx__create_thread(&pm->update_thread, tfx__update_effect_manager_thread, pm);
+		pm->update_thread_active = true;
+	}
 }
 
 void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes) {
@@ -13014,11 +13052,13 @@ Get the billboard buffer in the particle manager containing all the 3d billboard
 */
 tfx_instance_t *tfx_GetInstanceBuffer(tfx_effect_manager pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_effect_manager_update(pm);
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer);
 }
 
 int tfx_GetInstanceCount(tfx_effect_manager pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_effect_manager_update(pm);
 	return pm->instance_buffer.current_size;
 }
 
@@ -13029,6 +13069,7 @@ float tfx_GetUpdateTime(tfx_effect_manager pm) {
 
 tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_hash) {
 	tfx_ribbon_bucket_t *bucket = nullptr;
+	tfx__wait_for_effect_manager_update(pm);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_hash)) {
 		bucket = &pm->ribbon_segment_buckets.At(bucket_hash);
 	}
@@ -13037,6 +13078,7 @@ tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_h
 
 bool tfx_HasRibbonsToDraw() {
 	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		tfx__wait_for_effect_manager_update(pm);
 		if (pm->flags & tfxEffectManagerFlags_has_ribbons_to_draw) {
 			return true;
 		}
@@ -13101,6 +13143,7 @@ bool tfx_NextRibbonDispatch(tfx_ribbon_dispatch_t *ribbon_dispatch) {
 	if (!tfxStore->current_pm) {
 		tfxStore->current_pm = tfx__next_global_effect_manager();
 	}
+	tfx__wait_for_effect_manager_update(tfxStore->current_pm);
 	while (tfxStore->current_pm) {
 		tfx_ribbon_bucket_t *bucket = tfxStore->current_pm->ribbon_segment_buckets.next_item();
 		while (bucket) {
@@ -13154,6 +13197,7 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 	tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes = 0;
 	tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes = 0;
 	while (pm) {
+		tfx__wait_for_effect_manager_update(pm);
 		tfxStore->ribbon_buffer_requirements->segment_buffer_size_in_bytes += pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes;
 		tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes += pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes;
 		tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes += pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes;
@@ -13170,6 +13214,7 @@ void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, v
 		tfxU32 running_ribbon_offset = 0;
 		tfxU32 running_emitter_offset = 0;
 		while (pm) {
+			tfx__wait_for_effect_manager_update(pm);
 			tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 			while (bucket) {
 				if (bucket->active_ribbons == 0) {
@@ -13223,7 +13268,7 @@ void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max, tfxU3
 }
 
 void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, bool free_sprite_buffers) {
-	tfx__complete_all_work(&pm->work_queue);
+	tfx__wait_for_effect_manager_update(pm);
 	if (free_particle_banks) {
 		tfx__free_all_particle_lists(pm);
 		tfx__free_all_spawn_location_lists(pm);
@@ -13321,6 +13366,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 }
 
 void tfx_FreeEffectManager(tfx_effect_manager pm) {
+	tfx__wait_for_effect_manager_update(pm);
 	tfx__free_all_particle_lists(pm);
 	for (auto &list : pm->free_particle_lists.data) {
 		list.free();
@@ -13503,26 +13549,6 @@ void tfx__free_path_quaternion(tfx_effect_manager pm, tfxU32 index) {
 		pm->path_quaternions[index] = nullptr;
 		pm->free_path_quaternions.push_back(index);
 	}
-}
-
-tfxU32 tfx__get_particle_index_slot(tfx_effect_manager pm, tfxParticleID particle_id) {
-	tfx__sync_lock(&pm->particle_index_mutex);
-	if (!pm->free_particle_indexes.empty()) {
-		pm->particle_indexes[pm->free_particle_indexes.back()] = particle_id;
-		tfx__sync_unlock(&pm->particle_index_mutex);
-		return pm->free_particle_indexes.pop_back();
-	}
-	pm->particle_indexes.push_back(particle_id);
-	tfx__sync_unlock(&pm->particle_index_mutex);
-	return pm->particle_indexes.current_size - 1;
-}
-
-void tfx__free_particle_index(tfx_effect_manager pm, tfxU32 *index) {
-	tfx__sync_lock(&pm->particle_index_mutex);
-	pm->particle_indexes[*index] = tfxINVALID;
-	pm->free_particle_indexes.push_back(*index);
-	*index = tfxINVALID;
-	tfx__sync_unlock(&pm->particle_index_mutex);
 }
 
 tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index) {
@@ -14946,7 +14972,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 
 	int node = 0;
 	float t = 0.f;
-	tfxU32 qi = ribbon_emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+	tfxU32 qi = emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 	emitter.grid_coords.y = float(qi);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -14984,9 +15010,9 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		local_position_x = rp.x;
 		local_position_y = rp.y;
 		local_position_z = rp.z;
-		ribbon_emitter.path_state.last_path_index++;
-		ribbon_emitter.path_state.last_path_index %= ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-		qi = ribbon_emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+		emitter.path_state.last_path_index++;
+		emitter.path_state.last_path_index %= ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+		qi = emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 		TFX_ASSERT(qi < ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size);
 
 		if (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(emitter.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -17918,7 +17944,7 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 	pm->work_queue = { 0 };
 
 	tfx__sync_init(&pm->add_effect_mutex);
-	tfx__sync_init(&pm->particle_index_mutex);
+	tfx__sync_init(&pm->updating);
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the bucket size

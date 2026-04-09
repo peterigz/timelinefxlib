@@ -2871,8 +2871,8 @@ typedef enum {
 
 typedef enum {
 	tfxEffectManagerFlags_none                              	= 0,
-	tfxEffectManagerFlags_disable_spawning                  	= 1,
-	tfxEffectManagerFlags_force_capture                     	= 2,            //Unused
+	tfxEffectManagerFlags_updating		                     	= 1,
+	tfxEffectManagerFlags_disable_spawning                  	= 2,
 	tfxEffectManagerFlags_use_compute_shader                	= 1 << 3,
 	tfxEffectManagerFlags_update_base_values                	= 1 << 6,
 	tfxEffectManagerFlags_dynamic_sprite_allocation         	= 1 << 7,
@@ -5132,6 +5132,46 @@ tfxINTERNAL inline void tfx__cleanup_thread(tfx_storage_t * storage, int thread_
 #endif
 }
 
+// Create a single thread that runs a function once (not a pool worker).
+// Use tfx__join_thread to wait for it to complete and clean up the handle.
+tfxINTERNAL inline int tfx__create_thread(
+#ifdef _WIN32
+	HANDLE *thread_handle,
+	unsigned (WINAPI *proc)(void *),
+#else
+	pthread_t *thread_handle,
+	void *(*proc)(void *),
+#endif
+	void *data)
+{
+#ifdef _WIN32
+	*thread_handle = (HANDLE)_beginthreadex(NULL, 0, proc, data, 0, NULL);
+	return *thread_handle != NULL;
+#else
+	return pthread_create(thread_handle, NULL, proc, data) == 0;
+#endif
+}
+
+// Wait for a thread created with tfx__create_thread to finish and clean up the handle.
+tfxINTERNAL inline void tfx__join_thread(
+#ifdef _WIN32
+	HANDLE *thread_handle
+#else
+	pthread_t *thread_handle
+#endif
+) {
+#ifdef _WIN32
+	if (*thread_handle) {
+		WaitForSingleObject(*thread_handle, INFINITE);
+		CloseHandle(*thread_handle);
+		*thread_handle = NULL;
+	}
+#else
+	pthread_join(*thread_handle, NULL);
+	*thread_handle = 0;
+#endif
+}
+
 tfxAPI inline unsigned int tfx_HardwareConcurrency(void) {
 #ifdef _WIN32
 	SYSTEM_INFO sysinfo;
@@ -6940,6 +6980,11 @@ typedef struct tfx_control_work_entry_s {
 	float global_noise;
 }tfx_control_work_entry_t;
 
+typedef struct tfx_effect_manager_work_entry_s {
+	tfx_effect_manager pm;
+	double elapsed_time;
+} tfx_effect_manager_work_entry_t;
+
 typedef struct tfx_control_ribbon_work_entry_s {
 	tfxU32 segment_array_index;
 	tfxU32 ribbon_index;
@@ -7205,6 +7250,7 @@ typedef struct tfx_effect_manager_s {
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
 	tfx_vector_t<tfx_spawn_work_entry_t> spawn_work;
+	tfx_effect_manager_work_entry_t manager_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t> ribbon_work;
 	tfx_vector_t<tfx_control_work_entry_t> control_work;
 	tfx_vector_t<tfx_control_ribbon_work_entry_t> ribbon_control_work;
@@ -7264,8 +7310,15 @@ typedef struct tfx_effect_manager_s {
 
 	int mt_batch_size;
 	//We might not need these now.
-	tfx_sync_t particle_index_mutex;
 	tfx_sync_t add_effect_mutex;
+	tfx_sync_t updating;
+
+#ifdef _WIN32
+	HANDLE update_thread;
+#else
+	pthread_t update_thread;
+#endif
+	bool update_thread_active;
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;
@@ -7510,6 +7563,22 @@ tfxINTERNAL void tfx__assign_effector_property_u64(tfx_effect_descriptor effect,
 tfxINTERNAL void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, double value);
 tfxINTERNAL void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, tfxU32 value);
 tfxINTERNAL int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
+
+//--------------------------------
+//Effect_manager_functions
+//--------------------------------
+tfxINTERNAL void tfx__update_effect_manager(void *data);
+tfxINTERNAL inline void tfx__wait_for_effect_manager_update(tfx_effect_manager pm) {
+	if (pm->update_thread_active) {
+		tfx__join_thread(&pm->update_thread);
+		pm->update_thread_active = false;
+	}
+}
+#ifdef _WIN32
+unsigned WINAPI tfx__update_effect_manager_thread(void *data);
+#else
+void *tfx__update_effect_manager_thread(void *data);
+#endif
 
 //--------------------------------
 //Graph functions
@@ -9788,7 +9857,7 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 
 * @param pm                    A pointer to an initialised tfx_effect_manager_t.
 */
-tfxAPI void tfx_UpdateEffectManager(tfx_effect_manager pm, float elapsed);
+tfxAPI void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
