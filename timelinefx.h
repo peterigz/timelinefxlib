@@ -2235,6 +2235,7 @@ typedef enum {
 	tfxGradientMapperOvertimePreset,
 	tfxPathDirectionOvertimePreset,
 	tfxPathTranslationOvertimePreset,
+	tfxUVOvertimePreset,
 } tfx_graph_preset;
 
 typedef enum {
@@ -3204,75 +3205,60 @@ typedef tfxU32 tfxAddress;
 //These constants are the min an max levels for the emitter attribute graphs
 const float tfxLIFE_MIN = 0.f;
 const float tfxLIFE_MAX = 100000.f;
-const float tfxLIFE_STEPS = 200.f;
 
 const float tfxAMOUNT_MIN = 0.f;
 const float tfxAMOUNT_MAX = 5000.f;
-const float tfxAMOUNT_STEPS = 100.f;
 
 const float tfxGLOBAL_PERCENT_MIN = 0.f;
 const float tfxGLOBAL_PERCENT_MAX = 20.f;
-const float tfxGLOBAL_PERCENT_STEPS = 100.f;
+
+const float tfxUV_MIN = -1000.f;
+const float tfxUV_MAX = 1000.f;
 
 const float tfxGLOBAL_PERCENT_V_MIN = 0.f;
 const float tfxGLOBAL_PERCENT_V_MAX = 10.f;
-const float tfxGLOBAL_PERCENT_V_STEPS = 200.f;
 
 const float tfxINTENSITY_MIN = 0.f;
 const float tfxINTENSITY_MAX = 5.f;
-const float tfxINTENSITY_STEPS = 100.f;
 
 const float tfxANGLE_MIN = 0.f;
 const float tfxANGLE_MAX = 1080.f;
-const float tfxANGLE_STEPS = 54.f;
 
 const float tfxARC_MIN = 0.f;
 const float tfxARC_MAX = 6.28319f;
-const float tfxARC_STEPS = .3141595f;
 
 const float tfxEMISSION_RANGE_MIN = 0.f;
 const float tfxEMISSION_RANGE_MAX = 180.f;
-const float tfxEMISSION_RANGE_STEPS = 30.f;
 
 const float tfxDIMENSIONS_MIN = 0.f;
 const float tfxDIMENSIONS_MAX = 4000.f;
-const float tfxDIMENSIONS_STEPS = 40.f;
 
 const float tfxVELOCITY_MIN = 0.f;
 const float tfxVELOCITY_MAX = 10000.f;
-const float tfxVELOCITY_STEPS = 100.f;
 
 const float tfxVELOCITY_OVERTIME_MIN = -20.f;
 const float tfxVELOCITY_OVERTIME_MAX = 20.f;
-const float tfxVELOCITY_OVERTIME_STEPS = 200.f;
 
 const float tfxWEIGHT_MIN = -2500.f;
 const float tfxWEIGHT_MAX = 2500.f;
-const float tfxWEIGHT_STEPS = 200.f;
 
 const float tfxWEIGHT_VARIATION_MIN = 0.f;
 const float tfxWEIGHT_VARIATION_MAX = 2500.f;
-const float tfxWEIGHT_VARIATION_STEPS = 250.f;
 
 const float tfxSPIN_MIN = -2000.f;
 const float tfxSPIN_MAX = 2000.f;
-const float tfxSPIN_STEPS = 100.f;
 
 const float tfxSPIN_VARIATION_MIN = 0.f;
 const float tfxSPIN_VARIATION_MAX = 2000.f;
-const float tfxSPIN_VARIATION_STEPS = 100.f;
 
 const float tfxSPIN_OVERTIME_MIN = -20.f;
 const float tfxSPIN_OVERTIME_MAX = 20.f;
-const float tfxSPIN_OVERTIME_STEPS = 200.f;
 
 const float tfxDIRECTION_OVERTIME_MIN = 0.f;
 const float tfxDIRECTION_OVERTIME_MAX = 4320.f;
-const float tfxDIRECTION_OVERTIME_STEPS = 216.f;
 
 const float tfxFRAMERATE_MIN = 0.f;
 const float tfxFRAMERATE_MAX = 200.f;
-const float tfxFRAMERATE_STEPS = 100.f;
 
 const float tfxMAX_DIRECTION_VARIATION = 22.5f;
 const float tfxMAX_VELOCITY_VARIATION = 30.f;
@@ -6119,13 +6105,13 @@ typedef struct tfx_shared_emitter_properties_s {
 
 typedef struct tfx_ribbon_bucket_info_s {
 	tfxU32 segment_count;
-	tfxRibbonBucketComputeShaderType shader_type;
 } tfx_ribbon_bucket_info_t;
 
 typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_ribbon_bucket_info_t bucket_info;
 	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
+	tfxRibbonBucketComputeShaderType angle_type;
 	tfxU32 animation_property_index;
 } tfx_ribbon_emitter_properties_t;
 
@@ -6311,7 +6297,7 @@ typedef struct tfx_gpu_emitter_s {
 	tfx_vec3_t scale;
 	tfxU32 padding2;
 	tfx_vec3_t fixed_angle_normal;
-	tfxU32 padding3;
+	tfxU32 angle_type;
 } tfx_gpu_emitter_t;
 
 //---- GPU compute particle buffer management ----
@@ -6825,7 +6811,6 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_storage_map_t cached_static_path_segments;
 #endif
 	tfxRibbonBucketFlags flags;
-	tfxRibbonBucketComputeShaderType shader_type;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_compute_fx_global_state_s {
@@ -7101,7 +7086,6 @@ typedef struct tfx_animation_ribbon_bucket_s {
 	tfxKey bucket_id;
 	tfxU32 segment_count;
 	tfxU32 tessellation;
-	tfxRibbonBucketComputeShaderType shader_type;
 	tfxU32 max_ribbon_count;
 	//Per-frame dynamic (set during Update/Cycle):
 	tfxU32 ribbon_count;
@@ -7447,7 +7431,7 @@ tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfx
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
 #define tfxUnFlagColorRampIDAsEdited(id) id &= ~0x80000000
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
-#define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count | ((tfxKey)bucket_info.shader_type << 16)
+#define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }

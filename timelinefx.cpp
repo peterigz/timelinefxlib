@@ -2353,8 +2353,7 @@ tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect
 	tfx__build_path_nodes(path);
 	ribbon->ribbon_flags |= tfxRibbonPropertyFlags_static;
 	ribbon->library->shared_properties[ribbon->shared_index].emission_type = tfxPath;
-	ribbon->library->ribbon_properties[ribbon->property_index].bucket_info.segment_count = 32;
-	ribbon->library->ribbon_properties[ribbon->property_index].bucket_info.shader_type = tfxRibbonShader_always_face_camera;
+	ribbon->library->ribbon_properties[ribbon->property_index].bucket_info.segment_count = 128;
 	tfx__update_ribbon_bucket_id(ribbon);
 	ribbon->shared_flags = 0;
 	ribbon->transform_index = tfx__add_library_transform_graphs(ribbon->library);
@@ -2825,9 +2824,9 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_base_amount_index], 1.f, tfxAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_base_amount_index].type = tfxBase_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_base_width_index], default_dimensions, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_base_width_index].type = tfxBase_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_splatter_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_splatter_index].type = tfxProperty_splatter;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_width_index], 1.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_width_index].type = tfxProperty_emitter_width;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_height_index], 1.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_height_index].type = tfxProperty_emitter_height;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_depth_index], 1.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_depth_index].type = tfxProperty_emitter_depth;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_width_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_width_index].type = tfxProperty_emitter_width;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_height_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_height_index].type = tfxProperty_emitter_height;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_depth_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_depth_index].type = tfxProperty_emitter_depth;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_extrusion_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_extrusion_index].type = tfxProperty_extrusion;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_arc_size_index], tfx_DegreesToRadians(360.f), tfxArcPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_arc_size_index].type = tfxProperty_arc_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_property_arc_offset_index], 0.f, tfxArcPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_property_arc_offset_index].type = tfxProperty_arc_offset;
@@ -2844,8 +2843,8 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index].type = tfxOvertime_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index].type = tfxOvertime_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].type = tfxOverlength_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxDirectionOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].type = tfxOverlength_ribbon_fixed_angle;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
@@ -5664,7 +5663,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "frame_offset")			value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset);
 	else if (property_name == "single_shot_limit")		value.Setf("%u", shared_properties->single_shot_limit);
 	else if (property_name == "ribbon_segment_count")	value.Setf("%u", ribbon_properties->bucket_info.segment_count);
-	else if (property_name == "ribbon_shader_type")		value.Setf("%u", ribbon_properties->bucket_info.shader_type);
+	else if (property_name == "ribbon_shader_type")		value.Setf("%u", ribbon_properties->angle_type);
 	else if (property_name == "billboard_option") {		value.Setf("%u", emitter_properties->billboard_option);
 	}
 	else if (property_name == "vector_align_type")		value.Setf("%u", emitter_properties->vector_align_type);
@@ -5940,7 +5939,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "seed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed = value;
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
-	else if (*field == "ribbon_shader_type") ribbon_properties->bucket_info.shader_type = value;
+	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
 	else if (*field == "billboard_option" && emitter_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
@@ -6268,7 +6267,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("layer=%i", shared_properties->layer);
 
 	file->AddLine("ribbon_segment_count=%i", ribbon_properties->bucket_info.segment_count);
-	file->AddLine("ribbon_shader_type=%i", ribbon_properties->bucket_info.shader_type);
+	file->AddLine("ribbon_shader_type=%i", ribbon_properties->angle_type);
 	file->AddLine("ribbon_fixed_angle_normal_x=%f", ribbon_properties->fixed_angle_normal.x);
 	file->AddLine("ribbon_fixed_angle_normal_y=%f", ribbon_properties->fixed_angle_normal.y);
 	file->AddLine("ribbon_fixed_angle_normal_z=%f", ribbon_properties->fixed_angle_normal.z);
@@ -7070,14 +7069,16 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
 			tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
 			tfx__set_node_curve_initialised(node);
+		} else if (preset == tfxLifePreset) {
+			graph->graph_preset = preset;
+			tfx__add_graph_node_values(graph, 0.f, v);
 		} else {
 			tfx__add_graph_node_values(graph, 0.f, v);
 		}
 	}
 
-	tfx__update_lerp_graph(graph);
-
 	graph->graph_preset = preset;
+	tfx__update_lerp_graph(graph);
 }
 
 void tfx__update_graph_wide_oscillator(tfx_graph_t *graph) {
@@ -7149,6 +7150,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxNoiseResolutionPreset:
 	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		return { 0.f, 0.f };
+	case tfx_graph_preset::tfxUVOvertimePreset:
+		return { 0.f, -1000.f };
 	}
 	return { 0.f, 0.f };
 }
@@ -7214,6 +7217,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
 		return { 1.f, 4320.f };
 	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		return { 1.f, 1000.f };
+	case tfx_graph_preset::tfxUVOvertimePreset:
 		return { 1.f, 1000.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
@@ -8953,6 +8958,7 @@ void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 }
 
 void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
+	tfx__wait_for_effect_manager_update(pm);
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	float frame_length = 1000.f / update_frequency;
 	tfxU32 frames = settings->real_frames;
@@ -9021,9 +9027,13 @@ TFX_ENABLE_COMPILER_WARNING()
 	tmp_frame_meta.clear();
 	tmp_ribbon_frame_meta.clear();
 	tfxU32 total_ribbons = 0;
+
+	pm->manager_work.elapsed_time = frame_length;
+	pm->manager_work.pm = pm;
+
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
-		tfx_UpdateEffectManager(pm, frame_length);
+		tfx__update_effect_manager(pm);
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
@@ -9221,7 +9231,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
-		tfx_UpdateEffectManager(pm, frame_length);
+		tfx__update_effect_manager(pm);
 		for (tfxEachLayer) {
 			tfx__invalidate_new_captured_index(tfxCastBufferRef(tfx_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 		}
@@ -9777,7 +9787,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			tfx_shared_properties_t &shared_properties = effect->library->shared_properties[effect->shared_index];
 			properties.segment_count = ribbon_properties.bucket_info.segment_count;
 			properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
-			properties.shader_type = ribbon_properties.bucket_info.shader_type;
+			properties.shader_type = ribbon_properties.angle_type;
 			properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 			properties.flags = effect->property_flags;
 			properties.graph_lookup_offset = effect->gpu_lookup_offset;
@@ -9792,7 +9802,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 				properties.start_frame_index = image.compute_shape_index;
 			}
 			//Find or create a compatible animation ribbon bucket
-			tfxKey bucket_id = (tfxKey)properties.segment_count | ((tfxKey)properties.shader_type << 16);
+			tfxKey bucket_id = (tfxKey)properties.segment_count;
 			tfxU32 found_bucket_index = tfxINVALID;
 			for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
 				if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
@@ -9805,7 +9815,6 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 				bucket.bucket_id = bucket_id;
 				bucket.segment_count = properties.segment_count;
 				bucket.tessellation = properties.tessellation;
-				bucket.shader_type = properties.shader_type;
 				bucket.max_ribbon_count = 0;
 				bucket.ribbon_count = 0;
 				bucket.ribbon_offset = 0;
@@ -10610,6 +10619,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				ribbon_emitter.gpu_emitter_index = tfx__grab_gpu_emitter(pm);
 				pm->gpu_emitters[ribbon_emitter.gpu_emitter_index].lookup_offset = child->gpu_lookup_offset;
 				pm->gpu_emitters[ribbon_emitter.gpu_emitter_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
+				pm->gpu_emitters[ribbon_emitter.gpu_emitter_index].angle_type = ribbon_properties->angle_type;
 				ribbon_emitter.amount_remainder = 0.f;
 				ribbon_emitter.qty_step_size = 0.f;
 				ribbon_emitter.spawn_quantity = 0.f;
@@ -13736,7 +13746,6 @@ void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tf
 	bucket.flags = tfxRibbonBucketFlags_initialised;
 	bucket.globals.ribbon_count = 1;
 	bucket.globals.index_offset = 0;
-	bucket.shader_type = bucket_info->shader_type;
 }
 
 tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation) {
