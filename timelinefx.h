@@ -7442,7 +7442,6 @@ tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_effect_manager pm, tfx_ribbon_bucket_t *
 tfxINTERNAL void tfx__free_ribbon(tfx_effect_manager pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_effect_manager pm, tfxKey emitter_hash, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation);
-tfxAPI_EDITOR tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation);
 tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter);
 
 //--------------------------------
@@ -9613,6 +9612,14 @@ Get the gpu graph lookup data size in bytes contained within the library you pas
 * @param library        A handle to a tfx_library
 */
 tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes();
+
+/*
+Get buffer info for ribbons based on the tessellation value. Returns a tfx_ribbon_buffer_info_t object with
+vertices per segment, triangles per segment and indices per segment requirements.
+* @param tfxU32        					The number of tessellations for the ribbons
+* @returns tfx_ribbon_buffer_info_t		Info containing vertices, triangles and indices per segment
+*/
+tfxAPI tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation);
 
 //--------------------------------
 //Particle_Manager_functions

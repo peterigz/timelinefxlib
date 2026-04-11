@@ -10127,7 +10127,7 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 			bucket.ribbon_offset = running_ribbon;
 			bucket.vertex_offset = running_vertex;
 			bucket.index_offset = running_index;
-			tfx_ribbon_buffer_info_t info = tfx__generate_ribbon_buffer_info(bucket.tessellation);
+			tfx_ribbon_buffer_info_t info = tfx_GenerateRibbonBufferInfo(bucket.tessellation);
 			running_ribbon += bucket.ribbon_count;
 			running_vertex += bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment;
 			running_index += bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment;
@@ -10194,7 +10194,7 @@ void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
 			bucket.ribbon_offset = running_ribbon;
 			bucket.vertex_offset = running_vertex;
 			bucket.index_offset = running_index;
-			tfx_ribbon_buffer_info_t info = tfx__generate_ribbon_buffer_info(bucket.tessellation);
+			tfx_ribbon_buffer_info_t info = tfx_GenerateRibbonBufferInfo(bucket.tessellation);
 			running_ribbon += bucket.ribbon_count;
 			running_vertex += bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment;
 			running_index += bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment;
@@ -13252,12 +13252,12 @@ size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_effect_manager pm) {
 }
 
 size_t tfx_GetSegmentVertexBufferMaxSizeInBytes(tfx_effect_manager pm, tfxU32 vertex_size) {
-	tfx_ribbon_buffer_info_t buffer_info = tfx__generate_ribbon_buffer_info(pm->info.ribbon_tessellation);
+	tfx_ribbon_buffer_info_t buffer_info = tfx_GenerateRibbonBufferInfo(pm->info.ribbon_tessellation);
 	return pm->info.max_ribbon_segments * buffer_info.vertices_per_segment * (vertex_size ? vertex_size : sizeof(tfx_ribbon_vertex_t));
 }
 
 size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_effect_manager pm) {
-	tfx_ribbon_buffer_info_t buffer_info = tfx__generate_ribbon_buffer_info(pm->info.ribbon_tessellation);
+	tfx_ribbon_buffer_info_t buffer_info = tfx_GenerateRibbonBufferInfo(pm->info.ribbon_tessellation);
 	return pm->info.max_ribbon_segments * sizeof(tfxU32) * buffer_info.indices_per_segment;
 }
 
@@ -13737,7 +13737,7 @@ void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tf
 	tfx__init_soa_buffer(&bucket.ribbons_buffer);
 	tfx__init_ribbons_soa(&bucket.ribbons_buffer, &bucket.ribbons, 10);
 	bucket.globals.segment_count = bucket_info->segment_count;
-	bucket.buffer_info = tfx__generate_ribbon_buffer_info(tessellation);
+	bucket.buffer_info = tfx_GenerateRibbonBufferInfo(tessellation);
 	bucket.globals.tessellation = tessellation;
 	bucket.free_ribbons.init();
 	bucket.ribbon_emitter_indexes[0].init();
@@ -13748,7 +13748,7 @@ void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tf
 	bucket.globals.index_offset = 0;
 }
 
-tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation) {
+tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation) {
 	tfx_ribbon_buffer_info_t info{};
 	info.vertices_per_segment = (tessellation + 1) * 2; 
 	info.triangles_per_segment = tessellation * 4;     
@@ -18067,6 +18067,7 @@ tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_effect_manager pm, tfxEff
 }
 
 bool tfx_GetNextInstanceBuffer(tfx_effect_manager pm, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
+	tfx__wait_for_effect_manager_update(pm);
 	if (pm->effect_index_position >= pm->effects_in_use[pm->current_ebuff].current_size) {
 		*instances = nullptr;
 		*instance_data = nullptr;
