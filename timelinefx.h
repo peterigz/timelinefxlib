@@ -6160,22 +6160,22 @@ typedef struct tfx_particle_emitter_state_s {
 	tfx_common_state_properties_t state_properties;
 
 	//State data
-	float age;										//SoA?
+	float age;		
 	float highest_particle_age;
 	float timeout_counter;
 	float timeout;
-	float amount_remainder;
-	float spawn_quantity;
-	float qty_step_size;
+	double amount_remainder;
+	double spawn_quantity;
+	double qty_step_size;
 	tfx_vec3_t handle;
 	tfx_bounding_box_t bounding_box;
 	//Position, scale and rotation values
-	tfx_vec3_t local_position;						//SoA?
-	tfx_vec3_t world_position;						//SoA?
-	tfx_vec3_t captured_position;					//SoA?
-	tfx_vec3_t world_rotations;						//SoA?
-	tfx_quaternion_t captured_rotation;				//SoA?
-	tfx_quaternion_t rotation;						//SoA?
+	tfx_vec3_t local_position;						
+	tfx_vec3_t world_position;					
+	tfx_vec3_t captured_position;	
+	tfx_vec3_t world_rotations;		
+	tfx_quaternion_t captured_rotation;
+	tfx_quaternion_t rotation;
 
 	float oscillator_time;
 
@@ -6201,18 +6201,6 @@ typedef struct tfx_particle_emitter_state_s {
 	tfxEmitterStateFlags state_flags;
 	tfx_path_state_t path_state;
 } tfx_particle_emitter_state_t TFX_ALIGN_AFFIX(16);
-
-typedef struct tfx_emitter_bucket_t {
-	tfx_common_state_properties_t state_properties;
-	tfxU64 image_handle_packed;
-	tfx_effect_descriptor source_emitter;
-	tfx_library library;
-#ifdef __cplusplus
-	tfx_vector_t<tfx_particle_emitter_state_t> emitter_states;
-#else
-	tfx_vector_t emitter_states;
-#endif
-} tfx_emitter_bucket_t;
 
 //This is a struct that stores an effect state that is currently active in a effect manager.
 typedef struct tfx_effect_state_s {
@@ -6376,9 +6364,9 @@ typedef struct tfx_ribbon_emitter_state_s {
 	//State data
 	float frame;
 	float age;
-	float amount_remainder;
-	float spawn_quantity;
-	float qty_step_size;
+	double amount_remainder;
+	double spawn_quantity;
+	double qty_step_size;
 	float timeout_counter;
 	float timeout;
 	float oscillator_time;
@@ -6878,14 +6866,14 @@ typedef struct tfx_spawn_work_entry_s {
 #else
 	tfx_vector_t *depth_indexes;
 #endif
+	double qty_step_size;
+	double tween;
 	tfxU32 depth_index_start;
 	tfxU32 seed;
-	float tween;
 	tfxU32 max_spawn_count;
 	tfxU32 amount_to_spawn;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
-	float qty_step_size;
 	float highest_particle_age;
 	float overal_scale;
     tfxU32 particle_uid;
@@ -6904,8 +6892,8 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfx_graph_list_t *graphs;
 	tfxU32 new_ribbons;
 	tfxU32 amount_to_spawn;
-	float tween;
-	float qty_step_size;
+	double tween;
+	double qty_step_size;
 	float overal_scale;
 }tfx_ribbon_work_entry_t;
 
@@ -7302,15 +7290,14 @@ typedef struct tfx_effect_manager_s {
 
 	tfxEffectManagerFlags flags;
 	//The length of time that passed since the last time Update() was called
-	float frame_length;
+	double frame_length;
 	//You can cap the frame length to a maximum amount which I put in mainly for when stepping through 
 	//with a debugger and you don't want to advance the particles too much because obviously a lot of
 	//time is passing between frames because you're stepping through the code. Default is 240ms.
 	float max_frame_length;
 	tfxWideFloat frame_length_wide;
-	float update_time;
+	double update_time;
 	tfxWideFloat update_time_wide;
-	float update_frequency;
 } tfx_effect_manager_t;
 #endif
 
@@ -7537,6 +7524,7 @@ unsigned WINAPI tfx__update_effect_manager_thread(void *data);
 #else
 void *tfx__update_effect_manager_thread(void *data);
 #endif
+tfxINTERNAL void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter);
 
 //--------------------------------
 //Graph functions
@@ -9665,7 +9653,7 @@ tfxAPI int tfx_GetInstanceCount(tfx_effect_manager pm);
 Get the update time being used by the effect manager.
 * @param pm                       A handle to an intialised tfx_effect_manager_t.
 */
-tfxAPI float tfx_GetUpdateTime(tfx_effect_manager pm);
+tfxAPI double tfx_GetUpdateTime(tfx_effect_manager pm);
 
 /*
 Get the ribbon buffer for a given segment size. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
