@@ -1359,7 +1359,6 @@ You can then use layer inside the loop to get the current layer
 //Forward declarations
 
 typedef struct tfx_effect_descriptor_s tfx_effect_descriptor_t;
-typedef struct tfx_emitter_bucket_s tfx_emitter_bucket_t;
 typedef struct tfx_effect_manager_s tfx_effect_manager_t;
 typedef struct tfx_effect_template_s tfx_effect_template_t;
 typedef struct tfx_compute_particle_s tfx_compute_particle_t;
@@ -2732,6 +2731,7 @@ typedef enum {
 	tfx_free_particle_indexes_mb,
 	tfx_effects_in_use_mb,
 	tfx_control_emitter_queue_mb,
+	tfx_emitters_check_capture_mb,
 	tfx_free_effects_mb,
 	tfx_free_emitters_mb,
 	tfx_free_gpu_emitters_mb,
@@ -3432,7 +3432,6 @@ tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_effect_manager);
 tfxMAKE_HANDLE(tfx_animation_manager);
 tfxMAKE_HANDLE(tfx_effect_descriptor);
-tfxMAKE_HANDLE(tfx_emitter_bucket);
 tfxMAKE_HANDLE(tfx_effect_template);
 tfxMAKE_HANDLE(tfx_ribbon_buffer_requirements);
 tfxMAKE_HANDLE(tfx_ribbon_dispatch);
@@ -5783,6 +5782,11 @@ typedef struct tfx_depth_index_s {
 
 //Used when a effect manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 typedef struct tfx_effect_instance_data_s {
+#ifdef __cplusplus
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+#else
+	tfx_vector_t depth_indexes[tfxLAYERS][2];
+#endif
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 cumulative_index_point[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
@@ -6128,7 +6132,7 @@ typedef struct tfx_path_state_s {
 	tfxU32 ribbon_index;
 } tfx_path_state_t;
 
-typedef struct tfx_bucket_state_properties_s {
+typedef struct tfx_common_state_properties_s {
 	float loop_length;
 	float max_life;
 	float end_frame;
@@ -6147,21 +6151,22 @@ typedef struct tfx_bucket_state_properties_s {
 	tfxEmitterControlProfileFlags control_profile;
 	tfxParticleEmitterFlags property_flags;
 	tfxSharedEmitterFlags shared_flags;
-} tfx_bucket_state_properties_t;
+} tfx_common_state_properties_t;
 
 //This is a struct that stores an emitter state that is currently active in a effect manager.
 //Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
 //      and dynamic variables that change each frame.
 typedef struct tfx_particle_emitter_state_s {
+	tfx_common_state_properties_t state_properties;
+
 	//State data
 	float age;										//SoA?
 	float highest_particle_age;
 	float timeout_counter;
 	float timeout;
 	float amount_remainder;
+	float spawn_quantity;
 	float qty_step_size;
-	float tween;
-	tfxU32 pending_spawn_count;
 	tfx_vec3_t handle;
 	tfx_bounding_box_t bounding_box;
 	//Position, scale and rotation values
@@ -6181,6 +6186,9 @@ typedef struct tfx_particle_emitter_state_s {
 	tfxIndex seed_index;
 	tfxIndex spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
 	tfxIndex other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the effect manager
+	tfxIndex particles_index;
+
+	tfxU32 sprites_count;
 
 	tfx_effect_descriptor source_emitter;
 	tfx_library library;
@@ -6194,16 +6202,15 @@ typedef struct tfx_particle_emitter_state_s {
 	tfx_path_state_t path_state;
 } tfx_particle_emitter_state_t TFX_ALIGN_AFFIX(16);
 
-typedef struct tfx_emitter_bucket_s {
-	tfx_bucket_state_properties_t state_properties;
-	tfxU32 sprites_count;
+typedef struct tfx_emitter_bucket_t {
+	tfx_common_state_properties_t state_properties;
+	tfxU64 image_handle_packed;
 	tfx_effect_descriptor source_emitter;
 	tfx_library library;
-	tfxIndex particles_index;
 #ifdef __cplusplus
-	tfx_vector_t<tfx_particle_emitter_state_t> emitter_states[2];
+	tfx_vector_t<tfx_particle_emitter_state_t> emitter_states;
 #else
-	tfx_vector_t emitter_states[2];
+	tfx_vector_t emitter_states;
 #endif
 } tfx_emitter_bucket_t;
 
@@ -6250,6 +6257,15 @@ typedef struct tfx_effect_state_s {
 
 	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
 	tfx_effect_instance_data_t instance_data;
+
+	//The emitters within this effect.
+#ifdef __cplusplus
+	tfx_vector_t<tfxU32> emitter_indexes[2];
+#else
+	tfx_vector_t emitter_indexes[2];
+#endif
+	tfxU32 emitter_start_size;
+
 } tfx_effect_state_t TFX_ALIGN_AFFIX(16);
 
 typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
@@ -6378,7 +6394,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	tfx_bounding_box_t bounding_box;
 
-	tfx_bucket_state_properties_t state_properties;
+	tfx_common_state_properties_t state_properties;
 	tfxIndex seed_index;
 	tfxIndex parent_index;
 	tfxIndex info_index;
@@ -6437,7 +6453,7 @@ typedef struct tfx_effect_descriptor_s {
 	tfx_effect_descriptor parent;
 
 	//All the below fields will be used by the effect/emitter states when added to a effect manager
-	tfx_bucket_state_properties_t state_properties;
+	tfx_common_state_properties_t state_properties;
 
 	tfxU32 gpu_lookup_offset;
 
@@ -6848,20 +6864,25 @@ tfxMAKE_HANDLE(tfx_gpu_shapes);
 typedef struct tfx_spawn_work_entry_s {
 	tfx_random_t random;
 	tfx_effect_manager pm;
-	tfx_emitter_bucket_t *bucket;
 	tfx_particle_emitter_properties_t *properties;
 	tfx_shared_properties_t *shared_properties;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
+	tfxU32 emitter_index;
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
 	tfxParticleEmitterFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
+#ifdef __cplusplus
+	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
+#else
+	tfx_vector_t *depth_indexes;
+#endif
+	tfxU32 depth_index_start;
 	tfxU32 seed;
 	float tween;
-	tfxU32 total_spawn_count;
+	tfxU32 max_spawn_count;
 	tfxU32 amount_to_spawn;
-	tfxU32 actual_spawned;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
 	float qty_step_size;
@@ -7182,7 +7203,6 @@ typedef struct tfx_effect_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
-	tfx_storage_map_t<tfx_emitter_bucket> emitter_buckets;
 	//GPU compute particle buffer management
 	tfx_storage_map_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
 
@@ -7197,13 +7217,16 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[2];
-	tfx_vector_t<tfx_emitter_bucket> control_emitter_queue;
+	tfx_vector_t<tfxU32> control_emitter_queue;
+	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
+	tfx_vector_t<tfxU32> free_emitters;
 	tfx_vector_t<tfxU32> free_gpu_emitters;
 	tfx_vector_t<tfxU32> free_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
+	tfx_vector_t<tfx_particle_emitter_state_t> emitters;
 	tfx_vector_t<tfx_gpu_emitter_t> gpu_emitters;
 	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
@@ -7514,7 +7537,6 @@ unsigned WINAPI tfx__update_effect_manager_thread(void *data);
 #else
 void *tfx__update_effect_manager_thread(void *data);
 #endif
-tfxINTERNAL tfx_emitter_bucket tfx__new_emitter_bucket();
 
 //--------------------------------
 //Graph functions
@@ -7600,8 +7622,8 @@ tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
 tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxU32 property_index, float max_life);
-tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfx_emitter_bucket bucket);
-tfxINTERNAL tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxIndex gpu_group_index, tfxU32 count, float current_time_ms);
+tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index);
+tfxINTERNAL tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
 tfxINTERNAL void   tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms);
 tfxINTERNAL void   tfx__free_gpu_groups(tfx_effect_manager pm);
 tfxINTERNAL void   tfx__clear_gpu_groups(tfx_effect_manager pm);
@@ -9054,8 +9076,7 @@ tfxINTERNAL inline void tfx__invalidate_offsetted_sprite_captured_index(T* insta
 tfxINTERNAL tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL void tfx__transform_effect(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
-tfxINTERNAL void tfx__update_bucket(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL void tfx__update_emitter(tfx_particle_emitter_state_t *emitter, tfx_spawn_work_entry_t *work_entry, tfx_effect_state_t *parent_effect);
+tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
@@ -9066,30 +9087,32 @@ tfxINTERNAL void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL tfx_effect_manager tfx__next_global_effect_manager();
 tfxINTERNAL tfx_library tfx__next_global_library();
 
-tfxINTERNAL void tfx__spawn_particles(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_noise(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_motion_randomness(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_weight(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_velocity(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_image_frame(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_age(tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_image_frame(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void tfx__spawn_particle_point(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_line(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_line_start(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_area(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_icosphere_random(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_icosphere(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_path(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_path_start(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_micro_update(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_spin(tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void tfx__spawn_particle_size(tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data);
+
+tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path(tfx_work_queue_t *queue, void *data);
@@ -9254,7 +9277,7 @@ tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_insta
 //effect manager internal functions
 //--------------------------------
 tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_effect_manager pm);
-tfxINTERNAL tfx_emitter_bucket_t *tfx__get_emitter_bucket(tfx_effect_manager pm, tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties);
+tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_effect_manager pm);
 tfxINTERNAL tfxU32 tfx__get_particle_index_slot(tfx_effect_manager pm, tfxParticleID particle_id);
 tfxINTERNAL tfxU32 tfx__allocate_path_quaternion(tfx_effect_manager pm, tfxU32 amount);
