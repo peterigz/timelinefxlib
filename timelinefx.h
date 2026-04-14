@@ -4862,7 +4862,7 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 #endif
 
 #ifndef tfxMAX_QUEUE_ENTRIES
-#define tfxMAX_QUEUE_ENTRIES 512
+#define tfxMAX_QUEUE_ENTRIES 128
 #endif
 
 typedef struct tfx_work_queue_s tfx_work_queue_t;
