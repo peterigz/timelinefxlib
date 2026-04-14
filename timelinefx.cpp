@@ -8333,22 +8333,22 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 			context_set = true;
 			if (context == tfxStartEffectAnimationInfo) {
-				tfx_sprite_data_metrics_t metrics;
+				tfx_sprite_data_metrics_t metrics{};
 				metrics_stack.push_back_copy(metrics);
 			}
 			else if (context == tfxStartFrameMeta) {
-				tfx_frame_meta_t frame_meta;
+				tfx_frame_meta_t frame_meta{};
 				frame_meta_stack.push_back_copy(frame_meta);
 			}
 			else if (context == tfxStartRibbonFrameMeta) {
-				tfx_ribbon_frame_meta_t frame_meta;
+				tfx_ribbon_frame_meta_t frame_meta{};
 				ribbon_frame_meta_stack.push_back_copy(frame_meta);
 			}
 			else if (context == tfxStartRibbonEmitterCount) {
 				//Value will be parsed on the next line
 			}
 			else if (context == tfxStartEmitter) {
-				tfx_animation_emitter_properties_t emitter_properties;
+				tfx_animation_emitter_properties_t emitter_properties{};
 				emitter_properties_stack.push_back_copy(emitter_properties);
 			}
 		}

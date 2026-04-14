@@ -7005,6 +7005,8 @@ typedef struct tfx_animation_instance_s {
 	float animation_length_in_time;     //Total time that the animation lasts for
 	float tween;                        //The point time within the frame (0..1)
 	tfxAnimationInstanceFlags flags;    //Flags associated with the instance
+	tfxU32 padding0;
+	tfxU32 padding1;
 } tfx_animation_instance_t;
 
 typedef struct tfx_animation_buffer_metrics_s {
