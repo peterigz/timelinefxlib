@@ -7150,6 +7150,7 @@ typedef struct tfx_effect_manager_info_s {
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
 											//nearest multiple of 32.
+	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
@@ -9553,6 +9554,19 @@ Get a pointer to a color ramp bitmap in a library. You can use this data to uplo
 tfxAPI tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library library, tfxU32 index);
 
 /*
+Get a count of the number of color ramp bitmaps in an animation manager.
+* @param animation_manager        A handle to a tfx_animation_manager
+*/
+tfxAPI tfxU32 tfx_GetAnimationColorRampBitmapCount(tfx_animation_manager animation_manager);
+
+/*
+Get a pointer to a color ramp bitmap in an animation manager. You can use this data to upload the bitmaps to the GPU.
+* @param animation_manager        A handle to a tfx_animation_manager
+* @param index                    The index of the bitmap
+*/
+tfxAPI tfx_bitmap_t *tfx_GetAnimationColorRampBitmap(tfx_animation_manager animation_manager, tfxU32 index);
+
+/*
 Check to see if a library has been initialised or not
 * @param library        A pointer to a tfx_library_t
 */
@@ -9696,9 +9710,23 @@ tfxAPI size_t tfx_GetSegmentVertexBufferMaxSizeInBytes(tfx_effect_manager pm, tf
 
 tfxAPI size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_effect_manager pm);
 
-tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm, tfxU32 max_ribbons);
+tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm);
 
 tfxAPI size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm);
+
+/*
+Get the total buffer sizes across all effect managers for creating a single shared set of ribbon GPU buffers.
+These iterate all registered effect managers and sum their individual requirements.
+*/
+tfxAPI size_t tfx_GetTotalSegmentBufferMaxSizeInBytes();
+
+tfxAPI size_t tfx_GetTotalSegmentVertexBufferMaxSizeInBytes(tfxU32 vertex_size);
+
+tfxAPI size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes();
+
+tfxAPI size_t tfx_GetTotalRibbonBufferMaxSizeInBytes();
+
+tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes();
 
 /*
 When a effect manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be

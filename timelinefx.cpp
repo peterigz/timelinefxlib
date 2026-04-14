@@ -4047,6 +4047,15 @@ tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library library, tfxU32 index) {
 	return &library->color_ramps.color_ramp_bitmaps[index];
 }
 
+tfxU32 tfx_GetAnimationColorRampBitmapCount(tfx_animation_manager animation_manager) {
+	return animation_manager->color_ramps.color_ramp_bitmaps.current_size;
+}
+
+tfx_bitmap_t *tfx_GetAnimationColorRampBitmap(tfx_animation_manager animation_manager, tfxU32 index) {
+	TFX_ASSERT(index < animation_manager->color_ramps.color_ramp_bitmaps.size());	//index is out of bounds
+	return &animation_manager->color_ramps.color_ramp_bitmaps[index];
+}
+
 bool tfx_LibraryIsInitialised(tfx_library library) {
 	return TFX_VALID_HANDLE(library);
 }
@@ -13258,12 +13267,52 @@ size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_effect_manager pm) {
 	return pm->info.max_ribbon_segments * sizeof(tfxU32) * buffer_info.indices_per_segment;
 }
 
-size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm, tfxU32 max_ribbons) {
-	return max_ribbons * sizeof(tfx_ribbon_t);
+size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm) {
+	return pm->info.max_ribbons * sizeof(tfx_ribbon_t);
 }
 
 size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm) {
 	return pm->info.max_effects * sizeof(tfx_gpu_emitter_t);
+}
+
+size_t tfx_GetTotalSegmentBufferMaxSizeInBytes() {
+	size_t total = 0;
+	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		total += tfx_GetSegmentBufferMaxSizeInBytes(pm);
+	}
+	return total;
+}
+
+size_t tfx_GetTotalSegmentVertexBufferMaxSizeInBytes(tfxU32 vertex_size) {
+	size_t total = 0;
+	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		total += tfx_GetSegmentVertexBufferMaxSizeInBytes(pm, vertex_size);
+	}
+	return total;
+}
+
+size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes() {
+	size_t total = 0;
+	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		total += tfx_GetSegmentIndexBufferMaxSizeInBytes(pm);
+	}
+	return total;
+}
+
+size_t tfx_GetTotalRibbonBufferMaxSizeInBytes() {
+	size_t total = 0;
+	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		total += tfx_GetRibbonBufferMaxSizeInBytes(pm);
+	}
+	return total;
+}
+
+size_t tfx_GetTotalEmitterBufferMaxSizeInBytes() {
+	size_t total = 0;
+	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+		total += tfx_GetEmitterBufferMaxSizeInBytes(pm);
+	}
+	return total;
 }
 
 void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
@@ -17905,6 +17954,7 @@ tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup s
 	info.max_particles = 10000;
 	info.max_effects = 1000;
 	info.max_ribbon_segments = 32678;
+	info.max_ribbons = 1000;
 	info.ribbon_tessellation = 1;
 	info.multi_threaded_batch_size = 4096;
 	info.sort_passes = 3;
