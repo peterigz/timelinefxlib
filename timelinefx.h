@@ -125,8 +125,8 @@ All functions in the library will be marked this way for clarity and naturally t
 #if defined(_WIN32)
 #include <process.h>
 #include <SDKDDKVer.h>
-#ifndef WIN_LEAN_AND_MEAN
-#define WIN_LEAN_AND_MEAN
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
 #else
