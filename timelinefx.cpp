@@ -13174,7 +13174,7 @@ bool tfx_NextRibbonDispatch(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon
 		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
 		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
 		ribbon_dispatch->ribbon_offset = ribbon_dispatch->last_ribbon_offset;
-		bucket->globals.camera_position = ribbon_dispatch->current_pm->camera_position;
+		bucket->globals.camera_position = pm->camera_position;
 		bucket->globals.index_offset = ribbon_dispatch->index_offset;
 		bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
 		bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
@@ -13229,7 +13229,7 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager *effect_managers, int
 		tfxU32 running_segment_offset = 0;
 		tfxU32 running_ribbon_offset = 0;
 		tfxU32 running_emitter_offset = 0;
-		count = effect_manager_count > 0 effect_manager_count : tfxStore.effect_managers.Size();
+		int count = effect_manager_count > 0 effect_manager_count : tfxStore.effect_managers.Size();
 		int i = 0;
 		while (i < count) {
 			tfx_effect_manager pm = effect_manager_count > 0 effect_managers[i] : tfxStore.effect_managers.data[i];
@@ -17670,7 +17670,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
 	tfxStore->memory_pool_count = 1;
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
-	tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
+	//tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
 	tfxStore->effect_managers.init();
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfx__hash_initialise(&tfxStore->hasher, 0);
