@@ -13229,10 +13229,10 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager *effect_managers, int
 		tfxU32 running_segment_offset = 0;
 		tfxU32 running_ribbon_offset = 0;
 		tfxU32 running_emitter_offset = 0;
-		int count = effect_manager_count > 0 ? effect_manager_count : tfxStore.effect_managers.Size();
+		int count = effect_manager_count > 0 ? effect_manager_count : tfxStore->effect_managers.Size();
 		int i = 0;
 		while (i < count) {
-			tfx_effect_manager pm = effect_manager_count > 0 ? effect_managers[i] : tfxStore.effect_managers.data[i];
+			tfx_effect_manager pm = effect_manager_count > 0 ? effect_managers[i] : tfxStore->effect_managers.data[i];
 			i++;
 			tfx__wait_for_effect_manager_update(pm);
 			tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
