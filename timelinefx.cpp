@@ -13217,7 +13217,7 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 	return *tfxStore->ribbon_buffer_requirements;
 }
 
-void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager *effect_managers, int effect_manager_count, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
+void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst, tfx_effect_manager *effect_managers, int effect_manager_count) {
 	//Make sure that you setup the ribbon buffers
 	if (effect_manager_count > 0) {
 		TFX_ASSERT_HANDLE(effect_managers[0]); //If effect manager count is greater then 0 then effect_managers must be an array of tfx_effect_manager
