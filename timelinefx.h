@@ -1290,8 +1290,8 @@ typedef unsigned short tfxUShort;
 #define tfxEXTRACT_SPRITE_ALIGNMENT(property_index) ((property_index & tfxSPRITE_ALIGNMENT_MASK) >> 24)
 #define tfxEXTRACT_SPRITE_IMAGE_FRAME(property_index) ((property_index & tfxSPRITE_IMAGE_FRAME_MASK) >> 16)
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
-#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
-#define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
+#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].state_properties.image_handle_packed << 32)
+#define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].state_properties.image_handle_packed << 32)
 #define tfxOSCILLATOR_SIN(t, frequency, amplitude) 0.5f + sinf((t) * (frequency) * 6.28318f) * (amplitude)
 #define tfxOSCILLATOR_WIDE_SIN(t, frequency, amplitude) tfxWideAdd(tfxWIDEHALF.m, tfxWideMul(tfxWideSin(tfxWideMul(tfxWideMul(t, frequency), tfxWIDEPI2.m)), amplitude))
 #define tfxCIRCLENODES 16
@@ -4924,7 +4924,6 @@ typedef struct tfx_storage_s {
 	tfx_storage_map_t graph_indexes;
 #endif
 	tfx_buffer_t gpu_graph_data;
-	tfx_ribbon_dispatch last_ribbon_dispatch;
 	tfx_effect_manager current_pm;
 	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
@@ -7180,6 +7179,10 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 ribbon_offset;
 	tfxU32 segment_offset;
 	tfxU32 total_segments;
+	tfxU32 last_index_offset;
+	tfxU32 last_vertex_offset;
+	tfxU32 last_ribbon_offset;
+	tfxU32 last_segment_offset;
 } tfx_ribbon_dispatch_t;
 
 //Use the effect manager to add multiple effects to your scene 
@@ -9684,7 +9687,7 @@ tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_effect_manager pm, tfxKey b
 Call this to determine whether or not any effect manager has ribbon_emitters to draw this frame.
 * @returns						  True or false
 */
-tfxAPI bool tfx_HasRibbonsToDraw();
+tfxAPI bool tfx_HasRibbonsToDraw(tfx_effect_manager pm);
 
 /*
 Get a struct containing the info you need to compute and render ribbon_emitters of a specific length. 
@@ -9696,13 +9699,13 @@ tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_effect_manager pm, t
 
 tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch();
 
-tfxAPI bool tfx_NextRibbonDispatch(tfx_ribbon_dispatch_t *ribbon_dispatch);
+tfxAPI bool tfx_NextRibbonDispatch(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 tfxAPI void tfx_ResetRibbonDispatchIterator(tfx_effect_manager pm);
 
 tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements();
 
-tfxAPI void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst);
+tfxAPI void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst, tfx_effect_manager *effect_managers, int effect_manager_count);
 
 tfxAPI size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_effect_manager pm);
 

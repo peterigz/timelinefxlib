@@ -13089,11 +13089,18 @@ tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_h
 	return bucket;
 }
 
-bool tfx_HasRibbonsToDraw() {
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
-		tfx__wait_for_effect_manager_update(pm);
+bool tfx_HasRibbonsToDraw(tfx_effect_manager pm) {
+	tfx__wait_for_effect_manager_update(pm);
+	if (pm) {
 		if (pm->flags & tfxEffectManagerFlags_has_ribbons_to_draw) {
 			return true;
+		}
+	} else {
+		for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+			tfx__wait_for_effect_manager_update(pm);
+			if (pm->flags & tfxEffectManagerFlags_has_ribbons_to_draw) {
+				return true;
+			}
 		}
 	}
 	return false;
@@ -13148,45 +13155,36 @@ bool tfx__next_ribbon_bucket(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbo
 		ribbon_dispatch->ribbon_data = bucket;
 		return true;
 	}
-	*tfxStore->last_ribbon_dispatch = {};
 	return false;
 }
 
-bool tfx_NextRibbonDispatch(tfx_ribbon_dispatch_t *ribbon_dispatch) {
-	if (!tfxStore->current_pm) {
-		tfxStore->current_pm = tfx__next_global_effect_manager();
-	}
-	tfx__wait_for_effect_manager_update(tfxStore->current_pm);
-	while (tfxStore->current_pm) {
-		tfx_ribbon_bucket_t *bucket = tfxStore->current_pm->ribbon_segment_buckets.next_item();
-		while (bucket) {
-			if (bucket->active_ribbons == 0) {
-				bucket = tfxStore->current_pm->ribbon_segment_buckets.next_item();
-				continue;
-			}
-			tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
-			ribbon_dispatch->ribbon_data = bucket;
-			ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
-			ribbon_dispatch->index_offset = tfxStore->last_ribbon_dispatch->index_offset;
-			ribbon_dispatch->vertex_offset = tfxStore->last_ribbon_dispatch->vertex_offset;
-			ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
-			ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
-			ribbon_dispatch->ribbon_offset = tfxStore->last_ribbon_dispatch->ribbon_offset;
-			bucket->globals.camera_position = tfxStore->current_pm->camera_position;
-			bucket->globals.index_offset = ribbon_dispatch->index_offset;
-			bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
-			bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
-			bucket->globals.ribbon_count = ribbon_count;
-			*tfxStore->last_ribbon_dispatch = *ribbon_dispatch;
-			tfxStore->last_ribbon_dispatch->index_offset += ribbon_dispatch->index_count;
-			tfxStore->last_ribbon_dispatch->vertex_offset += ribbon_dispatch->vertex_count;
-			tfxStore->last_ribbon_dispatch->ribbon_offset += ribbon_count;
-			tfxStore->last_ribbon_dispatch->segment_offset += bucket->segments.current_size;
-			return true;
+bool tfx_NextRibbonDispatch(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
+	tfx__wait_for_effect_manager_update(pm);
+	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
+	while (bucket) {
+		if (bucket->active_ribbons == 0) {
+			bucket = pm->ribbon_segment_buckets.next_item();
+			continue;
 		}
-		tfxStore->current_pm = tfx__next_global_effect_manager();
+		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+		ribbon_dispatch->ribbon_data = bucket;
+		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
+		ribbon_dispatch->index_offset = ribbon_dispatch->last_index_offset;
+		ribbon_dispatch->vertex_offset = ribbon_dispatch->last_vertex_offset;
+		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
+		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
+		ribbon_dispatch->ribbon_offset = ribbon_dispatch->last_ribbon_offset;
+		bucket->globals.camera_position = ribbon_dispatch->current_pm->camera_position;
+		bucket->globals.index_offset = ribbon_dispatch->index_offset;
+		bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
+		bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
+		bucket->globals.ribbon_count = ribbon_count;
+		ribbon_dispatch->last_index_offset += ribbon_dispatch->index_count;
+		ribbon_dispatch->last_vertex_offset += ribbon_dispatch->vertex_count;
+		ribbon_dispatch->last_ribbon_offset += ribbon_count;
+		ribbon_dispatch->last_segment_offset += bucket->segments.current_size;
+		return true;
 	}
-	*tfxStore->last_ribbon_dispatch = {};
 	return false;
 }
 
@@ -13219,17 +13217,23 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 	return *tfxStore->ribbon_buffer_requirements;
 }
 
-void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst) {
+void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager *effect_managers, int effect_manager_count, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
 	//Make sure that you setup the ribbon buffers
+	if (effect_manager_count > 0) {
+		TFX_ASSERT_HANDLE(effect_managers[0]); //If effect manager count is greater then 0 then effect_managers must be an array of tfx_effect_manager
+	}
 	TFX_ASSERT(emitters_dst);
 	TFX_ASSERT(segments_dst);
 	TFX_ASSERT(ribbons_dst);
 	if (segments_dst && ribbons_dst) {
-		tfx_effect_manager pm = tfx__next_global_effect_manager();
 		tfxU32 running_segment_offset = 0;
 		tfxU32 running_ribbon_offset = 0;
 		tfxU32 running_emitter_offset = 0;
-		while (pm) {
+		count = effect_manager_count > 0 effect_manager_count : tfxStore.effect_managers.Size();
+		int i = 0;
+		while (i < count) {
+			tfx_effect_manager pm = effect_manager_count > 0 effect_managers[i] : tfxStore.effect_managers.data[i];
+			i++;
 			tfx__wait_for_effect_manager_update(pm);
 			tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 			while (bucket) {
