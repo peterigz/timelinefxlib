@@ -9706,7 +9706,7 @@ tfxAPI void tfx_ResetRibbonDispatchIterator(tfx_effect_manager pm);
 
 tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements();
 
-tfxAPI void tfx_CopyRibbonDataToStagingBuffers(void *segments_dst, void *ribbons_dst, void *emitters_dst, tfx_effect_manager *effect_managers, int effect_manager_count);
+tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager effect_manager, void *segments_dst, void *ribbons_dst, void *emitters_dst);
 
 tfxAPI size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_effect_manager pm);
 
