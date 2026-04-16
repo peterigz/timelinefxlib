@@ -6722,6 +6722,7 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 particle_texture_index;
 	tfxU32 color_ramp_texture_index;
 	float lerp;
+	float time;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
