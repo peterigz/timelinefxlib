@@ -6084,8 +6084,6 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxU32 spawn_amount_variation;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
 	tfxU32 single_shot_limit;
-	//Milliseconds to delay spawing
-	float delay_spawning;
 	//When relative position is set you can create a lag between the particle position and the emitter position base on the particle age
 	float relative_lag;
 	//When the emission type is shared emitter then this is the hash of the shared emitter.

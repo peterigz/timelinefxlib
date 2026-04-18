@@ -5732,7 +5732,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "preview_camera_isometric_scale") value.Setf("%f", effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_isometric_scale);
 	else if (property_name == "preview_effect_z_offset") value.Setf("%f", effect->library->preview_camera_settings[effect->preview_camera_settings].effect_z_offset);
 	else if (property_name == "preview_camera_speed") value.Setf("%f", effect->library->preview_camera_settings[effect->preview_camera_settings].camera_speed);
-	else if (property_name == "delay_spawning") value.Setf("%f", shared_properties->delay_spawning);
+	else if (property_name == "delay_spawning") value.Setf("%f", effect->state_properties.delay_spawning);
 	else if (property_name == "grid_rows") value.Setf("%f", shared_properties->grid_points.x);
 	else if (property_name == "grid_columns") value.Setf("%f", shared_properties->grid_points.y);
 	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
@@ -6039,7 +6039,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "emitter_handle_x") effect->emitter_handle.x = value;
 	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
 	else if (*field == "emitter_handle_z" && shared_properties) effect->emitter_handle.z = value;
-	else if (*field == "delay_spawning" && shared_properties) shared_properties->delay_spawning = value;
+	else if (*field == "delay_spawning" && shared_properties) effect->state_properties.delay_spawning = value;
 	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
 	else if (*field == "grid_depth" && shared_properties) shared_properties->grid_points.z = value;
@@ -6211,7 +6211,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("grid_rows=%f", shared_properties->grid_points.x);
 	file->AddLine("grid_columns=%f", shared_properties->grid_points.y);
 	file->AddLine("grid_depth=%f", shared_properties->grid_points.z);
-	file->AddLine("delay_spawning=%f", shared_properties->delay_spawning);
+	file->AddLine("delay_spawning=%f", emitter->state_properties.delay_spawning);
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
@@ -6267,7 +6267,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("spawn_amount=%i", shared_properties->spawn_amount);
 	file->AddLine("spawn_amount_variation=%i", shared_properties->spawn_amount_variation);
 	file->AddLine("emission_type=%i", shared_properties->emission_type);
-	file->AddLine("delay_spawning=%f", shared_properties->delay_spawning);
+	file->AddLine("delay_spawning=%f", emitter->state_properties.delay_spawning);
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
@@ -17913,7 +17913,6 @@ void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->image_hash = 1;
 	shared_properties->start_frame = 0;
 	shared_properties->frame_rate = 30.f;
-	shared_properties->delay_spawning = 0.f;
 	shared_properties->paired_emitter_hash = 0;
 }
 
