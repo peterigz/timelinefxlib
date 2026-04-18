@@ -3181,6 +3181,39 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 	stack.free();
 }
 
+void tfx__store_paired_emitters(tfx_effect_descriptor effect, tfx_vector_t<tfx_paired_emitter_t> *paired_emitters) {
+	if (effect->type == tfxEffectType) {
+		for (tfx_effect_descriptor e : effect->children) {
+			tfx__store_paired_emitters(e, paired_emitters);
+		}
+	}
+	else if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+		if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && effect->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
+			tfx_paired_emitter_t pair;
+			pair.src_emitter = effect;
+			pair.dst_emitter = effect->library->effect_paths.At(shared_properties->paired_emitter_hash);
+			paired_emitters->push_back(pair);
+		}
+		for (tfx_effect_descriptor e : effect->children) {
+			tfx__store_paired_emitters(e, paired_emitters);
+		}
+	}
+}
+
+void tfx__remap_paired_emitters(tfx_effect_descriptor effect_cloned, tfx_effect_descriptor effect_copy) {
+	tfx_vector_t<tfx_paired_emitter_t> stored_pairs;
+	tfx__store_paired_emitters(effect_cloned, &stored_pairs);
+	if (stored_pairs.current_size > 0) {
+		tfx__set_effect_library_paths(effect_copy);
+		tfx__reindex_effect(effect_copy);
+		for (tfx_paired_emitter_t &pair : stored_pairs) {
+			tfx__get_shared_emitter_properties(effect_copy->children[pair.src_emitter->library_index])->paired_emitter_hash = effect_copy->children[pair.dst_emitter->library_index]->path_hash;
+		}
+		stored_pairs.free();
+	}
+}
+
 void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
 	clone->children.init();
@@ -3257,12 +3290,14 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
 	tfx__clone_effect(src, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
+	tfx__remap_paired_emitters(src, *dst);
 }
 
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(effect_to_clone);		//effect to clone is not a valid handle
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
 	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
+	tfx__remap_paired_emitters(effect_to_clone, clone);
 	return clone;
 }
 
@@ -3741,6 +3776,24 @@ void tfx__update_library_effect_paths(tfx_library library) {
 		library_effect->path_hash = tfx_Hash(&tfxStore->hasher, path.c_str(), path.Length(), 0);
 		tfx__add_library_path(library, library_effect, path.c_str(), false);
 	}
+}
+
+void tfx__set_effect_library_paths(tfx_effect_descriptor effect) {
+	if (effect->parent != nullptr) {
+		return;
+	}
+	if (tfx__is_descriptor_hidden(effect)) return;
+	tfx_library library = effect->library;
+	tfx_str512_t path{};
+	path.Set(effect->path.c_str());
+	if (library->effect_paths.ValidName(path.c_str())) {
+		tfx_str256_t new_path = tfx__find_new_path_name(library, path.c_str());
+		effect->path.Set(new_path.c_str());
+		effect->name = tfx__get_name_from_path(path.c_str());
+		effect->path_hash = tfx_Hash(&tfxStore->hasher, new_path.c_str(), new_path.Length(), 0);
+	}
+	effect->path_hash = tfx_Hash(&tfxStore->hasher, effect->path.c_str(), effect->path.Length(), 0);
+	tfx__add_library_path(library, effect, effect->path.c_str(), false);
 }
 
 void tfx__add_library_path(tfx_library library, tfx_effect_descriptor effect_descriptor, const char *path, bool skip_existing) {
@@ -10434,12 +10487,12 @@ bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descripto
 }
 
 void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
-	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	tfxParticleEmitterFlags property_flags = emitter->state_properties.property_flags;
 	tfxEmitterStateFlags &state_flags = emitter->state_flags;
 	state_flags = 0;
 	if (emitter->type == tfxEmitterType) {
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 		state_flags |= property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
 		state_flags |= (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && shared_properties->single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
 		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single ? tfxEmitterStateFlags_is_single : 0;

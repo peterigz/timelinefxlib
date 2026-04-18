@@ -6466,6 +6466,11 @@ typedef struct tfx_effect_descriptor_s {
 #endif
 } tfx_effect_descriptor_t;
 
+typedef struct tfx_paired_emitter_s {
+    tfx_effect_descriptor src_emitter;
+    tfx_effect_descriptor dst_emitter;
+} tfx_paired_emitter_t;
+
 typedef struct tfx_unique_sprite_id_s {
 	tfxU32 uid;
 	tfxU32 age;
@@ -7710,6 +7715,7 @@ tfxINTERNAL void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tf
 tfxINTERNAL void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index);
 tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats_t *stats);
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_effect_manager pm, bool switch_on);
+tfxINTERNAL void tfx__set_effect_library_paths(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
@@ -7771,6 +7777,8 @@ tfxAPI_EDITOR bool tfx__has_emission_range(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__update_source_emitter_flags(tfx_effect_descriptor effect);
+tfxINTERNAL void tfx__store_paired_emitters(tfx_effect_descriptor effect, tfx_vector_t<tfx_paired_emitter_t> *paired_emitters);
+tfxINTERNAL void tfx__remap_paired_emitters(tfx_effect_descriptor emitter_cloned, tfx_effect_descriptor clone);
 tfxINTERNAL void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor effect);
