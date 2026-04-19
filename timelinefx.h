@@ -7725,6 +7725,8 @@ tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32
 tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
+tfxINTERNAL bool tfx__name_exists(tfx_vector_t<tfx_effect_descriptor> *list, const char *name);
+tfxINTERNAL tfx_str64_t tfx__find_new_effect_name(tfx_vector_t<tfx_effect_descriptor> *list, const tfx_str64_t *effect_name);
 tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path);
 
 //Effect/Emitter functions

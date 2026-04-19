@@ -3787,10 +3787,10 @@ void tfx__set_effect_library_paths(tfx_effect_descriptor effect) {
 	tfx_str512_t path{};
 	path.Set(effect->path.c_str());
 	if (library->effect_paths.ValidName(path.c_str())) {
-		tfx_str256_t new_path = tfx__find_new_path_name(library, path.c_str());
-		effect->path.Set(new_path.c_str());
+		tfx_str64_t new_name = tfx__find_new_effect_name(&library->effects, &effect->name);
+		effect->path.Set(new_name.c_str());
 		effect->name = tfx__get_name_from_path(path.c_str());
-		effect->path_hash = tfx_Hash(&tfxStore->hasher, new_path.c_str(), new_path.Length(), 0);
+		effect->path_hash = tfx_Hash(&tfxStore->hasher, new_name.c_str(), new_name.Length(), 0);
 	}
 	effect->path_hash = tfx_Hash(&tfxStore->hasher, effect->path.c_str(), effect->path.Length(), 0);
 	tfx__add_library_path(library, effect, effect->path.c_str(), false);
@@ -4494,6 +4494,39 @@ tfx_str64_t tfx__get_name_from_path(const char *path) {
 	}
 	file_split.free();
 	return extension;
+}
+
+bool tfx__name_exists(tfx_vector_t<tfx_effect_descriptor> *list, const char *name) {
+	for (tfx_effect_descriptor effect : *list) {
+		if (tfx__is_descriptor_hidden(effect)) continue;
+		if (effect->name == name) {
+			return true;
+		}
+	}
+	return false;
+}
+
+tfx_str64_t tfx__find_new_effect_name(tfx_vector_t<tfx_effect_descriptor> *list, const tfx_str64_t *effect_name) {
+	tmpStack(tfx_str256_t, name);
+	tfx__split_string_stack(effect_name->c_str(), effect_name->Length(), &name, 46);
+	tfx_str64_t new_name;
+	if (name.size() > 2) {
+		for (int i = 0; i != name.size() - 2; ++i) {
+			new_name.Appendf("%s", name[i].c_str());
+		}
+	} else if (name.size() == 2) {
+		new_name.Set(name[0].c_str());
+	} else {
+		new_name = *effect_name;
+	}
+	tfx_str64_t find_name = new_name;
+	int index = 1;
+	while (tfx__name_exists(list, find_name.c_str())) {
+		find_name = new_name;
+		find_name.Appendf(".%i", index++);
+	}
+	name.free();
+	return find_name;
 }
 
 tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path) {
