@@ -11016,9 +11016,6 @@ void tfx__update_effect_manager(void *data) {
 
 	double elapsed_time = pm->manager_work.elapsed_time;
 
-	if (pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer) {
-		TFX_ASSERT(pm->instance_buffer.data);	//You must call tfx_SetStagingBuffer if flagging the particle manager to write direct to staging buffer
-	}
 	if(elapsed_time <= 0) return;
 
 	tfx__sync_lock(&pm->updating);
@@ -13055,8 +13052,7 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes)
 
 	tfxEffectManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) | 
 											(pm->flags & tfxEffectManagerFlags_double_buffer_sprites) | 
-											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) | 
-											(pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer);
+											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index);
 
 	tfxU32 size_in_bytes = pm->instance_buffer.capacity * pm->instance_buffer.struct_size;
 	tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_instance_t));
@@ -13073,15 +13069,6 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes)
 
 	pm->emitters.clear();
 	pm->effects.clear();
-}
-
-void tfx_SetStagingBuffer(tfx_effect_manager pm, void *staging_buffer, tfxU32 size_in_bytes) {
-	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	TFX_ASSERT(pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer);		//Particle manager must be flagged to write direct to staging before on creation
-	TFX_ASSERT(staging_buffer);		//Staging buffer is null!
-	tfxU32 unit_size = size_in_bytes / pm->instance_buffer.struct_size;
-	pm->instance_buffer.data = staging_buffer;
-	pm->instance_buffer.capacity = unit_size;
 }
 
 void tfx_TogglePMOrderEffects(tfx_effect_manager pm, bool yesno) {
@@ -14194,15 +14181,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 			if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 				uid_buffer.reserve(new_size);
 			}
-			if (pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer && pm->info.grow_staging_buffer_callback) {
-				if (!pm->info.grow_staging_buffer_callback(new_size, pm, pm->info.user_data)) {
-					max_spawn_count = 0;
-				}
-			} else if(pm->flags & tfxEffectManagerFlags_direct_to_staging_buffer) {
-				max_spawn_count = 0;
-			} else {
-				instance_buffer.reserve(new_size);
-			}
+			instance_buffer.reserve(new_size);
 		}
 	}
 	else {
@@ -18008,7 +17987,6 @@ tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup s
 	info.dynamic_sprite_allocation = true;
 	info.group_sprites_by_effect = false;
 	info.auto_order_effects = false;
-	info.write_direct_to_staging_buffer = false;
 	info.grow_staging_buffer_callback = nullptr;
 	info.max_particles = 5000;
 	switch (setup) {
@@ -18095,12 +18073,7 @@ tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
 	}
 
 	pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_instance_t), 16);
-	if (info.write_direct_to_staging_buffer) {
-		pm->flags |= tfxEffectManagerFlags_direct_to_staging_buffer;
-		pm->instance_buffer.data = nullptr;
-	} else {
-		pm->instance_buffer.reserve(tfxMax((info.max_particles / tfxDataWidth + 1) * tfxDataWidth, 8));
-	}
+	pm->instance_buffer.reserve(tfxMax((info.max_particles / tfxDataWidth + 1) * tfxDataWidth, 8));
 
 	tfx__free_all_particle_lists(pm);
 	return pm;

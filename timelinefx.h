@@ -3372,9 +3372,9 @@ typedef enum {
 	tfxEffectManagerFlags_using_uids                        	= 1 << 15,
 	tfxEffectManagerFlags_update_bounding_boxes             	= 1 << 17,
 	tfxEffectManagerFlags_auto_order_effects                	= 1 << 19,
-	tfxEffectManagerFlags_direct_to_staging_buffer          	= 1 << 20,
-	tfxEffectManagerFlags_has_ribbons_to_draw               	= 1 << 21,
-	tfxEffectManagerFlags_record_with_compute_image_index   	= 1 << 22,
+	tfxEffectManagerFlags_has_ribbons_to_draw               	= 1 << 20,
+	tfxEffectManagerFlags_record_with_compute_image_index   	= 1 << 21,
+	tfxEffectManagerFlags_grow_instance_buffer				   	= 1 << 22,
 } tfx_effect_manager_flag_bits;
 
 //These values must stay the same
@@ -7649,7 +7649,6 @@ typedef struct tfx_effect_manager_info_s {
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping instance_data by effect.
 	bool group_sprites_by_effect;           //Set to true to group all instance_data by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
 	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use tfx_SetPMCamera in 3d to set the effect depth to the distance the camera.
-	bool write_direct_to_staging_buffer;	//Make the effect manager write directly to the staging buffer. Use tfx_SetStagingBuffer before you call tfx_UpdateEffectManager
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_effect_manager pm, void *user_data);
@@ -7725,6 +7724,7 @@ typedef struct tfx_effect_manager_s {
 	//Banks of instance_data. All emitters write their sprite data to these banks. 
 	tfx_buffer_t instance_buffer;
 	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
+	tfxU32 new_instance_buffer_size;
 	tfxU32 current_sprite_buffer;
 	tfxU32 highest_depth_index;
 
@@ -10130,18 +10130,6 @@ in mind that you can just use more than one effect manager and utilised differen
 tfxAPI void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 sort_passes);
 
 tfxAPI void tfx_CompleteEffectManagerWork(tfx_effect_manager pm);
-
-/*
-Set the staging buffer used in the effect manager. The effect manager flags must be set with tfxEffectManagerFlags_direct_to_staging_buffer when the particle
-manager was created. Depending on the renderer you use you may have to call this before each time you update the effect manager so you can set the buffer to the
-current frame in flight. This will probably apply in any modern renderer like vulkan, metal or dx12.
-Note: It's up to you to ensure that the staging buffer has enough capacity. The effect manager will assume that the size_in_bytes that you pass to the particle
-manager is correct and if tfxEffectManagerFlags_dynamic_sprite_allocation is set will attempt to grow the buffer by calling the callback you set to do this.
-* @param pm                       A pointer to an intialised tfx_effect_manager_t.
-* @param staging_buffer           A pointer to the staging buffer where all the instance_data/billboards are written to
-* @param size_in_bytes            The size in bytes of the staging buffer
-*/
-tfxAPI void tfx_SetStagingBuffer(tfx_effect_manager pm, void *staging_buffer, tfxU32 size_in_bytes);
 
 /*
 Turn on and off whether the effect manager should sort the effects by depth order. Use tfx_SetPMCamera to set the position of the camera that the effect manager will
