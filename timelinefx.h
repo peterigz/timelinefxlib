@@ -140,7 +140,9 @@ All functions in the library will be marked this way for clarity and naturally t
 typedef int tfx_index;
 typedef unsigned int tfx_sl_bitmap;
 typedef unsigned int tfx_uint;
+typedef unsigned int tfx_thread_access;
 typedef unsigned char tfx_byte;
+typedef int tfx_bool;
 typedef void *tfx_pool;
 
 #if !defined (TFX_ASSERT)
@@ -302,142 +304,173 @@ tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
 #endif
 }
 
-	tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
+tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
 #ifdef _WIN32
 		WakeConditionVariable(&sync->full_condition);
 #else
 		pthread_cond_signal(&sync->full_condition);
 #endif
-	}
+}
 
 #define tfx__MAXIMUM_BLOCK_SIZE (TFX_ONE << TFX_MAX_SIZE_INDEX)
 
-	//Note: putting this hear as a reminder for future memory tracking/features
-	typedef struct tfx_header_meta_s {
-		struct tfx_header *prev_physical_block;
-#if defined(TFX_MEMORY_TRACKING)
-		tfx_size memory_block_type;
-#endif
-		/*    Note that the size is either 4 or 8 bytes aligned so the boundary tag (2 flags denoting
-			whether this or the previous block is free) can be stored in the first 2 least
-			significant bits    */
-		tfx_size size;
-	} tfx_header_meta_t;
+enum tfx__constants {
+	tfx__MEMORY_ALIGNMENT = 1 << MEMORY_ALIGNMENT_LOG2,
+	tfx__SECOND_LEVEL_INDEX_LOG2 = 5,
+	tfx__FIRST_LEVEL_INDEX_COUNT = TFX_MAX_SIZE_INDEX,
+	tfx__SECOND_LEVEL_INDEX_COUNT = 1 << tfx__SECOND_LEVEL_INDEX_LOG2,
+	#ifdef TFX_SAFEGUARDS
+	tfx__BLOCK_POINTER_OFFSET = sizeof(void*) * 2 + sizeof(tfx_size),
+	tfx__BLOCK_SIZE_OVERHEAD = sizeof(tfx_size) + sizeof(void*),
+	#else
+	tfx__BLOCK_POINTER_OFFSET = sizeof(void*) + sizeof(tfx_size),
+	tfx__BLOCK_SIZE_OVERHEAD = sizeof(tfx_size),
+	#endif
+	tfx__MINIMUM_BLOCK_SIZE = 16,
+	tfx__POINTER_SIZE = sizeof(void*),
+	tfx__SMALLEST_CATEGORY = (1 << (tfx__SECOND_LEVEL_INDEX_LOG2 + MEMORY_ALIGNMENT_LOG2))
+};
 
-	enum tfx__constants {
-		tfx__MEMORY_ALIGNMENT = 1 << MEMORY_ALIGNMENT_LOG2,
-		tfx__SECOND_LEVEL_INDEX_LOG2 = 5,
-		tfx__FIRST_LEVEL_INDEX_COUNT = TFX_MAX_SIZE_INDEX,
-		tfx__SECOND_LEVEL_INDEX_COUNT = 1 << tfx__SECOND_LEVEL_INDEX_LOG2,
-		tfx__BLOCK_POINTER_OFFSET = sizeof(void *) + sizeof(tfx_size) + sizeof(tfx_size),
-		tfx__MINIMUM_BLOCK_SIZE = 16,
-		tfx__BLOCK_SIZE_OVERHEAD = sizeof(tfx_size) + sizeof(tfx_size),
-		tfx__POINTER_SIZE = sizeof(void *),
-		tfx__SMALLEST_CATEGORY = (1 << (tfx__SECOND_LEVEL_INDEX_LOG2 + MEMORY_ALIGNMENT_LOG2))
-	};
+typedef enum tfx__boundary_tag_flags {
+	tfx__BLOCK_IS_FREE = 1 << 0,
+	tfx__PREV_BLOCK_IS_FREE = 1 << 1,
+} tfx__boundary_tag_flags;
 
-	typedef enum tfx__boundary_tag_flags {
-		tfx__BLOCK_IS_FREE = 1 << 0,
-		tfx__PREV_BLOCK_IS_FREE = 1 << 1,
-	} tfx__boundary_tag_flags;
+typedef enum tfx__error_codes {
+	tfx__OK,
+	tfx__INVALID_FIRST_BLOCK,
+	tfx__INVALID_BLOCK_FOUND,
+	tfx__PHYSICAL_BLOCK_MISALIGNMENT,
+	tfx__INVALID_SEGRATED_LIST,
+	tfx__WRONG_BLOCK_SIZE_FOUND_IN_SEGRATED_LIST,
+	tfx__SECOND_LEVEL_BITMAPS_NOT_INITIALISED
+} tfx__error_codes;
 
-	typedef enum tfx__error_codes {
-		tfx__OK,
-		tfx__INVALID_FIRST_BLOCK,
-		tfx__INVALID_BLOCK_FOUND,
-		tfx__PHYSICAL_BLOCK_MISALIGNMENT,
-		tfx__INVALID_SEGRATED_LIST,
-		tfx__WRONG_BLOCK_SIZE_FOUND_IN_SEGRATED_LIST,
-		tfx__SECOND_LEVEL_BITMAPS_NOT_INITIALISED
-	} tfx__error_codes;
+typedef enum tfx__thread_ops {
+	tfx__FREEING_BLOCK = 1 << 0,
+	tfx__ALLOCATING_BLOCK = 1 << 1
+} tfx__thread_ops;
 
+/*
+	Each block has a header that if used only has a pointer to the previous physical block
+	and the size. If the block is free then the prev and next free blocks are also stored.
+*/
+typedef struct tfx_header {
+	struct tfx_header *prev_physical_block;
+	/*	Note that the size is either 4 or 8 bytes aligned so the boundary tag (2 flags denoting
+		whether this or the previous block is free) can be stored in the first 2 least
+		significant bits	*/
+	tfx_size size;
+	#ifdef TFX_SAFEGUARDS
+	struct tfx_allocator *allocator;
+	#endif
 	/*
-		Each block has a header that is used only has a pointer to the previous physical block
-		and the size. If the block is free then the prev and next free blocks are also stored.
+	User allocation will start here when the block is used. When the block is free prev and next
+	are pointers in a linked list of free blocks within the same class size of blocks
 	*/
-	typedef struct tfx_header {
-		struct tfx_header *prev_physical_block;
-#if defined(TFX_MEMORY_TRACKING)
-		tfx_size memory_block_type;
-#endif
-		/*    Note that the size is either 4 or 8 bytes aligned so the boundary tag (2 flags denoting
-			whether this or the previous block is free) can be stored in the first 2 least
-			significant bits    */
-		tfx_size size;
-		/*
-		User allocation will start here when the block is used. When the block is free prev and next
-		are pointers in a linked list of free blocks within the same class size of blocks
-		*/
-		struct tfx_header *prev_free_block;
-		struct tfx_header *next_free_block;
-	} tfx_header;
+	struct tfx_header *prev_free_block;
+	struct tfx_header *next_free_block;
+} tfx_header;
 
-	/*
-	A struct for making snapshots of a memory pool to get used/free memory stats
-	*/
-	typedef struct tfx_pool_stats_t {
-		int used_blocks;
-		int free_blocks;
-		tfx_size free_size;
-		tfx_size used_size;
-	} tfx_pool_stats_t;
+typedef struct tfx_allocation_stats_t {
+	tfx_size capacity;
+	tfx_size free;
+	int blocks_in_use;
+	int free_blocks;
+} tfx_allocation_stats_t;
 
-	typedef struct tfx_allocator {
-		/*    This is basically a terminator block that free blocks can point to if they're at the end
-			of a free list. */
-		tfx_header null_block;
-		//todo: just make thead safe by default and remove these conditions
-#if defined(TFX_THREAD_SAFE)
-		/* Multithreading protection*/
-		tfx_sync_t mutex;
-#endif
-		tfx_size minimum_allocation_size;
-		/*    Here we store all of the free block data. first_level_bitmap is either a 32bit int
-		or 64bit depending on whether tfx__64BIT is set. Second_level_bitmaps are an array of 32bit
-		ints. segregated_lists is a two level array pointing to free blocks or null_block if the list
-		is empty. */
-		tfx_fl_bitmap first_level_bitmap;
-		tfx_sl_bitmap second_level_bitmaps[tfx__FIRST_LEVEL_INDEX_COUNT];
-		tfx_header *segregated_lists[tfx__FIRST_LEVEL_INDEX_COUNT][tfx__SECOND_LEVEL_INDEX_COUNT];
-	} tfx_allocator;
+typedef struct tfx_allocator {
+	/*	This is basically a terminator block that free blocks can point to if they're at the end
+		of a free list. */
+	tfx_header null_block;
+	#if defined(TFX_THREAD_SAFE)
+	/* Multithreading protection*/
+	volatile tfx_thread_access access;
+	#endif
+	void *remote_user_data;
+	tfx_size(*get_block_size_callback)(const tfx_header* block);
+	void(*merge_next_callback)(void *remote_user_data, tfx_header* block, tfx_header *next_block);
+	void(*merge_prev_callback)(void *remote_user_data, tfx_header* prev_block, tfx_header *block);
+	void(*split_block_callback)(void *remote_user_data, tfx_header* block, tfx_header* trimmed_block, tfx_size remote_size);
+	void(*add_pool_callback)(void *remote_user_data, void* block_extension);
+	void(*unable_to_reallocate_callback)(void *remote_user_data, tfx_header *block, tfx_header *new_block);
+	tfx_size block_extension_size;
+	void *user_data;
+	tfx_size minimum_allocation_size;
+	tfx_size allocated_size;
+	/*	Here we store all of the free block data. first_level_bitmap is either a 32bit int
+	or 64bit depending on whether tfx__64BIT is set. Second_level_bitmaps are an array of 32bit
+	ints. segregated_lists is a two level array pointing to free blocks or null_block if the list
+	is empty. */
+	tfx_fl_bitmap first_level_bitmap;
+	tfx_sl_bitmap second_level_bitmaps[tfx__FIRST_LEVEL_INDEX_COUNT];
+	tfx_header *segregated_lists[tfx__FIRST_LEVEL_INDEX_COUNT][tfx__SECOND_LEVEL_INDEX_COUNT];
+	tfx_allocation_stats_t stats;
+} tfx_allocator;
+
+/*
+A minimal remote header block. You can define your own header to store additional information but it must include
+"tfx_size" size and memory_offset in the first 2 fields.
+*/
+typedef struct tfx_remote_header {
+	tfx_size size;
+	tfx_size memory_offset;
+} tfx_remote_header;
+
+typedef struct tfx_pool_stats_t {
+	int used_blocks;
+	int free_blocks;
+	tfx_size free_size;
+	tfx_size used_size;
+} tfx_pool_stats_t;
+
+#define tfx__map_size (remote_size ? remote_size : size)
+#define tfx__do_size_class_callback(block) allocator->get_block_size_callback(block)
+#define tfx__do_merge_next_callback allocator->merge_next_callback(allocator->remote_user_data, block, next_block)
+#define tfx__do_merge_prev_callback allocator->merge_prev_callback(allocator->remote_user_data, prev_block, block)
+#define tfx__do_split_block_callback allocator->split_block_callback(allocator->remote_user_data, block, trimmed, remote_size)
+#define tfx__do_add_pool_callback allocator->add_pool_callback(allocator->remote_user_data, block)
+#define tfx__do_unable_to_reallocate_callback tfx_header *new_block = tfx__block_from_allocation(allocation); tfx_header *block = tfx__block_from_allocation(ptr); allocator->unable_to_reallocate_callback(allocator->remote_user_data, block, new_block)
+#define tfx__block_extension_size (allocator->block_extension_size & ~1)
+#define tfx__call_maybe_split_block tfx__maybe_split_block(allocator, block, size, remote_size)
 
 #if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
-	/* Microsoft Visual C++ support on x86/X64 architectures. */
+/* Microsoft Visual C++ support on x86/X64 architectures. */
 
 #include <intrin.h>
 
-	static inline int tfx__scan_reverse(tfx_size bitmap) {
-		unsigned long index;
-#if defined(tfx__64BIT)
-		return _BitScanReverse64(&index, bitmap) ? index : -1;
-#else
-		return _BitScanReverse(&index, bitmap) ? index : -1;
-#endif
-	}
+static inline int tfx__scan_reverse(tfx_size bitmap) {
+	unsigned long index;
+	#if defined(tfx__64BIT)
+	return _BitScanReverse64(&index, bitmap) ? index : -1;
+	#else
+	return _BitScanReverse(&index, bitmap) ? index : -1;
+	#endif
+}
 
-	static inline int tfx__scan_forward(tfx_size bitmap)
-	{
-		unsigned long index;
-#if defined(tfx__64BIT)
-		return _BitScanForward64(&index, bitmap) ? index : -1;
-#else
-		return _BitScanForward(&index, bitmap) ? index : -1;
-#endif
-	}
+static inline unsigned int tfx__count_bits(unsigned int number) {
+	return __popcnt(number);
+}
+
+static inline int tfx__scan_forward(tfx_size bitmap)
+{
+	unsigned long index;
+	#if defined(tfx__64BIT)
+	return _BitScanForward64(&index, bitmap) ? index : -1;
+	#else
+	return _BitScanForward(&index, bitmap) ? index : -1;
+	#endif
+}
 
 #ifdef _WIN32
 #include <Windows.h>
-	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG *target, tfxLONG value, tfxLONG original) {
-		return InterlockedCompareExchange((volatile LONG *)target, value, original);
-	}
+static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_access* target, tfx_thread_access value, tfx_thread_access original) {
+	return InterlockedCompareExchange(target, value, original);
+}	
 
-	static inline tfxLONG tfx__exchange(volatile tfxLONG *target, tfxLONG value) {
-		return InterlockedExchange((volatile LONG *)target, value);
-	}
-
-	static inline unsigned int tfx__increment(unsigned int volatile *target) {
-		return InterlockedIncrement(target);
-	}
+static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
+	return InterlockedExchange((volatile LONG *)target, value);
+}
 #endif
 
 #define tfx__strlen strnlen_s
@@ -450,38 +483,35 @@ tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
 #define TFX_PACKED_STRUCT
 
 #elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
-      (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
-	/* GNU C/C++ or Clang support on x86/x64 architectures. */
+(defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
+/* GNU C/C++ or Clang support on x86/x64 architectures. */
 
-	static inline int tfx__scan_reverse(tfx_size bitmap)
-	{
-#if defined(tfx__64BIT)
-		return 64 - __builtin_clzll(bitmap) - 1;
-#else
-		return 32 - __builtin_clz((int)bitmap) - 1;
-#endif
-	}
+static inline int tfx__scan_reverse(tfx_size bitmap)
+{
+	if (bitmap == 0) return -1;
+	#if defined(tfx__64BIT)
+	return 64 - __builtin_clzll(bitmap) - 1;
+	#else
+	return 32 - __builtin_clz((int)bitmap) - 1;
+	#endif
+}
 
-	static inline int tfx__scan_forward(tfx_size bitmap)
-	{
-#if defined(tfx__64BIT)
-		return __builtin_ffsll(bitmap) - 1;
-#else
-		return __builtin_ffs((int)bitmap) - 1;
-#endif
-	}
+static inline unsigned int tfx__count_bits(unsigned int number) {
+	return __builtin_popcount(number);
+}
 
-	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG *target, tfxLONG value, tfxLONG original) {
-		return __sync_val_compare_and_swap(target, original, value);
-	}
+static inline int tfx__scan_forward(tfx_size bitmap)
+{
+	#if defined(tfx__64BIT)
+	return __builtin_ffsll(bitmap) - 1;
+	#else
+	return __builtin_ffs((int)bitmap) - 1;
+	#endif
+}
 
-	static inline tfxLONG tfx__exchange(volatile tfxLONG *target, tfxLONG value) {
-		return __sync_lock_test_and_set(target, value);
-	}
-
-	static inline unsigned int tfx__increment(unsigned int volatile *target) {
-		return __sync_add_and_fetch(target, 1);
-	}
+static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_access* target, tfx_thread_access value, tfx_thread_access original) {
+	return __sync_val_compare_and_swap(target, original, value);
+}
 
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
@@ -492,718 +522,1178 @@ tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
 #define TFX_ALIGN_AFFIX(v)            __attribute__((aligned(v)))
 #define TFX_PACKED_STRUCT            __attribute__((packed))
 
+#else
+
+static inline unsigned int tfx__count_bits(unsigned int n) {
+	unsigned int count = 0;
+	while (n > 0) {
+		n &= (n - 1);
+		count++;
+	}
+	return count;
+}
+
 #endif
 
-	/*
-		Initialise an allocator. Pass a block of memory that you want to use to store the allocator data. This will not create a pool, only the
-		necessary data structures to store the allocator.
-	*/
-	tfx_allocator *tfx_InitialiseAllocator(void *memory);
+tfxAPI tfx_allocator *tfx_InitialiseAllocator(void *memory);
+tfxAPI tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size);
+tfxAPI tfx_pool *tfx_AddPool(tfx_allocator *allocator, void *memory, tfx_size size);
+tfxAPI tfx_size tfx_AllocatorSize(void);
+tfxAPI tfx_pool *tfx_GetPool(tfx_allocator *allocator);
+tfxAPI void *tfx_Allocate(tfx_allocator *allocator, tfx_size size);
+tfxAPI void *tfx_Reallocate(tfx_allocator *allocator, void *ptr, tfx_size size);
+tfxAPI void *tfx_AllocateAligned(tfx_allocator *allocator, tfx_size size, tfx_size alignment);
+tfxAPI int tfx_Free(tfx_allocator *allocator, void *allocation);
+tfxAPI void* tfx_PromoteLinearBlock(tfx_allocator *allocator, void* linear_alloc_mem, tfx_size used_size);
+tfxAPI tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool);
+tfxAPI void tfx_SetMinimumAllocationSize(tfx_allocator *allocator, tfx_size size);
+tfxAPI tfx_pool_stats_t tfx_CreateMemorySnapshot(const tfx_pool *pool);
+tfxAPI void tfx_VerifyPool(tfx_allocator *allocator, const tfx_pool *pool);
 
-	/*
-		Initialise an allocator and a pool at the same time. The data stucture to store the allocator will be stored at the beginning of the memory
-		you pass to the function and the remaining memory will be used as the pool.
-	*/
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator);
+//Remote memory
+tfxAPI tfx_allocator *tfx_InitialiseAllocatorForRemote(void *memory);
+tfxAPI void tfx_SetBlockExtensionSize(tfx_allocator *allocator, tfx_size size);
+tfxAPI int tfx_FreeRemote(tfx_allocator *allocator, void *allocation);
+tfxAPI void *tfx_AllocateRemote(tfx_allocator *allocator, tfx_size remote_size);
+tfxAPI tfx_size tfx_CalculateRemoteBlockPoolSize(tfx_allocator *allocator, tfx_size remote_pool_size);
+tfxAPI void tfx_AddRemotePool(tfx_allocator *allocator, void *block_memory, tfx_size block_memory_size, tfx_size remote_pool_size);
+tfxAPI void* tfx_BlockUserExtensionPtr(const tfx_header *block);
+tfxAPI void* tfx_AllocationFromExtensionPtr(const void *block);
 
-	/*
-		Add a new memory pool to the allocator. Pools don't have to all be the same size, adding a pool will create the biggest block it can within
-		the pool and then add that to the segregated list of free blocks in the allocator. All the pools in the allocator will be naturally linked
-		together in the segregated list because all blocks are linked together with a linked list either as physical neighbours or free blocks in
-		the segregated list.
-	*/
-	tfx_pool *tfx_AddPool(tfx_allocator *allocator, tfx_pool *memory, tfx_size size);
+//Linear allocator
+typedef struct tfx_linear_allocator_t {
+	void *data;
+	tfx_size buffer_size;
+	tfx_size current_offset;
+	void *user_data;
+	struct tfx_linear_allocator_t *next;
+} tfx_linear_allocator_t;
+tfxAPI int tfx_InitialiseLinearAllocator(tfx_linear_allocator_t *allocator, void *memory, tfx_size size);
+tfxAPI void tfx_ResetLinearAllocator(tfx_linear_allocator_t *allocator);
+tfxAPI void *tfx_LinearAllocation(tfx_linear_allocator_t *allocator, tfx_size size_requested);
+tfxAPI tfx_size tfx_GetMarker(tfx_linear_allocator_t *allocator);
+tfxAPI void tfx_ResetToMarker(tfx_linear_allocator_t *allocator, tfx_size marker);
+tfxAPI void tfx_SetLinearAllocatorUserData(tfx_linear_allocator_t *allocator, void *user_data);
+tfxAPI void tfx_AddNextLinearAllocator(tfx_linear_allocator_t *allocator, tfx_linear_allocator_t *next);
+tfxAPI tfx_size tfx_GetLinearAllocatorCapacity(tfx_linear_allocator_t *allocator);
+tfxAPI int tfx_SafeCopy(void *dst, void *src, tfx_size size);
+tfxAPI int tfx_SafeCopyBlock(void *dst_block_start, void *dst, const void *src, tfx_size size);
+tfxAPI int tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
 
-	/*
-		Get the structure size of an allocator. You can use this to take into account the overhead of the allocator when preparing a new allocator
-		with memory pool.
-	*/
-	tfx_size tfx_AllocatorSize(void);
+//--End of user functions
 
-	/*
-		If you initialised an allocator with a pool then you can use this function to get a pointer to the start of the pool. It won't get a pointer
-		to any other pool in the allocator. You can just get that when you call tfx_AddPool.
-	*/
-	tfx_pool *tfx_GetPool(tfx_allocator *allocator);
+//Private inline functions, user doesn't need to call these
 
-	/*
-		Allocate some memory within a tfx_allocator of the specified size. Minimum size is 16 bytes.
-	*/
-	void *tfx_Allocate(tfx_allocator *allocator, tfx_size size);
+static inline void tfx__map(tfx_size size, tfx_index *fli, tfx_index *sli) {
+	*fli = tfx__scan_reverse(size);
+	if (*fli <= tfx__SECOND_LEVEL_INDEX_LOG2) {
+		*fli = 0;
+		*sli = (int)size / (tfx__SMALLEST_CATEGORY / tfx__SECOND_LEVEL_INDEX_COUNT);
+		return;
+	}
+	size = size & ~(TFX_ONE << *fli);
+	*sli = (tfx_index)(size >> (*fli - tfx__SECOND_LEVEL_INDEX_LOG2)) % tfx__SECOND_LEVEL_INDEX_COUNT;
+}
 
-	/*
-		Try to reallocate an existing memory block within the allocator. If possible the current block will be merged with the physical neigbouring
-		block, otherwise a normal tfx_Allocate will take place and the data copied over to the new allocation.
-	*/
-	void *tfx_Reallocate(tfx_allocator *allocator, void *ptr, tfx_size size);
+static inline void tfx__null_merge_callback(void *remote_user_data, tfx_header *block1, tfx_header *block2) { return; }
+void tfx__remote_merge_next_callback(void *remote_user_data, tfx_header *block1, tfx_header *block2);
+void tfx__remote_merge_prev_callback(void *remote_user_data, tfx_header *block1, tfx_header *block2);
+tfx_size tfx__get_remote_size(const tfx_header *block);
+static inline void tfx__null_split_callback(void *remote_user_data, tfx_header *block, tfx_header *trimmed, tfx_size remote_size) { return; }
+static inline void tfx__null_add_pool_callback(void *remote_user_data, void *block) { return; }
+static inline void tfx__null_unable_to_reallocate_callback(void *remote_user_data, tfx_header *block, tfx_header *new_block) { return; }
+static inline void tfx__unset_remote_block_limit_reached(tfx_allocator *allocator) { allocator->block_extension_size &= ~1; };
 
-	/*
-	Allocate some memory within a tfx_allocator of the specified size. Minimum size is 16 bytes.
-*/
-	void *tfx_AllocateAligned(tfx_allocator *allocator, tfx_size size, tfx_size alignment);
+static inline tfx_index tfx__find_next_size_up(tfx_fl_bitmap map, tfx_uint start) {
+	//Mask out all bits up to the start point of the scan
+	map &= (~0ULL << (start + 1));
+	return tfx__scan_forward(map);
+}
 
-	/*
-		Free an allocation from a tfx_allocator. When freeing a block of memory any adjacent free blocks are merged together to keep on top of
-		fragmentation as much as possible. A check is also done to confirm that the block being freed is still valid and detect any memory corruption
-		due to out of bounds writing of this or potentially other blocks.
-	*/
-	int tfx_Free(tfx_allocator *allocator, void *allocation);
+static inline tfx_bool tfx__is_free_block(const tfx_header *block) {
+	return block->size & tfx__BLOCK_IS_FREE;   
+	//If you're crashing here, then you're probably trying to free
+	//something that isn't a memory block. Maybe you should be
+	//zest_vec_free or zest_map_free or maybe freeing someting twice?
+}
 
-	/*
-		Remove a pool from an allocator. Note that all blocks in the pool must be free and therefore all merged together into one block (this happens
-		automatically as all blocks are freed are merged together into bigger blocks.
-	*/
-	bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool);
-
-	/*
-	When using an allocator for managing remote memory, you need to set the bytes per block that a block storing infomation about the remote
-	memory allocation will manage. For example you might set the value to 1MB so if you were to then allocate 4MB of remote memory then 4 blocks
-	worth of space would be used to allocate that memory. This means that if it were to be freed and then split down to a smaller size they'd be
-	enough blocks worth of space to do this.
-
-	Note that the lower the number the more memory you need to track remote memory blocks but the more granular it will be. It will depend alot
-	on the size of allocations you will need
-*/
-	void tfx_SetMinimumAllocationSize(tfx_allocator *allocator, tfx_size size);
-
-	/*
-	To help with debugging memory you can label a memory block with a type which gets stored in the block header.	
-	*/
-	void tfx_SetBlockMemoryType(void *allocation, tfx_size memory_type);
-
-	//--End of user functions
-
-	//Private inline functions, user doesn't need to call these
-	static inline void tfx__map(tfx_size size, tfx_index *fli, tfx_index *sli) {
-		*fli = tfx__scan_reverse(size);
-		if (*fli <= tfx__SECOND_LEVEL_INDEX_LOG2) {
-			*fli = 0;
-			*sli = (int)size / (tfx__SMALLEST_CATEGORY / tfx__SECOND_LEVEL_INDEX_COUNT);
-			return;
+//Debug tool to make sure that if a first level bitmap has a bit set, then the corresponding second level index should contain a value
+//It also walks every free list verifying bidirectional link integrity, free flags, and size-class membership.
+//The most common cause of asserts here is where memory has been written to the wrong address. Check for buffers where they where resized
+//but the buffer pointer that was being written too was not updated after the resize for example.
+//For complementary coverage of the physical block chain (boundary tags, merge invariants, intact prev/next links),
+//see tfx_VerifyPool.
+static inline void tfx__verify_lists(tfx_allocator *allocator) {
+	tfx_header *null_block = &allocator->null_block;
+	for (int fli = 0; fli != tfx__FIRST_LEVEL_INDEX_COUNT; ++fli) {
+		tfx_bool fl_set = (allocator->first_level_bitmap & (TFX_ONE << fli)) != 0;
+		if (fl_set) {
+			//bit in first level is set but according to the second level bitmap array there are no blocks so the first level
+			//bitmap bit should have been 0
+			TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
+		} else {
+			//Conversely if the first level bit is clear, no second level bits should be set in this row
+			TFX_ASSERT(allocator->second_level_bitmaps[fli] == 0);
 		}
-		size = size & ~(1 << *fli);
-		*sli = (tfx_index)(size >> (*fli - tfx__SECOND_LEVEL_INDEX_LOG2)) % tfx__SECOND_LEVEL_INDEX_COUNT;
-	}
-
-	//Read only functions
-	static inline bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
-		return allocator->first_level_bitmap & (TFX_ONE << fli) && allocator->second_level_bitmaps[fli] & (1U << sli);
-	}
-
-	static inline bool tfx__is_used_block(const tfx_header *block) {
-		return !(block->size & tfx__BLOCK_IS_FREE);
-	}
-
-	static inline bool tfx__is_free_block(const tfx_header *block) {
-		//Crashing here? The most likely reason is a pointer into the allocation for this block that became invalid but was still written to at some point.
-		//Most likeyly cause is a tfx_vector_t or similar being resized and allocated elsewhere but you didn't account for this happening and update the pointer. Just index
-		//into the array instead to fix these issues.
-		//Another reason is simply that you're trying to free something that isn't actually a block of memory in the allocator, maybe you're just trying to free a struct or
-		//other object?
-		return block->size & tfx__BLOCK_IS_FREE;
-	}
-
-	static inline bool tfx__prev_is_free_block(const tfx_header *block) {
-		return block->size & tfx__PREV_BLOCK_IS_FREE;
-	}
-
-	static inline void *tfx__align_ptr(const void *ptr, tfx_size align) {
-		ptrdiff_t aligned = (((ptrdiff_t)ptr) + (align - 1)) & ~(align - 1);
-		TFX_ASSERT(0 == (align & (align - 1)) && "must align to a power of two");
-		return (void *)aligned;
-	}
-
-	static inline bool tfx__is_aligned(tfx_size size, tfx_size alignment) {
-		return (size % alignment) == 0;
-	}
-
-	static inline bool tfx__ptr_is_aligned(void *ptr, tfx_size alignment) {
-		uintptr_t address = (uintptr_t)ptr;
-		return (address % alignment) == 0;
-	}
-
-	static inline tfx_size tfx__align_size_down(tfx_size size, tfx_size alignment) {
-		return size - (size % alignment);
-	}
-
-	static inline tfx_size tfx__align_size_up(tfx_size size, tfx_size alignment) {
-		tfx_size remainder = size % alignment;
-		if (remainder != 0) {
-			size += alignment - remainder;
-		}
-		return size;
-	}
-
-	static inline tfx_size tfx__adjust_size(tfx_size size, tfx_size minimum_size, tfx_size alignment) {
-		return tfx__Min(tfx__Max(tfx__align_size_up(size, alignment), minimum_size), tfx__MAXIMUM_BLOCK_SIZE);
-	}
-
-	static inline tfx_size tfx__block_size(const tfx_header *block) {
-		return block->size & ~(tfx__BLOCK_IS_FREE | tfx__PREV_BLOCK_IS_FREE);
-	}
-
-	static inline tfx_header *tfx__block_from_allocation(const void *allocation) {
-		return (tfx_header *)((char *)allocation - tfx__BLOCK_POINTER_OFFSET);
-	}
-
-	static inline tfx_header *tfx__null_block(tfx_allocator *allocator) {
-		return &allocator->null_block;
-	}
-
-	static inline void *tfx__block_user_ptr(const tfx_header *block) {
-		return (char *)block + tfx__BLOCK_POINTER_OFFSET;
-	}
-
-	static inline tfx_header *tfx__first_block_in_pool(const tfx_pool *pool) {
-		return (tfx_header *)((char *)pool - tfx__POINTER_SIZE);
-	}
-
-	static inline tfx_header *tfx__next_physical_block(const tfx_header *block) {
-		return (tfx_header *)((char *)tfx__block_user_ptr(block) + tfx__block_size(block));
-	}
-
-	static inline bool tfx__next_block_is_free(const tfx_header *block) {
-		return tfx__is_free_block(tfx__next_physical_block(block));
-	}
-
-	static inline tfx_header *tfx__allocator_first_block(tfx_allocator *allocator) {
-		return (tfx_header *)((char *)allocator + tfx_AllocatorSize() - tfx__POINTER_SIZE);
-	}
-
-	static inline bool tfx__is_last_block_in_pool(const tfx_header *block) {
-		return tfx__block_size(block) == 0;
-	}
-
-	static inline tfx_index tfx__find_next_size_up(tfx_fl_bitmap map, tfx_uint start) {
-		//Mask out all bits up to the start point of the scan
-		map &= (~0ULL << (start + 1));
-		return tfx__scan_forward(map);
-	}
-
-	//Debug tool to make sure that if a first level bitmap has a bit set, then the corresponding second level index should contain a value
-	//It also checks that the blocks in the list are valid.
-	//The most common cause of asserts here is where memory has been written to the wrong address. Check for buffers where they where resized
-	//but the buffer pointer that was being written too was not updated after the resize for example.
-	static inline void tfx__verify_lists(tfx_allocator *allocator) {
-		for (int fli = 0; fli != tfx__FIRST_LEVEL_INDEX_COUNT; ++fli) {
-			if (allocator->first_level_bitmap & (1ULL << fli)) {
-				//bit in first level is set but according to the second level bitmap array there are no blocks so the first level
-				//bitmap bit should have been 0
-				TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
-				int sli = -1;
-				sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
-				while (sli != -1) {
-					tfx_header *block = allocator->segregated_lists[fli][sli];
-					bool is_free = tfx__is_free_block(block);
-					TFX_ASSERT(is_free);    //The block should be marked as free
-					TFX_ASSERT(block->prev_free_block == &allocator->null_block);    //The first block in in the list should have a prev_free_block that points to the null block in the allocator
-					sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
+		for (int sli = 0; sli != tfx__SECOND_LEVEL_INDEX_COUNT; ++sli) {
+			tfx_bool sl_set = (allocator->second_level_bitmaps[fli] & (1U << sli)) != 0;
+			tfx_header *head = allocator->segregated_lists[fli][sli];
+			if (!sl_set) {
+				//Bit clear so the segregated list head must point at null_block
+				TFX_ASSERT(head == null_block);
+				continue;
+			}
+			//Bit set so the head must hold a real free block
+			TFX_ASSERT(head != null_block);
+			//Walk the list, verifying each link
+			tfx_header *prev = null_block;
+			tfx_header *block = head;
+			int safety = 0;
+			while (block != null_block) {
+				//Block must be marked free
+				TFX_ASSERT(tfx__is_free_block(block));
+				//Block's size must map back to the list (fli, sli) it lives in
+				tfx_index block_fli, block_sli;
+				tfx__map(tfx__do_size_class_callback(block), &block_fli, &block_sli);
+				TFX_ASSERT(block_fli == fli && block_sli == sli);
+				//Bidirectional link integrity. The previous link of the head is null_block; for
+				//every other node, prev->next must point back to the current block.
+				TFX_ASSERT(block->prev_free_block == prev);
+				if (prev != null_block) {
+					TFX_ASSERT(prev->next_free_block == block);
 				}
+				prev = block;
+				block = block->next_free_block;
+				//Cycle / runaway list detection
+				TFX_ASSERT(++safety < 1000000);
 			}
 		}
 	}
+}
 
+//Read only functions
+static inline tfx_bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
+	return allocator->first_level_bitmap & (TFX_ONE << fli) && allocator->second_level_bitmaps[fli] & (1U << sli);
+}
+
+static inline tfx_bool tfx__is_used_block(const tfx_header *block) {
+	return !(block->size & tfx__BLOCK_IS_FREE);
+}
+
+static inline tfx_bool tfx__prev_is_free_block(const tfx_header *block) {
+	return block->size & tfx__PREV_BLOCK_IS_FREE;
+}
+
+static inline void* tfx__align_ptr(const void* ptr, tfx_size align) {
+	uintptr_t aligned = (((uintptr_t)ptr) + (align - 1)) & ~(align - 1);
+	TFX_ASSERT(0 == (align & (align - 1)) && "must align to a power of two");
+	return (void*)aligned;
+}
+
+static inline tfx_bool tfx__is_aligned(tfx_size size, tfx_size alignment) {
+	return (size % alignment) == 0;
+}
+
+static inline tfx_bool tfx__ptr_is_aligned(void *ptr, tfx_size alignment) {
+	uintptr_t address = (uintptr_t)ptr;
+	return (address % alignment) == 0;
+}
+
+static inline tfx_size tfx__align_size_down(tfx_size size, tfx_size alignment) {
+	return size - (size % alignment);
+}
+
+static inline tfx_size tfx__align_size_up(tfx_size size, tfx_size alignment) {
+	tfx_size remainder = size % alignment;
+	if (remainder != 0) {
+		size += alignment - remainder;
+	}
+	return size;
+}
+
+static inline tfx_size tfx__adjust_size(tfx_size size, tfx_size minimum_size, tfx_size alignment) {
+	return tfx__Min(tfx__Max(tfx__align_size_up(size, alignment), minimum_size), tfx__MAXIMUM_BLOCK_SIZE);
+}
+
+static inline tfx_size tfx__block_size(const tfx_header *block) {
+	return block->size & ~(tfx__BLOCK_IS_FREE | tfx__PREV_BLOCK_IS_FREE);
+}
+
+static inline tfx_header *tfx__block_from_allocation(const void *allocation) {
+	return (tfx_header*)((char*)allocation - tfx__BLOCK_POINTER_OFFSET);
+}
+
+static inline tfx_header *tfx__null_block(tfx_allocator *allocator) {
+	return &allocator->null_block;
+}
+
+static inline void* tfx__block_user_ptr(const tfx_header *block) {
+	return (char*)block + tfx__BLOCK_POINTER_OFFSET;
+}
+
+static inline tfx_header* tfx__first_block_in_pool(const tfx_pool *pool) {
+	return (tfx_header*)((char*)pool - tfx__POINTER_SIZE);
+}
+
+static inline tfx_header *tfx__next_physical_block(const tfx_header *block) {
+	return (tfx_header*)((char*)tfx__block_user_ptr(block) + tfx__block_size(block));
+}
+
+static inline tfx_bool tfx__next_block_is_free(const tfx_header *block) {
+	return tfx__is_free_block(tfx__next_physical_block(block));
+}
+
+static inline tfx_header *tfx__allocator_first_block(tfx_allocator *allocator) {
+	return (tfx_header*)((char*)allocator + tfx_AllocatorSize() - tfx__POINTER_SIZE);
+}
+
+static inline tfx_bool tfx__is_last_block_in_pool(const tfx_header *block) {
+	return tfx__block_size(block) == 0;
+}
+
+//Write functions
 #if defined(TFX_THREAD_SAFE)
 
-#define tfx__lock_thread_access(alloc) tfx__sync_lock(&alloc->mutex);
-#define tfx__unlock_thread_access(alloc) tfx__sync_unlock(&alloc->mutex);
-#define tfx__init_allocator_mutex(alloc) tfx__sync_init(&alloc->mutex);
+#define tfx__lock_thread_access(allocator)												\
+do { \
+} while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0)); \
+TFX_ASSERT(allocator->access != 0);
+
+#define tfx__unlock_thread_access(allocator) allocator->access = 0;
 
 #else
 
-#define tfx__lock_thread_access
-#define tfx__unlock_thread_access 
-#define tfx__init_allocator_mutex
+#define tfx__lock_thread_access(allocator)
+#define tfx__unlock_thread_access(allocator)
 
 #endif
+void *tfx__allocate(tfx_allocator *allocator, tfx_size size, tfx_size remote_size);
 
-	//Write functions
-	static inline void tfx__set_block_size(tfx_header *block, tfx_size size) {
-		tfx_size boundary_tag = block->size & (tfx__BLOCK_IS_FREE | tfx__PREV_BLOCK_IS_FREE);
-		block->size = size | boundary_tag;
+static inline void tfx__set_block_size(tfx_header *block, tfx_size size) {
+	tfx_size boundary_tag = block->size & (tfx__BLOCK_IS_FREE | tfx__PREV_BLOCK_IS_FREE);
+	block->size = size | boundary_tag;
+}
+
+static inline void tfx__set_prev_physical_block(tfx_header *block, tfx_header *prev_block) {
+	block->prev_physical_block = prev_block;
+}
+
+static inline void tfx__zero_block(tfx_header *block) {
+	block->prev_physical_block = 0;
+	block->size = 0;
+}
+
+static inline void tfx__mark_block_as_used(tfx_header *block) {
+	block->size &= ~tfx__BLOCK_IS_FREE;
+	tfx_header *next_block = tfx__next_physical_block(block);
+	next_block->size &= ~tfx__PREV_BLOCK_IS_FREE;
+}
+
+static inline void tfx__mark_block_as_free(tfx_header *block) {
+	block->size |= tfx__BLOCK_IS_FREE;
+	tfx_header *next_block = tfx__next_physical_block(block);
+	next_block->size |= tfx__PREV_BLOCK_IS_FREE;
+}
+
+static inline void tfx__block_set_used(tfx_header *block) {
+	block->size &= ~tfx__BLOCK_IS_FREE;
+}
+
+static inline void tfx__block_set_free(tfx_header *block) {
+	block->size |= tfx__BLOCK_IS_FREE;
+}
+
+static inline void tfx__block_set_prev_used(tfx_header *block) {
+	block->size &= ~tfx__PREV_BLOCK_IS_FREE;
+}
+
+static inline void tfx__block_set_prev_free(tfx_header *block) {
+	block->size |= tfx__PREV_BLOCK_IS_FREE;
+}
+
+/*
+	Push a block onto the segregated list of free blocks. Called when tfx_Free is called. Generally blocks are
+	merged if possible before this is called
+*/
+static inline void tfx__push_block(tfx_allocator *allocator, tfx_header *block) {
+	tfx_index fli;
+	tfx_index sli;
+	//Get the size class of the block
+	tfx__map(tfx__do_size_class_callback(block), &fli, &sli);
+	tfx_header *current_block_in_free_list = allocator->segregated_lists[fli][sli];
+	//If you hit this assert then it's likely that at somepoint in your code you're trying to free an allocation
+	//that was already freed or trying to free something that wasn't allocated by the allocator.
+	TFX_ASSERT(block != current_block_in_free_list);
+	//Insert the block into the list by updating the next and prev free blocks of
+	//this and the current block in the free list. The current block in the free
+	//list may well be the null_block in the allocator so this just means that this
+	//block will be added as the first block in this class of free blocks.
+	block->next_free_block = current_block_in_free_list;
+	block->prev_free_block = &allocator->null_block;
+	current_block_in_free_list->prev_free_block = block;
+
+	allocator->segregated_lists[fli][sli] = block;
+	//Flag the bitmaps to mark that this size class now contains a free block
+	allocator->first_level_bitmap |= TFX_ONE << fli;
+	allocator->second_level_bitmaps[fli] |= 1U << sli;
+	if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
+		TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
 	}
+	tfx__mark_block_as_free(block);
+	allocator->stats.free += tfx__block_size(block);
+	allocator->stats.free_blocks++;
+	allocator->stats.blocks_in_use--;
+	#ifdef TFX_EXTRA_DEBUGGING
+	tfx__verify_lists(allocator);
+	#endif
+}
 
-	static inline void tfx__set_prev_physical_block(tfx_header *block, tfx_header *prev_block) {
-		block->prev_physical_block = prev_block;
+/*
+	Remove a block from the segregated list in the allocator and return it. If there is a next free block in the size class
+	then move it down the list, otherwise unflag the bitmaps as necessary. This is only called when we're trying to allocate
+	some memory with tfx_Allocate and we've determined that there's a suitable free block in segregated_lists.
+*/
+static inline tfx_header *tfx__pop_block(tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
+	tfx_header *block = allocator->segregated_lists[fli][sli];
+
+	//If the block in the segregated list is actually the null_block then something went very wrong.
+	//Somehow the segregated lists had the end block assigned but the first or second level bitmaps
+	//did not have the masks assigned
+	TFX_ASSERT(block != &allocator->null_block);
+	if (block->next_free_block && block->next_free_block != &allocator->null_block) {
+		//If there are more free blocks in this size class then shift the next one down and terminate the prev_free_block
+		allocator->segregated_lists[fli][sli] = block->next_free_block;
+		allocator->segregated_lists[fli][sli]->prev_free_block = tfx__null_block(allocator);
 	}
-
-	static inline void tfx__zero_block(tfx_header *block) {
-		block->prev_physical_block = 0;
-		block->size = 0;
-	}
-
-	static inline void tfx__mark_block_as_used(tfx_header *block) {
-		block->size &= ~tfx__BLOCK_IS_FREE;
-		tfx_header *next_block = tfx__next_physical_block(block);
-		next_block->size &= ~tfx__PREV_BLOCK_IS_FREE;
-	}
-
-	static inline void tfx__mark_block_as_free(tfx_header *block) {
-		block->size |= tfx__BLOCK_IS_FREE;
-		tfx_header *next_block = tfx__next_physical_block(block);
-		next_block->size |= tfx__PREV_BLOCK_IS_FREE;
-	}
-
-	static inline void tfx__block_set_used(tfx_header *block) {
-		block->size &= ~tfx__BLOCK_IS_FREE;
-	}
-
-	static inline void tfx__block_set_free(tfx_header *block) {
-		block->size |= tfx__BLOCK_IS_FREE;
-	}
-
-	static inline void tfx__block_set_prev_used(tfx_header *block) {
-		block->size &= ~tfx__PREV_BLOCK_IS_FREE;
-	}
-
-	static inline void tfx__block_set_prev_free(tfx_header *block) {
-		block->size |= tfx__PREV_BLOCK_IS_FREE;
-	}
-
-	/*
-		Push a block onto the segregated list of free blocks. Called when tfx_Free is called. Generally blocks are
-		merged if possible before this is called
-	*/
-	static inline void tfx__push_block(tfx_allocator *allocator, tfx_header *block) {
-		tfx_index fli;
-		tfx_index sli;
-		//Get the size class of the block
-		tfx__map(tfx__block_size(block), &fli, &sli);
-		tfx_header *current_block_in_free_list = allocator->segregated_lists[fli][sli];
-		//If you hit this assert then it's likely that at somepoint in your code you're trying to free an allocation
-		//that was already freed.
-		TFX_ASSERT(block != current_block_in_free_list);
-		//Insert the block into the list by updating the next and prev free blocks of
-		//this and the current block in the free list. The current block in the free
-		//list may well be the null_block in the allocator so this just means that this
-		//block will be added as the first block in this class of free blocks.
-		block->next_free_block = current_block_in_free_list;
-		block->prev_free_block = &allocator->null_block;
-		current_block_in_free_list->prev_free_block = block;
-
-		allocator->segregated_lists[fli][sli] = block;
-		//Flag the bitmaps to mark that this size class now contains a free block
-		allocator->first_level_bitmap |= TFX_ONE << fli;
-		allocator->second_level_bitmaps[fli] |= 1U << sli;
-		if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
-			TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
+	else {
+		//There's no more free blocks in this size class so flag the second level bitmap for this class to 0.
+		allocator->segregated_lists[fli][sli] = tfx__null_block(allocator);
+		allocator->second_level_bitmaps[fli] &= ~(1U << sli);
+		if (allocator->second_level_bitmaps[fli] == 0) {
+			//And if the second level bitmap is 0 then the corresponding bit in the first lebel can be zero'd too.
+			allocator->first_level_bitmap &= ~(TFX_ONE << fli);
 		}
-		tfx__mark_block_as_free(block);
-#ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
-#endif
 	}
+	if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
+		TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
+	}
+	tfx__mark_block_as_used(block);
+	#ifdef TFX_SAFEGUARDS
+	block->allocator = allocator;
+	#endif
+	allocator->stats.free -= tfx__block_size(block);
+	allocator->stats.free_blocks--;
+	allocator->stats.blocks_in_use++;
+	#ifdef TFX_EXTRA_DEBUGGING
+	tfx__verify_lists(allocator);
+	#endif
+	return block;
+}
 
-	/*
-		Remove a block from the segregated list in the allocator and return it. If there is a next free block in the size class
-		then move it down the list, otherwise unflag the bitmaps as necessary. This is only called when we're trying to allocate
-		some memory with tfx_Allocate and we've determined that there's a suitable free block in segregated_lists.
-	*/
-	static inline tfx_header *tfx__pop_block(tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
-		tfx_header *block = allocator->segregated_lists[fli][sli];
-
-		//If the block in the segregated list is actually the null_block then something went very wrong.
-		//Somehow the segregated lists had the end block assigned but the first or second level bitmaps
-		//did not have the masks assigned
-		TFX_ASSERT(block != &allocator->null_block);
-		if (block->next_free_block && block->next_free_block != &allocator->null_block) {
-			//If there are more free blocks in this size class then shift the next one down and terminate the prev_free_block
-			allocator->segregated_lists[fli][sli] = block->next_free_block;
-			allocator->segregated_lists[fli][sli]->prev_free_block = tfx__null_block(allocator);
-		} else {
-			//There's no more free blocks in this size class so flag the second level bitmap for this class to 0.
-			allocator->segregated_lists[fli][sli] = tfx__null_block(allocator);
+/*
+	Remove a block from the segregated list. This is only called when we're merging blocks together. The block is
+	just removed from the list and marked as used and then merged with an adjacent block.
+*/
+static inline void tfx__remove_block_from_segregated_list(tfx_allocator *allocator, tfx_header *block) {
+	tfx_index fli, sli;
+	//Get the size class
+	tfx__map(tfx__do_size_class_callback(block), &fli, &sli);
+	tfx_header *prev_block = block->prev_free_block;
+	tfx_header *next_block = block->next_free_block;
+	TFX_ASSERT(prev_block);
+	TFX_ASSERT(next_block);
+	next_block->prev_free_block = prev_block;
+	prev_block->next_free_block = next_block;
+	if (allocator->segregated_lists[fli][sli] == block) {
+		allocator->segregated_lists[fli][sli] = next_block;
+		if (next_block == tfx__null_block(allocator)) {
 			allocator->second_level_bitmaps[fli] &= ~(1U << sli);
 			if (allocator->second_level_bitmaps[fli] == 0) {
-				//And if the second level bitmap is 0 then the corresponding bit in the first lebel can be zero'd too.
-				allocator->first_level_bitmap &= ~(TFX_ONE << fli);
+				allocator->first_level_bitmap &= ~(1ULL << fli);
 			}
 		}
-		if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
-			TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
-		}
-		tfx__mark_block_as_used(block);
-#ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
-#endif
+	}
+	if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
+		TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
+	}
+	tfx__mark_block_as_used(block);
+	allocator->stats.free -= tfx__block_size(block);
+	allocator->stats.free_blocks--;
+	allocator->stats.blocks_in_use++;
+	#ifdef TFX_EXTRA_DEBUGGING
+	tfx__verify_lists(allocator);
+	#endif
+}
+
+/*
+	This function is called when tfx_Allocate is called. Once a free block is found then it will be split
+	if the size + header overhead + the minimum block size (16b) is greater then the size of the free block.
+	If not then it simply returns the free block as it is without splitting.
+	If split then the trimmed amount is added back to the segregated list of free blocks.
+*/
+static inline tfx_header *tfx__maybe_split_block(tfx_allocator *allocator, tfx_header *block, tfx_size size, tfx_size remote_size) {
+	//If you crash here it could be that you tried to free something that isn't actually a block allocation,
+	//perhaps it's the first object in a list that was allocated like a zest store resource. So when that got
+	//freed it could be added to the free block lists as a 0 sized block.
+	TFX_ASSERT(!tfx__is_last_block_in_pool(block));
+	tfx_size size_plus_overhead = size + tfx__BLOCK_POINTER_OFFSET + tfx__block_extension_size;
+	if (size_plus_overhead + tfx__MINIMUM_BLOCK_SIZE >= tfx__block_size(block) - tfx__block_extension_size) {
 		return block;
 	}
+	tfx_header *trimmed = (tfx_header*)((char*)tfx__block_user_ptr(block) + size + tfx__block_extension_size);
+	trimmed->size = 0;
+	tfx__set_block_size(trimmed, tfx__block_size(block) - size_plus_overhead);
+	tfx_header *next_block = tfx__next_physical_block(block);
+	tfx__set_prev_physical_block(next_block, trimmed);
+	tfx__set_prev_physical_block(trimmed, block);
+	tfx__set_block_size(block, size + tfx__block_extension_size);
+	//Note if this callback calls back into reallocate or allocate functions then you will get a spin lock.
+	tfx__do_split_block_callback;
+	tfx__push_block(allocator, trimmed);
+	return block;
+}
 
-	/*
-		Remove a block from the segregated list. This is only called when we're merging blocks together. The block is
-		just removed from the list and marked as used and then merged with an adjacent block.
-	*/
-	static inline void tfx__remove_block_from_segregated_list(tfx_allocator *allocator, tfx_header *block) {
-		tfx_index fli, sli;
-		//Get the size class
-		tfx__map(tfx__block_size(block), &fli, &sli);
-		tfx_header *prev_block = block->prev_free_block;
-		tfx_header *next_block = block->next_free_block;
-		TFX_ASSERT(prev_block);
-		TFX_ASSERT(next_block);
-		next_block->prev_free_block = prev_block;
-		prev_block->next_free_block = next_block;
-		if (allocator->segregated_lists[fli][sli] == block) {
-			allocator->segregated_lists[fli][sli] = next_block;
-			if (next_block == tfx__null_block(allocator)) {
-				allocator->second_level_bitmaps[fli] &= ~(1U << sli);
-				if (allocator->second_level_bitmaps[fli] == 0) {
-					allocator->first_level_bitmap &= ~(1ULL << fli);
-				}
-			}
-		}
-		if (allocator->first_level_bitmap & (TFX_ONE << fli)) {
-			TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
-		}
-		tfx__mark_block_as_used(block);
-#ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+//For splitting blocks when allocating to a specific memory alignment
+static inline tfx_header *tfx__split_aligned_block(tfx_allocator *allocator, tfx_header *block, tfx_size size) {
+	TFX_ASSERT(!tfx__is_last_block_in_pool(block));
+	tfx_size size_minus_overhead = size - tfx__BLOCK_POINTER_OFFSET;
+	tfx_header *trimmed = (tfx_header*)((char*)tfx__block_user_ptr(block) + size_minus_overhead);
+	trimmed->size = 0;
+	tfx__set_block_size(trimmed, tfx__block_size(block) - size);
+	tfx_header *next_block = tfx__next_physical_block(block);
+	tfx__set_prev_physical_block(next_block, trimmed);
+	tfx__set_prev_physical_block(trimmed, block);
+	tfx__set_block_size(block, size_minus_overhead);
+	tfx__push_block(allocator, block);
+#ifdef TFX_SAFEGUARDS
+	trimmed->allocator = allocator;
 #endif
-	}
+	return trimmed;
+}
 
-	/*
-		This function is called when tfx_Allocate is called. Once a free block is found then it will be split
-		if the size + header overhead + the minimum block size (16b) is greater then the size of the free block.
-		If not then it simply returns the free block as it is without splitting.
-		If split then the trimmed amount is added back to the segregated list of free blocks.
-	*/
-	static inline tfx_header *tfx__maybe_split_block(tfx_allocator *allocator, tfx_header *block, tfx_size size, tfx_size remote_size) {
-		TFX_ASSERT(!tfx__is_last_block_in_pool(block));
-		tfx_size size_plus_overhead = size + tfx__BLOCK_POINTER_OFFSET;
-		if (size_plus_overhead + tfx__MINIMUM_BLOCK_SIZE >= tfx__block_size(block)) {
-			return block;
-		}
-		tfx_header *trimmed = (tfx_header *)((char *)tfx__block_user_ptr(block) + size);
-		trimmed->size = 0;
-		tfx__set_block_size(trimmed, tfx__block_size(block) - size_plus_overhead);
-		tfx_header *next_block = tfx__next_physical_block(block);
-		tfx__set_prev_physical_block(next_block, trimmed);
-		tfx__set_prev_physical_block(trimmed, block);
-		tfx__set_block_size(block, size);
-		tfx__push_block(allocator, trimmed);
+/*
+	This function is called when tfx_Free is called and the previous physical block is free. If that's the case
+	then this function will merge the block being freed with the previous physical block then add that back into
+	the segregated list of free blocks. Note that that happens in the tfx_Free function after attempting to merge
+	both ways.
+*/
+static inline tfx_header *tfx__merge_with_prev_block(tfx_allocator *allocator, tfx_header *block) {
+	TFX_ASSERT(!tfx__is_last_block_in_pool(block));
+	tfx_header *prev_block = block->prev_physical_block;
+	tfx__remove_block_from_segregated_list(allocator, prev_block);
+	//Note if this callback calls back into reallocate or allocate functions then you will get a spin lock.
+	tfx__do_merge_prev_callback;
+	tfx__set_block_size(prev_block, tfx__block_size(prev_block) + tfx__block_size(block) + tfx__BLOCK_POINTER_OFFSET);
+	tfx_header *next_block = tfx__next_physical_block(block);
+	tfx__set_prev_physical_block(next_block, prev_block);
+	tfx__zero_block(block);
+	return prev_block;
+}
+
+/*
+	This function might be called when tfx_Free is called to free a block. If the block being freed is not the last
+	physical block then this function is called and if the next block is free then it will be merged.
+*/
+static inline void tfx__merge_with_next_block(tfx_allocator *allocator, tfx_header *block) {
+	tfx_header *next_block = tfx__next_physical_block(block);
+	TFX_ASSERT(next_block->prev_physical_block == block);	//could be potentional memory corruption. Check that you're not writing outside the boundary of the block size
+	TFX_ASSERT(!tfx__is_last_block_in_pool(next_block));
+	tfx__remove_block_from_segregated_list(allocator, next_block);
+	//Note if this callback calls back into reallocate or allocate functions then you will get a spin lock.
+	tfx__do_merge_next_callback;
+	tfx__set_block_size(block, tfx__block_size(next_block) + tfx__block_size(block) + tfx__BLOCK_POINTER_OFFSET);
+	tfx_header *block_after_next = tfx__next_physical_block(next_block);
+	tfx__set_prev_physical_block(block_after_next, block);
+	tfx__zero_block(next_block);
+}
+
+static inline tfx_header *tfx__find_free_block(tfx_allocator *allocator, tfx_size size, tfx_size remote_size) {
+	tfx_index fli;
+	tfx_index sli;
+	tfx__map(tfx__map_size, &fli, &sli);
+	//Note that there may well be an appropriate size block in the class but that block may not be at the head of the list
+	//In this situation we could opt to loop through the list of the size class to see if there is an appropriate size but instead
+	//we stick to the paper and just move on to the next class up to keep a O1 speed at the cost of some extra fragmentation
+	if (tfx__has_free_block(allocator, fli, sli) && tfx__do_size_class_callback(allocator->segregated_lists[fli][sli]) >= tfx__map_size) {
+		tfx_header *block = tfx__pop_block(allocator, fli, sli);
 		return block;
 	}
-
-	//For splitting blocks when allocating to a specific memory alignment
-	static inline tfx_header *tfx__split_aligned_block(tfx_allocator *allocator, tfx_header *block, tfx_size size) {
-		TFX_ASSERT(!tfx__is_last_block_in_pool(block));
-		tfx_size size_minus_overhead = size - tfx__BLOCK_POINTER_OFFSET;
-		tfx_header *trimmed = (tfx_header *)((char *)tfx__block_user_ptr(block) + size_minus_overhead);
-		trimmed->size = 0;
-		tfx__set_block_size(trimmed, tfx__block_size(block) - size);
-		tfx_header *next_block = tfx__next_physical_block(block);
-		tfx__set_prev_physical_block(next_block, trimmed);
-		tfx__set_prev_physical_block(trimmed, block);
-		tfx__set_block_size(block, size_minus_overhead);
-		tfx__push_block(allocator, block);
-		return trimmed;
+	if (sli == tfx__SECOND_LEVEL_INDEX_COUNT - 1) {
+		sli = -1;
 	}
-
-	/*
-		This function is called when tfx_Free is called and the previous physical block is free. If that's the case
-		then this function will merge the block being freed with the previous physical block then add that back into
-		the segregated list of free blocks. Note that that happens in the tfx_Free function after attempting to merge
-		both ways.
-	*/
-	static inline tfx_header *tfx__merge_with_prev_block(tfx_allocator *allocator, tfx_header *block) {
-		TFX_ASSERT(!tfx__is_last_block_in_pool(block));
-		tfx_header *prev_block = block->prev_physical_block;
-		tfx__remove_block_from_segregated_list(allocator, prev_block);
-		tfx__set_block_size(prev_block, tfx__block_size(prev_block) + tfx__block_size(block) + tfx__BLOCK_POINTER_OFFSET);
-		tfx_header *next_block = tfx__next_physical_block(block);
-		tfx__set_prev_physical_block(next_block, prev_block);
-		tfx__zero_block(block);
-		return prev_block;
+	else {
+		sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
 	}
-
-	/*
-		This function might be called when tfx_Free is called to free a block. If the block being freed is not the last
-		physical block then this function is called and if the next block is free then it will be merged.
-	*/
-	static inline void tfx__merge_with_next_block(tfx_allocator *allocator, tfx_header *block) {
-		tfx_header *next_block = tfx__next_physical_block(block);
-		TFX_ASSERT(next_block->prev_physical_block == block);    //could be potentional memory corruption. Check that you're not writing outside the boundary of the block size
-		TFX_ASSERT(!tfx__is_last_block_in_pool(next_block));
-		tfx__remove_block_from_segregated_list(allocator, next_block);
-		tfx__set_block_size(block, tfx__block_size(next_block) + tfx__block_size(block) + tfx__BLOCK_POINTER_OFFSET);
-		tfx_header *block_after_next = tfx__next_physical_block(next_block);
-		tfx__set_prev_physical_block(block_after_next, block);
-		tfx__zero_block(next_block);
-	}
-
-	static inline tfx_header *tfx__find_free_block(tfx_allocator *allocator, tfx_size size, tfx_size remote_size) {
-		tfx_index fli;
-		tfx_index sli;
-		tfx__map(size, &fli, &sli);
-		//Note that there may well be an appropriate size block in the class but that block may not be at the head of the list
-		//In this situation we could opt to loop through the list of the size class to see if there is an appropriate size but instead
-		//we stick to the paper and just move on to the next class up to keep a O1 speed at the cost of some extra fragmentation
-		if (tfx__has_free_block(allocator, fli, sli) && tfx__block_size(allocator->segregated_lists[fli][sli]) >= size) {
+	if (sli == -1) {
+		fli = tfx__find_next_size_up(allocator->first_level_bitmap, fli);
+		if (fli > -1) {
+			sli = tfx__scan_forward(allocator->second_level_bitmaps[fli]);
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
-			return block;
-		}
-		if (sli == tfx__SECOND_LEVEL_INDEX_COUNT - 1) {
-			sli = -1;
-		} else {
-			sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
-		}
-		if (sli == -1) {
-			fli = tfx__find_next_size_up(allocator->first_level_bitmap, fli);
-			if (fli > -1) {
-				sli = tfx__scan_forward(allocator->second_level_bitmaps[fli]);
-				tfx_header *block = tfx__pop_block(allocator, fli, sli);
-				tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
-				return split_block;
-			}
-		} else {
-			tfx_header *block = tfx__pop_block(allocator, fli, sli);
-			tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
+			tfx_header *split_block = tfx__call_maybe_split_block;
 			return split_block;
 		}
-
-		return 0;
 	}
-	//--End of internal functions
+	else {
+		tfx_header *block = tfx__pop_block(allocator, fli, sli);
+		tfx_header *split_block = tfx__call_maybe_split_block;
+		return split_block;
+	}
 
-	//--End of header declarations
+	return 0;
+}
 
-//Implementation
+//--End of header declarations
 #if defined(TFX_ALLOCATOR_IMPLEMENTATION)
 
 //Definitions
-	void *tfx_BlockUserExtensionPtr(const tfx_header *block) {
-		return (char *)block + sizeof(tfx_header);
-	}
+tfxAPI void* tfx_BlockUserExtensionPtr(const tfx_header *block) {
+	return (char*)block + sizeof(tfx_header);
+}
 
-	void *tfx_AllocationFromExtensionPtr(const void *block) {
-		return (void *)((char *)block - tfx__MINIMUM_BLOCK_SIZE);
-	}
+tfxAPI void* tfx_AllocationFromExtensionPtr(const void *block) {
+	return (void*)((char*)block - tfx__MINIMUM_BLOCK_SIZE);
+}
 
-	tfx_allocator *tfx_InitialiseAllocator(void *memory) {
-		if (!memory) {
-			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
-			return 0;
-		}
-
-		tfx_allocator *allocator = (tfx_allocator *)memory;
-		memset(allocator, 0, sizeof(tfx_allocator));
-		allocator->null_block.next_free_block = &allocator->null_block;
-		allocator->null_block.prev_free_block = &allocator->null_block;
-		allocator->minimum_allocation_size = tfx__MINIMUM_BLOCK_SIZE;
-		tfx__init_allocator_mutex(allocator);
-
-		//Point all of the segregated list array pointers to the empty block
-		for (tfx_uint i = 0; i < tfx__FIRST_LEVEL_INDEX_COUNT; i++) {
-			for (tfx_uint j = 0; j < tfx__SECOND_LEVEL_INDEX_COUNT; j++) {
-				allocator->segregated_lists[i][j] = &allocator->null_block;
-			}
-		}
-
-		return allocator;
-	}
-
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator) {
-		tfx_size array_offset = sizeof(tfx_allocator);
-		if (size < array_offset + tfx__MEMORY_ALIGNMENT) {
-			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Tried to initialise allocator with a memory allocation that is too small. Must be at least: %zi bytes\n", TFX_ERROR_NAME, array_offset + tfx__MEMORY_ALIGNMENT);
-			return 0;
-		}
-
-		*allocator = tfx_InitialiseAllocator(memory);
-		if (!allocator) {
-			return 0;
-		}
-		tfx_AddPool(*allocator, tfx_GetPool(*allocator), size - tfx_AllocatorSize());
-		return *allocator;
-	}
-
-	tfx_size tfx_AllocatorSize(void) {
-		return sizeof(tfx_allocator);
-	}
-
-	void tfx_SetMinimumAllocationSize(tfx_allocator *allocator, tfx_size size) {
-		TFX_ASSERT(allocator->minimum_allocation_size == tfx__MINIMUM_BLOCK_SIZE);        //You cannot change this once set
-		TFX_ASSERT(tfx__is_pow2(size));                                                    //Size must be a power of 2
-		allocator->minimum_allocation_size = tfx__Max(tfx__MINIMUM_BLOCK_SIZE, size);
-	}
-
-	void tfx_SetBlockMemoryType(void *allocation, tfx_size memory_type) {
-		tfx_header *block = tfx__block_from_allocation(allocation);
-#if defined(TFX_MEMORY_TRACKING)
-		block->memory_block_type = memory_type;
-#endif
-	}
-
-	tfx_pool *tfx_GetPool(tfx_allocator *allocator) {
-		return (tfx_pool *)((char *)allocator + tfx_AllocatorSize());
-	}
-
-	tfx_pool *tfx_AddPool(tfx_allocator *allocator, tfx_pool *memory, tfx_size size) {
-		tfx__lock_thread_access(allocator);
-
-		//Offset it back by the pointer size, we don't need the prev_physical block pointer as there is none
-		//for the first block in the pool
-		tfx_header *block = tfx__first_block_in_pool(memory);
-		block->size = 0;
-		//Leave room for an end block
-		tfx__set_block_size(block, size - (tfx__BLOCK_POINTER_OFFSET)-tfx__BLOCK_SIZE_OVERHEAD);
-
-		//Make sure it aligns
-		tfx__set_block_size(block, tfx__align_size_down(tfx__block_size(block), tfx__MEMORY_ALIGNMENT));
-		TFX_ASSERT(tfx__block_size(block) > tfx__MINIMUM_BLOCK_SIZE);
-		tfx__block_set_free(block);
-		tfx__block_set_prev_used(block);
-
-		//Add a 0 sized block at the end of the pool to cap it off
-		tfx_header *last_block = tfx__next_physical_block(block);
-		last_block->size = 0;
-		tfx__block_set_used(last_block);
-
-		last_block->prev_physical_block = block;
-		tfx__push_block(allocator, block);
-
-		tfx__unlock_thread_access(allocator);
-		return memory;
-	}
-
-	bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
-		tfx__lock_thread_access(allocator);
-		tfx_header *block = tfx__first_block_in_pool(pool);
-
-		if (tfx__is_free_block(block) && !tfx__next_block_is_free(block) && tfx__is_last_block_in_pool(tfx__next_physical_block(block))) {
-			tfx__remove_block_from_segregated_list(allocator, block);
-			tfx__unlock_thread_access(allocator);
-			return 1;
-		}
-#if defined(TFX_THREAD_SAFE)
-		tfx__unlock_thread_access(allocator);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool. Was possibly freed by another thread\n", TFX_ERROR_NAME);
-#else
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool.\n", TFX_ERROR_NAME);
-#endif
+tfx_allocator *tfx_InitialiseAllocator(void *memory) {
+	if (!memory) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
 		return 0;
 	}
 
-	void *tfx_Allocate(tfx_allocator *allocator, tfx_size size) {
-		tfx_size remote_size = 0;
-		tfx__lock_thread_access(allocator);
-		size = tfx__adjust_size(size, tfx__MINIMUM_BLOCK_SIZE, tfx__MEMORY_ALIGNMENT);
-		tfx_header *block = tfx__find_free_block(allocator, size, remote_size);
+	tfx_allocator *allocator = (tfx_allocator*)memory;
+	memset(allocator, 0, sizeof(tfx_allocator));
+	allocator->null_block.next_free_block = &allocator->null_block;
+	allocator->null_block.prev_free_block = &allocator->null_block;
+	allocator->minimum_allocation_size = tfx__MINIMUM_BLOCK_SIZE;
 
-		if (block) {
-			tfx__unlock_thread_access(allocator);
-			return tfx__block_user_ptr(block);
+	//Point all of the segregated list array pointers to the empty block
+	for (tfx_uint i = 0; i < tfx__FIRST_LEVEL_INDEX_COUNT; i++) {
+		for (tfx_uint j = 0; j < tfx__SECOND_LEVEL_INDEX_COUNT; j++) {
+			allocator->segregated_lists[i][j] = &allocator->null_block;
 		}
+	}
 
-		//Out of memory;
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Not enough memory in pool to allocate %zu bytes\n", TFX_ERROR_NAME, size);
-		tfx__unlock_thread_access(allocator);
+	allocator->get_block_size_callback = tfx__block_size;
+	allocator->merge_next_callback = tfx__null_merge_callback;
+	allocator->merge_prev_callback = tfx__null_merge_callback;
+	allocator->split_block_callback = tfx__null_split_callback;
+	allocator->add_pool_callback = tfx__null_add_pool_callback;
+	allocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
+
+	return allocator;
+}
+
+tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size) {
+	tfx_size array_offset = sizeof(tfx_allocator);
+	if (size < array_offset + tfx__MEMORY_ALIGNMENT) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Tried to initialise allocator with a memory allocation that is too small. Must be at least: %zi bytes\n", TFX_ERROR_NAME, array_offset + tfx__MEMORY_ALIGNMENT);
 		return 0;
 	}
 
-	void *tfx_Reallocate(tfx_allocator *allocator, void *ptr, tfx_size size) {
-		tfx__lock_thread_access(allocator);
-
-		if (ptr && size == 0) {
-			tfx__unlock_thread_access(allocator);
-			tfx_Free(allocator, ptr);
-		}
-
-		if (!ptr) {
-			tfx__unlock_thread_access(allocator);
-			return tfx_Allocate(allocator, size);
-		}
-
-		tfx_header *block = tfx__block_from_allocation(ptr);
-		tfx_header *next_block = tfx__next_physical_block(block);
-		void *allocation = 0;
-		tfx_size current_size = tfx__block_size(block);
-		tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, tfx__MEMORY_ALIGNMENT);
-		tfx_size combined_size = current_size + tfx__block_size(next_block);
-		if ((!tfx__next_block_is_free(block) || adjusted_size > combined_size) && adjusted_size > current_size) {
-			tfx_header *block = tfx__find_free_block(allocator, adjusted_size, 0);
-			if (block) {
-				allocation = tfx__block_user_ptr(block);
-			}
-
-			if (allocation) {
-				tfx_size smallest_size = tfx__Min(current_size, size);
-				memcpy(allocation, ptr, smallest_size);
-				tfx_Free(allocator, ptr);
-			}
-		} else {
-			//Reallocation is possible
-			if (adjusted_size > current_size)
-			{
-				tfx__merge_with_next_block(allocator, block);
-				tfx__mark_block_as_used(block);
-			}
-			tfx_header *split_block = tfx__maybe_split_block(allocator, block, adjusted_size, 0);
-			allocation = tfx__block_user_ptr(split_block);
-		}
-
-		tfx__unlock_thread_access(allocator);
-		return allocation;
+	tfx_allocator *allocator = tfx_InitialiseAllocator(memory);
+	if (!allocator) {
+		return 0;
 	}
 
-	void *tfx_AllocateAligned(tfx_allocator *allocator, tfx_size size, tfx_size alignment) {
-		tfx__lock_thread_access(allocator);
-		tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, alignment);
-		tfx_size gap_minimum = sizeof(tfx_header);
-		tfx_size size_with_gap = tfx__adjust_size(adjusted_size + alignment + gap_minimum, allocator->minimum_allocation_size, alignment);
-		size_t aligned_size = (adjusted_size && alignment > tfx__MEMORY_ALIGNMENT) ? size_with_gap : adjusted_size;
+	tfx_AddPool(allocator, tfx_GetPool(allocator), size - tfx_AllocatorSize());
+	return allocator;
+}
 
-		tfx_header *block = tfx__find_free_block(allocator, aligned_size, 0);
+tfx_size tfx_AllocatorSize(void) {
+	return sizeof(tfx_allocator);
+}
 
-		if (block) {
-			void *user_ptr = tfx__block_user_ptr(block);
-			void *aligned_ptr = tfx__align_ptr(user_ptr, alignment);
-			tfx_size gap = (tfx_size)(((ptrdiff_t)aligned_ptr) - (ptrdiff_t)user_ptr);
+void tfx_SetMinimumAllocationSize(tfx_allocator *allocator, tfx_size size) {
+	TFX_ASSERT(allocator->minimum_allocation_size == tfx__MINIMUM_BLOCK_SIZE);		//You cannot change this once set
+	TFX_ASSERT(tfx__is_pow2(size));													//Size must be a power of 2
+	allocator->minimum_allocation_size = tfx__Max(tfx__MINIMUM_BLOCK_SIZE, size);
+}
 
-			/* If gap size is too small, offset to next aligned boundary. */
-			if (gap && gap < gap_minimum)
-			{
-				tfx_size gap_remain = gap_minimum - gap;
-				tfx_size offset = tfx__Max(gap_remain, alignment);
-				const void *next_aligned = (void *)((ptrdiff_t)aligned_ptr + offset);
+tfx_pool *tfx_GetPool(tfx_allocator *allocator) {
+	return (tfx_pool*)((char*)allocator + tfx_AllocatorSize());
+}
 
-				aligned_ptr = tfx__align_ptr(next_aligned, alignment);
-				gap = (tfx_size)((ptrdiff_t)aligned_ptr - (ptrdiff_t)user_ptr);
-			}
+tfx_pool *tfx_AddPool(tfx_allocator *allocator, void *memory, tfx_size size) {
+	tfx__lock_thread_access(allocator);
 
-			if (gap)
-			{
-				TFX_ASSERT(gap >= gap_minimum && "gap size too small");
-				block = tfx__split_aligned_block(allocator, block, gap);
-				tfx__block_set_used(block);
-			}
-			TFX_ASSERT(tfx__ptr_is_aligned(tfx__block_user_ptr(block), alignment));    //pointer not aligned to requested alignment
-		} else {
-			tfx__unlock_thread_access(allocator);
-			return 0;
-		}
+	TFX_ASSERT(size <= tfx__MAXIMUM_BLOCK_SIZE && "Tried to add a memory pool that is larger then the maximum block size.");
 
+	//Offset it back by the pointer size, we don't need the prev_physical block pointer as there is none
+	//for the first block in the pool
+	tfx_header *block = tfx__first_block_in_pool((const tfx_pool*)memory);
+	//Set size to 0 to clear the block is free/prev block is free bits. Important as the tfx__set_block_size function
+	//keeps these bits set.
+	block->size = 0;
+	//Leave room for an end block
+	tfx__set_block_size(block, size - (tfx__BLOCK_POINTER_OFFSET)-tfx__BLOCK_SIZE_OVERHEAD);
+
+	//Make sure it aligns
+	tfx__set_block_size(block, tfx__align_size_down(tfx__block_size(block), tfx__MEMORY_ALIGNMENT));
+	TFX_ASSERT(tfx__block_size(block) > tfx__MINIMUM_BLOCK_SIZE);
+	tfx__block_set_free(block);
+	tfx__block_set_prev_used(block);
+
+	//Add a 0 sized block at the end of the pool to cap it off
+	tfx_header *last_block = tfx__next_physical_block(block);
+	last_block->size = 0;
+	tfx__block_set_used(last_block);
+
+	allocator->stats.capacity += tfx__block_size(block);
+	last_block->prev_physical_block = block;
+	allocator->stats.blocks_in_use++;
+	tfx__push_block(allocator, block);
+
+	tfx__unlock_thread_access(allocator);
+	return (tfx_pool*)memory;
+}
+
+tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
+	tfx__lock_thread_access(allocator);
+	tfx_header *block = tfx__first_block_in_pool(pool);
+
+	if (tfx__is_free_block(block) && !tfx__next_block_is_free(block) && tfx__is_last_block_in_pool(tfx__next_physical_block(block))) {
+		tfx__remove_block_from_segregated_list(allocator, block);
+		tfx__unlock_thread_access(allocator);
+		return 1;
+	}
+	#if defined(TFX_THREAD_SAFE)
+	tfx__unlock_thread_access(allocator);
+	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool. Was possibly freed by another thread\n", TFX_ERROR_NAME);
+	#else
+	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool.\n", TFX_ERROR_NAME);
+	#endif
+	return 0;
+}
+
+void *tfx__allocate(tfx_allocator *allocator, tfx_size size, tfx_size remote_size) {
+	tfx__lock_thread_access(allocator);
+	size = tfx__adjust_size(size, tfx__MINIMUM_BLOCK_SIZE, tfx__MEMORY_ALIGNMENT);
+	tfx_header *block = tfx__find_free_block(allocator, size, remote_size);
+
+	if (block) {
 		tfx__unlock_thread_access(allocator);
 		return tfx__block_user_ptr(block);
 	}
 
-	int tfx_Free(tfx_allocator *allocator, void *allocation) {
-		if (!allocation) return 0;
-		tfx__lock_thread_access(allocator);
-		tfx_header *block = tfx__block_from_allocation(allocation);
-		if (tfx__prev_is_free_block(block)) {
-			TFX_ASSERT(block->prev_physical_block);        //Must be a valid previous physical block
-			block = tfx__merge_with_prev_block(allocator, block);
-		}
-		if (tfx__next_block_is_free(block)) {
-			tfx__merge_with_next_block(allocator, block);
-		}
-		tfx__push_block(allocator, block);
+	//Out of memory;
+	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Not enough memory in pool to allocate %llu bytes\n", TFX_ERROR_NAME, tfx__map_size);
+	tfx__unlock_thread_access(allocator);
+	return 0;
+}
+
+void *tfx_Reallocate(tfx_allocator *allocator, void *ptr, tfx_size size) {
+	tfx__lock_thread_access(allocator);
+
+	if (ptr && size == 0) {
 		tfx__unlock_thread_access(allocator);
-		return 1;
+		tfx_Free(allocator, ptr);
+		return 0;
 	}
 
-#endif
+	if (!ptr) {
+		tfx__unlock_thread_access(allocator);
+		return tfx__allocate(allocator, size, 0);
+	}
+
+	tfx_header *block = tfx__block_from_allocation(ptr);
+	tfx_header *next_block = tfx__next_physical_block(block);
+	void *allocation = 0;
+	tfx_size current_size = tfx__block_size(block);
+	tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, tfx__MEMORY_ALIGNMENT);
+	tfx_size combined_size = current_size + tfx__block_size(next_block);
+	if ((!tfx__next_block_is_free(block) || adjusted_size > combined_size) && adjusted_size > current_size) {
+		tfx_header *new_block = tfx__find_free_block(allocator, adjusted_size, 0);
+		if (new_block) {
+			allocation = tfx__block_user_ptr(new_block);
+		}
+		if (allocation) {
+			tfx_size smallest_size = tfx__Min(current_size, size);
+			memcpy(allocation, ptr, smallest_size);
+			//Note if this callback calls back into reallocate or allocate then you will get a spin lock.
+			tfx__do_unable_to_reallocate_callback;
+			tfx__unlock_thread_access(allocator);
+			tfx_Free(allocator, ptr);
+			tfx__lock_thread_access(allocator);
+		}
+	} else {
+		//Reallocation is possible
+		if (adjusted_size > current_size) {
+			tfx__merge_with_next_block(allocator, block);
+			tfx__mark_block_as_used(block);
+		}
+		tfx_header *split_block = tfx__maybe_split_block(allocator, block, adjusted_size, 0);
+		allocation = tfx__block_user_ptr(split_block);
+	}
+
+	tfx__unlock_thread_access(allocator);
+	return allocation;
+}
+
+void *tfx_AllocateAligned(tfx_allocator *allocator, tfx_size size, tfx_size alignment) {
+	tfx__lock_thread_access(allocator);
+	tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, alignment);
+	tfx_size gap_minimum = sizeof(tfx_header);
+	tfx_size size_with_gap = tfx__adjust_size(adjusted_size + alignment + gap_minimum, allocator->minimum_allocation_size, alignment);
+	size_t aligned_size = (adjusted_size && alignment > tfx__MEMORY_ALIGNMENT) ? size_with_gap : adjusted_size;
+
+	tfx_header *block = tfx__find_free_block(allocator, aligned_size, 0);
+
+	if (block) {
+		void *user_ptr = tfx__block_user_ptr(block);
+		void *aligned_ptr = tfx__align_ptr(user_ptr, alignment);
+		tfx_size gap = (tfx_size)((uintptr_t)aligned_ptr - (uintptr_t)user_ptr);
+
+		/* If gap size is too small, offset to next aligned boundary. */
+		if (gap && gap < gap_minimum)
+		{
+			tfx_size gap_remain = gap_minimum - gap;
+			tfx_size offset = tfx__Max(gap_remain, alignment);
+			const void* next_aligned = (void*)((uintptr_t)aligned_ptr + offset);
+
+			aligned_ptr = tfx__align_ptr(next_aligned, alignment);
+			gap = (tfx_size)((uintptr_t)aligned_ptr - (uintptr_t)user_ptr);
+		}
+
+		if (gap)
+		{
+			TFX_ASSERT(gap >= gap_minimum && "gap size too small");
+			block = tfx__split_aligned_block(allocator, block, gap);
+			tfx__block_set_used(block);
+		}
+		TFX_ASSERT(tfx__ptr_is_aligned(tfx__block_user_ptr(block), alignment));	//pointer not aligned to requested alignment
+	}
+	else {
+		tfx__unlock_thread_access(allocator);
+		return 0;
+	}
+
+	tfx__unlock_thread_access(allocator);
+	return tfx__block_user_ptr(block);
+}
+
+int tfx_Free(tfx_allocator *allocator, void* allocation) {
+	if (!allocation) return 0;
+	tfx__lock_thread_access(allocator);
+	tfx_header *block = tfx__block_from_allocation(allocation);
+	#ifdef TFX_SAFEGUARDS
+	//Asserting here means that there's probably been a mix up between a context allocator and a device allocator.
+	TFX_ASSERT(block->allocator == allocator);
+	#endif
+	if (tfx__prev_is_free_block(block)) {
+		TFX_ASSERT(block->prev_physical_block);		//Must be a valid previous physical block
+		block = tfx__merge_with_prev_block(allocator, block);
+	}
+	if (tfx__next_block_is_free(block)) {
+		tfx__merge_with_next_block(allocator, block);
+	}
+	tfx__push_block(allocator, block);
+	tfx__unlock_thread_access(allocator);
+	return 1;
+}
+
+tfxAPI void* tfx_PromoteLinearBlock(tfx_allocator *allocator, void* linear_alloc_mem, tfx_size used_size) {
+	if (!allocator || !linear_alloc_mem || used_size == 0) {
+		return 0;
+	}
+
+	if (used_size < tfx__MINIMUM_BLOCK_SIZE) {
+		return 0;
+	}
+
+	tfx__lock_thread_access(allocator);
+
+	tfx_header *block = tfx__block_from_allocation(linear_alloc_mem);
+	#ifdef TFX_SAFEGUARDS
+	TFX_ASSERT(allocator == block->allocator);	//allocator MUST match the block allocator
+	#endif
+
+	// Ensure the block is valid and currently in use.
+	if (tfx__is_free_block(block)) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot promote a block that is already free.\n", TFX_ERROR_NAME);
+		tfx__unlock_thread_access(allocator);
+		return 0;
+	}
+
+	tfx_size original_block_size = tfx__block_size(block);
+	tfx_size aligned_keep_size = tfx__adjust_size(used_size, tfx__MINIMUM_BLOCK_SIZE, tfx__MEMORY_ALIGNMENT);
+
+	if (original_block_size <= aligned_keep_size + tfx__Max(tfx__MINIMUM_BLOCK_SIZE, allocator->minimum_allocation_size)) {
+		// Not enough space to split, so we just "promote" the whole block by doing nothing.
+		tfx__unlock_thread_access(allocator);
+		return linear_alloc_mem;
+	}
+
+	tfx_header *next_block = tfx__next_physical_block(block);
+	tfx_size new_free_block_size = (char *)next_block - ((char *)linear_alloc_mem + aligned_keep_size);
+	tfx_header *trimmed_free_block = (tfx_header *)((char *)linear_alloc_mem + aligned_keep_size);
+
+	new_free_block_size -= tfx__BLOCK_POINTER_OFFSET;
+	tfx__set_block_size(trimmed_free_block, new_free_block_size);
+	tfx__block_set_free(trimmed_free_block);
+	tfx__set_block_size(block, aligned_keep_size);
+
+	tfx__set_prev_physical_block(next_block, trimmed_free_block);
+	tfx__set_prev_physical_block(trimmed_free_block, block);
+	tfx__block_set_prev_used(trimmed_free_block);
+
+	tfx_header *next_block_from_trimmed_block = tfx__next_physical_block(trimmed_free_block);
+	tfx_header *next_block_from_promoted_block = tfx__next_physical_block(block);
+
+	//Sanity checks to double check the blocks all connect up
+	TFX_ASSERT(next_block_from_trimmed_block == next_block);
+	TFX_ASSERT(next_block_from_promoted_block == trimmed_free_block);
+	TFX_ASSERT(block == trimmed_free_block->prev_physical_block);
+	TFX_ASSERT(trimmed_free_block == next_block->prev_physical_block);
+
+	tfx__push_block(allocator, trimmed_free_block);
+
+	tfx__unlock_thread_access(allocator);
+
+	return linear_alloc_mem;
+}
+
+int tfx_SafeCopy(void *dst, void *src, tfx_size size) {
+	tfx_header *block = tfx__block_from_allocation(dst);
+	if (size > block->size) {
+		assert(0);  //Trying to copy outside of the memory block
+		return 0;
+	}
+	tfx_header *next_physical_block = tfx__next_physical_block(block);
+	if ((char *)dst + size > (char *)next_physical_block) {
+		assert(0);  //Trying to copy outside of the memory block
+		return 0;
+	}
+	memcpy(dst, src, size);
+	return 1;
+}
+
+int tfx_SafeCopyBlock(void *dst_block_start, void *dst, const void *src, tfx_size size) {
+	tfx_header *block = tfx__block_from_allocation(dst_block_start);
+	tfx_header *next_physical_block = tfx__next_physical_block(block);
+	if ((char *)dst + size > (char *)next_physical_block) {
+		assert(0);  //Trying to copy outside of the memory block
+		return 0;
+	}
+	memcpy(dst, src, size);
+	return 1;
+}
+
+int tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
+	tfx_header *block = tfx__block_from_allocation(allocation);
+	tfx_header *next_physical_block = tfx__next_physical_block(block);
+	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
+	if (diff_check > 0) {
+		return 0;
+	}
+	memset(dst, value, size);
+	next_physical_block = tfx__next_physical_block(block);
+	return 1;
+}
+
+//Walks the physical block chain of a single pool and asserts the structural invariants that
+//tfx__verify_lists cannot see:
+//  - every block's size is aligned to tfx__MEMORY_ALIGNMENT
+//  - the chain is linked correctly: block->next_physical_block->prev_physical_block == block
+//  - boundary tags are coherent: this block's BLOCK_IS_FREE matches the next block's PREV_BLOCK_IS_FREE
+//  - no two adjacent free blocks exist (they should have been merged on free)
+//  - the terminating sentinel has size 0 and points back at the last real block
+//Use alongside tfx__verify_lists for the most thorough corruption check. The pool argument is the
+//pointer originally returned from tfx_AddPool / tfx_GetPool.
+void tfx_VerifyPool(tfx_allocator *allocator, const tfx_pool *pool) {
+	tfx_header *block = tfx__first_block_in_pool(pool);
+	tfx_header *prev = 0;
+	int safety = 0;
+	while (!tfx__is_last_block_in_pool(block)) {
+		tfx_size block_size = tfx__do_size_class_callback(block);
+		//Block size must be a multiple of the memory alignment
+		TFX_ASSERT(tfx__is_aligned(block_size, tfx__MEMORY_ALIGNMENT));
+		if (prev) {
+			//Physical chain link: this block must point back to the block we walked from
+			TFX_ASSERT(block->prev_physical_block == prev);
+			//Boundary tag coherence: PREV_BLOCK_IS_FREE on this block must match prev's actual free state
+			tfx_bool prev_was_free = tfx__is_free_block(prev);
+			tfx_bool prev_flag_says_free = tfx__prev_is_free_block(block);
+			TFX_ASSERT(prev_was_free == (tfx_bool)(prev_flag_says_free != 0));
+			//Two consecutive free blocks should never exist - they should have been merged on free
+			if (prev_was_free) {
+				TFX_ASSERT(!tfx__is_free_block(block));
+			}
+		} else {
+			//First block in a pool has no previous physical block, so its PREV_BLOCK_IS_FREE flag must be clear
+			TFX_ASSERT(!tfx__prev_is_free_block(block));
+		}
+		prev = block;
+		block = tfx__next_physical_block(block);
+		TFX_ASSERT(++safety < 10000000);
+	}
+	//Sentinel: size 0, marked as used, points back at the last real block, and its PREV_BLOCK_IS_FREE
+	//flag still has to agree with prev's free state.
+	TFX_ASSERT(tfx__is_used_block(block));
+	if (prev) {
+		TFX_ASSERT(block->prev_physical_block == prev);
+		tfx_bool prev_was_free = tfx__is_free_block(prev);
+		tfx_bool prev_flag_says_free = tfx__prev_is_free_block(block);
+		TFX_ASSERT(prev_was_free == (tfx_bool)(prev_flag_says_free != 0));
+	}
+}
+
+tfx_pool_stats_t tfx_CreateMemorySnapshot(const tfx_pool *pool) {
+	tfx_pool_stats_t stats = { 0 };
+	tfx_header *current_block = tfx__first_block_in_pool(pool);;
+	while (!tfx__is_last_block_in_pool(current_block)) {
+		if (tfx__is_free_block(current_block)) {
+			stats.free_blocks++;
+			stats.free_size += tfx__block_size(current_block);
+		} else {
+			stats.used_blocks++;
+			stats.used_size += tfx__block_size(current_block);
+		}
+		current_block = tfx__next_physical_block(current_block);
+	}
+	if (tfx__is_free_block(current_block)) {
+		stats.free_blocks++;
+		stats.free_size += tfx__block_size(current_block);
+	} else if (tfx__block_size(current_block) > 0) {
+		stats.used_blocks++;
+		stats.used_size += tfx__block_size(current_block);
+	}
+	return stats;
+}
+
+/*
+	Standard callbacks, you can copy paste these to replace with your own as needed to add any extra functionality
+	that you might need
+*/
+void tfx__remote_merge_next_callback(void *remote_user_data, tfx_header *block, tfx_header *next_block) {
+	tfx_remote_header *remote_block = (tfx_remote_header*)tfx_BlockUserExtensionPtr(block);
+	tfx_remote_header *next_remote_block = (tfx_remote_header*)tfx_BlockUserExtensionPtr(next_block);
+	remote_block->size += next_remote_block->size;
+	next_remote_block->memory_offset = 0;
+	next_remote_block->size = 0;
+}
+
+void tfx__remote_merge_prev_callback(void *remote_user_data, tfx_header *prev_block, tfx_header *block) {
+	tfx_remote_header *remote_block = (tfx_remote_header*)tfx_BlockUserExtensionPtr(block);
+	tfx_remote_header *prev_remote_block = (tfx_remote_header*)tfx_BlockUserExtensionPtr(prev_block);
+	prev_remote_block->size += remote_block->size;
+	remote_block->memory_offset = 0;
+	remote_block->size = 0;
+}
+
+tfx_size tfx__get_remote_size(const tfx_header *block) {
+	tfx_remote_header *remote_block = (tfx_remote_header*)tfx_BlockUserExtensionPtr(block);
+	return remote_block->size;
+}
+
+void *tfx_Allocate(tfx_allocator *allocator, tfx_size size) {
+	return tfx__allocate(allocator, size, 0);
+}
+
+void tfx_SetBlockExtensionSize(tfx_allocator *allocator, tfx_size size) {
+	TFX_ASSERT(allocator->block_extension_size == 0);	//You cannot change this once set
+	allocator->block_extension_size = tfx__align_size_up(size, tfx__MEMORY_ALIGNMENT);
+}
+
+tfx_size tfx_CalculateRemoteBlockPoolSize(tfx_allocator *allocator, tfx_size remote_pool_size) {
+	TFX_ASSERT(allocator->block_extension_size);	//You must set the block extension size first
+	TFX_ASSERT(allocator->minimum_allocation_size);		//You must set the number of bytes per block
+	return (sizeof(tfx_header) + allocator->block_extension_size) * (remote_pool_size / allocator->minimum_allocation_size) + tfx__BLOCK_POINTER_OFFSET;
+}
+
+void tfx_AddRemotePool(tfx_allocator *allocator, void *block_memory, tfx_size block_memory_size, tfx_size remote_pool_size) {
+	TFX_ASSERT(allocator->add_pool_callback);	//You must set all the necessary callbacks to handle remote memory management
+	TFX_ASSERT(allocator->get_block_size_callback);
+	TFX_ASSERT(allocator->merge_next_callback);
+	TFX_ASSERT(allocator->merge_prev_callback);
+	TFX_ASSERT(allocator->split_block_callback);
+	TFX_ASSERT(allocator->get_block_size_callback != tfx__block_size);	//Make sure you initialise the remote allocator with tfx_InitialiseAllocatorForRemote
+
+	void *block = tfx_BlockUserExtensionPtr(tfx__first_block_in_pool((tfx_pool*)block_memory));
+	tfx__do_add_pool_callback;
+	tfx_AddPool(allocator, block_memory, block_memory_size);
+}
+
+tfx_allocator *tfx_InitialiseAllocatorForRemote(void *memory) {
+	if (!memory) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
+		return 0;
+	}
+
+	tfx_allocator *allocator = tfx_InitialiseAllocator(memory);
+	if (!allocator) {
+		return 0;
+	}
+
+	allocator->get_block_size_callback = tfx__get_remote_size;
+	allocator->merge_next_callback = tfx__remote_merge_next_callback;
+	allocator->merge_prev_callback = tfx__remote_merge_prev_callback;
+
+	return allocator;
+}
+
+void *tfx_AllocateRemote(tfx_allocator *allocator, tfx_size remote_size) {
+	TFX_ASSERT(allocator->minimum_allocation_size > 0);
+	remote_size = tfx__Max(remote_size, allocator->minimum_allocation_size);
+	void* allocation = tfx__allocate(allocator, (remote_size / allocator->minimum_allocation_size) * (allocator->block_extension_size + tfx__BLOCK_POINTER_OFFSET), remote_size);
+	return allocation ? (char*)allocation + tfx__MINIMUM_BLOCK_SIZE : 0;
+}
+
+void *tfx__reallocate_remote(tfx_allocator *allocator, void *ptr, tfx_size size, tfx_size remote_size) {
+	tfx__lock_thread_access(allocator);
+
+	if (ptr && remote_size == 0) {
+		tfx__unlock_thread_access(allocator);
+		tfx_FreeRemote(allocator, ptr);
+		return 0;
+	}
+
+	if (!ptr) {
+		tfx__unlock_thread_access(allocator);
+		return tfx__allocate(allocator, size, remote_size);
+	}
+
+	tfx_header *block = tfx__block_from_allocation(ptr);
+	tfx_header *next_block = tfx__next_physical_block(block);
+	void *allocation = 0;
+	tfx_size current_size = tfx__block_size(block);
+	tfx_size current_remote_size = tfx__do_size_class_callback(block);
+	tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, tfx__MEMORY_ALIGNMENT);
+	tfx_size combined_size = current_size + tfx__block_size(next_block);
+	tfx_size combined_remote_size = current_remote_size + tfx__do_size_class_callback(next_block);
+	if ((!tfx__next_block_is_free(block) || adjusted_size > combined_size || remote_size > combined_remote_size) && (remote_size > current_remote_size)) {
+		tfx_header *new_block = tfx__find_free_block(allocator, size, remote_size);
+		if (new_block) {
+			allocation = tfx__block_user_ptr(new_block);
+		}
+
+		if (allocation) {
+			//Note if this callback calls back into reallocate or allocate then you will get a spin lock.
+			tfx__do_unable_to_reallocate_callback;
+			tfx__unlock_thread_access(allocator);
+			tfx_Free(allocator, ptr);
+			tfx__lock_thread_access(allocator);
+		}
+	}
+	else {
+		//Reallocation is possible
+		if (remote_size > current_remote_size)
+		{
+			tfx__merge_with_next_block(allocator, block);
+			tfx__mark_block_as_used(block);
+		}
+		tfx_header *split_block = tfx__maybe_split_block(allocator, block, adjusted_size, remote_size);
+		allocation = tfx__block_user_ptr(split_block);
+	}
+
+	tfx__unlock_thread_access(allocator);
+	return allocation;
+}
+
+void *tfx_ReallocateRemote(tfx_allocator *allocator, void *block_extension, tfx_size remote_size) {
+	TFX_ASSERT(allocator->minimum_allocation_size > 0);
+	remote_size = tfx__Max(remote_size, allocator->minimum_allocation_size);
+	void* allocation = tfx__reallocate_remote(allocator, block_extension ? tfx_AllocationFromExtensionPtr(block_extension) : block_extension, (remote_size / allocator->minimum_allocation_size) * (allocator->block_extension_size + tfx__BLOCK_POINTER_OFFSET), remote_size);
+	return allocation ? (char*)allocation + tfx__MINIMUM_BLOCK_SIZE : 0;
+}
+
+int tfx_FreeRemote(tfx_allocator *allocator, void* block_extension) {
+	void *allocation = (char*)block_extension - tfx__MINIMUM_BLOCK_SIZE;
+	return tfx_Free(allocator, allocation);
+}
+
+int tfx_InitialiseLinearAllocator(tfx_linear_allocator_t *allocator, void *memory, tfx_size size) {
+	if (!memory) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
+		memset(allocator, 0, sizeof(tfx_linear_allocator_t));
+		return 0;
+	}
+	if (size <= tfx__MINIMUM_BLOCK_SIZE) {
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Size of linear allocator size is too small. It must be a mimimum of %i\n", TFX_ERROR_NAME, tfx__MINIMUM_BLOCK_SIZE);
+		memset(allocator, 0, sizeof(tfx_linear_allocator_t));
+		return 0;
+	}
+	allocator->data = memory;
+	allocator->buffer_size = size;
+	allocator->current_offset = 0;
+	allocator->user_data = 0;
+	allocator->next = 0;
+	return 1;
+}
+
+void tfx_ResetLinearAllocator(tfx_linear_allocator_t *allocator) {
+	while (allocator) {
+		allocator->current_offset = 0;
+		allocator = allocator->next;
+	}
+}
+
+void *tfx_LinearAllocation(tfx_linear_allocator_t *allocator, tfx_size size_requested) {
+	if (!allocator) return NULL;
+	void *aligned_address = NULL;
+
+	while (allocator) {
+		tfx_size alignment = sizeof(void *);
+
+		char *current_ptr = (char *)allocator->data + allocator->current_offset;
+		aligned_address = (void *)(((uintptr_t)current_ptr + alignment - 1) & ~(alignment - 1));
+
+		tfx_size new_offset = (tfx_size)((char *)aligned_address - (char *)allocator->data) + size_requested;
+
+		if (new_offset > allocator->buffer_size) {
+			if (!allocator->next) {
+				TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Out of memory in linear allocator.\n", TFX_ERROR_NAME);
+				return NULL;
+			} else {
+				allocator = allocator->next;
+				continue;
+			}
+		}
+
+		allocator->current_offset = new_offset;
+		break;
+	}
+	return aligned_address;
+}
+
+tfx_size tfx_GetMarker(tfx_linear_allocator_t *allocator) {
+	TFX_ASSERT(allocator);     //Not a valid allocator!
+	return allocator->current_offset;
+}
+
+void tfx_ResetToMarker(tfx_linear_allocator_t *allocator, tfx_size marker) {
+	TFX_ASSERT(allocator);     //Not a valid allocator!
+	//marker point not valid!
+	TFX_ASSERT(marker <= allocator->current_offset && marker <= allocator->buffer_size);     //Not a valid allocator!
+	allocator->current_offset = marker;
+}
+
+void tfx_SetLinearAllocatorUserData(tfx_linear_allocator_t *allocator, void *user_data) {
+	TFX_ASSERT(allocator);     //Not a valid allocator!
+	allocator->user_data = user_data;
+}
+
+void tfx_AddNextLinearAllocator(tfx_linear_allocator_t *allocator, tfx_linear_allocator_t *next) {
+	while (allocator) {
+		TFX_ASSERT(allocator != next);
+		if (!allocator->next) {
+			allocator->next = next;
+			return;
+		}
+		allocator = allocator->next;
+	}
+	TFX_ASSERT(0 && "Unable to add next allocator, allocators may be currupted!");
+}
+
+tfx_size tfx_GetLinearAllocatorCapacity(tfx_linear_allocator_t *allocator) {
+	tfx_size size = 0;
+	while (allocator) {
+		size += allocator->buffer_size;
+		allocator = allocator->next;
+	}
+	return size;
+}
+
+#endif //TFX_IMPLEMENTATION
 
 #ifdef __cplusplus
 }
@@ -1217,9 +1707,6 @@ void *tfxAllocateAligned(size_t size, size_t alignment);
 //Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
 //This assumes that dst is the start address of the block. If you're copying to a range that is offset from the beginning
 //of the block then you can use tfx_SafeCopyBlock instead.
-bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
-bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size);
-bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
 tfx_allocator *tfxGetAllocator();
 
 //---------------------------------------
@@ -3730,13 +4217,13 @@ struct tfx_vector_t {
 	}
 	inline tfxU32        locked_push_back(const T &v) {
 		//suspect, just use a mutex instead?
-		while (tfx__compare_and_exchange((tfxLONG volatile *)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange((tfx_thread_access volatile *)&locked, 1, 0) > 1);
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
 		memcpy(&data[current_size], &v, sizeof(T));
 		tfxU32 index = current_size++;
-		tfx__exchange((tfxLONG volatile *)&locked, 0);
+		tfx__exchange((tfx_thread_access volatile *)&locked, 0);
 		return index;
 	}
 	inline T &push_back(const T &v) {
@@ -4452,7 +4939,7 @@ struct tfx_bucket_array_t {
 	tfxU32 current_size;
 	tfxU32 capacity;
 	tfxU32 size_of_each_bucket;
-	tfxLONG volatile locked;
+	tfx_thread_access volatile locked;
 	tfx_vector_t<tfx_bucket_t<T> *> bucket_list;
 
 	tfx_bucket_array_t() : size_of_each_bucket(8), current_size(0), capacity(0), locked(0) {}
@@ -9336,7 +9823,6 @@ tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_descriptor effect);
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
 tfxAPI tfx_storage_t *tfx_GetGlobals();
-tfxAPI tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block);
 tfxAPI float tfx_DegreesToRadians(float degrees);
 tfxAPI float tfx_RadiansToDegrees(float radians);
 

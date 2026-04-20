@@ -82,43 +82,6 @@ tfx_allocator *tfxGetAllocator() {
 	return tfxMemoryAllocator;
 }
 
-bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
-	tfx_header *block = tfx__block_from_allocation(dst);
-	if (size > block->size) {
-		return 0;
-	}
-	tfx_header *next_physical_block = tfx__next_physical_block(block);
-	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
-	if (diff_check > 0) {
-		return 0;
-	}
-	memcpy(dst, src, size);
-	return 1;
-}
-
-bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size) {
-	tfx_header *block = tfx__block_from_allocation(dst_block_start);
-	tfx_header *next_physical_block = tfx__next_physical_block(block);
-	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
-	if (diff_check > 0) {
-		return 0;
-	}
-	memcpy(dst, src, size);
-	return 1;
-}
-
-bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
-	tfx_header *block = tfx__block_from_allocation(allocation);
-	tfx_header *next_physical_block = tfx__next_physical_block(block);
-	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
-	if (diff_check > 0) {
-		return 0;
-	}
-	memset(dst, value, size);
-	next_physical_block = tfx__next_physical_block(block);
-	return 1;
-}
-
 tfx_storage_t *tfx_GetGlobals() {
 	return tfxStore;
 }
@@ -17742,7 +17705,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	if (tfxMemoryAllocator) return;
 	void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
 	TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
-	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
+	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
     tfx_storage_t store{};
 	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
     memcpy(tfxStore, &store, sizeof(tfx_storage_t));
