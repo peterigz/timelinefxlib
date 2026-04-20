@@ -14209,9 +14209,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		tfx__spawn_particles(pm, spawn_work_entry);
 	}
 
-	if ( max_spawn_count == 1 && spawn_work_entry->amount_to_spawn == 0) {
-		int d = 0;
-	}
 	TFX_ASSERT(spawn_work_entry->amount_to_spawn <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - spawn_work_entry->amount_to_spawn;
 	instance_buffer.current_size -= spawn_difference;
@@ -14490,6 +14487,17 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 		for (int i = 0; i != pm->particle_array_buffers[emitter.particles_index].current_size - work_entry->amount_to_spawn; ++i) {
 			(*work_entry->depth_indexes)[bank.depth_index[i]].particle_id = tfx__make_particle_id(emitter.particles_index, i);
 		}
+	}
+
+	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
+		tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
+		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
+		if (buffer.current_size > spawn_point_buffer.current_size) {
+			tfx__add_soa_rows(&pm->particle_location_buffers[emitter.spawn_locations_index], buffer.current_size - spawn_point_buffer.current_size, true);
+		}
+		spawn_point_buffer.current_size = particle_buffer.current_size;
+		TFX_ASSERT(spawn_point_buffer.current_size < spawn_point_buffer.capacity);
+		spawn_point_buffer.start_index = particle_buffer.start_index;
 	}
 
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
@@ -17474,18 +17482,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	work_entry->path = emitter.state_properties.path_attributes != tfxINVALID ? &library->paths[emitter.state_properties.path_attributes] : nullptr;
 	work_entry->node_count = work_entry->path ? work_entry->path->settings.node_count : 0.f;
 	work_entry->sample_path_life = work_entry->path ? work_entry->shared_properties->emission_type == tfxPath && (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling) > 0 : false;
-
-	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
-		bool grew;
-		tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
-		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
-		if (buffer.current_size > spawn_point_buffer.current_size) {
-			tfx__add_soa_rows_grew(&pm->particle_location_buffers[emitter.spawn_locations_index], buffer.current_size - spawn_point_buffer.current_size, true, grew);
-		}
-		spawn_point_buffer.current_size = particle_buffer.current_size;
-		TFX_ASSERT(spawn_point_buffer.current_size < spawn_point_buffer.capacity);
-		spawn_point_buffer.start_index = particle_buffer.start_index;
-	}
 
 	if (amount_to_update > 0) {
 		tfx_position_policy_context ctx = {};

@@ -4803,7 +4803,7 @@ inline tfxU32 tfx__add_soa_rows_grew(tfx_soa_buffer_t *buffer, tfxU32 amount, bo
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
 	TFX_ASSERT(buffer->capacity >= buffer->buffer_amount);            //Buffer amount must not be greater than capacity of the buffer
 	tfxU32 first_new_index = buffer->current_size;
-	tfxU32 new_size = buffer->current_size += amount;
+	tfxU32 new_size = buffer->current_size + amount;
 	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
 		grew = tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
 	}
