@@ -148,7 +148,7 @@ tfx_storage_t *tfx_GetGlobals() {
     gi2.a[i] = tfx_perm_mod12[ii.a[i] + i2.a[i] + tfx_permutation_table[jj.a[i] + j2.a[i] + tfx_permutation_table[kk.a[i] + k2.a[i]]]];    \
     gi3.a[i] = tfx_perm_mod12[ii.a[i] + 1 + tfx_permutation_table[jj.a[i] + 1 + tfx_permutation_table[kk.a[i] + 1]]];    \
 
-#ifdef tfxINTEL
+#ifdef tfxX86
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfxWideFloat tfx__simd_noise_2d(const tfxWideFloat x4, const tfxWideFloat y4) {
 		tfxPROFILE;
@@ -12105,7 +12105,7 @@ TFX_ENABLE_COMPILER_WARNING()
 			tfxWideStore(&locations.position_x[index], position_x.m);
 			tfxWideStore(&locations.position_y[index], position_y.m);
 			tfxWideStore(&locations.position_z[index], position_z.m);
-			tfxWideStore(&locations.age[index], life);
+			tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -12656,8 +12656,6 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
-	tfxWideFloat max_life = tfxWideSetSingle(emitter.state_properties.max_life);
-
 	tfxU32 start_diff = work_entry->start_diff;
 
 	tfxWideFloat scale_x;
@@ -12703,7 +12701,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		else {
 			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			life = tfxWideMul(age, inv_max_age);
+			life = tfxWideMin(tfxWideMul(age, inv_max_age), tfxWIDEONE.m);
 		}
 
 		tfxWideFloat width_time = width_easing(life);
@@ -12754,6 +12752,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		{
 			tfxWideInt pflags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags_single_loop_count[index]);
 			tfxWideInt alive = tfxWideEqualsi(tfxWideAndi(pflags, tfxWideSetSinglei(tfxParticleFlags_remove)), tfxWideSetZeroi);
+			//alive = tfxWideOri(alive, tfxWideConverti(tfxWideGreaterEqual(life, tfxWIDEONE.m)));
 			scale_x = tfxWideAnd(scale_x, tfxWideCast(alive));
 			scale_y = tfxWideAnd(scale_y, tfxWideCast(alive));
 		}
@@ -17123,7 +17122,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		//Integrate head-bump: while all lanes in this block are past max_life, advance
 		//bump_count. Stop (and count partial) as soon as we see the first alive lane.
 		if (still_bumping) {
-			int dead_mask = tfxWideMovemasKps(tfxWideGreaterEqual(age, max_life_wide));
+			int dead_mask = tfxWideMoveMask(tfxWideGreaterEqual(age, max_life_wide));
 			const int all_dead = (1 << tfxDataWidth) - 1;
 			if (dead_mask == all_dead) {
 				bump_count += tfxDataWidth;

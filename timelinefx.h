@@ -1230,7 +1230,7 @@ tfx_allocator *tfxGetAllocator();
 //Header_Includes_and_Typedefs
 //----------------------------------------------------------
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
-#define tfxINTEL
+#define tfxX86
 #include <immintrin.h>
 #elif defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
@@ -1644,8 +1644,8 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideMuli _mm256_mullo_epi32
 #define tfxWideSqrt _mm256_sqrt_ps
 #define tfxWideRSqrt _mm256_rsqrt_ps
-#define tfxWideMoveMask _mm256_movemask_epi8
-#define tfxWideMovemasKps _mm256_movemask_ps
+#define tfxWideMoveMaski _mm256_movemask_epi8
+#define tfxWideMoveMask _mm256_movemask_ps
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
@@ -1703,7 +1703,7 @@ const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 #define tfxDataWidth 4
 
-#ifdef tfxINTEL
+#ifdef tfxX86
 //Intel Intrinsics
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
@@ -1743,8 +1743,8 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideMuli _mm_mullo_epi32
 #define tfxWideSqrt _mm_sqrt_ps
 #define tfxWideRSqrt _mm_rsqrt_ps
-#define tfxWideMoveMask _mm_movemask_epi8
-#define tfxWideMovemasKps _mm_movemask_ps
+#define tfxWideMoveMaski _mm_movemask_epi8
+#define tfxWideMoveMask _mm_movemask_ps
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
@@ -1869,7 +1869,7 @@ static inline int tfx__neon_movemask_ps(float32x4_t v) {
 	uint32x4_t s = vshrq_n_u32(vreinterpretq_u32_f32(v), 31);
 	return (int)(vgetq_lane_u32(s, 0) | (vgetq_lane_u32(s, 1) << 1) | (vgetq_lane_u32(s, 2) << 2) | (vgetq_lane_u32(s, 3) << 3));
 }
-#define tfxWideMovemasKps tfx__neon_movemask_ps
+#define tfxWideMoveMask tfx__neon_movemask_ps
 
 #define tfxSIMD_AND(a,b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 #define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
@@ -1931,7 +1931,7 @@ const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.0001f);
 const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.0002f);
 const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
-#ifdef tfxINTEL
+#ifdef tfxX86
 typedef __m128 tfx128;
 typedef __m128i tfx128i;
 
@@ -2014,7 +2014,7 @@ Also fixed a bug in atan2 function where x <= y
 tfxINTERNAL inline tfxWideFloat tfxWideFastSqrt(tfxWideFloat squared)
 {
 	//    static int csr = 0;
-	//#if defined(tfxINTEL)
+	//#if defined(tfxX86)
 		//if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
 		//_mm_setcsr(csr);
 	//#endif
@@ -6524,7 +6524,7 @@ typedef struct tfx_spawn_points_soa_s {
 	float *captured_position_y;
 	float *captured_position_z;
 	float *age;
-}tfx_spawn_points_soa_t;
+} tfx_spawn_points_soa_t;
 
 typedef struct tfx_sprite_transform_s {
 	tfx_vec3_t position;							//The position of the sprite, x, y - world, z, w = captured for interpolating
@@ -10758,7 +10758,7 @@ tfxAPI inline float tfx_LerpFloat(float lerp, const float current, const float c
 
 tfxAPI void tfx_GetSpriteScale(void *instance, float out_scale[2]);
 
-#ifdef tfxINTEL
+#ifdef tfxX86
 
 /*
 Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
