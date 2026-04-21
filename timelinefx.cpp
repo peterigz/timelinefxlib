@@ -5837,7 +5837,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "random_color") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color);
 	else if (property_name == "exclude_from_global_hue") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
 	else if (property_name == "relative_position") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
-	else if (property_name == "run_on_gpu") value.Setf("%i", effect->state_properties.shared_flags & tfxEmitterPropertyFlags_run_on_gpu);
+	else if (property_name == "run_on_gpu") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu);
 	else if (property_name == "hidden") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden);
 	else if (property_name == "relative_angle") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
 	else if (property_name == "match_amount_to_grid_points") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
@@ -6237,7 +6237,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
 	file->AddLine("use_color_hint=%i", (shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint));
 	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
-	file->AddLine("run_on_gpu=%i", (shared_flags & tfxEmitterPropertyFlags_run_on_gpu));
+	file->AddLine("run_on_gpu=%i", (flags & tfxEmitterPropertyFlags_run_on_gpu));
 	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
 	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
 	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
@@ -11201,7 +11201,7 @@ void tfx__update_effect_manager(void *data) {
 			int particles_to_update = bank.current_size;
 			tfxU32 running_start_index = 0;
 			if (pm->emitters[index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
-				tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
+				//tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 			}
 			tfxU32 first_index = tfx__get_circular_index(&bank, 0) / tfxDataWidth * tfxDataWidth;
 			tfxU32 running_sprite_index = 0;
@@ -12066,6 +12066,7 @@ TFX_ENABLE_COMPILER_WARNING()
 			tfxWideStore(&locations.position_y[index], position_y.m);
 			tfxWideStore(&locations.position_z[index], position_z.m);
 			tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
+			TFX_ASSERT(index + tfxDataWidth <= work_entry->pm->particle_location_buffers[emitter.spawn_locations_index].capacity);
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -14490,14 +14491,13 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 	}
 
 	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
-		tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
-		if (buffer.current_size > spawn_point_buffer.current_size) {
-			tfx__add_soa_rows(&pm->particle_location_buffers[emitter.spawn_locations_index], buffer.current_size - spawn_point_buffer.current_size, true);
-		}
-		spawn_point_buffer.current_size = particle_buffer.current_size;
+		tfx__set_soa_capacity(&spawn_point_buffer, buffer.capacity);
+		TFX_ASSERT(spawn_point_buffer.capacity == buffer.capacity);
+		spawn_point_buffer.current_size = buffer.current_size;
+		tfx__align_size_up(spawn_point_buffer.current_size, tfxDataWidth);
 		TFX_ASSERT(spawn_point_buffer.current_size < spawn_point_buffer.capacity);
-		spawn_point_buffer.start_index = particle_buffer.start_index;
+		spawn_point_buffer.start_index = buffer.start_index;
 	}
 
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
@@ -14513,8 +14513,10 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 			TFX_ASSERT(work_entry->depth_indexes->current_size < work_entry->depth_indexes->capacity);
 			pm->deffered_spawn_work.push_back(work_entry);
 		}
-		else {
+		else if(work_entry->emission_type != tfxOtherEmitter) {
 			tfx__add_work_queue_entry(&pm->work_queue, work_entry, tfx__do_spawn_work);
+		} else {
+			pm->deffered_spawn_work.push_back(work_entry);
 		}
 	}
 
@@ -17880,14 +17882,14 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, grid_index));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, uid));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
 void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_data_soa_t *soa, tfxU32 reserve_amount) {
 	tfx__add_struct_array(buffer, sizeof(tfx_ribbon_t), offsetof(tfx_ribbon_data_soa_t, ribbon_instance));
 	tfx__add_struct_array(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_ribbon_data_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_data_soa_t, lerp_offset));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
 void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount) {
@@ -17895,7 +17897,7 @@ void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_s
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, width));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
 void tfx__init_paths_soa(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount) {
@@ -17903,7 +17905,7 @@ void tfx__init_paths_soa(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tf
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, length));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
 void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
@@ -17914,7 +17916,7 @@ void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, age));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
 void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties) {

@@ -4711,11 +4711,11 @@ inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_
 }
 
 //Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
-inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
+inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true, bool exact = false) {
 	TFX_ASSERT(buffer->capacity);            //buffer must already have a capacity!
 	tfxU32 new_capacity = 0;
-	new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
-	new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
+	new_capacity = new_target_size > buffer->capacity ? new_target_size : buffer->capacity + buffer->capacity / 2;
+	new_capacity = exact ? new_capacity : (new_capacity / buffer->block_size + 1) * buffer->block_size;
 	void *new_data = tfxALLOCATE_ALIGNED(tfx__get_soa_capacity_requirement(buffer, new_capacity), buffer->alignment);
 	TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
@@ -4779,8 +4779,8 @@ inline void tfx__copy_soa_buffer(tfx_soa_buffer_t *dst, tfx_soa_buffer_t *src) {
 //current capacity then nothing will happen
 inline void tfx__set_soa_capacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
-	if (new_size >= buffer->capacity) {
-		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
+	if (new_size > buffer->capacity) {
+		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size, true, true);
 	}
 }
 
