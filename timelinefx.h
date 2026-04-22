@@ -9018,6 +9018,7 @@ struct tfx_apply_simplex_noise {
 		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
 		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+		l = tfxWideAdd(l, tfxWideSetSingle(1e-12f));
 		l = tfxWideRSqrt(l);
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
@@ -9063,96 +9064,60 @@ struct tfx_apply_curl_noise {
 		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);
 
-		/*
-		// 2. Calculate Offset Y coordinate for the 4 particles
-		tfxWideFloat y_offset = tfxWideAdd(y, tfxWIDENOISEOFFSET.m);
+		// Bridson curl noise: v = curl(psi) with three independent scalar potentials psi1, psi2, psi3.
+		// The three potentials come from one simplex field sampled at widely-separated offsets
+		// (simplex decorrelates past ~1 unit, so +100 acts like an independent seed).
+		// Each potential needs only two of its three partials for the curl, so a forward
+		// difference costs 3 samples per potential = 9 samples total.
+		// Curl is divergence-free by construction, so no normalization is applied -
+		// lookup_velocity_turbulance shapes the amplitude and skipping rsqrt removes the
+		// direction-popping that normalization produces near critical points of the field.
 
-		// 3. Perform Noise Samples (10 calls, each processing either 4 or 8 particles for SSE or AVX)
-		// --- Samples needed for Curl X component
-		tfxWideFloat y_minus_eps = tfx__simd_noise_3d(x, tfxWideSub(y, tfxWIDEEPS.m), z);
-		tfxWideFloat y_plus_eps = tfx__simd_noise_3d(x, tfxWideAdd(y, tfxWIDEEPS.m), z);
-		tfxWideFloat z_minus_eps = tfx__simd_noise_3d(x, y, tfxWideSub(z, tfxWIDEEPS.m));
-		tfxWideFloat z_plus_eps = tfx__simd_noise_3d(x, y, tfxWideAdd(z, tfxWIDEEPS.m));
+		const tfxWideFloat dt = tfxWideSetSingle(0.05f);
+		// inv_dt folds in a 1/sqrt(6) (~0.408) magnitude scale so the output vector RMS
+		// matches tfx_apply_simplex_noise's unit-normalized output - swapping between
+		// the two noise modes shouldn't require re-tuning velocity_turbulance.
+		const tfxWideFloat inv_dt = tfxWideSetSingle(0.408f / 0.05f);
 
-		// --- Samples needed for Curl Y component
-		tfxWideFloat off_z_minus_eps = tfx__simd_noise_3d(x, y_offset, tfxWideSub(z, tfxWIDEEPS.m));
-		tfxWideFloat off_z_plus_eps = tfx__simd_noise_3d(x, y_offset, tfxWideAdd(z, tfxWIDEEPS.m));
-		tfxWideFloat off_x_minus_eps = tfx__simd_noise_3d(tfxWideSub(x, tfxWIDEEPS.m), y_offset, z);
-		tfxWideFloat off_x_plus_eps = tfx__simd_noise_3d(tfxWideAdd(x, tfxWIDEEPS.m), y_offset, z);
+		// Push psi2 and psi3 into decorrelated regions. Life drift gives the field a gentle
+		// time evolution per particle in addition to the noise_offset advection already in x/y/z.
+		const tfxWideFloat psi2_shift = tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life);
+		const tfxWideFloat psi3_shift = tfxWideAdd(tfxWideAdd(tfxWIDENOISEOFFSET.m, tfxWIDENOISEOFFSET.m), ctx.life);
 
-		// --- Samples needed for Curl Z component
-		// Re-use off_x_minus_eps, off_x_plus_eps
-		tfxWideFloat off_y_minus_eps = tfx__simd_noise_3d(x, tfxWideSub(y_offset, tfxWIDEEPS.m), z);
-		tfxWideFloat off_y_plus_eps = tfx__simd_noise_3d(x, tfxWideAdd(y_offset, tfxWIDEEPS.m), z);
+		const tfxWideFloat x2 = tfxWideAdd(x, psi2_shift);
+		const tfxWideFloat y2 = tfxWideAdd(y, psi2_shift);
+		const tfxWideFloat z2 = tfxWideAdd(z, psi2_shift);
 
-		// 4. Calculate Partial Derivatives and Curl Components using SSE math
-		// Derivatives for Curl X
-		tfxWideFloat dy = tfxWideDiv(tfxWideSub(y_plus_eps, y_minus_eps), tfxWIDEEPS2.m);
-		tfxWideFloat dz = tfxWideDiv(tfxWideSub(z_plus_eps, z_minus_eps), tfxWIDEEPS2.m);
-		// Derivatives for Curl Y (offset)
-		tfxWideFloat dz_off = tfxWideDiv(tfxWideSub(off_z_plus_eps, off_z_minus_eps), tfxWIDEEPS2.m);
-		tfxWideFloat dx_off = tfxWideDiv(tfxWideSub(off_x_plus_eps, off_x_minus_eps), tfxWIDEEPS2.m);
-		// Derivatives for Curl Z (offset)
-		// Re-use dx_off
-		tfxWideFloat dy_off = tfxWideDiv(tfxWideSub(off_y_plus_eps, off_y_minus_eps), tfxWIDEEPS2.m);
+		const tfxWideFloat x3 = tfxWideAdd(x, psi3_shift);
+		const tfxWideFloat y3 = tfxWideAdd(y, psi3_shift);
+		const tfxWideFloat z3 = tfxWideAdd(z, psi3_shift);
 
-		// Curl Components for 4 particles
-		tfxWideFloat noise_x = tfxWideSub(dy, dz);
-		tfxWideFloat noise_y = tfxWideSub(dz_off, dx_off);
-		tfxWideFloat noise_z = tfxWideSub(dx_off, dy_off);
+		// psi1: need d/dy (for v_z) and d/dz (for v_y)
+		tfxWideFloat psi1_0  = tfx__simd_noise_3d(x, y, z);
+		tfxWideFloat psi1_py = tfx__simd_noise_3d(x, tfxWideAdd(y, dt), z);
+		tfxWideFloat psi1_pz = tfx__simd_noise_3d(x, y, tfxWideAdd(z, dt));
 
-		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
-		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
-		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
-		l = tfxWideRSqrt(l);
-		noise_x = tfxWideMul(noise_x, l);
-		noise_y = tfxWideMul(noise_y, l);
-		noise_z = tfxWideMul(noise_z, l);
-		*/
+		// psi2: need d/dx (for v_z) and d/dz (for v_x)
+		tfxWideFloat psi2_0  = tfx__simd_noise_3d(x2, y2, z2);
+		tfxWideFloat psi2_px = tfx__simd_noise_3d(tfxWideAdd(x2, dt), y2, z2);
+		tfxWideFloat psi2_pz = tfx__simd_noise_3d(x2, y2, tfxWideAdd(z2, dt));
 
-		const tfxWideFloat dt = tfxWideSetSingle(1e-4f); // Epsilon for finite difference
-		const tfxWideFloat tfxWIDEMINUSONE = tfxWideSetSingle(-1.0f); // Assuming you have this
+		// psi3: need d/dx (for v_y) and d/dy (for v_x)
+		tfxWideFloat psi3_0  = tfx__simd_noise_3d(x3, y3, z3);
+		tfxWideFloat psi3_px = tfx__simd_noise_3d(tfxWideAdd(x3, dt), y3, z3);
+		tfxWideFloat psi3_py = tfx__simd_noise_3d(x3, tfxWideAdd(y3, dt), z3);
 
-		// 1. Sample noise at 4 points
-		//    n0 = N(x, y, z)
-		//    nx = N(x+dt, y, z)
-		//    ny = N(x, y+dt, z)
-		//    nz = N(x, y, z+dt)
-		tfxWideFloat n0 = tfx__simd_noise_3d(x, y, z);
-		tfxWideFloat nx = tfx__simd_noise_3d(tfxWideAdd(x, dt), y, z);
-		tfxWideFloat ny = tfx__simd_noise_3d(x, tfxWideAdd(y, dt), z);
-		tfxWideFloat nz = tfx__simd_noise_3d(x, y, tfxWideAdd(z, dt));
+		tfxWideFloat dpsi1_dy = tfxWideMul(tfxWideSub(psi1_py, psi1_0), inv_dt);
+		tfxWideFloat dpsi1_dz = tfxWideMul(tfxWideSub(psi1_pz, psi1_0), inv_dt);
+		tfxWideFloat dpsi2_dx = tfxWideMul(tfxWideSub(psi2_px, psi2_0), inv_dt);
+		tfxWideFloat dpsi2_dz = tfxWideMul(tfxWideSub(psi2_pz, psi2_0), inv_dt);
+		tfxWideFloat dpsi3_dx = tfxWideMul(tfxWideSub(psi3_px, psi3_0), inv_dt);
+		tfxWideFloat dpsi3_dy = tfxWideMul(tfxWideSub(psi3_py, psi3_0), inv_dt);
 
-		// 2. Calculate partial derivatives using forward differences
-		//    grad_x = (N(x+dt, y, z) - N(x, y, z)) / dt  ~= dN/dx
-		//    grad_y = (N(x, y+dt, z) - N(x, y, z)) / dt  ~= dN/dy
-		//    grad_z = (N(x, y, z+dt) - N(x, y, z)) / dt  ~= dN/dz
-		tfxWideFloat grad_x = tfxWideDiv(tfxWideSub(nx, n0), dt);
-		tfxWideFloat grad_y = tfxWideDiv(tfxWideSub(ny, n0), dt);
-		tfxWideFloat grad_z = tfxWideDiv(tfxWideSub(nz, n0), dt);
-
-		// 3. Construct the 3D noise vector (inspired by common approximations/your previous code)
-		//    noise_x = dN/dy - dN/dz
-		//    noise_y = dN/dz - dN/dx
-		//    noise_z = dN/dx - dN/dy
-		//    This specific combination is one way to generate a divergence-free field from gradients.
-		tfxWideFloat noise_x = tfxWideSub(grad_y, grad_z);
-		tfxWideFloat noise_y = tfxWideSub(grad_z, grad_x);
-		tfxWideFloat noise_z = tfxWideSub(grad_x, grad_y);
-
-		// 4. Normalize (Optional but recommended for consistent speed)
-		tfxWideFloat l_sq = tfxWideMul(noise_x, noise_x);
-		l_sq = tfxWideAdd(l_sq, tfxWideMul(noise_y, noise_y));
-		l_sq = tfxWideAdd(l_sq, tfxWideMul(noise_z, noise_z));
-		// Add a small epsilon before rsqrt/sqrt to avoid division by zero
-		tfxWideFloat epsilon_sq = tfxWideSetSingle(1e-12f); // Example small value
-		l_sq = tfxWideAdd(l_sq, epsilon_sq);
-		tfxWideFloat inv_l = tfxWideRSqrt(l_sq); // Reciprocal square root if available and precise enough
-		// Or: inv_l = tfxWideDiv(tfxWideSetSingle(1.0f), tfxWideSqrt(l_sq));
-
-		noise_x = tfxWideMul(noise_x, inv_l);
-		noise_y = tfxWideMul(noise_y, inv_l);
-		noise_z = tfxWideMul(noise_z, inv_l);
+		// v = curl(psi)
+		tfxWideFloat noise_x = tfxWideSub(dpsi3_dy, dpsi2_dz);
+		tfxWideFloat noise_y = tfxWideSub(dpsi1_dz, dpsi3_dx);
+		tfxWideFloat noise_z = tfxWideSub(dpsi2_dx, dpsi1_dy);
 
 		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
 		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));

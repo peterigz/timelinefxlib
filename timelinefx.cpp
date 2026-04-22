@@ -7264,7 +7264,7 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxFrameratePreset:
 		return { 1.f, 200.f };
 	case tfx_graph_preset::tfxVelocityTurbulancePreset:
-		return { 1.f, 2000.f };
+		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxOpacityOvertimePreset:
 		return { 1.f, 1.f };
 	case tfx_graph_preset::tfxColorPreset:
