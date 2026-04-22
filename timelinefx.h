@@ -9662,6 +9662,7 @@ tfxINTERNAL void tfx__control_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbons_ages(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_ribbon_hide(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_effect_manager pm);

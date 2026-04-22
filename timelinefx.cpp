@@ -12129,6 +12129,9 @@ void tfx__control_ribbons(tfx_work_queue_t *queue, void *data) {
 		if (pm->ribbon_emitters[index].active_ribbons > 0) {
 			work_entry->ribbon_index = index;
 			tfx__control_ribbon_attributes(queue, data);
+			if (pm->ribbon_emitters[index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
+				tfx__control_ribbon_hide(queue, data);
+			}
 		}
 	}
 }
@@ -12224,6 +12227,18 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 		}
 		ribbon.texture_indexes &= ~0x1FFF;
 		ribbon.texture_indexes += tfxU32(image_frame) + ribbon_emitter.state_properties.image->compute_shape_index;
+	}
+}
+
+void tfx__control_ribbon_hide(tfx_work_queue_t *queue, void *data) {
+	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
+	tfxU32 ribbon_index = work_entry->ribbon_index;
+	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_index];
+	tfx_ribbon_bucket_t *bucket = work_entry->ribbon_bucket;
+	for (tfxU32 index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
+		tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[index];
+		ribbon.intensity_gradient_map = 0;
 	}
 }
 
@@ -17650,7 +17665,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		tfx__control_particle_size(&pm->work_queue, work_entry);
 		tfx__control_particle_color(&pm->work_queue, work_entry);
 		tfx__control_particle_image_frame(&pm->work_queue, work_entry);
-		if (emitter.source_emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
+		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
 			tfx__control_particle_hide(&pm->work_queue, work_entry);
 		}
 	}
