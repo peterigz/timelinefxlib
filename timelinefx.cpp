@@ -6999,9 +6999,14 @@ float tfx__get_graph_last_value(tfx_graph_t *graph) {
 float tfx__get_graph_max_value(tfx_graph_t *graph) {
 	if (graph->nodes.size()) {
 		float value = tfxMIN_FLOAT;
-		for (tfxBucketLoop(graph->nodes, i)) {
-			if (value < graph->nodes[i].value)
-				value = graph->nodes[i].value;
+		if (graph->easing_type == tfxGraphEasingType_constant && tfx__is_lerp_graph(graph)) {
+			return graph->nodes[0].value;
+		} else {
+			for (tfxBucketLoop(graph->nodes, i)) {
+				if (value < graph->nodes[i].value) {
+					value = graph->nodes[i].value;
+				}
+			}
 		}
 		return value;
 	}
@@ -7011,9 +7016,14 @@ float tfx__get_graph_max_value(tfx_graph_t *graph) {
 float tfx__get_graph_min_value(tfx_graph_t *graph) {
 	if (graph->nodes.size()) {
 		float value = tfxMAX_FLOAT;
-		for (tfxBucketLoop(graph->nodes, i)) {
-			if (value > graph->nodes[i].value)
-				value = graph->nodes[i].value;
+		if (graph->easing_type == tfxGraphEasingType_constant && tfx__is_lerp_graph(graph)) {
+			return graph->nodes[0].value;
+		} else {
+			for (tfxBucketLoop(graph->nodes, i)) {
+				if (value > graph->nodes[i].value) {
+					value = graph->nodes[i].value;
+				}
+			}
 		}
 		return value;
 	}
@@ -7828,6 +7838,10 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	float life_last_frame = tfx__get_graph_last_frame(&life, 60.f);
 	float life_variation_last_frame = tfx__get_graph_last_frame(&life_variation, 60.f);
 	float global_adjust = 1.f;
+	float max_life_factor = 1.f;
+	if (tfx__get_shared_emitter_properties(emitter)->emission_type == tfxOtherEmitter) {
+		max_life_factor = tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_factor_life_index]);;
+	}
 	if (life_last_frame + life_variation_last_frame > 0) {
 		for (float f = 0; f < fmaxf(life_last_frame, life_variation_last_frame); ++f) {
 			if (emitter->parent) {
@@ -7844,7 +7858,7 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 		max_life = tfx__get_graph_first_value(&life) + tfx__get_graph_first_value(&life_variation);
 	}
 
-	return max_life;
+	return max_life * max_life_factor;
 }
 
 bool tfx__is_gpu_graph_type(tfx_graph_type type) {
@@ -10524,7 +10538,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
     if (parent_index.index == tfxINVALID) {
 		return tfxINVALID;
 	}
-	pm->effects[parent_index.index].highest_particle_age = (float)pm->frame_length * 3.f;
 	tfx_effect_state_t &new_effect = pm->effects[parent_index.index];
 
 	new_effect.source_effect = effect;
@@ -10536,7 +10549,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 
 	new_effect.age = -add_delayed_spawning;
 	new_effect.state_flags = 0;
-	new_effect.property_flags = effect->state_properties.property_flags;
 	new_effect.effect_flags = effect->effect_flags;
 	new_effect.local_position = tfx_vec3_t();
 	new_effect.timeout = 1000.f;
@@ -10567,6 +10579,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				}
 				new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
 				tfx_particle_emitter_state_t &emitter = pm->emitters[index];
+				new_effect.active_emitters++;
 				tfx__readbarrier;
 				emitter.particles_index = tfxINVALID;
 				emitter.parent_index = parent_index.index;
@@ -10583,10 +10596,8 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				emitter.age = 0.f;
 				emitter.local_position = tfx_vec3_t();
 				emitter.grid_direction = tfx_vec3_t();
-				emitter.timeout = 1000.f;
 				emitter.amount_remainder = 0.f;
 				emitter.qty_step_size = 0.f;
-				emitter.timeout_counter = 0;
 				emitter.emitter_size = 0.f;
 				emitter.world_rotations = 0.f;
 				emitter.seed_index = seed_index++;
@@ -10644,8 +10655,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 					emitter.state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
 				}
 
-				emitter.highest_particle_age = (float)pm->frame_length * 2.f;
-
 				if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu) {
 					//Assign emitter to its GPU particle group (matched by control profile + life bucket)
 					tfx__assign_emitter_to_gpu_group(pm, index);
@@ -10668,6 +10677,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				if (!pm->ribbon_segment_buckets.ValidKey(ribbon_properties->ribbon_bucket_id)) {
 					tfx__init_ribbon_segment_buffer(pm, ribbon_properties->ribbon_bucket_id, &ribbon_properties->bucket_info, 1);
 				}
+				new_effect.active_emitters++;
 				ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
 				tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
 				bucket->ribbon_emitter_indexes[pm->current_ebuff].push_back(index);
@@ -10686,8 +10696,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				ribbon_emitter.local_position = tfx_vec3_t();
 				ribbon_emitter.local_rotations = tfx_vec3_t();
 				ribbon_emitter.age = 0.f;
-				ribbon_emitter.timeout = 1000.f;
-				ribbon_emitter.timeout_counter = 0.f;
 				ribbon_emitter.ribbon_property_flags = child->ribbon_flags;
 				ribbon_emitter.library = effect->library;
 				ribbon_emitter.parent_index = parent_index.index;
@@ -11060,7 +11068,7 @@ void tfx__update_effect_manager(void *data) {
 
 	tfxU32 last_instance_count = 0;
 
-	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
+	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
 
 	pm->effects_in_use[next_buffer].clear();
 
@@ -11078,19 +11086,22 @@ void tfx__update_effect_manager(void *data) {
 
 		tfx__update_effect(pm, effect_index.index);
 		if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
-			tfx_vec3_t effect_to_camera = pm->effects[effect_index.index].world_position - pm->camera_position;
+			tfx_vec3_t effect_to_camera = effect.world_position - pm->camera_position;
 			effect_index.depth = tfx__vec3_length_fast(&effect_to_camera);
 		}
-		if (timeout_counter <= pm->effects[effect_index.index].timeout) {
+		if (timeout_counter <= effect.timeout) {
 			pm->effects_in_use[next_buffer].push_back(effect_index);
-		}
-		else {
+		} else if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
+			effect.state_flags |= tfxEmitterStateFlags_remove;
+		} else {
 			tfx__sync_lock(&pm->add_effect_mutex);
 			pm->free_effects.push_back(effect_index);
 			tfx__sync_unlock(&pm->add_effect_mutex);
 		}
 
-		for (int emitter_index : pm->effects[effect_index.index].emitter_indexes[pm->current_ebuff]) {
+		effect.active_emitters = 0;
+
+		for (int emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
 			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
 			//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
 			//would cause more work entries to be created.
@@ -11099,38 +11110,36 @@ void tfx__update_effect_manager(void *data) {
 			spawn_work_entry->random = pm->threaded_random;
 			spawn_work_entry->emitter_index = emitter_index;
 			spawn_work_entry->next_buffer = next_buffer;
-			tfx_library library = pm->emitters[emitter_index].library;
-			spawn_work_entry->properties = &library->emitter_properties[pm->emitters[emitter_index].state_properties.property_index];
-			spawn_work_entry->shared_properties = &library->shared_properties[pm->emitters[emitter_index].state_properties.shared_index];
+			tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+			tfx_library library = emitter.library;
+			spawn_work_entry->properties = &library->emitter_properties[emitter.state_properties.property_index];
+			spawn_work_entry->shared_properties = &library->shared_properties[emitter.state_properties.shared_index];
 			spawn_work_entry->amount_to_spawn = 0;
-			spawn_work_entry->highest_particle_age = pm->emitters[emitter_index].highest_particle_age;
 			spawn_work_entry->pm = pm;
 			spawn_work_entry->depth_indexes = nullptr;
 			spawn_work_entry->particle_uid = emitter_index * 100000;
 
-			float &timeout_counter = pm->emitters[emitter_index].timeout_counter;
-			TFX_ASSERT(pm->emitters[emitter_index].particles_index != tfxINVALID);
+			TFX_ASSERT(emitter.particles_index != tfxINVALID);
 
 			tfx__update_emitter(&pm->work_queue, spawn_work_entry);
-			if (timeout_counter <= pm->emitters[emitter_index].timeout) {
+			if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
 				effect.emitter_indexes[next_buffer].push_back(emitter_index);
 				pm->control_emitter_queue.push_back(emitter_index);
 			} else {
 				tfx__sync_lock(&pm->add_effect_mutex);
-				if (pm->emitters[emitter_index].path_state.path_quaternions) {
-					tfx__free_path_quaternion(pm, pm->emitters[emitter_index].path_state.path_quaternion_index);
+				if (emitter.path_state.path_quaternions) {
+					tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
 				}
 				tfx__free_particle_list(pm, emitter_index);
-				if (pm->emitters[emitter_index].spawn_locations_index != tfxINVALID && pm->emitters[emitter_index].other_emitter_index == tfxINVALID) {
+				if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
 					tfx__free_spawn_location_list(pm, emitter_index);
 				}
 				//Emitter is done spawning; decrement group's active count.
 				//The group tracking ring drains naturally as particles expire — no explicit cleanup needed.
 				{
-					tfx_particle_emitter_state_t &dying_emitter = pm->emitters[emitter_index];
-					if (dying_emitter.state_properties.gpu_group_index != tfxINVALID) {
-						pm->gpu_groups[dying_emitter.state_properties.gpu_group_index].active_emitter_count--;
-						dying_emitter.state_properties.gpu_group_index = tfxINVALID;
+					if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+						pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
+						emitter.state_properties.gpu_group_index = tfxINVALID;
 					}
 				}
 				pm->free_emitters.push_back(emitter_index);
@@ -11175,11 +11184,6 @@ void tfx__update_effect_manager(void *data) {
 	tfx__complete_all_work(&pm->work_queue);
 	tfx_AdvanceRandom(&pm->threaded_random);
 
-	for (auto &work_entry : pm->spawn_work) {
-		tfxU32 index = work_entry.emitter_index;
-		pm->emitters[index].highest_particle_age = fmaxf(pm->emitters[index].highest_particle_age, work_entry.highest_particle_age);
-		pm->effects[pm->emitters[index].parent_index].highest_particle_age = pm->emitters[index].highest_particle_age + (float)pm->frame_length;
-	}
 	pm->spawn_work.clear();
 	pm->ribbon_work.clear();
 
@@ -13951,12 +13955,11 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 	}
 
 	effect.age += (float)pm->frame_length;
-	effect.highest_particle_age -= (float)pm->frame_length;
 
 	if (effect.source_effect->state_properties.loop_length && effect.age > effect.source_effect->state_properties.loop_length)
 		effect.age -= effect.source_effect->state_properties.loop_length;
 
-	if (effect.highest_particle_age <= 0 && effect.age > (float)pm->frame_length * 5.f) {
+	if (effect.active_emitters == 0) {
 		effect.timeout_counter += (float)pm->frame_length;
 	}
 	else {
@@ -13965,7 +13968,7 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 
 	if (effect.state_flags & tfxEffectStateFlags_remove) {
 		effect.timeout = 1;
-		effect.highest_particle_age = 0;
+		effect.active_emitters = 0;
 	}
 
 	effect.state_flags &= ~tfxEffectStateFlags_no_tween_this_update;
@@ -13977,13 +13980,14 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
 	for (int ribbon_emitter_index : ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
 		tfx__update_ribbon_emitter(ribbon_emitter_index, &pm->work_queue, ribbon_work_entry);
-		float &timeout_counter = pm->ribbon_emitters[ribbon_emitter_index].timeout_counter;
-		if (timeout_counter <= pm->ribbon_emitters[ribbon_emitter_index].timeout) {
+		tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+		tfx_effect_state_t &effect = pm->effects[ribbon_emitter.parent_index];
+		if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
 			ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
 			ribbon_work_entry->ribbon_bucket->control_ribbon_queue.push_back(ribbon_emitter_index);
 		} else {
 			tfx__sync_lock(&pm->add_effect_mutex);
-			tfx__free_gpu_emitter(pm, pm->ribbon_emitters[ribbon_emitter_index].gpu_emitter_index);
+			tfx__free_gpu_emitter(pm, ribbon_emitter.gpu_emitter_index);
 			pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
 			tfx__sync_unlock(&pm->add_effect_mutex);
 		}
@@ -14021,10 +14025,10 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	TFX_ASSERT(ribbon_emitter.parent_index != tfxINVALID);    //Emitter must have a valid parent (an effect)
 
 	if (parent_effect.age < ribbon_emitter.state_properties.delay_spawning) {
+		parent_effect.active_emitters++;
 		return;
 	}
 
-	parent_effect.timeout_counter = 0;
 	ribbon_work_entry->effect_flags = pm->effects[ribbon_emitter.parent_index].effect_flags;
 	bool ordered_effect = (ribbon_work_entry->effect_flags & tfxEffectPropertyFlags_age_order) || (ribbon_work_entry->effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 
@@ -14050,7 +14054,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.scale = parent_effect.overal_scale;
 	gpu_emitter.quaternion = ribbon_emitter.rotation.vec4();
 
-	double step_size = 1.0 / ribbon_emitter.spawn_quantity;
+	double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
 	double tween = 0;
 	if (step_size == ribbon_emitter.qty_step_size || ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
 		tween = ribbon_emitter.amount_remainder;
@@ -14070,7 +14074,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	if (tween >= 1) {
 		ribbon_emitter.amount_remainder = tween - 1.0;
 	} else if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
-		double amount_that_will_spawn = (1.0 - tween) / step_size;
+		double amount_that_will_spawn = step_size > 0 ? (1.0 - tween) / step_size : 0;
 		ribbon_work_entry->amount_to_spawn = (tfxU32)ceil(amount_that_will_spawn);
 		if (ribbon_work_entry->amount_to_spawn > ribbon_work_entry->new_ribbons) {
 			ribbon_work_entry->amount_to_spawn = ribbon_work_entry->new_ribbons;
@@ -14093,14 +14097,9 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		ribbon_emitter.age -= ribbon_emitter.source_ribbon->state_properties.loop_length;
 	}
 
-	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size == 0 && ribbon_emitter.age > (float)pm->frame_length * 5.f) {
-		ribbon_emitter.timeout_counter += (float)pm->frame_length;
-	} else {
-		ribbon_emitter.timeout_counter = 0;
-	}
-
-	if (ribbon_emitter.state_flags & tfxEmitterStateFlags_remove) {
-		ribbon_emitter.timeout = 0;
+	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0) {
+		parent_effect.active_emitters++;
+		return;
 	}
 }
 
@@ -14142,16 +14141,14 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	float t = emitter.state_properties.loop_length > 0.f ? emitter.age / emitter.state_properties.loop_length : 0.f;
 
-	spawn_work_entry->highest_particle_age = emitter.highest_particle_age;
-
 	tfx_shared_properties_t &shared_properties = *spawn_work_entry->shared_properties;
 
 	TFX_ASSERT(emitter.parent_index != tfxINVALID);    //Emitter must have a valid parent (an effect)
 
 	tfxU32 layer = shared_properties.layer;
 
-	parent_effect.timeout_counter = 0;
 	if (parent_effect.age < emitter.state_properties.delay_spawning) {
+		parent_effect.active_emitters++;
 		return;
 	}
 	spawn_work_entry->root_effect_flags = pm->effects[emitter.parent_index].effect_flags;
@@ -14162,7 +14159,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
 	}
 	spawn_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
-	spawn_work_entry->parent_property_flags = parent_effect.property_flags;
 	spawn_work_entry->parent_index = emitter.parent_index;
 	spawn_work_entry->overal_scale = parent_effect.overal_scale;
 	tfx__update_emitter_state(pm, emitter, emitter.parent_index, spawn_work_entry->parent_spawn_controls, spawn_work_entry);
@@ -14190,7 +14186,8 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		emitter.captured_position = emitter.world_position;
 	}
 
-	emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
+	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
+	emitter.sprites_count = particle_buffer.current_size;
 	if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
 		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
@@ -14239,25 +14236,12 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 
 	emitter.age += (float)pm->frame_length;
-	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) || (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties.single_shot_limit > 0) || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
-		emitter.highest_particle_age -= (float)pm->frame_length;
-		spawn_work_entry->highest_particle_age -= (float)pm->frame_length;
-	}
 
 	if (emitter.source_emitter->state_properties.loop_length && emitter.age > emitter.source_emitter->state_properties.loop_length)
 		emitter.age -= emitter.source_emitter->state_properties.loop_length;
 
-	if (emitter.highest_particle_age <= 0 && emitter.age > (float)pm->frame_length * 5.f) {
-		emitter.timeout_counter += (float)pm->frame_length;
-	}
-	else {
-		emitter.timeout_counter = 0;
-	}
-
-	if (emitter.state_flags & tfxEmitterStateFlags_remove) {
-		emitter.timeout = 0;
-		emitter.highest_particle_age = 0;
-		return;
+	if (particle_buffer.current_size != 0) {
+		parent_effect.active_emitters++;
 	}
 
 	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
@@ -14409,6 +14393,8 @@ tfxU32 tfx__new_ribbons_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU
 		ribbon_emitter.amount_remainder = 1.0 + ribbon_emitter.spawn_quantity;
 		ribbon_emitter.qty_step_size = step_size;
 	}
+	TFX_ASSERT(!(ribbon_emitter.amount_remainder != ribbon_emitter.amount_remainder));
+	TFX_ASSERT(step_size > 0);
 	return ribbon_emitter.amount_remainder >= 1.0 ? 0 : tfxU32((1.0 - ribbon_emitter.amount_remainder) / step_size) + 1;
 }
 
@@ -14719,7 +14705,6 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		}
 
 		entry->particle_data->inv_max_age[index] = 1.f / max_age;
-		entry->highest_particle_age = fmaxf(entry->highest_particle_age, (max_age * loop_count) + (float)pm.frame_length + 1);
 	}
 }
 

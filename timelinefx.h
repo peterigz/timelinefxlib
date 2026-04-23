@@ -6645,9 +6645,6 @@ typedef struct tfx_particle_emitter_state_s {
 
 	//State data
 	float age;		
-	float highest_particle_age;
-	float timeout_counter;
-	float timeout;
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
@@ -6691,11 +6688,9 @@ typedef struct tfx_effect_state_s {
 	//State data that can change every frame
 	tfx_quaternion_t rotation;
 	float age;
-	float highest_particle_age;
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
-	tfxParticleEmitterFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
 	tfxEmitterStateFlags state_flags;
 	float loop_length;
@@ -6726,6 +6721,7 @@ typedef struct tfx_effect_state_s {
 	float overal_scale;
 	float noise_base_offset;
 	tfxU32 sort_passes;
+	tfxU32 active_emitters;
 
 	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
 	tfx_effect_instance_data_t instance_data;
@@ -6851,8 +6847,6 @@ typedef struct tfx_ribbon_emitter_state_s {
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
-	float timeout_counter;
-	float timeout;
 	float oscillator_time;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
@@ -7364,7 +7358,6 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 amount_to_spawn;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
-	float highest_particle_age;
 	float overal_scale;
     tfxU32 particle_uid;
 }tfx_spawn_work_entry_t;
