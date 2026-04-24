@@ -10804,6 +10804,18 @@ void tfx__update_library_control_profiles(tfx_library library) {
 	stack.free();
 }
 
+void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect) {
+	if (!effect) return;
+	for (tfx_effect_descriptor emitter : effect->children) {
+		if (emitter->type == tfxEmitterType) {
+			tfx__update_emitter_control_profile(emitter);
+			tfx__update_emitter_state_flags(emitter);
+		} else if (emitter->type == tfxRibbonType) {
+			tfx__update_emitter_state_flags(emitter);
+		}
+	}
+}
+
 tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter) {
 	TFX_ASSERT_HANDLE(emitter);
 	if (emitter->type != tfxEmitterType) {
@@ -11846,14 +11858,6 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 void tfx_setup_transform_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.running_sprite_index = work_entry->sprites_index;
 
-	ctx.emitter_world_x = tfxWideSetSingle(ctx.emitter->world_position.x);
-	ctx.emitter_world_y = tfxWideSetSingle(ctx.emitter->world_position.y);
-	ctx.emitter_world_z = tfxWideSetSingle(ctx.emitter->world_position.z);
-	ctx.emitter_handle_x = tfxWideSetSingle(ctx.emitter->handle.x);
-	ctx.emitter_handle_y = tfxWideSetSingle(ctx.emitter->handle.y);
-	ctx.emitter_handle_z = tfxWideSetSingle(ctx.emitter->handle.z);
-	ctx.emitter_scale = tfxWideSetSingle(work_entry->overal_scale);
-	ctx.global_stretch = tfxWideSetSingle(work_entry->global_stretch);
 	ctx.start_diff = work_entry->start_diff;
 
 	ctx.capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
@@ -13126,10 +13130,25 @@ tfx_instance_t *tfx_GetInstanceBuffer(tfx_effect_manager pm) {
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer);
 }
 
+tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_effect_manager pm, tfxU32 layer) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_effect_manager_update(pm);
+	tfxU32 layer_offset = layer == 0 ? 0 : pm->layer_sizes[layer - 1];
+	TFX_ASSERT(layer < tfxLAYERS);
+	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + layer_offset;
+}
+
 int tfx_GetInstanceCount(tfx_effect_manager pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_effect_manager_update(pm);
 	return pm->instance_buffer.current_size;
+}
+
+int tfx_GetInstanceCountByLayer(tfx_effect_manager pm, tfxU32 layer) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_effect_manager_update(pm);
+	TFX_ASSERT(layer < tfxLAYERS);
+	return pm->layer_sizes[layer];
 }
 
 double tfx_GetUpdateTime(tfx_effect_manager pm) {

@@ -2813,6 +2813,7 @@ typedef enum {
 	tfxOvertime_blue,
 	tfxOvertime_blendfactor,
 	tfxOvertime_velocity_adjuster,
+	tfxOvertime_velocity_falloff,
 	//--These compiled graph values are uploaded to the GPU
 	tfxOvertime_intensity,
 	tfxOvertime_alpha_sharpness,
@@ -7977,6 +7978,7 @@ tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor emi
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxAPI_EDITOR void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect);
 tfxINTERNAL tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
@@ -8848,15 +8850,12 @@ struct tfx_position_policy_context {
 	tfxWideFloat lookup_noise_resolution;
 	tfxWideFloat node_count;
 	tfxWideFloat global_noise;
-	tfxWideFloat global_stretch;
 	tfxWideFloat emitter_width, emitter_height, emitter_depth;
 	tfxWideFloat emitter_offset_x, emitter_offset_y, emitter_offset_z;
 	tfxWideFloat path_position;
 	tfxWideFloat path_offset;
 	tfxWideFloat path_scale_variation;
 	tfxWideFloat motion_randomness_base;
-	tfxWideFloat emitter_handle_x, emitter_handle_y, emitter_handle_z;
-	tfxWideFloat emitter_world_x, emitter_world_y, emitter_world_z;
 	tfxWideFloat emitter_scale;
 	tfxWideInt capture_after_transform;
 	tfx_vector_align_type vector_align_type;
@@ -9360,6 +9359,17 @@ struct tfx_apply_orbital_velocity_normal {
 
 struct tfx_apply_orbital_scale_velocity {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		/*
+		Experimenting with what a falloff based on the distance from emitter would look like.
+		Maybe this would be better implemented with a vector based noise/force function
+		tfxWideFloat dx = tfxWideSub(ctx.position_x.m, ctx.emitter_offset_x);
+		tfxWideFloat dz = tfxWideSub(ctx.position_z.m, ctx.emitter_offset_z);
+		tfxWideFloat distance = tfxWideAdd(tfxWideMul(dx, dx), tfxWideMul(dz, dz));
+		distance = tfxWideMul(tfxWideRSqrt(distance), distance);
+		tfxWideFloat radius = tfxWideSetSingle(8.f);
+		tfxWideFloat scale = tfxWideMax(tfxWideSub(tfxWIDEONE.m, tfxWideDiv(distance, radius)), tfxWIDEHALF.m);
+		ctx.velocity = tfxWideMul(scale, ctx.velocity);
+		*/
 		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
 		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
 	}
@@ -10105,10 +10115,23 @@ Get the billboard buffer in the effect manager containing all the sprite instanc
 tfxAPI tfx_instance_t *tfx_GetInstanceBuffer(tfx_effect_manager  pm);
 
 /*
+Get the billboard buffer in the effect manager containing all the sprite instances for a specific layer that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
+You can then use tfx_GetInstanceCountByLayer for the draw call.
+* @param pm                       A pointer to an intialised tfx_effect_manager_t.
+*/
+tfxAPI tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_effect_manager pm, tfxU32 layer);
+
+/*
 Get the number of instances within the instance buffer of a effect manager
 * @param pm                       A pointer to an intialised tfx_effect_manager_t.
 */
 tfxAPI int tfx_GetInstanceCount(tfx_effect_manager pm);
+
+/*
+Get the number of instances within the instance buffer of a effect manager for a specific layer.
+* @param pm                       A pointer to an intialised tfx_effect_manager_t.
+*/
+tfxAPI int tfx_GetInstanceCountByLayer(tfx_effect_manager pm, tfxU32 layer);
 
 /*
 Get the update time being used by the effect manager.
