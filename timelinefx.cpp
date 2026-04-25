@@ -4706,6 +4706,21 @@ bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index) {
 	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 }
 
+bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect) {
+	TFX_ASSERT_HANDLE(effect);
+	if (!effect->type == tfxEffectType) {
+		return false;
+	}
+	tfx_library library = effect->library;
+	bool status = false;
+	for (tfx_effect_descriptor emitter : effect->children) {
+		tfxU32 index = emitter->state_properties.graph_list_index;
+		tfx__update_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
+		status |= tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
+	}
+	return status;
+}
+
 void tfx__initialise_graph_indexes() {
 	TFX_ASSERT(tfxStore);	//Don't call this function directly, just call InitialseTimelineFX
 	//These are for converting properties in a save file to an index to find the right graph in a lookup table
@@ -6603,6 +6618,9 @@ void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribute_node_t *nod
 		if (!(right_node.flags & tfxAttributeNodeFlags_curves_initialised)) {
 			tfx__unset_curves(graph, right_node.index);
 		}
+	}
+	if (!(node->flags & tfxAttributeNodeFlags_curves_initialised)) {
+		tfx__unset_curves(graph, node->index);
 	}
 }
 
@@ -12826,16 +12844,27 @@ TFX_ENABLE_COMPILER_WARNING()
 		const tfxWideFloat intensity_factor = tfxWideLoad(&bank.intensity_factor[index]);
 		tfx__readbarrier;
 
+		tfxWideFloat intensity_time;
+		tfxWideFloat curved_alpha_time;
+		tfxWideFloat alpha_sharpness_time;
 		if (sample_based_on_path_position) {
 			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
 			life = tfxWideDiv(path_position, node_count);
+			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
+			tfxWideFloat lifetime = tfxWideMul(age, inv_max_age);
+			intensity_time = intensity_easing(lifetime);
+			curved_alpha_time = curved_alpha_easing(lifetime);
+			alpha_sharpness_time = alpha_sharpness_easing(lifetime);
 		} else {
 			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
 			life = tfxWideMul(age, inv_max_age);
+			intensity_time = intensity_easing(life);
+			curved_alpha_time = curved_alpha_easing(life);
+			alpha_sharpness_time = alpha_sharpness_easing(life);
 		}
 
-		tfxWideFloat intensity_time = intensity_easing(life);
 		tfxWideFloat lookup_intensity = intensity_is_bezier_graph ?
 			tfx__wide_bezier_sampler(intensity_time, intensity_graph->wide_graph.from, intensity_graph->wide_graph.curve1, intensity_graph->wide_graph.curve2, intensity_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(intensity_graph->wide_graph.from, intensity_graph->wide_graph.to, intensity_time);
@@ -12844,7 +12873,6 @@ TFX_ENABLE_COMPILER_WARNING()
 			lookup_intensity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(intensity_time, tfxWideAdd(intensity_graph->wide_oscillator.offset_x, intensity_graph->wide_oscillator.frequency), intensity_graph->wide_oscillator.amplitude), lookup_intensity), intensity_graph->wide_oscillator.offset_y);
 		}
 
-		tfxWideFloat curved_alpha_time = curved_alpha_easing(life);
 		tfxWideFloat lookup_curved_alpha = curved_alpha_is_bezier_graph ?	
 			tfx__wide_bezier_sampler(curved_alpha_time, curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.curve1, curved_alpha_graph->wide_graph.curve2, curved_alpha_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.to, curved_alpha_time);
@@ -12853,7 +12881,6 @@ TFX_ENABLE_COMPILER_WARNING()
 			lookup_curved_alpha = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(curved_alpha_time, tfxWideAdd(curved_alpha_graph->wide_oscillator.offset_x, curved_alpha_graph->wide_oscillator.frequency), curved_alpha_graph->wide_oscillator.amplitude), lookup_curved_alpha), curved_alpha_graph->wide_oscillator.offset_y);
 		}
 
-		tfxWideFloat alpha_sharpness_time = alpha_sharpness_easing(life);
 		tfxWideFloat lookup_alpha_sharpness = alpha_sharpness_is_bezier_graph ?	
 			tfx__wide_bezier_sampler(alpha_sharpness_time, alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.curve1, alpha_sharpness_graph->wide_graph.curve2, alpha_sharpness_graph->wide_graph.to) : 
 			tfx__wide_linear_sampler(alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.to, alpha_sharpness_time);
@@ -15617,28 +15644,28 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 				}
 				else if (side == 2) {
 					//top side
-					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
+					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
 					position.y = -half_emitter_size.y;
 					position.z = tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z);
 					velocity_normal.y = -1.f;
 				}
 				else if (side == 3) {
 					//bottom side
-					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
+					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
 					position.y = half_emitter_size.y;
 					position.z = tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z);
 					velocity_normal.y = 1.f;
 				}
 				else if (side == 4) {
 					//End far
-					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
+					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
 					position.y = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
 					position.z = half_emitter_size.z;
 					velocity_normal.z = 1.f;
 				}
 				else if (side == 5) {
 					//End near
-					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
+					position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
 					position.y = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
 					position.z = -half_emitter_size.z;
 					velocity_normal.z = -1.f;
@@ -16677,7 +16704,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 
 		tfx_vec3_t world_position;
 		if (!line && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal)) {
 				world_position.x = local_position_x;
 				world_position.y = local_position_y;
 				world_position.z = local_position_z;
@@ -16695,7 +16722,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		}
 		else if (emission_direction != tfxPathGradient && emission_direction != tfxOrbital) {
-			if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
+			if (emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal && emission_type == tfxLine) {
 				velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
 			}
 			else if ((emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface))) {

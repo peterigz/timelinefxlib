@@ -8182,6 +8182,7 @@ tfxAPI_EDITOR void tfx__update_library_compute_nodes();
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__update_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
+tfxAPI_EDITOR bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
