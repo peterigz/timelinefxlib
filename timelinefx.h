@@ -19,8 +19,8 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
-#define TFX_EXTRA_DEBUGGING
-#define SSE41		//Steam survey current has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
+//#define TFX_EXTRA_DEBUGGING
+#define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
 
 //Enable this to process 8 particles at a time.
 //#define tfxUSEAVX
@@ -1777,8 +1777,6 @@ typedef unsigned short tfxUShort;
 #define tfxEXTRACT_SPRITE_ALIGNMENT(property_index) ((property_index & tfxSPRITE_ALIGNMENT_MASK) >> 24)
 #define tfxEXTRACT_SPRITE_IMAGE_FRAME(property_index) ((property_index & tfxSPRITE_IMAGE_FRAME_MASK) >> 16)
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
-#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].state_properties.image_handle_packed << 32)
-#define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].state_properties.image_handle_packed << 32)
 #define tfxOSCILLATOR_SIN(t, frequency, amplitude) 0.5f + sinf((t) * (frequency) * 6.28318f) * (amplitude)
 #define tfxOSCILLATOR_WIDE_SIN(t, frequency, amplitude) tfxWideAdd(tfxWIDEHALF.m, tfxWideMul(tfxWideSin(tfxWideMul(tfxWideMul(t, frequency), tfxWIDEPI2.m)), amplitude))
 #define tfxCIRCLENODES 16
@@ -3453,7 +3451,7 @@ typedef enum {
 
 typedef enum {
 	tfxEmitterPropertyFlags_none							    = 0,
-	tfxEmitterPropertyFlags_relative_angle					    = 1 << 1,       //Keep the angle of the particles relative to the current angle of the emitter
+	//First 2 bits reserved for billboarding type
 	tfxEmitterPropertyFlags_image_handle_auto_center		    = 1 << 2,		//Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_edge_traversal					    = 1 << 3,       //Line and Path emitters only: make particles traverse the line/path
 	tfxEmitterPropertyFlags_base_uniform_size				    = 1 << 4,       //Keep the base particle size uniform
@@ -3466,6 +3464,7 @@ typedef enum {
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling	    = 1 << 11,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling		    = 1 << 12,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		    = 1 << 13,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_relative_angle					    = 1 << 14,       //Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_use_path_as_trajectory				= 1 << 15,		//When using path emission type, all particles will be spawned at the start of the path only and travel along the path. Only available when traverse edge is active
 } tfx_particle_emitter_flag_bits;
 
@@ -6529,24 +6528,16 @@ typedef struct tfx_image_data_s {
 typedef struct tfx_particle_emitter_properties_s {
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
 	tfx_vector_align_type vector_align_type;
-	//For other emitter emission types, this hash is the location of the other emitter so that it can be used to connect the two
-	//The type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
-	tfx_billboarding_option billboard_option;
-
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
 	tfxAngleSettingFlags angle_settings;
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
 	tfx_emission_direction emission_direction;
-
 	//The type of noise algorithm to use
 	tfx_noise_type noise_algorithm;
-
 	//How particles should behave when they reach the end of the line
 	tfx_line_traversal_end_behaviour end_behaviour;
 	//Bit field of various boolean state_flags
 	tfxParticleControlFlags compute_flags;
-	//Offset to draw particles at
-	tfx_vec2_t image_handle;
 	//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
 	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
 	//are stored on the GPU for looking up from the sprite data
@@ -6578,6 +6569,10 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxKey paired_emitter_hash;
 	//Layer of the effect manager that the particle is added to
 	tfxU32 layer;
+	//Thermal ramps in the frag shader for more realistic fire/heat 
+	float heat_response_boost;
+	float heat_response_sharpness;
+	float heat_response_curve;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {
@@ -6629,7 +6624,7 @@ typedef struct tfx_common_state_properties_s {
 	tfxIndex property_index;
 	tfxIndex shared_index;
 	tfxIndex gpu_group_index;
-	tfxU64 image_handle_packed;
+	tfxIndex particle_gpu_property_index;
 	tfxKey ribbon_bucket_id;		 //For spawn on ribbon emission type and storing the last known position of the particle
 	tfx_image_data_t *image;
 	tfx_vec3_t angle_offsets;
@@ -7033,30 +7028,27 @@ typedef struct tfx_ribbon_frame_meta_s {
 	tfxU32 ribbon_count;
 } tfx_ribbon_frame_meta_t;
 
-typedef struct tfx_instance_s {		//64 bytes (52 bytes data + 12 padding for std430 alignment)
+typedef struct tfx_instance_s {		//48 bytes
 	tfx_vec4_t position;							//The position of the billboard with stretch in w
 	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
-	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t size;							//Size/Scale of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
-	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 indexes;									//[gpu property index, capture flag (1 bit << 15), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 _padding[3];								//Padding to 64 bytes for std430 alignment with vec4
 } tfx_instance_t;
 
 //These structs are for animation sprite data that you can upload to the gpu
-typedef struct tfx_sprite_instance_data_s {    //56 bytes padding to 64
+typedef struct tfx_sprite_instance_data_s {    		//48 bytes
 	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
 	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
-	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t size;							//Size of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
-	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
-	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
+	tfxU32 indexes;									//[gpu property index, capture flag (1 bit << 15), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
-	tfxU32 padding[2];
 } tfx_sprite_instance_data_t;
 
 typedef struct tfx_ribbon_instance_data_s {	//64 bytes, mirrors tfx_ribbon_t layout
@@ -7285,6 +7277,18 @@ typedef struct tfx_compute_controller_s {
 	float noise_resolution;
 } tfx_compute_controller_t;
 
+typedef struct tfx_gpu_particle_properties_s {
+	tfx_vec2_t image_handle;			
+	tfxU32 color_ramp_indexes;			//[Row of color ramp bitmap, texture array]
+	tfxU32 flags;						//Flags like billboard alignment type
+	float heat_response_boost;			//Thermal ramp values for the frag shader
+	float heat_response_sharpness;
+	float heat_response_curve;
+	tfxU32 start_frame_index;
+	float animation_frames;
+	tfxU32 padding[3];
+} tfx_gpu_particle_properties_t;
+
 typedef struct tfx_gpu_graph_data_s {
 	tfx_vec4_t node_data;
 	tfx_vec4_t oscillator;
@@ -7508,16 +7512,6 @@ typedef struct tfx_animation_buffer_metrics_s {
 	size_t ribbon_segment_data_size;
 }tfx_animation_buffer_metrics_t;
 
-typedef struct tfx_animation_emitter_properties_s {
-	tfx_vec2_t handle;        //image handle
-	tfxU32 handle_packed;
-	tfxU32 flags;
-	tfxU32 start_frame_index;
-	tfxU32 color_ramp_index;
-	float animation_frames;
-	float padding;
-}tfx_animation_emitter_properties_t;
-
 typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 segment_count;
 	tfxU32 tessellation;
@@ -7580,7 +7574,7 @@ typedef struct tfx_animation_manager_s {
 	//We also need to upload some emitter/ribbon properties to the GPU as well such as the sprite handle.
 	//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
 	//before going to the vertex shader
-	tfx_vector_t<tfx_animation_emitter_properties_t> emitter_properties;
+	tfx_vector_t<tfx_gpu_particle_properties_t> emitter_properties;
 	//Each animation has sprite data settings that contains properties about each animation
 	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	//Every animation that gets added to the animation manager gets info added here that describes
@@ -7819,6 +7813,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_particle_emitter_properties_t> emitter_properties;
 	tfx_vector_t<tfx_shared_properties_t> shared_properties;
 	tfx_vector_t<tfx_ribbon_emitter_properties_t> ribbon_properties;
+	tfx_vector_t<tfx_gpu_particle_properties_t> particle_gpu_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
@@ -7833,6 +7828,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_particle_emitter_properties;
 	tfx_vector_t<tfxU32> free_shared_emitter_properties;
 	tfx_vector_t<tfxU32> free_ribbon_emitter_properties;
+	tfx_vector_t<tfxU32> free_particle_gpu_properties;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
 
@@ -8178,9 +8174,12 @@ tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library l
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_compute_nodes();
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__update_all_library_graphs(tfx_library library);
+tfxAPI_EDITOR void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_all_library_gpu_properties(tfx_library library);
 tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
@@ -8206,6 +8205,7 @@ tfxINTERNAL void tfx__free_library_properties(tfx_effect_descriptor descriptor);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL bool tfx__name_exists(tfx_vector_t<tfx_effect_descriptor> *list, const char *name);
@@ -8216,6 +8216,7 @@ tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char
 tfxAPI_EDITOR void tfx__set_effect_user_data(tfx_effect_descriptor e, void *data);
 tfxAPI_EDITOR void *tfx__get_effect_user_data(tfx_effect_descriptor e);
 tfxAPI_EDITOR tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effect_descriptor e);
+tfxAPI_EDITOR tfx_gpu_particle_properties_t *tfx__get_gpu_particle_properties(tfx_effect_descriptor e);
 tfxAPI_EDITOR tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor e);
 tfxAPI_EDITOR tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor e);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, tfx_effect_descriptor e, tfx_effect_descriptor_type type);
@@ -8280,9 +8281,9 @@ tfxINTERNAL void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_
 tfxINTERNAL void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, const char *value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfx_vec3_t value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_u32(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_float(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_vec2(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_node_data(tfx_attribute_node_t *node, tfx_vector_t<tfx_str256_t> *values);
 tfxINTERNAL tfx_vec3_t tfx__str_to_vec3(tfx_vector_t<tfx_str256_t> *str);
 tfxINTERNAL tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str);
@@ -8472,6 +8473,20 @@ tfxINTERNAL inline void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay
 	*rx = tfxWideSub(tfxWideMul(ay, *bz), tfxWideMul(az, *by));
 	*ry = tfxWideSub(tfxWideMul(az, *bx), tfxWideMul(ax, *bz));
 	*rz = tfxWideSub(tfxWideMul(ax, *by), tfxWideMul(ay, *bx));
+}
+
+tfxINTERNAL inline tfxU32 tfx__pack_heat_response(float boost, float sharpness, float power) {
+	//Layout: [sharpness:8 | boost:8 | power:16]
+	//power     uint16, range 0.5 - 2.5
+	//boost     uint8,  range 0.0 - 8.0
+	//sharpness uint8,  range 1.0 - 32.0
+	float power_n = (tfx__Max(0.5f, tfx__Min(2.5f, power)) - 0.5f) * (1.f / 2.f);
+	float boost_n = tfx__Max(0.f, tfx__Min(8.f, boost)) * (1.f / 8.f);
+	float sharpness_n = (tfx__Max(1.f, tfx__Min(32.f, sharpness)) - 1.f) * (1.f / 31.f);
+	tfxU32 power_q = (tfxU32)(power_n * 65535.f + 0.5f);
+	tfxU32 boost_q = (tfxU32)(boost_n * 255.f + 0.5f);
+	tfxU32 sharpness_q = (tfxU32)(sharpness_n * 255.f + 0.5f);
+	return (sharpness_q << 24) | (boost_q << 16) | power_q;
 }
 
 tfxINTERNAL inline void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfxWideFloat velocity_normal_y, tfxWideFloat velocity_normal_z, tfxWideFloat cone_angle, tfxWideFloat *random_x, tfxWideFloat *random_y, tfxWideFloat *random_z) {
@@ -9463,7 +9478,7 @@ tfxINTERNAL inline void tfx__write_particle_color_sprite_data_ordered(T *sprites
 }
 
 template<typename T>
-tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_effect_manager pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
+tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_effect_manager pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, tfxU32 index, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
@@ -9472,14 +9487,14 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_ef
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
-		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
+		sprites[running_sprite_index].indexes |= capture;
 		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
 		running_sprite_index++;
 	}
 }
 
 template<typename T>
-tfxINTERNAL inline void tfx__write_particle_image_sprite_data_ordered(T *sprites, tfx_effect_manager pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
+tfxINTERNAL inline void tfx__write_particle_image_sprite_data_ordered(T *sprites, tfx_effect_manager pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, tfxU32 index, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 sprite_depth_index = bank.depth_index[index_j] + instance_offset;
@@ -9489,7 +9504,7 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data_ordered(T *sprites
 		sprites[sprite_depth_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + sprite_depth_index;
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
-		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
+		sprites[sprite_depth_index].indexes |= capture;
 		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
 		running_sprite_index++;
 	}
@@ -10183,6 +10198,10 @@ tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm);
 
 tfxAPI size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm);
 
+tfxAPI size_t tfx_ParticlePropertiesBufferSizeInBytes(tfx_library library);
+
+tfxAPI void *tfx_ParticlePropertiesBuffer(tfx_library library);
+
 /*
 Get the total buffer sizes across all effect managers for creating a single shared set of ribbon GPU buffers.
 These iterate all registered effect managers and sum their individual requirements.
@@ -10321,14 +10340,6 @@ copied to the gpu in one go.
   @returns                    void* pointer to the image
 */
 tfxAPI void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes);
-
-/*
-Get the handle of the sprite. Use this when rendering particles in your renderer one sprite at a time.
-* @param pm                    A pointer to an initialised tfx_effect_manager_t.
-* @param property_indexes      The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
-  @out_handle                  Pass in a pointer to a vec2 which will be loaded with the handle values
-*/
-tfxAPI void tfx_GetSpriteHandle(void *instance, float out_handle[2]);
 
 /*
 Get the total number of instances ready for rendering in the effect manager.

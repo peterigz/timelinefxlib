@@ -2987,6 +2987,10 @@ tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effe
 	return effect->state_properties.property_index != tfxINVALID ? &effect->library->emitter_properties[effect->state_properties.property_index] : nullptr;
 }
 
+tfx_gpu_particle_properties_t *tfx__get_gpu_particle_properties(tfx_effect_descriptor effect) {
+	return effect->state_properties.particle_gpu_property_index != tfxINVALID ? &effect->library->particle_gpu_properties[effect->state_properties.particle_gpu_property_index] : nullptr;
+}
+
 tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor effect) {
 	return effect->state_properties.shared_index != tfxINVALID ? &effect->library->shared_properties[effect->state_properties.shared_index] : nullptr;
 }
@@ -4211,6 +4215,12 @@ void tfx__free_library_shared_properties(tfx_library library, tfxU32 index) {
 	library->free_shared_emitter_properties.push_back(index);
 }
 
+void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT(index < library->particle_gpu_properties.current_size);
+	library->free_particle_gpu_properties.push_back(index);
+}
+
 void tfx__init_graph_list(tfx_graph_list_t *graph_list) {
 	for (tfx_graph_t &graph : graph_list->graphs) {
 		tfx__init_graph(&graph, 8);
@@ -4415,6 +4425,19 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	properties.fixed_angle_normal = { 0.f, 1.f, 0.f };
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
+}
+
+tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	if (library->free_particle_gpu_properties.size()) {
+		return library->free_particle_gpu_properties.pop_back();
+	}
+	tfx_gpu_particle_properties_t properties{};
+	properties.heat_response_boost = 2.f;
+	properties.heat_response_sharpness = 8.f;
+	properties.heat_response_curve = 1.1f;
+	library->particle_gpu_properties.push_back(properties);
+	return library->particle_gpu_properties.current_size - 1;
 }
 
 void tfx__init_library(tfx_library library) {
@@ -4699,6 +4722,33 @@ void tfx__update_all_library_graphs(tfx_library library) {
 		}
 	}
 	tfx__create_color_ramp_bitmaps(library);
+	tfx__update_all_library_gpu_properties(library);
+}
+
+void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter) {
+	if (emitter->type == tfxEmitterType) {
+		tfx_gpu_particle_properties_t *gpu_properties = &emitter->library->particle_gpu_properties[emitter->state_properties.particle_gpu_property_index];
+		tfx_graph_list_t *graph_list = &emitter->library->graphs[emitter->state_properties.graph_list_index];
+		tfxU32 layer = tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes);
+		tfxU32 index = tfxColorRampIndex(graph_list->color_ramp_bitmap_indexes);
+		gpu_properties->color_ramp_indexes = (layer << 8) | index;
+	}
+}
+
+void tfx__update_all_library_gpu_properties(tfx_library library) {
+	for (tfx_effect_descriptor effect : library->effects) {
+		if (effect->type == tfxFolder) {
+			for (tfx_effect_descriptor folder_effect : effect->children) {
+				for (tfx_effect_descriptor emitter : folder_effect->children) {
+					tfx__update_emitter_gpu_properties(emitter);
+				}
+			}
+		} else {
+			for (tfx_effect_descriptor emitter : effect->children) {
+				tfx__update_emitter_gpu_properties(emitter);
+			}
+		}
+	}
 }
 
 bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index) {
@@ -5518,18 +5568,18 @@ void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_
 	}
 }
 
-void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_vec2(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version) {
 	if (*field == "handle") {
-		properties->handle = value;
+		properties->image_handle = value;
 	}
 }
 
-void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_float(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_frames")
 		properties->animation_frames = value;
 }
 
-void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_u32(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "flags") properties->flags = value;
 	if (*field == "start_frame_index") properties->start_frame_index = value;
 }
@@ -5718,6 +5768,7 @@ tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t 
 tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name) {
 	tfx_shared_properties_t *shared_properties = effect->state_properties.shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
+	tfx_gpu_particle_properties_t *gpu_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
@@ -5737,7 +5788,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "single_shot_limit")		value.Setf("%u", shared_properties->single_shot_limit);
 	else if (property_name == "ribbon_segment_count")	value.Setf("%u", ribbon_properties->bucket_info.segment_count);
 	else if (property_name == "ribbon_shader_type")		value.Setf("%u", ribbon_properties->angle_type);
-	else if (property_name == "billboard_option") {		value.Setf("%u", emitter_properties->billboard_option);
+	else if (property_name == "billboard_option") {		value.Setf("%u", (gpu_properties->flags & 0x3));
 	}
 	else if (property_name == "vector_align_type")		value.Setf("%u", emitter_properties->vector_align_type);
 	else if (property_name == "angle_setting")			value.Setf("%u", emitter_properties->angle_settings);
@@ -5827,8 +5878,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%f", path->settings.offset.z);
 	} else if (property_name == "noise_base_offset_range") value.Setf("%f", effect->noise_base_offset_range);
 	if (effect->type == tfxEmitterType) {
-		if (property_name == "image_handle_x") value.Setf("%f", emitter_properties->image_handle.x);
-		else if (property_name == "image_handle_y") value.Setf("%f", emitter_properties->image_handle.y);
+		if (property_name == "image_handle_x") value.Setf("%f", gpu_properties->image_handle.x);
+		else if (property_name == "image_handle_y") value.Setf("%f", gpu_properties->image_handle.y);
 		else if (property_name == "angle_offset") value.Setf("%f", effect->state_properties.angle_offsets.roll);
 		else if (property_name == "angle_offset_pitch") value.Setf("%f", effect->state_properties.angle_offsets.pitch);
 		else if (property_name == "angle_offset_yaw") value.Setf("%f", effect->state_properties.angle_offsets.yaw);
@@ -5997,9 +6048,11 @@ void tfx__assign_effector_property_u64(tfx_effect_descriptor effect, tfx_str256_
 void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
+	tfx_gpu_particle_properties_t *gpu_particle_properties = nullptr;
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
+		gpu_particle_properties = tfx__get_gpu_particle_properties(effect);
 	} else if (effect->type == tfxRibbonType) {
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 	}
@@ -6013,7 +6066,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
 	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
-	else if (*field == "billboard_option" && emitter_properties) {
+	else if (*field == "billboard_option" && gpu_particle_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
 		//libs for that. This can be removed at some point.
@@ -6024,7 +6077,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 				value = 3;
 			}
 		}
-		emitter_properties->billboard_option = (tfx_billboarding_option)value;
+		gpu_particle_properties->flags |= value;
 	}
 	else if (*field == "vector_align_type" && emitter_properties) emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
 	else if (*field == "angle_setting" && emitter_properties) emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
@@ -6139,8 +6192,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
 	if (effect->type == tfxEmitterType) {
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
-		if (*field == "image_handle_x") emitter_properties->image_handle.x = value;
-		else if (*field == "image_handle_y") emitter_properties->image_handle.y = value;
+		tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(effect);
+		if (*field == "image_handle_x") gpu_properties->image_handle.x = value;
+		else if (*field == "image_handle_y") gpu_properties->image_handle.y = value;
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
@@ -6245,6 +6299,7 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 }
 
 void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file) {
+	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
@@ -6283,14 +6338,14 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
-	file->AddLine("image_handle_x=%f", properties->image_handle.x);
-	file->AddLine("image_handle_y=%f", properties->image_handle.y);
+	file->AddLine("image_handle_x=%f", gpu_properties->image_handle.x);
+	file->AddLine("image_handle_y=%f", gpu_properties->image_handle.y);
 	file->AddLine("end_behaviour=%i", properties->end_behaviour);
 	file->AddLine("angle_setting=%i", properties->angle_settings);
 	file->AddLine("angle_offset=%f", emitter->state_properties.angle_offsets.roll);
 	file->AddLine("angle_offset_pitch=%f", emitter->state_properties.angle_offsets.pitch);
 	file->AddLine("angle_offset_yaw=%f", emitter->state_properties.angle_offsets.yaw);
-	file->AddLine("billboard_option=%i", properties->billboard_option);
+	file->AddLine("billboard_option=%i", gpu_properties->flags & 0x3);
 	file->AddLine("vector_align_type=%i", properties->vector_align_type);
 
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
@@ -7799,10 +7854,10 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *
 void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
 	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
-		animation_manager->emitter_properties[properties_index].color_ramp_index = animation_manager->color_ramps.color_ramp_ids.At(hash);
+		animation_manager->emitter_properties[properties_index].color_ramp_indexes = animation_manager->color_ramps.color_ramp_ids.At(hash);
 	} else {
 		tfxU32 ramp_id = tfx__add_color_ramp_to_bitmap(&animation_manager->color_ramps, ramp);
-		animation_manager->emitter_properties[properties_index].color_ramp_index = ramp_id;
+		animation_manager->emitter_properties[properties_index].color_ramp_indexes = ramp_id;
 		animation_manager->color_ramps.color_ramp_ids.Insert(hash, ramp_id);
 	}
 }
@@ -8401,7 +8456,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	tmpStack(tfx_frame_meta_t, frame_meta_stack);
 	tmpStack(tfx_ribbon_frame_meta_t, ribbon_frame_meta_stack);
 	tmpStack(tfxU32, ribbon_count_stack);
-	tmpStack(tfx_animation_emitter_properties_t, emitter_properties_stack);
+	tmpStack(tfx_gpu_particle_properties_t, emitter_properties_stack);
 	tmpStack(tfx_animation_ribbon_properties_t, ribbon_properties_stack);
 	tmpStack(tfx_str256_t, pair);
 	tmpStack(tfx_str256_t, multi);
@@ -8438,7 +8493,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				//Value will be parsed on the next line
 			}
 			else if (context == tfxStartEmitter) {
-				tfx_animation_emitter_properties_t emitter_properties{};
+				tfx_gpu_particle_properties_t emitter_properties{};
 				emitter_properties_stack.push_back_copy(emitter_properties);
 			}
 		}
@@ -8611,7 +8666,6 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		}
 		else if (context == tfxEndEmitter) {
 			TFX_ASSERT(emitter_properties_stack.current_size);
-			emitter_properties_stack.back().handle_packed = tfx__pack16bit_sscaled(emitter_properties_stack.back().handle.x, emitter_properties_stack.back().handle.y, 128.f);
 			animation_manager->emitter_properties.push_back_copy(emitter_properties_stack.pop_back());
 		}
 
@@ -8745,6 +8799,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter->library = lib;
 				emitter->state_properties.property_index = tfx__allocate_library_particle_emitter_properties(lib);
 				emitter->state_properties.shared_index = tfx__allocate_library_shared_properties(lib);
+				emitter->state_properties.particle_gpu_property_index = tfx__allocate_library_particle_gpu_properties(lib);
 				emitter->state_properties.graph_list_index = tfx__add_library_graphs(lib, tfxEmitterType);
 				emitter->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
 				emitter->type = tfx_effect_descriptor_type::tfxEmitterType;
@@ -8890,10 +8945,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			tfx__initialise_unitialised_graphs(effect_stack.back());
 			tfx__update_emitter_max_life(effect_stack.back());
 			if (effect_stack.back()->state_properties.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-				lib->emitter_properties[effect_stack.back()->state_properties.property_index].image_handle = { .5f, .5f };
+				lib->particle_gpu_properties[effect_stack.back()->state_properties.particle_gpu_property_index].image_handle = { .5f, .5f };
 			}
-			tfx_vec2_t handle = lib->emitter_properties[effect_stack.back()->state_properties.property_index].image_handle;
-			effect_stack.back()->state_properties.image_handle_packed = (tfxU64)tfx__pack16bit_sscaled(handle.x, handle.y, 128.f) << 32;
 			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 			TFX_ASSERT(current_effect);
 			TFX_ASSERT_HANDLE(effect_stack.back());
@@ -9360,7 +9413,7 @@ TFX_ENABLE_COMPILER_WARNING()
 				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->unique_sprite_ids[pm->current_sprite_buffer][layer].data, sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
 				int index_offset = frame_meta[frame].index_offset[layer];
 				int current_size = pm->layer_sizes[layer];
-				memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], billboards, sizeof(tfx_instance_t) * pm->layer_sizes[layer]);
+				memcpy(sprite_data->real_time_sprites.billboard_instance + index_offset, billboards, sizeof(tfx_instance_t) * pm->layer_sizes[layer]);
 
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
 					//Copy instance_data that have looped round (for looped effects)
@@ -9849,9 +9902,9 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type == tfxEmitterType) {
 		if (effect->library->emitter_properties[effect->state_properties.property_index].animation_property_index != tfxINVALID) {
-			tfx_animation_emitter_properties_t properties{};
-			properties.handle = effect->library->emitter_properties[effect->state_properties.property_index].image_handle;
-			properties.flags = effect->state_properties.property_flags;
+			tfx_gpu_particle_properties_t properties{};
+			properties = effect->library->particle_gpu_properties[effect->state_properties.particle_gpu_property_index];
+			properties.flags |= effect->state_properties.property_flags;
 			tfx_image_data_t &image = *effect->state_properties.image;
 			properties.animation_frames = image.animation_frames;
 			if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
@@ -9973,12 +10026,10 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		tfx_sprite_instance_data_t sprite;
 		memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_instance_t));
 		sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
-		sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
+		sprite.curved_alpha_life.w = tfxU32(sprites.lerp_offset[i] * 255.f);
 		tfxU32 animation_property_index = effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index;
-		sprite.additional |= (animation_property_index << 16);
 		sprite.indexes &= 0x0000FFFF;
-		sprite.indexes |= (tfxColorRampIndex(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 24);
-		sprite.indexes |= (tfxColorRampLayer(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 16);
+		sprite.indexes |= animation_property_index << 16;
 		animation_manager->sprite_data.push_back_copy(sprite);
 	}
 	metrics.total_memory_for_sprites = sizeof(tfx_sprite_instance_data_t) * metrics.total_sprites;
@@ -10521,6 +10572,7 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 	if (emitter->type == tfxEmitterType) {
 		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
+		tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 		state_flags |= property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
 		state_flags |= (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && shared_properties->single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
 		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single ? tfxEmitterStateFlags_is_single : 0;
@@ -10532,7 +10584,7 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 		state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 		state_flags |= shared_properties->emission_type == tfxLine && property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
-		state_flags |= (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
+		state_flags |= (gpu_properties->flags & 0x3) == tfxBillboarding_free_align || ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 		state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
 		state_flags |= tfx__is_ordered_effect(emitter->parent) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 		if (emitter->state_properties.path_attributes != tfxINVALID) {
@@ -10859,6 +10911,7 @@ tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter) {
 void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 	emitter->state_properties.control_profile = 0;
 	if (emitter_properties->noise_algorithm == tfxWhiteNoise && tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index]) > 0.f) {
 		emitter->state_properties.control_profile |= tfxEmitterControlProfile_motion_randomness;
@@ -10910,7 +10963,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory && (shared_properties->emission_type == tfxPath || shared_properties->emission_type == tfxLine)) {
 		emitter->state_properties.control_profile |= tfxEmitterControlProfile_trajectory;
 	}
-	bool spin_3d = (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector);
+	bool spin_3d = (gpu_properties->flags & 0x3) == tfxBillboarding_free_align || ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_vector);
 	if (spin_3d) {
 		float max_roll_spin = tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_roll_spin_index]);
 		float max_pitch_spin = tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_pitch_spin_index]);
@@ -11235,7 +11288,17 @@ void tfx__update_effect_manager(void *data) {
 			int particles_to_update = bank.current_size;
 			tfxU32 running_start_index = 0;
 			if (pm->emitters[index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
-				//tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
+				//Publish the spawn-location ring's size/start_index here, single-threaded, before dispatching control work.
+				//tfx__control_particle_transform writes the per-slot positions in parallel batches, so the scalar
+				//current_size/start_index must be set outside that threaded path to avoid races between batches.
+				tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[pm->emitters[index].spawn_locations_index];
+				if (bank.current_size > spawn_point_buffer.current_size) {
+					bool grew;
+					tfx__add_soa_rows_grew(&spawn_point_buffer, bank.current_size - spawn_point_buffer.current_size, true, grew);
+				}
+				spawn_point_buffer.current_size = bank.current_size;
+				spawn_point_buffer.start_index = bank.start_index;
+				TFX_ASSERT(spawn_point_buffer.current_size <= spawn_point_buffer.capacity);
 			}
 			tfxU32 first_index = tfx__get_circular_index(&bank, 0) / tfxDataWidth * tfxDataWidth;
 			tfxU32 running_sprite_index = 0;
@@ -11473,15 +11536,6 @@ void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes) 
 	return 0;
 }
 
-void tfx_GetSpriteHandle(void *instance, float out_handle[2]) {
-	tfx_instance_t *sprite = static_cast<tfx_instance_t *>(instance);
-	tfx_float16x4_t size_handle = sprite->size_handle;
-	int16_t x_scaled = (int16_t)size_handle.z;
-	int16_t y_scaled = (int16_t)size_handle.w;
-	out_handle[0] = (float)x_scaled * tfxSPRITE_HANDLE_SSCALE;
-	out_handle[1] = (float)y_scaled * tfxSPRITE_HANDLE_SSCALE;
-}
-
 void tfx_SoftExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
@@ -11669,9 +11723,9 @@ void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured,
 
 void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	tfx_instance_t *sprite = static_cast<tfx_instance_t*>(instance);
-	tfx_float16x4_t size_handle = sprite->size_handle;
-	int16_t x_scaled = (int16_t)size_handle.x;
-	int16_t y_scaled = (int16_t)size_handle.y;
+	tfx_float16x2_t size = sprite->size;
+	int16_t x_scaled = (int16_t)size.x;
+	int16_t y_scaled = (int16_t)size.y;
 	out_scale[0] = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
 	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
 }
@@ -12630,14 +12684,14 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].size_handle.packed = emitter.state_properties.image_handle_packed;
+				sprites[sprite_depth_index].size.packed = 0;
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].size_handle.packed = emitter.state_properties.image_handle_packed;
+				sprites[running_sprite_index].size.packed = 0;
 				running_sprite_index++;
 			}
 		}
@@ -12768,16 +12822,14 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].size_handle.packed = packed_scale.a[j] | emitter.state_properties.image_handle_packed;
+				sprites[sprite_depth_index].size.packed = packed_scale.a[j];
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				tfx_float16x4_t scale_handle;
-				scale_handle.packed = packed_scale.a[j] | emitter.state_properties.image_handle_packed;
-				sprites[running_sprite_index].size_handle.packed = scale_handle.packed;
+				sprites[running_sprite_index].size.packed = packed_scale.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -12930,7 +12982,6 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 	tfx_image_data_t *image = emitter.state_properties.image;
-	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option;
 	tfxU32 layer = work_entry->layer << 28;
 
 	tfxU32 start_diff = work_entry->start_diff;
@@ -12942,9 +12993,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
-	tfxWideInt color_ramp_indexes;
-	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes) << 24);
-	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes) << 16));
+	tfxWideInt particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.particle_gpu_property_index << 16);
 	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && !(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
@@ -12982,14 +13031,14 @@ TFX_ENABLE_COMPILER_WARNING()
 		}
 
 		tfxWideArrayi image_indexes;
-		image_indexes.m = tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame), image_start_index));
+		image_indexes.m = tfxWideOri(particle_gpu_properties_index, tfxWideAddi(tfxWideConverti(image_frame), image_start_index));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 		if (is_ordered) {
-			tfx__write_particle_image_sprite_data_ordered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, billboard_option, index, running_sprite_index, work_entry->effect_instance_offset + work_entry->cumulative_index_point);
+			tfx__write_particle_image_sprite_data_ordered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, index, running_sprite_index, work_entry->effect_instance_offset + work_entry->cumulative_index_point);
 		} else {
-			tfx__write_particle_image_sprite_data(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, billboard_option, index, running_sprite_index);
+			tfx__write_particle_image_sprite_data(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, index, running_sprite_index);
 		}
 
 		//We can't alter the flags here, there was a bug where storing a block of 4 here would unflag a particle when it shouldn't but I'm not entirely sure why.
@@ -13159,9 +13208,12 @@ tfx_instance_t *tfx_GetInstanceBuffer(tfx_effect_manager pm) {
 
 tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_effect_manager pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__wait_for_effect_manager_update(pm);
-	tfxU32 layer_offset = layer == 0 ? 0 : pm->layer_sizes[layer - 1];
 	TFX_ASSERT(layer < tfxLAYERS);
+	tfx__wait_for_effect_manager_update(pm);
+	tfxU32 layer_offset = 0;
+	for (tfxU32 i = 0; i < layer; ++i) {
+		layer_offset += pm->layer_sizes[i];
+	}
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + layer_offset;
 }
 
@@ -13371,6 +13423,14 @@ size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm) {
 
 size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm) {
 	return pm->info.max_effects * sizeof(tfx_gpu_emitter_t);
+}
+
+size_t tfx_ParticlePropertiesBufferSizeInBytes(tfx_library library) {
+	return library->particle_gpu_properties.current_size * sizeof(tfx_gpu_particle_properties_t);
+}
+
+void *tfx_ParticlePropertiesBuffer(tfx_library library) {
+	return library->particle_gpu_properties.data;
 }
 
 size_t tfx_GetTotalSegmentBufferMaxSizeInBytes() {
@@ -14525,7 +14585,7 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 
 	bool grew = false;
 	tfxU32 start_index = buffer.start_index;
-	work_entry->spawn_start_index = tfx__add_soa_rows_grew(&pm->particle_array_buffers[emitter.particles_index], work_entry->amount_to_spawn, true, grew);
+	work_entry->spawn_start_index = tfx__add_soa_rows_grew(&buffer, work_entry->amount_to_spawn, true, grew);
 	if (grew && work_entry->depth_indexes && start_index > 0) {
 		//Todo: This should be avoided by allocating the correct amount for the particle buffer ahead of time
 		//If the particle buffer is allocated a larger memory size then the ring buffer index has to be reset in the depth buffer list
@@ -14538,13 +14598,12 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 	}
 
 	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
+		//Match the spawn-point ring's capacity to the particle buffer's so the per-slot writes in
+		//tfx__control_particle_transform can address every active slot. current_size/start_index are
+		//published in the single-threaded control dispatch loop in tfx__update_pm_effect, after spawning.
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
 		tfx__set_soa_capacity(&spawn_point_buffer, buffer.capacity);
 		TFX_ASSERT(spawn_point_buffer.capacity == buffer.capacity);
-		spawn_point_buffer.current_size = buffer.current_size;
-		tfx__align_size_up(spawn_point_buffer.current_size, tfxDataWidth);
-		TFX_ASSERT(spawn_point_buffer.current_size < spawn_point_buffer.capacity);
-		spawn_point_buffer.start_index = buffer.start_index;
 	}
 
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
@@ -17966,8 +18025,6 @@ void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_
 }
 
 void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties) {
-	properties->image_handle = tfx_vec2_t();
-	properties->billboard_option = tfxBillboarding_align_to_camera;
 	properties->vector_align_type = tfxVectorAlignType_motion;
 	properties->emission_direction = tfx_emission_direction::tfxOutwards;
 	properties->end_behaviour = tfx_line_traversal_end_behaviour::tfxLoop;
