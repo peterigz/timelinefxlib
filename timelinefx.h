@@ -7039,18 +7039,6 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 } tfx_instance_t;
 
-//These structs are for animation sprite data that you can upload to the gpu
-typedef struct tfx_sprite_instance_data_s {    		//48 bytes
-	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
-	tfx_float16x2_t size;							//Size of the sprite
-	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
-	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
-	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
-	tfxU32 indexes;									//[gpu property index, capture flag (1 bit << 15), image data index max 8191 images]
-	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-} tfx_sprite_instance_data_t;
-
 typedef struct tfx_ribbon_instance_data_s {	//64 bytes, mirrors tfx_ribbon_t layout
 	tfx_vec4_t position;						//xyz position, w = normalised age
 	float width;
@@ -7554,7 +7542,7 @@ typedef struct tfx_animation_manager_s {
 	tfxU32 magic;
 	//All of the sprite data for all the animations that you might want to play on the GPU.
 	//This could be deleted once it's uploaded to the GPU
-	tfx_vector_t<tfx_sprite_instance_data_t> sprite_data;
+	tfx_vector_t<tfx_instance_t> sprite_data;
 	//List of active instances that are currently playing
 	tfx_vector_t<tfx_animation_instance_t> instances;
 	//List of instances in use. These index into the instances list above

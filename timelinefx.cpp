@@ -9334,7 +9334,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfx__init_soa_buffer(&temp_sprites_buffer[layer]);
 		tfx__init_sprite_data_soa(&temp_sprites_buffer[layer], &temp_sprites[layer], 100);
 	}
-	sprite_data->normal.total_memory_for_sprites = total_sprites * (tfxU32)sprite_data->real_time_sprites_buffer.struct_size;
+	sprite_data->normal.total_memory_for_sprites = total_sprites * (tfxU32)sizeof(tfx_instance_t);
 
 	tfx_soa_buffer_t temp_ribbons_buffer;
 	tfx_ribbon_data_soa_t temp_ribbons;
@@ -9703,7 +9703,7 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 
 	sprite_data->compressed.total_sprites = ci;
 	sprite_data->compressed_sprites_buffer.current_size = ci;
-	sprite_data->compressed.total_memory_for_sprites = ci * (tfxU32)sprite_data->compressed_sprites_buffer.struct_size;
+	sprite_data->compressed.total_memory_for_sprites = ci * (tfxU32)sizeof(tfx_instance_t);
 
 	f = 0;
 	//Second pass, link up the captured indexes using the UIDs
@@ -9730,7 +9730,6 @@ void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effe
 	*progress = tfxBakingDone;
 
 	tfx__trim_soa_buffer(&sprite_data->compressed_sprites_buffer);
-	sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
 }
 
 void tfx__compress_ribbon_data(tfx_sprite_data_t *sprite_data, tfx_sprite_data_settings_t *settings, float frame_length, int *progress) {
@@ -10023,8 +10022,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	tfx_sprite_data_soa_t &sprites = sprite_data.compressed_sprites;
 	metrics.start_offset = animation_manager->sprite_data.current_size;
 	for (int i = 0; i != metrics.total_sprites; ++i) {
-		tfx_sprite_instance_data_t sprite;
-		memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_instance_t));
+		tfx_instance_t sprite = sprites.billboard_instance[i];
 		sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 		sprite.curved_alpha_life.w = tfxU32(sprites.lerp_offset[i] * 255.f);
 		tfxU32 animation_property_index = effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index;
@@ -10032,7 +10030,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		sprite.indexes |= animation_property_index << 16;
 		animation_manager->sprite_data.push_back_copy(sprite);
 	}
-	metrics.total_memory_for_sprites = sizeof(tfx_sprite_instance_data_t) * metrics.total_sprites;
+	metrics.total_memory_for_sprites = sizeof(tfx_instance_t) * metrics.total_sprites;
 
 	//Update the index offset frame meta in the metrics depending on where this sprite data is being inserted into
 	//the list (the list may contain many different effect animations)
@@ -14618,8 +14616,7 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
 			TFX_ASSERT(work_entry->depth_indexes->current_size < work_entry->depth_indexes->capacity);
 			pm->deffered_spawn_work.push_back(work_entry);
-		}
-		else if(work_entry->emission_type != tfxOtherEmitter) {
+		} else if(work_entry->emission_type != tfxOtherEmitter) {
 			tfx__add_work_queue_entry(&pm->work_queue, work_entry, tfx__do_spawn_work);
 		} else {
 			pm->deffered_spawn_work.push_back(work_entry);
