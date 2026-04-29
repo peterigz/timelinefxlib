@@ -5005,6 +5005,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("emitter_handle_x", tfxFloat);
 	names_and_types.Insert("emitter_handle_y", tfxFloat);
 	names_and_types.Insert("emitter_handle_z", tfxFloat);
+	names_and_types.Insert("heat_response_boost", tfxFloat);
+	names_and_types.Insert("heat_response_sharpness", tfxFloat);
+	names_and_types.Insert("heat_response_curve", tfxFloat);
 	names_and_types.Insert("end_behaviour", tfxSInt);
 	names_and_types.Insert("angle_setting", tfxUInt);
 	names_and_types.Insert("angle_offset", tfxFloat);
@@ -5772,6 +5775,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
 	if (effect->type == tfxEmitterType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
+		gpu_properties = tfx__get_gpu_particle_properties(effect);
 	} else if (effect->type == tfxRibbonType) {
 		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 	}
@@ -5855,6 +5859,9 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
+	else if (property_name == "heat_response_boost") value.Setf("%f", gpu_properties->heat_response_boost);
+	else if (property_name == "heat_response_sharpness") value.Setf("%f", gpu_properties->heat_response_sharpness);
+	else if (property_name == "heat_response_curve") value.Setf("%f", gpu_properties->heat_response_curve);
 	else if (property_name == "image_start_frame") value.Setf("%f", shared_properties->start_frame);
 	else if (property_name == "image_end_frame") value.Setf("%f", effect->state_properties.end_frame);
 	else if (property_name == "image_frame_rate") value.Setf("%f", shared_properties->frame_rate);
@@ -6155,7 +6162,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "loop_length") effect->state_properties.loop_length = value < 0 ? 0.f : value;
 	else if (*field == "emitter_handle_x") effect->emitter_handle.x = value;
 	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
-	else if (*field == "emitter_handle_z" && shared_properties) effect->emitter_handle.z = value;
+	else if (*field == "emitter_handle_z") effect->emitter_handle.z = value;
 	else if (*field == "delay_spawning" && shared_properties) effect->state_properties.delay_spawning = value;
 	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
@@ -6198,6 +6205,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
+		else if (*field == "heat_response_boost") gpu_properties->heat_response_boost = value;
+		else if (*field == "heat_response_sharpness") gpu_properties->heat_response_sharpness = value;
+		else if (*field == "heat_response_curve") gpu_properties->heat_response_curve = value;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -6335,6 +6345,9 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
+	file->AddLine("heat_response_boost=%f", gpu_properties->heat_response_boost);
+	file->AddLine("heat_response_sharpness=%f", gpu_properties->heat_response_sharpness);
+	file->AddLine("heat_response_curve=%f", gpu_properties->heat_response_curve);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
