@@ -3374,6 +3374,7 @@ typedef enum {
 	tfxEffectManagerFlags_has_ribbons_to_draw               	= 1 << 20,
 	tfxEffectManagerFlags_record_with_compute_image_index   	= 1 << 21,
 	tfxEffectManagerFlags_grow_instance_buffer				   	= 1 << 22,
+	tfxEffectManagerFlags_warming_up		                	= 1 << 23,
 } tfx_effect_manager_flag_bits;
 
 //These values must stay the same
@@ -7608,8 +7609,14 @@ typedef struct tfx_effect_index_s {
 	float depth;
 }tfx_effect_index_t;
 
+typedef struct tfx_warmup_entry_s {
+	tfxU32 effect_index;
+	float millisecs;
+} tfx_warmup_entry_t;
+
 //This struct is used for configuring a effect manager on creation
 typedef struct tfx_effect_manager_info_s {
+	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
@@ -7674,6 +7681,7 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfx_control_work_entry_t> control_work;
 	tfx_vector_t<tfx_control_ribbon_work_entry_t> ribbon_control_work;
 	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
+	tfx_vector_t<tfx_warmup_entry_t> warmup_effects[2];
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[2];
@@ -7768,6 +7776,7 @@ typedef struct tfx_effect_manager_s {
 	//with a debugger and you don't want to advance the particles too much because obviously a lot of
 	//time is passing between frames because you're stepping through the code. Default is 240ms.
 	float max_frame_length;
+	double warmup_delta_time;
 	tfxWideFloat frame_length_wide;
 	double update_time;
 	tfxWideFloat update_time_wide;
@@ -7988,6 +7997,10 @@ tfxINTERNAL int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *con
 //--------------------------------
 //Effect_manager_functions
 //--------------------------------
+tfxINTERNAL void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count);
+tfxINTERNAL void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 index, bool is_recording);
+tfxINTERNAL void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index);
+tfxINTERNAL void tfx__set_effect_manager_timings(tfx_effect_manager effect_manager, double elapsed_time, double max_frame_length);
 tfxINTERNAL void tfx__update_effect_manager(void *data);
 tfxINTERNAL inline void tfx__wait_for_effect_manager_update(tfx_effect_manager pm) {
 	if (pm->update_thread_active) {
@@ -9651,6 +9664,7 @@ tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_color(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_size(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data);
@@ -9663,6 +9677,7 @@ tfxINTERNAL void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *que
 tfxINTERNAL void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_ribbons(tfx_work_queue_t *queue, void *data);
@@ -10289,6 +10304,24 @@ test things out you can add an effect direct from a library using this command.
   @returns							True if the effect was succesfully added.
 */
 tfxAPI bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descriptor effect, tfxEffectID *effect_id);
+
+/*
+Simulate an effect for amount of seconds without rendering to "warm it up". Useful if you don't want to start the effect
+from nothing, you want to start the effect from a certain amount of time. 
+* @param pm							A pointer to an initialised tfx_effect_manager_t. 
+* @param tfxEffectID				tfxEffectID of the effect in the effect manager
+* @param float						The number of seconds to warmup for
+* @param float						The tick size of each simulation step.
+*/
+tfxAPI void tfx_WarmUpEffect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs);
+
+/*
+Set the delta time used when warming up effects. Either match the fixed time step you're using like 1000/60 for 60fps 
+or used mulitples of that value for higher performance at the cost of precision
+* @param pm							A pointer to an initialised tfx_effect_manager_t. 
+* @param double						The delta time measured in milliseconds
+*/
+tfxAPI void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time);
 
 /*
 Update a effect manager. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.

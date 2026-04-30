@@ -10576,6 +10576,21 @@ bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descripto
 	return id != tfxINVALID;
 }
 
+void tfx_WarmUpEffect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs) {
+	TFX_ASSERT_HANDLE(pm);
+	TFX_ASSERT(!(pm->flags & tfxEffectManagerFlags_updating));  // can't queue while updating
+	TFX_ASSERT(millisecs > 0.f);
+	tfx_warmup_entry_t entry = {
+		effect_id,
+		millisecs
+	};
+	pm->warmup_effects[0].push_back(entry);
+}
+
+void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time) {
+	pm->warmup_delta_time = delta_time;
+}
+
 void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 	tfxParticleEmitterFlags property_flags = emitter->state_properties.property_flags;
 	tfxEmitterStateFlags &state_flags = emitter->state_flags;
@@ -11111,6 +11126,213 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
+void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count) {
+	bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
+	tfx_effect_state_t &effect = pm->effects[effect_index.index];
+	float &timeout_counter = effect.timeout_counter;
+	//During warmup the ebuff is held constant so we mustn't clear or push to next_buffer's lists. If
+	//an effect/emitter expires during warmup it stays in current_ebuff with the _remove flag set and
+	//is freed by the next normal update tick.
+	if (!warming_up) {
+		effect.emitter_indexes[next_buffer].clear();
+	}
+	effect.emitter_start_size = effect.emitter_indexes[pm->current_ebuff].current_size;
+
+	tfx_effect_instance_data_t &instance_data = pm->effects[effect_index.index].instance_data;
+	instance_data.instance_start_index = tfxINVALID;
+	memset(instance_data.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	instance_data.instance_count = 0;
+
+	tfx__update_effect(pm, effect_index.index);
+	if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
+		tfx_vec3_t effect_to_camera = effect.world_position - pm->camera_position;
+		effect_index.depth = tfx__vec3_length_fast(&effect_to_camera);
+	}
+	if (timeout_counter <= effect.timeout) {
+		if (!warming_up) {
+			pm->effects_in_use[next_buffer].push_back(effect_index);
+		}
+	} else if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
+		effect.state_flags |= tfxEmitterStateFlags_remove;
+	} else if (!warming_up) {
+		//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
+		tfx__sync_lock(&pm->add_effect_mutex);
+		pm->free_effects.push_back(effect_index);
+		tfx__sync_unlock(&pm->add_effect_mutex);
+	}
+
+	effect.active_emitters = 0;
+
+	for (int emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+		//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+		//would cause more work entries to be created.
+		TFX_ASSERT(pm->spawn_work.current_size != pm->spawn_work.capacity);
+		tfx_spawn_work_entry_t *spawn_work_entry = &pm->spawn_work.next();
+		spawn_work_entry->random = pm->threaded_random;
+		spawn_work_entry->emitter_index = emitter_index;
+		spawn_work_entry->next_buffer = next_buffer;
+		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+		tfx_library library = emitter.library;
+		spawn_work_entry->properties = &library->emitter_properties[emitter.state_properties.property_index];
+		spawn_work_entry->shared_properties = &library->shared_properties[emitter.state_properties.shared_index];
+		spawn_work_entry->amount_to_spawn = 0;
+		spawn_work_entry->pm = pm;
+		spawn_work_entry->depth_indexes = nullptr;
+		spawn_work_entry->particle_uid = emitter_index * 100000;
+
+		TFX_ASSERT(emitter.particles_index != tfxINVALID);
+
+		tfx__update_emitter(&pm->work_queue, spawn_work_entry);
+
+		if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
+			if (!warming_up) {
+				effect.emitter_indexes[next_buffer].push_back(emitter_index);
+			}
+			pm->control_emitter_queue.push_back(emitter_index);
+		} else if (!warming_up) {
+			//Defer freeing during warmup — emitter stays in current_ebuff with _remove flag and the next normal tick frees it.
+			tfx__sync_lock(&pm->add_effect_mutex);
+			if (emitter.path_state.path_quaternions) {
+				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
+			}
+			tfx__free_particle_list(pm, emitter_index);
+			if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+				tfx__free_spawn_location_list(pm, emitter_index);
+			}
+			//Emitter is done spawning; decrement group's active count.
+			//The group tracking ring drains naturally as particles expire — no explicit cleanup needed.
+			{
+				if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+					pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
+					emitter.state_properties.gpu_group_index = tfxINVALID;
+				}
+			}
+			pm->free_emitters.push_back(emitter_index);
+			tfx__sync_unlock(&pm->add_effect_mutex);
+		}
+	}
+
+	if (!(pm->flags & tfxEffectManagerFlags_recording_sprites)) {
+		instance_data.cumulative_index_point[0] = 0;
+		instance_data.cumulative_index_point[1] = instance_data.sprite_index_point[0];
+		instance_data.cumulative_index_point[2] = instance_data.cumulative_index_point[1] + instance_data.sprite_index_point[1];
+		instance_data.cumulative_index_point[3] = instance_data.cumulative_index_point[2] + instance_data.sprite_index_point[2];
+	} else {
+		memset(instance_data.cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	}
+	instance_data.instance_start_index = *last_instance_count;
+	*last_instance_count += instance_data.instance_count;
+}
+
+void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 index, bool is_recording) {
+	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
+	int particles_to_update = bank.current_size;
+	tfxU32 running_start_index = 0;
+	if (pm->emitters[index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
+		//Publish the spawn-location ring's size/start_index here, single-threaded, before dispatching control work.
+		//tfx__control_particle_transform writes the per-slot positions in parallel batches, so the scalar
+		//current_size/start_index must be set outside that threaded path to avoid races between batches.
+		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[pm->emitters[index].spawn_locations_index];
+		if (bank.current_size > spawn_point_buffer.current_size) {
+			bool grew;
+			tfx__add_soa_rows_grew(&spawn_point_buffer, bank.current_size - spawn_point_buffer.current_size, true, grew);
+		}
+		spawn_point_buffer.current_size = bank.current_size;
+		spawn_point_buffer.start_index = bank.start_index;
+		TFX_ASSERT(spawn_point_buffer.current_size <= spawn_point_buffer.capacity);
+	}
+	tfxU32 first_index = tfx__get_circular_index(&bank, 0) / tfxDataWidth * tfxDataWidth;
+	tfxU32 running_sprite_index = 0;
+	/*
+	There's a surprising amount of problems to solve here to make sure that all particles are updated and all sprites are correctly updated too.
+	The main problem comes from the fact that the particle buffer is a ring buffer that is udpated using SIMD at a rate of 4 or 8 particles at a time. The sprite
+	buffer is a simpler linear buffer that gets written to from the start of the buffer each update. The main issue to solve is how to account for the rounding
+	of the particle indexes to to nearest tfxDataWidth multiple so that SIMD instructions are properly aligned and to take into account when paricles are updated
+	that have expired because it rounds down or up. We don't mind udpating a few extra particles that have expired because we won't write the sprite data for them so it
+	doesn't matter. For example the start index in the ring buffer might be 20 with a data width of 8, so in this instance it rounds down to 16 and starts from there. 
+	We need to be aware of this so that we don't write that particle data to the sprites, they need to update from 20 where the particles which
+	are still active start from.  This starting offset which is measured on the first batch only needs to be carried over to the next batches to ensure that all sprites are written to.
+	To ensure there's no overlap in the ring buffer when rounding the capacity is always ensured to be greater then the number of particles in the buffer + tfxDataWidth.
+	*/
+	while (particles_to_update > 0) {
+		//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+		//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+		//would cause more work entries to be created.
+		TFX_ASSERT(pm->control_work.current_size != pm->control_work.capacity);
+		tfx_control_work_entry_t &work_entry = pm->control_work.next();
+		work_entry.properties = &pm->emitters[index].library->emitter_properties[pm->emitters[index].state_properties.property_index];
+		work_entry.shared_properties = &pm->emitters[index].library->shared_properties[pm->emitters[index].state_properties.shared_index];
+		work_entry.pm = pm;
+		work_entry.emitter_index = index;
+		//start index is the start of the for loop in each control function in batches of pm->mt_batch_size, set when the effect manager is created.
+		work_entry.start_index = running_start_index;
+		//end_index is the exact last index of particles to update and will be set to the cumulative batch size or remaining particles left to update, whichever is smaller.
+		work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
+		tfxU32 circular_start = tfx__get_circular_index(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
+		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+		//start_diff is very important. It makes sure that when writing to the sprite data we only write data for particles that have not expired. Due to rounding to the nearest
+		//tfxDataWidth some particles in the loop in the first batch maybe expired so we use start_diff to offset the writing of the sprite data.
+		work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
+		if (particles_to_update <= pm->mt_batch_size && work_entry.start_diff) {
+			//If the particles to update is less than or equal to the batch size then add on the start diff or particles at the end won't get updated. It means the batch size
+			//is an extra data width larger but that's fine.
+			work_entry.wide_end_index = (tfxU32)(ceilf((float)(work_entry.end_index + work_entry.start_diff) / tfxDataWidth)) * tfxDataWidth;
+			//For the edge case where the number of particles is exactly the same as the batch size we make sure that the particles to update is 0 so that we don't try
+			//and add an extra batch
+			particles_to_update = 0;
+		} else {
+			//The wide index is the end index rounded to the nearest tfxDataWidth multiple, this is what's used for the for loop.
+			work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
+		}
+		work_entry.sprite_instances = !is_recording ? &pm->instance_buffer : &pm->instance_buffer_for_recording[pm->current_sprite_buffer][work_entry.shared_properties->layer];
+		//If there was a start_diff in the first batch then that needs to be carried over to subsequent batches to ensure all sprites are updated.
+		work_entry.running_sprite_offset = running_sprite_index;
+		tfx_effect_state_t &parent_effect = pm->effects[pm->emitters[index].parent_index];
+		work_entry.global_stretch = parent_effect.stretch;
+		work_entry.global_noise = parent_effect.noise;
+		work_entry.global_intensity = parent_effect.spawn_controls.intensity;
+		//Take in to account start_diff when updating the particles_to_udpate and running_sprite_index
+		particles_to_update -= pm->mt_batch_size - work_entry.start_diff;
+		running_sprite_index += pm->mt_batch_size - work_entry.start_diff;
+		running_start_index += pm->mt_batch_size;
+		tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particles);
+	}
+}
+
+void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index) {
+	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
+	//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+	//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+	//would cause more work entries to be created.
+	TFX_ASSERT(pm->age_work.current_size != pm->age_work.capacity);
+	tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
+	work_entry.properties = &pm->emitters[index].library->emitter_properties[pm->emitters[index].state_properties.property_index];
+	work_entry.shared_properties = &pm->emitters[index].library->shared_properties[pm->emitters[index].state_properties.shared_index];
+	work_entry.start_index = bank.current_size - 1;
+	work_entry.emitter_index = index;
+	tfxU32 circular_start = tfx__get_circular_index(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
+	tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+	work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
+	work_entry.start_diff = circular_start - block_start_index;
+	work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
+	work_entry.pm = pm;
+	if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+		tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particle_age);
+	}
+	else {
+		tfx__control_particle_age(&pm->work_queue, &work_entry);
+	}
+}
+
+void tfx__set_effect_manager_timings(tfx_effect_manager pm, double elapsed_time, double max_frame_length) {
+	pm->frame_length = tfx__Min(elapsed_time, max_frame_length);
+	pm->frame_length_wide = tfxWideSetSingle((float)pm->frame_length);
+	pm->update_time = elapsed_time / 1000.0;
+	pm->update_time_wide = tfxWideSetSingle((float)pm->update_time);
+	pm->new_compute_particle_index = 0;
+}
+
 void tfx__update_effect_manager(void *data) {
 	tfx_effect_manager pm = (tfx_effect_manager)data;
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
@@ -11136,15 +11358,9 @@ void tfx__update_effect_manager(void *data) {
 		}
 	}
 
-	pm->frame_length = tfx__Min(elapsed_time, pm->max_frame_length);
-	pm->frame_length_wide = tfxWideSetSingle((float)pm->frame_length);
-	pm->update_time = elapsed_time / 1000.0;
-	pm->update_time_wide = tfxWideSetSingle((float)pm->update_time);
-	pm->new_compute_particle_index = 0;
 	pm->gpu_current_time_ms += (float)pm->frame_length;
 	tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 	pm->current_ribbon_count = 0;
-	tfxU32 next_buffer = pm->current_ebuff ^ 1;
 
 	pm->current_sprite_buffer = pm->flags & tfxEffectManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
 	pm->flags &= ~tfxEffectManagerFlags_has_ribbons_to_draw;
@@ -11162,95 +11378,115 @@ void tfx__update_effect_manager(void *data) {
 
 	tfxU32 last_instance_count = 0;
 
-	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
+	tfxU32 next_buffer = pm->current_ebuff ^ 1;
+	//Warm up any effects in the warm up list. Each tick batches all warming-up effects through the same
+	//phases as the normal update so threading is fully utilised. The warmup list is double-buffered:
+	//entries whose effect age hasn't yet reached the requested warmup time are re-added to the next buffer.
+	//During warmup current_ebuff is held constant — tfx__simulate_effect_spawn gates all writes to
+	//next_buffer's lists on tfxEffectManagerFlags_warming_up so non-warming effects already in
+	//effects_in_use[current_ebuff] are not disturbed and the normal update below picks up where it left off.
+	if (pm->warmup_effects[0].current_size > 0) {
+		tfxU32 current_warmup_buffer = 0;
+		pm->flags |= tfxEffectManagerFlags_warming_up;
+		tfx__set_effect_manager_timings(pm, pm->warmup_delta_time, pm->max_frame_length);
+		while (pm->warmup_effects[current_warmup_buffer].current_size > 0) {
+			tfxU32 next_warmup_buffer = current_warmup_buffer ^ 1;
 
+			//Per-tick state reset so spawn/control bookkeeping doesn't accumulate across ticks
+			pm->warmup_effects[next_warmup_buffer].clear();
+			pm->control_emitter_queue.clear();
+			pm->spawn_work.clear();
+			pm->instance_buffer.clear();
+			last_instance_count = 0;
+			pm->gpu_current_time_ms += (float)pm->frame_length;
+			tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
+
+			//Spawn phase — issued for every warming effect, runs in parallel
+			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
+				tfx_effect_index_t effect_idx = { entry.effect_index, 0.f };
+				tfx__simulate_effect_spawn(pm, effect_idx, pm->current_ebuff, &last_instance_count);
+				tfx_effect_state_t &effect = pm->effects[entry.effect_index];
+				if (effect.age < entry.millisecs) {
+					pm->warmup_effects[next_warmup_buffer].push_back(entry);
+				}
+			}
+			for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
+				//Defer any spawn work to here for emitters with ordered effects so the required buffer space can
+				//be calculated before any spawning happens.
+				tfx__add_work_queue_entry(&pm->work_queue, spawn_work, tfx__do_spawn_work);
+			}
+			pm->deffered_spawn_work.clear();
+			tfx__complete_all_work(&pm->work_queue);
+			tfx_AdvanceRandom(&pm->threaded_random);
+
+			//Control phase — every emitter pushed onto control_emitter_queue by spawn, in parallel
+			for (int index : pm->control_emitter_queue) {
+				tfx__simulate_emitter_control(pm, index, false);
+			}
+			tfx__complete_all_work(&pm->work_queue);
+			pm->control_work.clear();
+
+			//Age phase — drops expired particles, in parallel
+			for (int index : pm->control_emitter_queue) {
+				tfx__simulate_emitter_age(pm, index);
+			}
+			tfx__complete_all_work(&pm->work_queue);
+			pm->age_work.clear();
+
+			//Compact depth_indexes for ordered effects each warmup tick. The normal update does this
+			//at the end of every frame by iterating effects_in_use[next_buffer], but during warmup we
+			//hold ebuff constant so that loop never sees warming effects. Without this compaction,
+			//depth_indexes accumulates dead entries (marked tfxINVALID by age phase) and bank.depth_index
+			//for surviving particles points into a bloated buffer that no longer maps to instance_buffer
+			//once normal updates resume — tripping the ordered-control assert on the first post-warmup frame.
+			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
+				tfx_effect_state_t &effect = pm->effects[entry.effect_index];
+				TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
+				bool is_ordered = tfx__is_ordered_effect_state(&effect);
+				TFX_ENABLE_COMPILER_WARNING()
+				if (!is_ordered) {
+					continue;
+				}
+				tfx_effect_instance_data_t &sprites = effect.instance_data;
+				for (tfxEachLayer) {
+					tfxU32 current_buffer_index = sprites.current_depth_buffer_index[layer];
+					tfxU32 next_buffer_index = current_buffer_index ^ 1;
+					tfx_vector_t<tfx_depth_index_t> &current_depth_indexes = sprites.depth_indexes[layer][current_buffer_index];
+					tfx_vector_t<tfx_depth_index_t> &next_depth_indexes = sprites.depth_indexes[layer][next_buffer_index];
+					for (auto &depth : current_depth_indexes) {
+						if (depth.particle_id != tfxINVALID) {
+							tfxU32 bank_index = tfx__particle_bank(depth.particle_id);
+							tfxU32 particle_index = tfx__particle_index(depth.particle_id);
+							pm->particle_arrays[bank_index].depth_index[particle_index] = next_depth_indexes.current_size;
+							next_depth_indexes.push_back(depth);
+						}
+					}
+					current_depth_indexes.clear();
+					sprites.current_depth_buffer_index[layer] = next_buffer_index;
+				}
+			}
+
+			current_warmup_buffer = next_warmup_buffer;
+		}
+		pm->warmup_effects[0].clear();
+		pm->warmup_effects[1].clear();
+		pm->flags &= ~tfxEffectManagerFlags_warming_up;
+		//The last warmup tick left spawn_work and control_emitter_queue populated. The normal update below
+		//assumes both are empty before its spawn phase, so reset them here.
+		pm->control_emitter_queue.clear();
+		pm->spawn_work.clear();
+	}
+
+	tfx__set_effect_manager_timings(pm, elapsed_time, pm->max_frame_length);
+
+	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
 	pm->effects_in_use[next_buffer].clear();
+
+	last_instance_count = 0;
 
 	for (int i = 0; i != effects_start_size; ++i) {
 		tfx_effect_index_t &effect_index = pm->effects_in_use[pm->current_ebuff][i];
-		tfx_effect_state_t &effect = pm->effects[effect_index.index];
-		float &timeout_counter = effect.timeout_counter;
-		effect.emitter_indexes[next_buffer].clear();
-		effect.emitter_start_size = effect.emitter_indexes[pm->current_ebuff].current_size;
-
-		tfx_effect_instance_data_t &instance_data = pm->effects[effect_index.index].instance_data;
-		instance_data.instance_start_index = tfxINVALID;
-		memset(instance_data.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-		instance_data.instance_count = 0;
-
-		tfx__update_effect(pm, effect_index.index);
-		if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
-			tfx_vec3_t effect_to_camera = effect.world_position - pm->camera_position;
-			effect_index.depth = tfx__vec3_length_fast(&effect_to_camera);
-		}
-		if (timeout_counter <= effect.timeout) {
-			pm->effects_in_use[next_buffer].push_back(effect_index);
-		} else if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
-			effect.state_flags |= tfxEmitterStateFlags_remove;
-		} else {
-			tfx__sync_lock(&pm->add_effect_mutex);
-			pm->free_effects.push_back(effect_index);
-			tfx__sync_unlock(&pm->add_effect_mutex);
-		}
-
-		effect.active_emitters = 0;
-
-		for (int emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-			//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-			//would cause more work entries to be created.
-			TFX_ASSERT(pm->spawn_work.current_size != pm->spawn_work.capacity);
-			tfx_spawn_work_entry_t *spawn_work_entry = &pm->spawn_work.next();
-			spawn_work_entry->random = pm->threaded_random;
-			spawn_work_entry->emitter_index = emitter_index;
-			spawn_work_entry->next_buffer = next_buffer;
-			tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-			tfx_library library = emitter.library;
-			spawn_work_entry->properties = &library->emitter_properties[emitter.state_properties.property_index];
-			spawn_work_entry->shared_properties = &library->shared_properties[emitter.state_properties.shared_index];
-			spawn_work_entry->amount_to_spawn = 0;
-			spawn_work_entry->pm = pm;
-			spawn_work_entry->depth_indexes = nullptr;
-			spawn_work_entry->particle_uid = emitter_index * 100000;
-
-			TFX_ASSERT(emitter.particles_index != tfxINVALID);
-
-			tfx__update_emitter(&pm->work_queue, spawn_work_entry);
-			if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
-				effect.emitter_indexes[next_buffer].push_back(emitter_index);
-				pm->control_emitter_queue.push_back(emitter_index);
-			} else {
-				tfx__sync_lock(&pm->add_effect_mutex);
-				if (emitter.path_state.path_quaternions) {
-					tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
-				}
-				tfx__free_particle_list(pm, emitter_index);
-				if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
-					tfx__free_spawn_location_list(pm, emitter_index);
-				}
-				//Emitter is done spawning; decrement group's active count.
-				//The group tracking ring drains naturally as particles expire — no explicit cleanup needed.
-				{
-					if (emitter.state_properties.gpu_group_index != tfxINVALID) {
-						pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
-						emitter.state_properties.gpu_group_index = tfxINVALID;
-					}
-				}
-				pm->free_emitters.push_back(emitter_index);
-				tfx__sync_unlock(&pm->add_effect_mutex);
-			}
-		}
-
-		if (!(pm->flags & tfxEffectManagerFlags_recording_sprites)) {
-			instance_data.cumulative_index_point[0] = 0;
-			instance_data.cumulative_index_point[1] = instance_data.sprite_index_point[0];
-			instance_data.cumulative_index_point[2] = instance_data.cumulative_index_point[1] + instance_data.sprite_index_point[1];
-			instance_data.cumulative_index_point[3] = instance_data.cumulative_index_point[2] + instance_data.sprite_index_point[2];
-		} else {
-			memset(instance_data.cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-		}
-		instance_data.instance_start_index = last_instance_count;
-		last_instance_count += instance_data.instance_count;
+		tfx__simulate_effect_spawn(pm, effect_index, next_buffer, &last_instance_count);
 	}
 
 	for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
@@ -11295,78 +11531,7 @@ void tfx__update_effect_manager(void *data) {
 	bool is_recording = (pm->flags & tfxEffectManagerFlags_recording_sprites) > 0 && (pm->flags & tfxEffectManagerFlags_using_uids) > 0;
 	{
 		for (int index : pm->control_emitter_queue) {
-			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-			int particles_to_update = bank.current_size;
-			tfxU32 running_start_index = 0;
-			if (pm->emitters[index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
-				//Publish the spawn-location ring's size/start_index here, single-threaded, before dispatching control work.
-				//tfx__control_particle_transform writes the per-slot positions in parallel batches, so the scalar
-				//current_size/start_index must be set outside that threaded path to avoid races between batches.
-				tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[pm->emitters[index].spawn_locations_index];
-				if (bank.current_size > spawn_point_buffer.current_size) {
-					bool grew;
-					tfx__add_soa_rows_grew(&spawn_point_buffer, bank.current_size - spawn_point_buffer.current_size, true, grew);
-				}
-				spawn_point_buffer.current_size = bank.current_size;
-				spawn_point_buffer.start_index = bank.start_index;
-				TFX_ASSERT(spawn_point_buffer.current_size <= spawn_point_buffer.capacity);
-			}
-			tfxU32 first_index = tfx__get_circular_index(&bank, 0) / tfxDataWidth * tfxDataWidth;
-			tfxU32 running_sprite_index = 0;
-			/*
-There's a surprising amount of problems to solve here to make sure that all particles are updated and all sprites are correctly updated too.
-The main problem comes from the fact that the particle buffer is a ring buffer that is udpated using SIMD at a rate of 4 or 8 particles at a time. The sprite
-buffer is a simpler linear buffer that gets written to from the start of the buffer each update. The main issue to solve is how to account for the rounding
-of the particle indexes to to nearest tfxDataWidth multiple so that SIMD instructions are properly aligned and to take into account when paricles are updated
-that have expired because it rounds down or up. We don't mind udpating a few extra particles that have expired because we won't write the sprite data for them so it
-doesn't matter. For example the start index in the ring buffer might be 20 with a data width of 8, so in this instance it rounds down to 16 and starts from there. 
-We need to be aware of this so that we don't write that particle data to the sprites, they need to update from 20 where the particles which
-are still active start from.  This starting offset which is measured on the first batch only needs to be carried over to the next batches to ensure that all sprites are written to.
-To ensure there's no overlap in the ring buffer when rounding the capacity is always ensured to be greater then the number of particles in the buffer + tfxDataWidth.
-*/
-			while (particles_to_update > 0) {
-				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-				//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-				//would cause more work entries to be created.
-				TFX_ASSERT(pm->control_work.current_size != pm->control_work.capacity);
-				tfx_control_work_entry_t &work_entry = pm->control_work.next();
-				work_entry.properties = &pm->emitters[index].library->emitter_properties[pm->emitters[index].state_properties.property_index];
-				work_entry.shared_properties = &pm->emitters[index].library->shared_properties[pm->emitters[index].state_properties.shared_index];
-				work_entry.pm = pm;
-				work_entry.emitter_index = index;
-				//start index is the start of the for loop in each control function in batches of pm->mt_batch_size, set when the effect manager is created.
-				work_entry.start_index = running_start_index;
-				//end_index is the exact last index of particles to update and will be set to the cumulative batch size or remaining particles left to update, whichever is smaller.
-				work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
-				tfxU32 circular_start = tfx__get_circular_index(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
-				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-				//start_diff is very important. It makes sure that when writing to the sprite data we only write data for particles that have not expired. Due to rounding to the nearest
-				//tfxDataWidth some particles in the loop in the first batch maybe expired so we use start_diff to offset the writing of the sprite data.
-				work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
-				if (particles_to_update <= pm->mt_batch_size && work_entry.start_diff) {
-					//If the particles to update is less than or equal to the batch size then add on the start diff or particles at the end won't get updated. It means the batch size
-					//is an extra data width larger but that's fine.
-					work_entry.wide_end_index = (tfxU32)(ceilf((float)(work_entry.end_index + work_entry.start_diff) / tfxDataWidth)) * tfxDataWidth;
-					//For the edge case where the number of particles is exactly the same as the batch size we make sure that the particles to update is 0 so that we don't try
-					//and add an extra batch
-					particles_to_update = 0;
-				} else {
-					//The wide index is the end index rounded to the nearest tfxDataWidth multiple, this is what's used for the for loop.
-					work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
-				}
-				work_entry.sprite_instances = !is_recording ? &pm->instance_buffer : &pm->instance_buffer_for_recording[pm->current_sprite_buffer][work_entry.shared_properties->layer];
-				//If there was a start_diff in the first batch then that needs to be carried over to subsequent batches to ensure all sprites are updated.
-				work_entry.running_sprite_offset = running_sprite_index;
-				tfx_effect_state_t &parent_effect = pm->effects[pm->emitters[index].parent_index];
-				work_entry.global_stretch = parent_effect.stretch;
-				work_entry.global_noise = parent_effect.noise;
-				work_entry.global_intensity = parent_effect.spawn_controls.intensity;
-				//Take in to account start_diff when updating the particles_to_udpate and running_sprite_index
-				particles_to_update -= pm->mt_batch_size - work_entry.start_diff;
-				running_sprite_index += pm->mt_batch_size - work_entry.start_diff;
-				running_start_index += pm->mt_batch_size;
-				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particles);
-			}
+			tfx__simulate_emitter_control(pm, index, is_recording);
 		}
 
 		pm->running_ribbon_vertex_count = 0;
@@ -11384,28 +11549,7 @@ To ensure there's no overlap in the ring buffer when rounding the capacity is al
 
 	{
 		for (int index : pm->control_emitter_queue) {
-			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-			//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-			//would cause more work entries to be created.
-			TFX_ASSERT(pm->age_work.current_size != pm->age_work.capacity);
-			tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
-			work_entry.properties = &pm->emitters[index].library->emitter_properties[pm->emitters[index].state_properties.property_index];
-			work_entry.shared_properties = &pm->emitters[index].library->shared_properties[pm->emitters[index].state_properties.shared_index];
-			work_entry.start_index = bank.current_size - 1;
-			work_entry.emitter_index = index;
-			tfxU32 circular_start = tfx__get_circular_index(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
-			tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-			work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
-			work_entry.start_diff = circular_start - block_start_index;
-			work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
-			work_entry.pm = pm;
-			if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particle_age);
-			}
-			else {
-				tfx__control_particle_age(&pm->work_queue, &work_entry);
-			}
+			tfx__simulate_emitter_age(pm, index);
 		}
 
 		pm->running_ribbon_vertex_count = 0;
@@ -12094,7 +12238,6 @@ TFX_ENABLE_COMPILER_WARNING()
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		tfx__readbarrier;
 
 		tfxWideFloat alignment_vector_x;
@@ -12204,6 +12347,77 @@ TFX_ENABLE_COMPILER_WARNING()
 		}
 
 		start_diff = 0;
+	}
+}
+
+void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+
+	//The only bank-side state this function maintains is the spawn_locations ring used by other emitters
+	//that source from this one. If this emitter isn't a spawn-location source the entire transform is local
+	//to the sprite buffer (which we don't write during warmup), so there's nothing to do.
+	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source)
+		|| emitter.spawn_locations_index == tfxINVALID) {
+		return;
+	}
+
+	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
+	tfx_spawn_points_soa_t &locations = pm.particle_location_arrays[emitter.spawn_locations_index];
+
+	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.world_position.x);
+	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.world_position.y);
+	const tfxWideFloat e_world_position_z = tfxWideSetSingle(emitter.world_position.z);
+	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
+	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
+	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
+	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
+	const bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position
+		&& emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon)
+		|| emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
+		tfxWideFloat life = tfxWideMul(age, inv_max_age);
+
+		tfxWideArray position_x;
+		tfxWideArray position_y;
+		tfxWideArray position_z;
+		position_x.m = tfxWideLoad(&bank.position_x[index]);
+		position_y.m = tfxWideLoad(&bank.position_y[index]);
+		position_z.m = tfxWideLoad(&bank.position_z[index]);
+		tfx__readbarrier;
+
+		if (transform_relative) {
+			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
+			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
+			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
+			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
+			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
+			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
+			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
+		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxPath) {
+			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
+			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
+			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
+			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
+		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
+			position_x.m = tfxWideMul(position_x.m, e_scale);
+			position_y.m = tfxWideMul(position_y.m, e_scale);
+			position_z.m = tfxWideMul(position_z.m, e_scale);
+		}
+
+		tfxWideStore(&locations.position_x[index], position_x.m);
+		tfxWideStore(&locations.position_y[index], position_y.m);
+		tfxWideStore(&locations.position_z[index], position_z.m);
+		tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
+		TFX_ASSERT(index + tfxDataWidth <= pm.particle_location_buffers[emitter.spawn_locations_index].capacity);
 	}
 }
 
@@ -13073,6 +13287,25 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 	*/
 
+}
+
+void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfx_effect_manager pm = work_entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
+
+	tfxWideFloat image_frame_rate = tfxWideSetSingle(emitter.state_properties.image_frame_rate);
+	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
+		tfx__readbarrier;
+		image_frame = tfxWideAdd(image_frame, image_frame_rate);
+		tfxWideStore(&bank.image_frame[index], image_frame);
+	}
 }
 
 void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
@@ -14305,33 +14538,42 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
-	if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
-		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
-			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
-			if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-				uid_buffer.reserve(new_size);
+	const bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
+	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
+	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
+	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
+	//re-establish instance_buffer state through the normal path.
+	if (!warming_up) {
+		if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
+				tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
+				if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+					uid_buffer.reserve(new_size);
+				}
+				instance_buffer.reserve(new_size);
 			}
-			instance_buffer.reserve(new_size);
 		}
-	}
-	else {
-		tfxU32 required_space = emitter.sprites_count + instance_buffer.current_size + max_spawn_count;
-		if (required_space >= instance_buffer.capacity) {
-			tfxU32 free_space = instance_buffer.capacity - instance_buffer.current_size;
-			if (free_space > emitter.sprites_count) {
-				max_spawn_count = free_space - emitter.sprites_count;
+		else {
+			tfxU32 required_space = emitter.sprites_count + instance_buffer.current_size + max_spawn_count;
+			if (required_space >= instance_buffer.capacity) {
+				tfxU32 free_space = instance_buffer.capacity - instance_buffer.current_size;
+				if (free_space > emitter.sprites_count) {
+					max_spawn_count = free_space - emitter.sprites_count;
+				}
+				else {
+					max_spawn_count = tfxMin(free_space, max_spawn_count);
+				}
+				TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 			}
-			else {
-				max_spawn_count = tfxMin(free_space, max_spawn_count);
-			}
-			TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 		}
-	}
 
-	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
-	emitter.sprites_count += max_spawn_count;
-	emitter.sprites_index = instance_index_point;
-	effect_instance_index_point += emitter.sprites_count;
+		instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
+		emitter.sprites_count += max_spawn_count;
+		emitter.sprites_index = instance_index_point;
+		effect_instance_index_point += emitter.sprites_count;
+	} else {
+		emitter.sprites_count += max_spawn_count;
+	}
 
 	spawn_work_entry->max_spawn_count = max_spawn_count;
 
@@ -14341,16 +14583,17 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	TFX_ASSERT(spawn_work_entry->amount_to_spawn <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - spawn_work_entry->amount_to_spawn;
-	instance_buffer.current_size -= spawn_difference;
-	TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
-	effect_instance_index_point -= spawn_difference;
-	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
-	instance_data.instance_count += emitter.sprites_count - spawn_difference;
-	emitter.sprites_count -= spawn_difference;
-
-	if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-		uid_buffer.current_size = instance_buffer.current_size;
+	if (!warming_up) {
+		instance_buffer.current_size -= spawn_difference;
+		TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
+		effect_instance_index_point -= spawn_difference;
+		pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
+		instance_data.instance_count += emitter.sprites_count - spawn_difference;
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+			uid_buffer.current_size = instance_buffer.current_size;
+		}
 	}
+	emitter.sprites_count -= spawn_difference;
 
 	emitter.age += (float)pm->frame_length;
 
@@ -17755,18 +17998,24 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx__control_particle_line_behaviour_loop(&pm->work_queue, work_entry);
 			}
 		}
-		tfx__control_particle_transform(&pm->work_queue, work_entry);
-		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
-			tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
-		}
-		else {
-			tfx__control_particle_spin_roll(&pm->work_queue, work_entry);
-		}
-		tfx__control_particle_size(&pm->work_queue, work_entry);
-		tfx__control_particle_color(&pm->work_queue, work_entry);
-		tfx__control_particle_image_frame(&pm->work_queue, work_entry);
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
-			tfx__control_particle_hide(&pm->work_queue, work_entry);
+		if (!(pm->flags & tfxEffectManagerFlags_warming_up)) {
+			//There's no need to call controll functions in warm up if they don't write back to the image bank.
+			tfx__control_particle_transform(&pm->work_queue, work_entry);
+			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+				tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
+			}
+			else {
+				tfx__control_particle_spin_roll(&pm->work_queue, work_entry);
+			}
+			tfx__control_particle_size(&pm->work_queue, work_entry);
+			tfx__control_particle_color(&pm->work_queue, work_entry);
+			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
+				tfx__control_particle_hide(&pm->work_queue, work_entry);
+			}
+			tfx__control_particle_image_frame(&pm->work_queue, work_entry);
+		} else {
+			tfx__control_particle_transform_warmup(&pm->work_queue, work_entry);
+			tfx__control_particle_image_frame_warmup(&pm->work_queue, work_entry);
 		}
 	}
 }
@@ -18087,6 +18336,7 @@ bool tfx__valid_effect_id(tfx_effect_manager pm, tfxEffectID id) {
 
 tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup setup) {
 	tfx_effect_manager_info_t info = { 0 };
+	info.warmup_delta_time = 1000.0 / 60.0;
 	info.max_particles = 10000;
 	info.max_effects = 1000;
 	info.max_ribbon_segments = 32678;
@@ -18175,6 +18425,7 @@ tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
 	pm->free_particle_location_lists.init();
 	pm->magic = tfxINIT_MAGIC;
 	pm->info = info;
+	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_effect_manager(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
 
 	pm->flags |= info.auto_order_effects ? tfxEffectManagerFlags_auto_order_effects : 0;
