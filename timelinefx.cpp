@@ -11412,6 +11412,13 @@ void tfx__update_effect_manager(void *data) {
 			pm->gpu_current_time_ms += (float)pm->frame_length;
 			tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 
+			//Mark every warming effect this tick so the shared ribbon-bucket walker can filter to just
+			//the warming subset — buckets aggregate ribbon emitters across multiple effects, and we must
+			//not advance non-warming emitters here.
+			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
+				pm->effects[entry.effect_index].state_flags |= tfxEffectStateFlags_warming_up;
+			}
+
 			//Spawn phase — issued for every warming effect, runs in parallel
 			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
 				tfx_effect_index_t effect_idx = { entry.effect_index, 0.f };
@@ -11477,6 +11484,65 @@ void tfx__update_effect_manager(void *data) {
 				}
 			}
 
+			//Ribbon spawn phase — same dispatch shape as the normal frame's bucket walker, but
+			//tfx__update_ribbon_bucket_emitters filters to just emitters whose parent effect has
+			//tfxEffectStateFlags_warming_up set so non-warming emitters in the same shared bucket are
+			//left untouched. We do NOT clear ribbon_emitter_indexes[next_buffer] here: ebuff is held
+			//constant during warmup so next_buffer is the post-warmup normal frame's responsibility.
+			tfx_ribbon_dispatch_t ribbon_dispatch{};
+			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+				bucket.control_ribbon_queue.clear();
+				TFX_ASSERT(pm->ribbon_work.current_size != pm->ribbon_work.capacity);
+				tfx_ribbon_work_entry_t *ribbon_work_entry = &pm->ribbon_work.next();
+				ribbon_work_entry->random = pm->threaded_random;
+				ribbon_work_entry->pm = pm;
+				ribbon_work_entry->ribbon_bucket = &bucket;
+				tfx__add_work_queue_entry(&pm->work_queue, ribbon_work_entry, tfx__update_ribbon_bucket_emitters);
+			}
+			tfx__complete_all_work(&pm->work_queue);
+			tfx_AdvanceRandom(&pm->threaded_random);
+			pm->ribbon_work.clear();
+
+			//Ribbon age phase — control_ribbon_queue was populated by the spawn dispatch above and
+			//only contains warming emitters, so we can dispatch unconditionally per bucket. We skip the
+			//control_ribbons (appearance writes) phase entirely during warmup since no GPU instances
+			//are read until the first post-warmup frame.
+			pm->running_ribbon_vertex_count = 0;
+			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+				tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
+				work_entry.pm = pm;
+				work_entry.ribbon_bucket = &bucket;
+				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_ribbons_ages);
+			}
+			tfx__complete_all_work(&pm->work_queue);
+			pm->ribbon_control_work.clear();
+
+			//Move ribbon survivors back to ribbon_indexes[current_ebuff] for each warming emitter.
+			//tfx__control_ribbon_path_age pushes survivors to ribbon_indexes[next_buffer], but the next
+			//warmup tick's tfx__update_ribbon_emitter clears that buffer at line 14364, which would wipe
+			//survivors. Mirrors the depth_indexes compaction above and the post-frame swap in normal flow.
+			tfxU32 ebuff = pm->current_ebuff;
+			tfxU32 ebuff_next = pm->current_ebuff ^ 1;
+			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+				for (tfxU32 ribbon_emitter_index : bucket.control_ribbon_queue) {
+					tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+					ribbon_emitter.ribbon_indexes[ebuff].clear();
+					for (tfxU32 idx : ribbon_emitter.ribbon_indexes[ebuff_next]) {
+						ribbon_emitter.ribbon_indexes[ebuff].push_back(idx);
+					}
+					ribbon_emitter.ribbon_indexes[ebuff_next].clear();
+				}
+			}
+
+			//Clear the per-effect warming flag for this tick's set. Effects that re-enter
+			//warmup_effects[next_warmup_buffer] will have it set again at the top of the next tick.
+			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
+				pm->effects[entry.effect_index].state_flags &= ~tfxEffectStateFlags_warming_up;
+			}
+
 			current_warmup_buffer = next_warmup_buffer;
 		}
 		pm->warmup_effects[0].clear();
@@ -11486,6 +11552,10 @@ void tfx__update_effect_manager(void *data) {
 		//assumes both are empty before its spawn phase, so reset them here.
 		pm->control_emitter_queue.clear();
 		pm->spawn_work.clear();
+		//Each warmup age tick updated bucket->highest/lowest_ribbon_index and segment ranges. Reset them so
+		//the post-warmup tfx__update_ribbon_buffer_requirements pass sees a clean slate that the normal
+		//frame's age phase will repopulate.
+		tfx__reset_ribbon_buffer_requirements(pm);
 	}
 
 	tfx__set_effect_manager_timings(pm, elapsed_time, pm->max_frame_length);
@@ -14339,14 +14409,25 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 	tfx_ribbon_work_entry_t *ribbon_work_entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 	tfx_effect_manager pm = ribbon_work_entry->pm;
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
+	const bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
 	for (int ribbon_emitter_index : ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
-		tfx__update_ribbon_emitter(ribbon_emitter_index, &pm->work_queue, ribbon_work_entry);
 		tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
 		tfx_effect_state_t &effect = pm->effects[ribbon_emitter.parent_index];
+		//During warmup the bucket may contain ribbon emitters from non-warming effects (shared bucket).
+		//Skip those entirely so we don't advance their age or spawn their ribbons mid-warmup.
+		if (warming_up && !(effect.state_flags & tfxEffectStateFlags_warming_up)) {
+			continue;
+		}
+		tfx__update_ribbon_emitter(ribbon_emitter_index, &pm->work_queue, ribbon_work_entry);
 		if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
-			ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
+			//Hold ebuff constant during warmup so non-warming emitters already in current_ebuff are not
+			//disturbed, and the normal frame's bucket walker rebuilds next_buffer from scratch.
+			if (!warming_up) {
+				ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
+			}
 			ribbon_work_entry->ribbon_bucket->control_ribbon_queue.push_back(ribbon_emitter_index);
-		} else {
+		} else if (!warming_up) {
+			//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
 			tfx__sync_lock(&pm->add_effect_mutex);
 			tfx__free_gpu_emitter(pm, ribbon_emitter.gpu_emitter_index);
 			pm->free_ribbon_emitters.push_back(ribbon_emitter_index);

@@ -3604,6 +3604,7 @@ typedef enum {
 	tfxEffectStateFlags_override_overal_scale                   = 1 << 8,       //Flagged when the over scale is overridden with tfx_SetEffectOveralScale
 	tfxEffectStateFlags_override_orientiation                   = 1 << 9,       //Flagged when any of the effect angles are overridden
 	tfxEffectStateFlags_override_size_multiplier                = 1 << 10,      //Flagged when any of the effect size multipliers are overridden
+	tfxEffectStateFlags_warming_up                              = 1 << 11,      //Set on each effect currently being warmed up so shared ribbon-bucket walkers can filter to just the warming subset
 	tfxEffectStateFlags_no_tween                                = 1 << 20
 } tfx_effect_state_flag_bits;
 
