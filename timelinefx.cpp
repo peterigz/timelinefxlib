@@ -4997,6 +4997,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("noise_algorithm", tfxSInt);
 	names_and_types.Insert("color_interpolation_mode", tfxSInt);
 	names_and_types.Insert("delay_spawning", tfxFloat);
+	names_and_types.Insert("warmup_time", tfxFloat);
 	names_and_types.Insert("grid_rows", tfxFloat);
 	names_and_types.Insert("grid_columns", tfxFloat);
 	names_and_types.Insert("grid_depth", tfxFloat);
@@ -5852,6 +5853,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "preview_effect_z_offset") value.Setf("%f", effect->library->preview_camera_settings[effect->preview_camera_settings].effect_z_offset);
 	else if (property_name == "preview_camera_speed") value.Setf("%f", effect->library->preview_camera_settings[effect->preview_camera_settings].camera_speed);
 	else if (property_name == "delay_spawning") value.Setf("%f", effect->state_properties.delay_spawning);
+	else if (property_name == "warmup_time") value.Setf("%f", effect->warmup_time);
 	else if (property_name == "grid_rows") value.Setf("%f", shared_properties->grid_points.x);
 	else if (property_name == "grid_columns") value.Setf("%f", shared_properties->grid_points.y);
 	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
@@ -6164,6 +6166,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
 	else if (*field == "emitter_handle_z") effect->emitter_handle.z = value;
 	else if (*field == "delay_spawning" && shared_properties) effect->state_properties.delay_spawning = value;
+	else if (*field == "warmup_time") effect->warmup_time = value;
 	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
 	else if (*field == "grid_depth" && shared_properties) shared_properties->grid_points.z = value;
@@ -6428,6 +6431,7 @@ void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *f
 	file->AddLine("sort_passes=%i", effect->sort_passes);
 	file->AddLine("noise_base_offset_range=%f", effect->noise_base_offset_range);
 	file->AddLine("loop_length=%f", effect->state_properties.loop_length);
+	file->AddLine("warmup_time=%f", effect->warmup_time);
 	file->AddLine("emitter_handle_x=%f", effect->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", effect->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", effect->emitter_handle.z);
@@ -10576,15 +10580,10 @@ bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descripto
 	return id != tfxINVALID;
 }
 
-void tfx_WarmUpEffect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs) {
-	TFX_ASSERT_HANDLE(pm);
-	TFX_ASSERT(!(pm->flags & tfxEffectManagerFlags_updating));  // can't queue while updating
+void tfx_SetEffectWarmupTime(tfx_effect_template effect_template, float millisecs) {
+	TFX_ASSERT_HANDLE(effect_template);
 	TFX_ASSERT(millisecs > 0.f);
-	tfx_warmup_entry_t entry = {
-		effect_id,
-		millisecs
-	};
-	pm->warmup_effects[0].push_back(entry);
+	effect_template->effect->warmup_time = millisecs;
 }
 
 void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time) {
@@ -10618,6 +10617,14 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 			state_flags |= (path->settings.rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
 		}
 	}
+}
+
+void tfx__add_warmup_effect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs) {
+	tfx_warmup_entry_t entry = {
+		effect_id,
+		millisecs
+	};
+	pm->warmup_effects[0].push_back(entry);
 }
 
 tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning) {
@@ -10656,6 +10663,10 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 	new_effect.emitter_indexes[0].clear();
 	new_effect.emitter_indexes[1].clear();
 	new_effect.emitter_start_size = 0;
+
+	if (effect->warmup_time > 0) {
+		tfx__add_warmup_effect(pm, parent_index.index, effect->warmup_time);
+	}
 
 	tfxU32 seed_index = 0;
 	struct hash_index_pair_t {

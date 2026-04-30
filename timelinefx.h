@@ -6918,6 +6918,9 @@ typedef struct tfx_effect_descriptor_s {
 	//All the below fields will be used by the effect/emitter states when added to a effect manager
 	tfx_common_state_properties_t state_properties;
 
+	//The amount of time that the effect warms up before rendering. Only relevant for effects.
+	float warmup_time;	//Measured in millisecs
+
 	tfxU32 gpu_lookup_offset;
 
 	tfxRibbonEmitterFlags ribbon_flags;
@@ -7610,7 +7613,7 @@ typedef struct tfx_effect_index_s {
 }tfx_effect_index_t;
 
 typedef struct tfx_warmup_entry_s {
-	tfxU32 effect_index;
+	tfxEffectID effect_index;
 	float millisecs;
 } tfx_warmup_entry_t;
 
@@ -9764,6 +9767,7 @@ tfxINTERNAL void tfx__free_particle_index(tfx_effect_manager pm, tfxU32 *index);
 tfxINTERNAL tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index);
 tfxINTERNAL void tfx__reset_particle_effect_flags(tfx_effect_manager pm);
 tfxINTERNAL void tfx__free_compute_slot(tfx_effect_manager pm, unsigned int slot_id);
+tfxINTERNAL void tfx__add_warmup_effect(tfx_effect_manager pm, tfx_effect_descriptor effect, float millisecs);
 tfxINTERNAL tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void tfx__free_particle_list(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_effect_manager pm, tfxU32 index);
@@ -10306,14 +10310,14 @@ test things out you can add an effect direct from a library using this command.
 tfxAPI bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descriptor effect, tfxEffectID *effect_id);
 
 /*
-Simulate an effect for amount of seconds without rendering to "warm it up". Useful if you don't want to start the effect
-from nothing, you want to start the effect from a certain amount of time. 
+Set the warmup time for an effect. When the effect is added to the particle manager it will be warmed up
+first so that effectively it begins it's simulation from a set point in time. 
 * @param pm							A pointer to an initialised tfx_effect_manager_t. 
 * @param tfxEffectID				tfxEffectID of the effect in the effect manager
 * @param float						The number of seconds to warmup for
 * @param float						The tick size of each simulation step.
 */
-tfxAPI void tfx_WarmUpEffect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs);
+tfxAPI void tfx_SetEffectWarmupTime(tfx_effect_template effect, float millisecs);
 
 /*
 Set the delta time used when warming up effects. Either match the fixed time step you're using like 1000/60 for 60fps 
