@@ -11351,8 +11351,6 @@ void tfx__update_effect_manager(void *data) {
 
 	double elapsed_time = pm->manager_work.elapsed_time;
 
-	if(elapsed_time <= 0) return;
-
 	tfx__sync_lock(&pm->updating);
 	pm->flags |= tfxEffectManagerFlags_updating;
 
@@ -18091,7 +18089,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		if (!(pm->flags & tfxEffectManagerFlags_warming_up)) {
-			//There's no need to call controll functions in warm up if they don't write back to the image bank.
+			//There's no need to call controll functions in warm up if they don't write back to the particle bank.
 			tfx__control_particle_transform(&pm->work_queue, work_entry);
 			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 				tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
