@@ -4735,6 +4735,12 @@ void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter) {
 	}
 }
 
+void tfx__update_effect_gpu_properties(tfx_effect_descriptor effect) {
+	for (tfx_effect_descriptor emitter : effect->children) {
+		tfx__update_emitter_gpu_properties(emitter);
+	}
+}
+
 void tfx__update_all_library_gpu_properties(tfx_library library) {
 	for (tfx_effect_descriptor effect : library->effects) {
 		if (effect->type == tfxFolder) {
@@ -10661,6 +10667,11 @@ void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time) {
 	pm->warmup_delta_time = delta_time;
 }
 
+void tfx_AdvanceEffectTime(tfx_effect_manager pm, tfxEffectID effect_id, float time) {
+	time += pm->effects[effect_id].age;
+	tfx__add_warmup_effect(pm, effect_id, time);
+}
+
 void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 	tfxParticleEmitterFlags property_flags = emitter->state_properties.property_flags;
 	tfxEmitterStateFlags &state_flags = emitter->state_flags;
@@ -10722,6 +10733,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 	new_effect.update_callback = effect->update_callback;
 
 	new_effect.age = -add_delayed_spawning;
+	new_effect.total_age = new_effect.age;
 	new_effect.state_flags = 0;
 	new_effect.effect_flags = effect->effect_flags;
 	new_effect.local_position = tfx_vec3_t();
@@ -11481,19 +11493,13 @@ void tfx__update_effect_manager(void *data) {
 			pm->gpu_current_time_ms += (float)pm->frame_length;
 			tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 
-			//Mark every warming effect this tick so the shared ribbon-bucket walker can filter to just
-			//the warming subset — buckets aggregate ribbon emitters across multiple effects, and we must
-			//not advance non-warming emitters here.
-			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
-				pm->effects[entry.effect_index].state_flags |= tfxEffectStateFlags_warming_up;
-			}
-
 			//Spawn phase — issued for every warming effect, runs in parallel
 			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
-				tfx_effect_index_t effect_idx = { entry.effect_index, 0.f };
-				tfx__simulate_effect_spawn(pm, effect_idx, pm->current_ebuff, &last_instance_count);
+				pm->effects[entry.effect_index].state_flags |= tfxEffectStateFlags_warming_up;
+				tfx_effect_index_t effect_index = { entry.effect_index, 0.f };
+				tfx__simulate_effect_spawn(pm, effect_index, pm->current_ebuff, &last_instance_count);
 				tfx_effect_state_t &effect = pm->effects[entry.effect_index];
-				if (effect.age < entry.millisecs) {
+				if (effect.total_age < entry.millisecs) {
 					pm->warmup_effects[next_warmup_buffer].push_back(entry);
 				}
 			}
@@ -14456,6 +14462,7 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 		effect.captured_position = effect.world_position;
 	}
 
+	effect.total_age += (float)pm->frame_length;
 	effect.age += (float)pm->frame_length;
 
 	if (effect.source_effect->state_properties.loop_length && effect.age > effect.source_effect->state_properties.loop_length)

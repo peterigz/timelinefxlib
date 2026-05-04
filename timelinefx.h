@@ -6686,7 +6686,8 @@ typedef struct tfx_particle_emitter_state_s {
 typedef struct tfx_effect_state_s {
 	//State data that can change every frame
 	tfx_quaternion_t rotation;
-	float age;
+	float age;			//Tracks the age with the effect loop
+	float total_age;	//Tracks the overal age of the effect
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
@@ -8185,6 +8186,7 @@ tfxAPI_EDITOR void tfx__update_library_compute_nodes();
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__update_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_effect_gpu_properties(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__update_all_library_gpu_properties(tfx_library library);
 tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect);
@@ -9781,7 +9783,7 @@ tfxINTERNAL void tfx__free_particle_index(tfx_effect_manager pm, tfxU32 *index);
 tfxINTERNAL tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index);
 tfxINTERNAL void tfx__reset_particle_effect_flags(tfx_effect_manager pm);
 tfxINTERNAL void tfx__free_compute_slot(tfx_effect_manager pm, unsigned int slot_id);
-tfxINTERNAL void tfx__add_warmup_effect(tfx_effect_manager pm, tfx_effect_descriptor effect, float millisecs);
+tfxINTERNAL void tfx__add_warmup_effect(tfx_effect_manager pm, tfxEffectID, float millisecs);
 tfxINTERNAL tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void tfx__free_particle_list(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_effect_manager pm, tfxU32 index);
@@ -10340,6 +10342,15 @@ or used mulitples of that value for higher performance at the cost of precision
 * @param double						The delta time measured in milliseconds
 */
 tfxAPI void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time);
+
+/*
+If an effect is already in the particle manager and you want to advance it be a given amount of time
+without rendering those frame then you can use this function.
+* @param pm							A pointer to an initialised tfx_effect_manager_t. 
+* @param tfxEffectID				The effect id that is in the particle manager
+* @param float						The time to advance by measured in milliseconds
+*/
+tfxAPI void tfx_AdvanceEffectTime(tfx_effect_manager pm, tfxEffectID effect_id, float time);
 
 /*
 Update a effect manager. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.
