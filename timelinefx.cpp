@@ -7951,6 +7951,77 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	return max_life * max_life_factor;
 }
 
+float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
+	TFX_ASSERT(effect->type == tfxEffectType);
+	if (!tfx__is_finite_effect(effect)) {
+		return 0.f;
+	}
+
+	step_size = tfx__Max(step_size, 1.f);
+
+	tfx_graph_list_t &effect_graphs = effect->library->graphs[effect->state_properties.graph_list_index];
+	tfx_graph_t *global_amount_graph = &effect_graphs.graphs[tfxEffect_global_amount_index];
+	tfx_graph_t *global_life_graph = &effect_graphs.graphs[tfxEffect_global_life_index];
+
+	float effect_lifetime = 0.f;
+
+	for (tfx_effect_descriptor child : effect->children) {
+		if (!tfx__is_emitter_type(child)) continue;
+
+		tfx_graph_list_t &child_graphs = child->library->graphs[child->state_properties.graph_list_index];
+		tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
+		bool is_ribbon = child->type == tfxRibbonType;
+		bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
+
+		tfx_graph_t *life_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_base_life_index : tfxEmitter_base_life_index];
+		tfx_graph_t *life_variation_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_variation_life_index : tfxEmitter_variation_life_index];
+		tfx_graph_t *amount_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_base_amount_index : tfxEmitter_base_amount_index];
+		tfx_graph_t *amount_variation_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_variation_amount_index : tfxEmitter_variation_amount_index];
+
+		//tfxOtherEmitter spawns scale particle life by the factor_life graph; upper-bound with its max value.
+		float life_factor = 1.f;
+		if (shared_props->emission_type == tfxOtherEmitter) {
+			life_factor = tfx__get_graph_max_value(&child_graphs.graphs[tfxEmitter_factor_life_index]);
+		}
+
+		if (is_single) {
+			//Single-shot emitters spawn the entire burst at emitter age 0 and then loop the
+			//particle's own graphs single_shot_limit times before the particle dies.
+			float life_at_zero = tfx__get_graph_first_value(life_graph) + tfx__get_graph_first_value(life_variation_graph);
+			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, 0.f);
+			float total_life = life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
+			if (total_life > effect_lifetime) {
+				effect_lifetime = total_life;
+			}
+			continue;
+		}
+
+		float amount_last_frame = tfx__get_graph_last_frame(amount_graph, 60.f);
+		float variation_last_frame = tfx__get_graph_last_frame(amount_variation_graph, 60.f);
+		float spawn_end = fmaxf(amount_last_frame, variation_last_frame);
+		if (spawn_end <= 0.f) {
+			continue;
+		}
+
+		//Sweep the emitter's age in 1ms steps. Skip steps where nothing actually spawns —
+		//a hole in the amount graph shouldn't pretend to produce a long-lived particle.
+		for (float t = 0.f; t <= spawn_end; t += step_size) {
+			float global_amount = tfx__get_graph_value_by_age(global_amount_graph, t);
+			float spawn_rate = (tfx__get_graph_value_by_age(amount_graph, t) + tfx__get_graph_value_by_age(amount_variation_graph, t)) * global_amount;
+			if (spawn_rate <= 0.f) continue;
+
+			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, t);
+			float life = (tfx__get_graph_value_by_age(life_graph, t) + tfx__get_graph_value_by_age(life_variation_graph, t)) * global_life_adjust * life_factor;
+			float death_time = t + life;
+			if (death_time > effect_lifetime) {
+				effect_lifetime = death_time;
+			}
+		}
+	}
+
+	return effect_lifetime;
+}
+
 bool tfx__is_gpu_graph_type(tfx_graph_type type) {
 	return (int)type >= (int)tfxGPU_lookup_start && (int)type <= (int)tfxGPU_lookup_end;
 }
@@ -12276,7 +12347,6 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 	tfxWideArray stretch;
 	tfxU32 start_diff = work_entry->start_diff;
 
-	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_vector_align_type vector_align_type = work_entry->properties->vector_align_type;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
@@ -12344,7 +12414,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 		tfxWideArrayi alignment_packed;
 		alignment_packed.m = tfxWideSetZeroi;
-		if (vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+		if ((vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 			tfxWideFloat velocity_normal_x;
 			tfxWideFloat velocity_normal_y;
@@ -13294,7 +13364,6 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
 	tfxWideFloat end_frame = tfxWideSetSingle(emitter.state_properties.end_frame);
 	tfxWideFloat frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
-	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
 	tfxWideInt particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.particle_gpu_property_index << 16);
@@ -13310,7 +13379,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
-		//We only want to not capture if single loop count is 0.
+		//We only want to capture if single loop count is not 0.
 		flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
 
@@ -13376,6 +13445,7 @@ void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *dat
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
 	tfxWideFloat image_frame_rate = tfxWideSetSingle(emitter.state_properties.image_frame_rate);
+	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -13384,6 +13454,9 @@ void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *dat
 		tfx__readbarrier;
 		image_frame = tfxWideAdd(image_frame, image_frame_rate);
 		tfxWideStore(&bank.image_frame[index], image_frame);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
+		flags = tfxWideAndNoti(capture_after_transform_flag, flags);
+		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -18288,13 +18361,8 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, velocity_normal));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, depth_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, intensity_factor));
-#ifdef tfxHALFFLOATS
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, noise_offset));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, noise_resolution));
-#else
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
-#endif
 	if (control_profile & tfxEmitterControlProfile_spin3d) {
 		tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, rotation_offsets));
 	} else {
@@ -18306,15 +18374,6 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, random_color));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, flags_single_loop_count));
-#ifdef tfxHALFFLOATS
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_velocity));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_weight));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_x));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_size_y));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_roll_spin));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_pitch_spin));
-	tfx__add_struct_array(buffer, sizeof(tfxHalf), offsetof(tfx_particle_soa_t, base_yaw_spin));
-#else
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_velocity));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_weight));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
@@ -18322,7 +18381,6 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_roll_spin));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
-#endif
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 

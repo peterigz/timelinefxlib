@@ -2414,6 +2414,7 @@ const tfxWideArray tfxWIDETHREEHALFPI = tfxWideSetConst(4.7123889f);
 const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
 const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.0001f);
 const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.0002f);
+const tfxWideArray tfxWIDEEPSILON     = tfxWideSetConst(1e-12f);
 const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
 #ifdef tfxX86
@@ -6975,7 +6976,7 @@ typedef struct tfx_particle_soa_s {
 		tfxU32 *rotation_offsets;		//Packed into 10bit ints for each axis
 		float *rotation_offset;			//Just use a float if the particle always faces the camera
 	};
-	tfxU32 *velocity_normal;			//Packed into 10bit ints for each axis
+	tfxU32 *velocity_normal;			//Packed into 10bit ints
 	tfxU64 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
@@ -8261,6 +8262,7 @@ tfxAPI_EDITOR void tfx__hide_descriptor(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR void tfx__show_descriptor(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR bool tfx__is_finite_effect(tfx_effect_descriptor effect);
+tfxAPI_EDITOR float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size);
 tfxAPI_EDITOR bool tfx__is_finite_emitter(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR bool tfx__is_emitter_type(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR bool tfx__is_ordered_effect(tfx_effect_descriptor effect);
@@ -9411,6 +9413,17 @@ struct tfx_apply_position {
 		tfxWideStore(&bank.position_x[index], ctx.position_x.m);
 		tfxWideStore(&bank.position_y[index], ctx.position_y.m);
 		tfxWideStore(&bank.position_z[index], ctx.position_z.m);
+		/*	
+		Was testing out stretch if interpolation in shader is not possible
+		tfxWideFloat alignment_z = tfxWideAdd(ctx.velocity_z, tfxWideSetSingle(0.000001f));
+		tfxWideFloat l = tfxWideMulAdd(ctx.velocity_x, ctx.velocity_x, tfxWideMulAdd(ctx.velocity_y, ctx.velocity_y, tfxWideMul(alignment_z, alignment_z)));
+		l = tfxWideRSqrt(l);
+		tfxWideFloat alignment_x = tfxWideMul(l, ctx.velocity_x);
+		tfxWideFloat alignment_y = tfxWideMul(l, ctx.velocity_y);
+		alignment_z 			 = tfxWideMul(l, alignment_z);
+		tfxWideInt packed_alignment = tfx__wide_pack8bit_xyz(alignment_x, alignment_y, alignment_z);
+		tfxWideStorei((tfxWideIntLoader*)&bank.alignment[index], packed_alignment);
+		*/
 	}
 };
 
@@ -9487,7 +9500,7 @@ tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_ef
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
-		tfxU32 capture = flags.a[j] << 7;
+		tfxU32 capture = flags.a[j] << 7;	//Note that the capture flag is already << 8, so this moves it to bit 15
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm->current_sprite_buffer << 30) + running_sprite_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + running_sprite_index;
