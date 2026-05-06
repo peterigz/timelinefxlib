@@ -8058,6 +8058,7 @@ tfxAPI_EDITOR bool tfx__is_blend_factor_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_lerp_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overtime_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overlength_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool tfx__is_overtime_graph_that_does_affect_position(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_factor_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_global_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_angle_graph(tfx_graph_t *graph);

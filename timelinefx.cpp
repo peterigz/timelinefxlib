@@ -6552,6 +6552,22 @@ bool tfx__is_overlength_graph(tfx_graph_t *graph) {
 	return ((int)graph->type >= (int)tfxOverlength_start && (int)graph->type <= (int)tfxOverlength_end);
 }
 
+bool tfx__is_overtime_graph_that_does_affect_position(tfx_graph_t *graph) {
+	bool will_affect_position;
+	switch (graph->type) {
+		case tfxOvertime_velocity:
+		case tfxOvertime_weight:
+		case tfxOvertime_velocity_turbulance:
+		case tfxOvertime_noise_resolution:
+		case tfxOvertime_motion_randomness:
+			will_affect_position = true;
+			break;
+		default:
+			will_affect_position = false;
+	}
+	return will_affect_position;
+}
+
 bool tfx__is_factor_graph(tfx_graph_t *graph) {
 	return (int)graph->type >= (int)tfxFactor_start && (int)graph->type <= (int)tfxFactor_end;
 }
