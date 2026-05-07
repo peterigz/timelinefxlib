@@ -3190,6 +3190,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	switch (clone->type) {
 	case tfxEmitterType:
 		clone->state_properties.property_index = tfx__clone_library_particle_emitter_properties(clone->library, effect_to_clone->state_properties.property_index, destination_library);
+		clone->state_properties.particle_gpu_property_index = tfx__clone_library_gpu_particle_properties(clone->library, effect_to_clone->state_properties.particle_gpu_property_index, destination_library);
 		break;
 	case tfxRibbonType:
 		clone->state_properties.property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, effect_to_clone->state_properties.property_index, destination_library);
@@ -3223,6 +3224,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		if (destination_library != effect_to_clone->library) {
 			tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->state_properties.graph_list_index]);
 		}
+		tfx__update_emitter_gpu_properties(clone);
 		if (clone->state_properties.path_attributes != tfxINVALID) {
 			tfx_emitter_path_t new_path = {};
 			tfx_emitter_path_t &path_copy = destination_library->paths.push_back(new_path);
@@ -3691,22 +3693,8 @@ void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst) {
 	for (int i = 0; i != src->graphs.current_size; ++i) {
 		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
 	}
-}
-
-void tfx__copy_graph_list_range_no_lookups(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index) {
-	if (src == dst) return;
-	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
-	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
-	}
-}
-
-void tfx__copy_graph_list_range(tfx_graph_list_t *src, tfx_graph_list_t *dst, tfxU32 from_index, tfxU32 to_index) {
-	if (src == dst) return;
-	TFX_ASSERT(src->graphs.size() == dst->graphs.size());		//Graph lists must be the same size, are you copying the same type of graph list?
-	for (int i = from_index; i != to_index; ++i) {
-		tfx__copy_graph(&src->graphs[i], &dst->graphs[i], true);
-	}
+	dst->color_ramps.interpolation_mode = src->color_ramps.interpolation_mode;
+	dst->color_ramps.flags = src->color_ramps.flags;
 }
 
 bool tfx__rename_library_effect(tfx_library library, tfx_effect_descriptor effect, const char *new_name) {
@@ -4254,6 +4242,14 @@ tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU3
 	TFX_ASSERT_HANDLE(destination_library);		//Not a valid library handle
 	tfxU32 dst_index = tfx__allocate_library_particle_emitter_properties(destination_library);
 	destination_library->emitter_properties[dst_index] = library->emitter_properties[source_index];
+	return dst_index;
+}
+
+tfxU32 tfx__clone_library_gpu_particle_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT_HANDLE(destination_library);		//Not a valid library handle
+	tfxU32 dst_index = tfx__allocate_library_particle_gpu_properties(destination_library);
+	destination_library->particle_gpu_properties[dst_index] = library->particle_gpu_properties[source_index];
 	return dst_index;
 }
 
@@ -5775,6 +5771,16 @@ tfx_str256_t tfx__get_graph_property_as_string(tfx_graph_t *graph, tfx_str256_t 
 	return value;
 }
 
+tfx_str32_t tfx__get_color_interpolation_as_string(tfx_color_interpolation_mode mode) {
+	switch (mode) {
+		case tfxColorInterpolation_linear_srgb: return "Linear SRGB";
+		case tfxColorInterpolation_oklch: return "OKLCH";
+		case tfxColorInterpolation_hsl: return "HSL";
+		case tfxColorInterpolation_linear_rgb: return "Linear RGB";
+		default: return "Unknown";
+	}
+}
+
 tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name) {
 	tfx_shared_properties_t *shared_properties = effect->state_properties.shared_index != tfxINVALID ? tfx__get_shared_emitter_properties(effect) : nullptr;
 	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
@@ -5827,6 +5833,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "export_option") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_option);
 	else if (property_name == "frame_offset") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset);
 	else if (property_name == "extra_frames_count") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].extra_frames_count);
+	else if (property_name == "color_interpolation_mode") value.Setf("%i", effect->library->graphs[effect->state_properties.graph_list_index].color_ramps.interpolation_mode);
 	else if (property_name == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes];  value.Setf("%i", path->settings.extrusion_type);
 	}
