@@ -9021,7 +9021,7 @@ struct tfx_apply_simplex_noise {
 
 		tfx__readbarrier;
 
-		ctx.lookup_noise_resolution = tfxWideMul(ctx.lookup_noise_resolution, noise_resolution);
+		ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overal_scale_wide);
 		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);
@@ -9077,7 +9077,7 @@ struct tfx_apply_curl_noise {
 
 		tfx__readbarrier;
 
-		ctx.lookup_noise_resolution = tfxWideMul(ctx.lookup_noise_resolution, noise_resolution);
+		ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overal_scale_wide);
 		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
 		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);

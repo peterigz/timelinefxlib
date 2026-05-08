@@ -12414,7 +12414,7 @@ TFX_ENABLE_COMPILER_WARNING()
 			lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
 		}
 
-		stretch.m = tfxWideDiv(tfxWideMul(lookup_stretch, global_stretch), e_scale);
+		stretch.m = tfxWideMul(lookup_stretch, global_stretch);
 
 		tfxWideArray position_x;
 		tfxWideArray position_y;
