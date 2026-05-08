@@ -3607,6 +3607,7 @@ typedef enum {
 	tfxEffectStateFlags_override_orientiation                   = 1 << 9,       //Flagged when any of the effect angles are overridden
 	tfxEffectStateFlags_override_size_multiplier                = 1 << 10,      //Flagged when any of the effect size multipliers are overridden
 	tfxEffectStateFlags_warming_up                              = 1 << 11,      //Set on each effect currently being warmed up so shared ribbon-bucket walkers can filter to just the warming subset
+	tfxEffectStateFlags_pending_warmup                          = 1 << 12,      //Set when an effect has a queued entry in pm->warmup_effects[0]; used by tfx__add_warmup_effect to coalesce duplicate adds
 	tfxEffectStateFlags_no_tween                                = 1 << 20
 } tfx_effect_state_flag_bits;
 

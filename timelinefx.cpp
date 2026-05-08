@@ -10746,6 +10746,25 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 }
 
 void tfx__add_warmup_effect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs) {
+	//Coalesce repeated requests for the same effect into a single entry. Without this the warmup loop
+	//iterates each duplicate, double-spawning, double-controlling and double-aging the same emitter in
+	//one tick — the second age work entry runs with a stale start_index after the first compacted the
+	//particle bank, corrupting bank.depth_index for ordered effects and tripping the sprite-buffer
+	//assert on the first post-warmup frame. Hit by editor slider scrubs that fire faster than
+	//tfx_UpdateEffectManager can drain the queue. The pending_warmup flag is the O(1) fast path; the
+	//list scan only runs when a duplicate is detected. The flag is cleared in the warmup loop when an
+	//entry isn't re-added to the next buffer (i.e., effect.total_age has reached entry.millisecs).
+	tfx_effect_state_t &effect = pm->effects[effect_id];
+	if (effect.state_flags & tfxEffectStateFlags_pending_warmup) {
+		for (tfx_warmup_entry_t &entry : pm->warmup_effects[0]) {
+			if (entry.effect_index == effect_id) {
+				entry.millisecs = tfx__Max(entry.millisecs, millisecs);
+				return;
+			}
+		}
+		return;
+	}
+	effect.state_flags |= tfxEffectStateFlags_pending_warmup;
 	tfx_warmup_entry_t entry = {
 		effect_id,
 		millisecs
@@ -11547,6 +11566,10 @@ void tfx__update_effect_manager(void *data) {
 				tfx_effect_state_t &effect = pm->effects[entry.effect_index];
 				if (effect.total_age < entry.millisecs) {
 					pm->warmup_effects[next_warmup_buffer].push_back(entry);
+				} else {
+					//Entry has reached its target age; clear pending_warmup so a subsequent
+					//tfx__add_warmup_effect for this effect is treated as a fresh queue insert.
+					effect.state_flags &= ~tfxEffectStateFlags_pending_warmup;
 				}
 			}
 			for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
