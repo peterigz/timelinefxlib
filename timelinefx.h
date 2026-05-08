@@ -6589,6 +6589,9 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_vec3_t fixed_angle_normal;
 	tfxRibbonBucketComputeShaderType angle_type;
 	tfxU32 animation_property_index;
+	float heat_response_boost;
+	float heat_response_sharpness;
+	float heat_response_curve;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6628,7 +6631,7 @@ typedef struct tfx_common_state_properties_s {
 	tfxIndex property_index;
 	tfxIndex shared_index;
 	tfxIndex gpu_group_index;
-	tfxIndex particle_gpu_property_index;
+	tfxIndex gpu_property_index;
 	tfxKey ribbon_bucket_id;		 //For spawn on ribbon emission type and storing the last known position of the particle
 	tfx_image_data_t *image;
 	tfx_vec3_t angle_offsets;
@@ -6763,17 +6766,19 @@ typedef struct tfx_ribbon_soa_s {
 	tfxU32 *uid;
 } tfx_ribbon_soa_t;
 
-typedef struct tfx_gpu_emitter_s {
-	tfx_vec4_t quaternion;
-	tfx_vec3_t position;
+typedef struct tfx_gpu_ribbon_emitter_s {
+	tfxU64 quaternion;
 	tfxU32 lookup_offset;
-	tfx_vec3_t captured_position;
-	tfxU32 padding1;
-	tfx_vec3_t scale;
-	tfxU32 padding2;
-	tfx_vec3_t fixed_angle_normal;
 	tfxU32 angle_type;
-} tfx_gpu_emitter_t;
+	tfx_vec3_t position;
+	float heat_response_boost;
+	tfx_vec3_t captured_position;
+	float heat_response_sharpness;
+	tfx_vec3_t scale;
+	float heat_response_curve;
+	tfx_vec3_t fixed_angle_normal;
+	int padding;
+} tfx_gpu_ribbon_emitter_t;
 
 //---- GPU compute particle buffer management ----
 // Uncomment to enable Phase 3 CPU-side shadow buffer that mirrors GPU ring buffer layout for validation.
@@ -6871,7 +6876,6 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	tfxRibbonEmitterStateFlags state_flags;
 
-	tfxIndex gpu_emitter_index;
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
 	tfx_effect_descriptor source_ribbon;
@@ -7696,13 +7700,13 @@ typedef struct tfx_effect_manager_s {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
-	tfx_vector_t<tfxU32> free_gpu_emitters;
+	tfx_vector_t<tfxU32> free_gpu_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_particle_emitter_state_t> emitters;
-	tfx_vector_t<tfx_gpu_emitter_t> gpu_emitters;
+	tfx_vector_t<tfx_gpu_ribbon_emitter_t> gpu_ribbon_emitters;
 	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t *> deffered_ribbon_spawn_work;
@@ -7889,7 +7893,7 @@ tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_effect_manager pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
-tfxINTERNAL tfxU32 tfx__grab_gpu_emitter(tfx_effect_manager pm);
+tfxINTERNAL tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_effect_manager pm);
 tfxINTERNAL void tfx__free_gpu_emitter(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_effect_manager pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_effect_manager pm, tfxKey bucket_id, tfxU32 ribbon_index);
@@ -8484,20 +8488,6 @@ tfxINTERNAL inline void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay
 	*rx = tfxWideSub(tfxWideMul(ay, *bz), tfxWideMul(az, *by));
 	*ry = tfxWideSub(tfxWideMul(az, *bx), tfxWideMul(ax, *bz));
 	*rz = tfxWideSub(tfxWideMul(ax, *by), tfxWideMul(ay, *bx));
-}
-
-tfxINTERNAL inline tfxU32 tfx__pack_heat_response(float boost, float sharpness, float power) {
-	//Layout: [sharpness:8 | boost:8 | power:16]
-	//power     uint16, range 0.5 - 2.5
-	//boost     uint8,  range 0.0 - 8.0
-	//sharpness uint8,  range 1.0 - 32.0
-	float power_n = (tfx__Max(0.5f, tfx__Min(2.5f, power)) - 0.5f) * (1.f / 2.f);
-	float boost_n = tfx__Max(0.f, tfx__Min(8.f, boost)) * (1.f / 8.f);
-	float sharpness_n = (tfx__Max(1.f, tfx__Min(32.f, sharpness)) - 1.f) * (1.f / 31.f);
-	tfxU32 power_q = (tfxU32)(power_n * 65535.f + 0.5f);
-	tfxU32 boost_q = (tfxU32)(boost_n * 255.f + 0.5f);
-	tfxU32 sharpness_q = (tfxU32)(sharpness_n * 255.f + 0.5f);
-	return (sharpness_q << 24) | (boost_q << 16) | power_q;
 }
 
 tfxINTERNAL inline void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfxWideFloat velocity_normal_y, tfxWideFloat velocity_normal_z, tfxWideFloat cone_angle, tfxWideFloat *random_x, tfxWideFloat *random_y, tfxWideFloat *random_z) {
