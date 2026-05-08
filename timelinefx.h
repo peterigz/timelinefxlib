@@ -2715,6 +2715,7 @@ typedef enum {
 	tfxVelocityOvertimePreset,
 	tfxWeightOvertimePreset,
 	tfxDirectionOvertimePreset,
+	tfxFixedRibbonAnglePreset,
 	tfxOpacityOvertimePreset,
 	tfxPercentOvertime,
 	tfxIntensityOvertimePreset,

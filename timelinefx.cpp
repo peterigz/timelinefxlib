@@ -2809,7 +2809,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].type = tfxOverlength_width;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxDirectionOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].type = tfxOverlength_ribbon_fixed_angle;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].type = tfxOverlength_ribbon_fixed_angle;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
@@ -2948,7 +2948,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxDirectionOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
@@ -7313,6 +7313,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return { 0.f, -4320.f };
+	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
+		return { 0.f, -1080.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
@@ -7384,6 +7386,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return { 1.f, 4320.f };
+	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
+		return { 1.f, 1080.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
@@ -7454,6 +7458,7 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 	case tfx_graph_preset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
 		*frame = 0.001f;
 		*value = 0.01f;
 		break;
