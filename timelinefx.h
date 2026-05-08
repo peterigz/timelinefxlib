@@ -9691,6 +9691,7 @@ tfxINTERNAL void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data)
 tfxINTERNAL void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *data);

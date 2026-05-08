@@ -6222,8 +6222,8 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
 		else if (*field == "heat_response_boost") gpu_properties->heat_response_boost = value;
-		else if (*field == "heat_response_sharpness") gpu_properties->heat_response_sharpness = value;
-		else if (*field == "heat_response_curve") gpu_properties->heat_response_curve = value;
+		else if (*field == "heat_response_sharpness") gpu_properties->heat_response_sharpness = value ? value : 1.f;
+		else if (*field == "heat_response_curve") gpu_properties->heat_response_curve = value ? value : 1.1f;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -9266,6 +9266,8 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	}
 	pm->unique_particle_id = 0;
 	tfx_SetSeed(pm, settings->seed);
+	float saved_warmup = effect->warmup_time;
+	effect->warmup_time = 0;
 	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
@@ -9495,6 +9497,9 @@ TFX_ENABLE_COMPILER_WARNING()
 		for (tfxEachLayer) {
 			tfx__invalidate_new_captured_index(tfxCastBufferRef(tfx_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 		}
+		//tfx__update_effect_manager sets warmup_just_finished after running the warmup loop so that the
+		//invalidate above forces all post-warmup captured_indexes to INVALID for one frame. Clear it now
+		//that every layer has been processed; subsequent frames take the normal age == 0 / self-ref paths.
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
@@ -9726,6 +9731,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 	running_ribbon_count.free();
 	running_ribbon_count_per_bucket.free();
+	effect->warmup_time = saved_warmup;
 }
 
 void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, float frame_length, int *progress) {
@@ -13531,6 +13537,33 @@ TFX_ENABLE_COMPILER_WARNING()
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				sprite_uids[running_sprite_index].property_index = emitter.state_properties.property_index;
 				running_sprite_index++;
+			}
+		}
+		start_diff = 0;
+	}
+}
+
+void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data) {
+	//Warmup-only counterpart to tfx__control_particle_uid. During warmup, sprite recording is gated
+	//(no writes to instance_buffer or unique_sprite_ids), but a particle that loops back to age 0
+	//mid-warmup needs a fresh bank.uid so that the first post-warmup recording frame and subsequent
+	//frames see a uid distinct from the original spawn. Without this, the offset_captured_indexes
+	//assert can fire because two sprite slots with the same stale uid get linked across frames.
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
+
+	tfxU32 start_diff = work_entry->start_diff;
+	bool is_wrapped = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite;
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+		for (tfxU32 j = start_diff; j < tfxDataWidth; ++j) {
+			int index_j = index + j;
+			if (bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped) {
+				bank.uid[index_j] = (tfxU32)tfx__rdtsc();
 			}
 		}
 		start_diff = 0;
@@ -18039,7 +18072,11 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	if (amount_to_update > 0) {
 		tfx_position_policy_context ctx = {};
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-			tfx__control_particle_uid(&pm->work_queue, work_entry);
+			if (pm->flags & tfxEffectManagerFlags_warming_up) {
+				tfx__control_particle_uid_warmup(&pm->work_queue, work_entry);
+			} else {
+				tfx__control_particle_uid(&pm->work_queue, work_entry);
+			}
 		}
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 			tfx__control_particle_capture_spawn_locations(&pm->work_queue, work_entry);
