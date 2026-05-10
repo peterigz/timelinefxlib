@@ -3603,6 +3603,7 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start, int
 
 void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
+	/*
 	if (node_count == 0) {
 		//Add a small dummy path if the node count is 0
 		path->buffers.nodes.resize(4);
@@ -3610,6 +3611,7 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 		node_count = 4;
 		path->settings.node_count = 4;
 	}
+	*/
 	path->settings.node_count = node_count;
 	if (!path->buffers.node_buffer.capacity) {
 		tfx__init_paths_soa(&path->buffers.node_buffer, &path->buffers.node_soa, node_count);
@@ -9233,7 +9235,12 @@ void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 }
 
 void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
-	tfx__wait_for_effect_manager_update(pm);
+	//Claim ownership of pm before any other thread can issue a tfx_UpdateEffectManager on it.
+	//The flag is checked under update_thread_mutex by tfx_UpdateEffectManager so callers will see this and bail.
+	tfx__sync_lock(&pm->update_thread_mutex);
+	pm->flags |= tfxEffectManagerFlags_recording_sprites;
+	tfx__wait_for_effect_manager_update_locked(pm);
+	tfx__sync_unlock(&pm->update_thread_mutex);
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	float frame_length = 1000.f / update_frequency;
 	tfxU32 frames = settings->real_frames;
@@ -9274,7 +9281,6 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 			
 		}
 	}
-	pm->flags |= tfxEffectManagerFlags_recording_sprites;
 	pm->flags |= settings->animation_flags & tfxAnimationFlags_loop ? tfxEffectManagerFlags_animation_loops : 0;
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
@@ -9437,7 +9443,6 @@ TFX_ENABLE_COMPILER_WARNING()
 	tmp_ribbon_frame_meta.free();
 
 	tfx_ReconfigureEffectManager(pm, effect->sort_passes);
-	pm->flags |= tfxEffectManagerFlags_recording_sprites;
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
@@ -9709,7 +9714,9 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	tfx_DisablePMSpawning(pm, false);
 	tfx_ClearEffectManager(pm, false, false);
+	tfx__sync_lock(&pm->update_thread_mutex);
 	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+	tfx__sync_unlock(&pm->update_thread_mutex);
 	pm->flags &= ~tfxEffectManagerFlags_animation_loops;
 
 	if (settings->playback_speed < 1.f) {
@@ -11896,16 +11903,34 @@ void *tfx__update_effect_manager_thread(void *data) {
 void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed_time) {
 	//Wait for the previous frame's update thread to finish
 	tfx__complete_all_work(&pm->work_queue);
-	tfx__wait_for_effect_manager_update(pm);
 
 	pm->manager_work.elapsed_time = elapsed_time;
 	pm->manager_work.pm = pm;
 
 	if ((pm->flags & tfxEffectManagerFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
+		tfx__sync_lock(&pm->update_thread_mutex);
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+			tfx__sync_unlock(&pm->update_thread_mutex);
+			return;
+		}
+		tfx__wait_for_effect_manager_update_locked(pm);
+		tfx__sync_unlock(&pm->update_thread_mutex);
 		tfx__update_effect_manager(pm);
 	} else {
-		tfx__create_thread(&pm->update_thread, tfx__update_effect_manager_thread, pm);
-		pm->update_thread_active = true;
+		tfx__sync_lock(&pm->update_thread_mutex);
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+			tfx__sync_unlock(&pm->update_thread_mutex);
+			return;
+		}
+		tfx__wait_for_effect_manager_update_locked(pm);
+		bool spawned = tfx__create_thread(&pm->update_thread, tfx__update_effect_manager_thread, pm);
+		if (spawned) {
+			pm->update_thread_active = true;
+		}
+		tfx__sync_unlock(&pm->update_thread_mutex);
+		if (!spawned) {
+			tfx__update_effect_manager(pm);
+		}
 	}
 }
 
@@ -13648,9 +13673,10 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes)
 	}
 	pm->free_particle_lists.FreeAll();
 
-	tfxEffectManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) | 
-											(pm->flags & tfxEffectManagerFlags_double_buffer_sprites) | 
-											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index);
+	tfxEffectManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) |
+											(pm->flags & tfxEffectManagerFlags_double_buffer_sprites) |
+											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) |
+											(pm->flags & tfxEffectManagerFlags_recording_sprites);
 
 	tfxU32 size_in_bytes = pm->instance_buffer.capacity * pm->instance_buffer.struct_size;
 	tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_instance_t));
@@ -18638,6 +18664,7 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 
 	tfx__sync_init(&pm->add_effect_mutex);
 	tfx__sync_init(&pm->updating);
+	tfx__sync_init(&pm->update_thread_mutex);
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the bucket size

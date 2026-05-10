@@ -19,7 +19,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
-//#define TFX_EXTRA_DEBUGGING
+#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
 
 //Enable this to process 8 particles at a time.
@@ -5644,8 +5644,10 @@ tfxINTERNAL inline void tfx__join_thread(
 		*thread_handle = NULL;
 	}
 #else
-	pthread_join(*thread_handle, NULL);
-	*thread_handle = 0;
+	if (*thread_handle) {
+		pthread_join(*thread_handle, NULL);
+		*thread_handle = 0;
+	}
 #endif
 }
 
@@ -7752,6 +7754,7 @@ typedef struct tfx_effect_manager_s {
 	//We might not need these now.
 	tfx_sync_t add_effect_mutex;
 	tfx_sync_t updating;
+	tfx_sync_t update_thread_mutex;
 
 #ifdef _WIN32
 	HANDLE update_thread;
@@ -8015,11 +8018,16 @@ tfxINTERNAL void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 ind
 tfxINTERNAL void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index);
 tfxINTERNAL void tfx__set_effect_manager_timings(tfx_effect_manager effect_manager, double elapsed_time, double max_frame_length);
 tfxINTERNAL void tfx__update_effect_manager(void *data);
-tfxINTERNAL inline void tfx__wait_for_effect_manager_update(tfx_effect_manager pm) {
+tfxINTERNAL inline void tfx__wait_for_effect_manager_update_locked(tfx_effect_manager pm) {
 	if (pm->update_thread_active) {
 		tfx__join_thread(&pm->update_thread);
 		pm->update_thread_active = false;
 	}
+}
+tfxINTERNAL inline void tfx__wait_for_effect_manager_update(tfx_effect_manager pm) {
+	tfx__sync_lock(&pm->update_thread_mutex);
+	tfx__wait_for_effect_manager_update_locked(pm);
+	tfx__sync_unlock(&pm->update_thread_mutex);
 }
 #ifdef _WIN32
 unsigned WINAPI tfx__update_effect_manager_thread(void *data);
