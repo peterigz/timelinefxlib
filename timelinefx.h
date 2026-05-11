@@ -19,7 +19,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
-#define TFX_EXTRA_DEBUGGING
+//#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
 
 //Enable this to process 8 particles at a time.

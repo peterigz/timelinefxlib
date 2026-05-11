@@ -8030,12 +8030,18 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 			life_factor = tfx__get_graph_max_value(&child_graphs.graphs[tfxEmitter_factor_life_index]);
 		}
 
+		//The emitter doesn't begin ticking its own age (and so doesn't spawn) until the parent
+		//effect has aged past delay_spawning. Spawn-time t below is in emitter-local age, so the
+		//corresponding effect age — which is what global graphs are sampled by, and what we
+		//ultimately need lifetimes measured in — is delay_spawning + t.
+		float delay_spawning = child->state_properties.delay_spawning;
+
 		if (is_single) {
 			//Single-shot emitters spawn the entire burst at emitter age 0 and then loop the
 			//particle's own graphs single_shot_limit times before the particle dies.
 			float life_at_zero = tfx__get_graph_first_value(life_graph) + tfx__get_graph_first_value(life_variation_graph);
-			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, 0.f);
-			float total_life = life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
+			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, delay_spawning);
+			float total_life = delay_spawning + life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
 			if (total_life > effect_lifetime) {
 				effect_lifetime = total_life;
 			}
@@ -8052,13 +8058,14 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 		//Sweep the emitter's age in 1ms steps. Skip steps where nothing actually spawns —
 		//a hole in the amount graph shouldn't pretend to produce a long-lived particle.
 		for (float t = 0.f; t <= spawn_end; t += step_size) {
-			float global_amount = tfx__get_graph_value_by_age(global_amount_graph, t);
+			float effect_age = delay_spawning + t;
+			float global_amount = tfx__get_graph_value_by_age(global_amount_graph, effect_age);
 			float spawn_rate = (tfx__get_graph_value_by_age(amount_graph, t) + tfx__get_graph_value_by_age(amount_variation_graph, t)) * global_amount;
 			if (spawn_rate <= 0.f) continue;
 
-			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, t);
+			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, effect_age);
 			float life = (tfx__get_graph_value_by_age(life_graph, t) + tfx__get_graph_value_by_age(life_variation_graph, t)) * global_life_adjust * life_factor;
-			float death_time = t + life;
+			float death_time = effect_age + life;
 			if (death_time > effect_lifetime) {
 				effect_lifetime = death_time;
 			}
