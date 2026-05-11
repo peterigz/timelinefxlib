@@ -7173,7 +7173,7 @@ typedef struct tfx_sprite_data_push_s {
 typedef struct tfx_ribbon_data_push_s {
 	tfxU32 animation_instances_total;
 	tfxU32 ribbons_total;
-	tfxU32 offset_index;
+	tfxU32 offsets_index;
 	tfxU32 animation_instances_index;
 	tfxU32 ribbon_data_index;
 	tfxU32 ribbon_output_index;
@@ -7526,6 +7526,9 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 flags;
 	tfxU32 graph_lookup_offset;
 	tfxU32 bucket_index;
+	float heat_response_boost;
+	float heat_response_sharpness;
+	float heat_response_curve;
 } tfx_animation_ribbon_properties_t;
 
 typedef struct tfx_animation_ribbon_bucket_s {

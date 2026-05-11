@@ -10084,6 +10084,9 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 			properties.flags = effect->state_properties.property_flags;
 			properties.graph_lookup_offset = effect->gpu_lookup_offset;
+			properties.heat_response_boost = ribbon_properties.heat_response_boost;
+			properties.heat_response_sharpness = ribbon_properties.heat_response_sharpness;
+			properties.heat_response_curve = ribbon_properties.heat_response_curve;
 			tfx_image_data_t &image = *effect->state_properties.image;
 			properties.animation_frames = image.animation_frames;
 			if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
