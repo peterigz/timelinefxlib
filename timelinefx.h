@@ -513,6 +513,10 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 	return __sync_val_compare_and_swap(target, original, value);
 }
 
+static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
+	return __sync_lock_test_and_set(target, value);
+}
+
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
