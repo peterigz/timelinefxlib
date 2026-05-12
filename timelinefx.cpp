@@ -5066,6 +5066,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("use_color_hint", tfxBool);
 	names_and_types.Insert("hidden", tfxBool);
 	names_and_types.Insert("use_path_as_trajectory", tfxBool);
+	names_and_types.Insert("resimulate_on_edit", tfxBool);
 
 	//Ribbon properties
 	names_and_types.Insert("ribbon_segment_count", tfxUInt);
