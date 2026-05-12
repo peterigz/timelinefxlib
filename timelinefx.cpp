@@ -14096,6 +14096,12 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 	pm->ribbon_control_work.clear();
 	pm->control_work.clear();
 	pm->age_work.clear();
+	//Stale warmup entries reference cleared effect slots; if left behind, the next add reuses
+	//the slot with reset state_flags, defeating pending_warmup dedup and queueing a duplicate
+	//that double-dispatches age work against the same bank.
+	pm->warmup_effects[0].clear();
+	pm->warmup_effects[1].clear();
+	pm->flags &= ~tfxEffectManagerFlags_warming_up;
 	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
