@@ -28,8 +28,6 @@
 //Enable fused multiply add in simd calculations
 //#define tfxUSEFMA
 
-//#define TFX_MEMORY_TRACKING
-
 /*
 	Timeline FX C++ library
 
@@ -151,10 +149,12 @@ typedef void *tfx_pool;
 
 #define TFX_DEPRECATED assert(0 && "Function is deprecated");
 
-#define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxINIT_MAGIC)
-#define TFX_ASSERT_UNINIT(magic) TFX_ASSERT(magic != tfxINIT_MAGIC)
-#define TFX_ASSERT_HANDLE(handle) TFX_ASSERT(handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
-#define TFX_VALID_HANDLE(handle) (handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
+#define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxSTRUCT_IDENTIFIER)
+#define TFX_ASSERT_UNINIT(magic) TFX_ASSERT(magic != tfxSTRUCT_IDENTIFIER)
+#define TFX_ASSERT_HANDLE(handle) TFX_ASSERT(handle && (*((int*)handle) & 0xFFFF) == tfxSTRUCT_IDENTIFIER)
+#define TFX_VALID_IDENTIFIER(handle) (handle && (*((int*)handle) & 0xFFFF) == tfxSTRUCT_IDENTIFIER)
+#define TFX_STRUCT_TYPE(handle) (tfx_struct_type)(*((int*)handle) & 0xFFFF0000)
+#define TFX_VALID_HANDLE(handle, struct_type) (TFX_VALID_IDENTIFIER(handle) && TFX_STRUCT_TYPE(handle) == struct_type)
 
 #define tfx__is_pow2(x) ((x) && !((x) & ((x) - 1)))
 #define tfx__glue2(x, y) x ## y
@@ -1708,6 +1708,10 @@ void tfxAddHostMemoryPool(size_t size);
 void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
+tfxINTERNAL void tfx__free_handle(tfx_allocator *allocator, void *handle);
+tfxINTERNAL void tfx__scan_memory_and_free_resources();
+tfxINTERNAL void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_header *current_block);
+tfxINTERNAL void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, bool output_all);
 //Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
 //This assumes that dst is the start address of the block. If you're copying to a range that is offset from the beginning
 //of the block then you can use tfx_SafeCopyBlock instead.
@@ -1797,7 +1801,8 @@ typedef unsigned short tfxUShort;
 #define tfxINVALID 0xFFFFFFFF
 #define tfxINVALID_SPRITE 0x0FFFFFFF
 #define tfxUNINIT_MAGIC 0xDEADBEEF
-#define tfxINIT_MAGIC 0xCAFEBABE
+#define tfxSTRUCT_IDENTIFIER 0x71F8
+#define tfxINIT_MAGIC(struct_type) (struct_type | tfxSTRUCT_IDENTIFIER);
 #define tfxEmitterPropertiesCount 26
 
 #define tfxDel << "=" <<
@@ -2692,6 +2697,20 @@ tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
 //Section: Enums
 //----------------------------------------------------------
 
+//Struct types
+typedef enum {
+	//Single object handles
+	tfx_struct_type_effect_library					                    = 0 << 16,	
+	tfx_struct_type_effect_manager						                = 1 << 16,
+	tfx_struct_type_stream    											= 2 << 16,
+	tfx_struct_type_animation_manager 									= 3 << 16,
+	tfx_struct_type_effect_descriptor 									= 4 << 16,
+	tfx_struct_type_gpu_shapes 											= 5 << 16,
+	tfx_struct_type_package 											= 6 << 16,
+	tfx_struct_type_effect_template										= 7 << 16,
+} tfx_struct_type;
+tfxINTERNAL const char *tfx__struct_type_to_string(tfx_struct_type struct_type);
+
 //tfx_graph_t presets to determine limits and scales of different graphs, mainly used for the editor
 typedef enum {
 	tfxGlobalPercentPreset,
@@ -3199,47 +3218,6 @@ typedef enum {
 	tfxStartRibbonEmitterCount,
 	tfxEndRibbonEmitterCount
 } tfx_effect_library_stream_context;
-
-typedef enum {
-	//Single object handles
-	tfx_effect_library_mb,
-	tfx_effect_manager_mb,
-	//Effect Manager storage lists
-	tfx_particle_array_buffers_mb,
-	tfx_particle_arrays_mb,
-	tfx_particle_location_buffers_mb,
-	tfx_particle_location_arrays_mb,
-	tfx_free_particle_lists_mb,
-	tfx_free_particle_location_lists_mb,
-	tfx_free_ribbon_segment_lists_mb,
-	tfx_ribbon_segment_buckets_mb,
-	tfx_sorting_work_entry_mb,
-	tfx_spawn_work_mb,
-	tfx_ribbon_work_mb,
-	tfx_control_work_mb,
-	tfx_ribbon_control_work_mb,
-	tfx_age_work_mb,
-	tfx_particle_indexes_mb,
-	tfx_free_particle_indexes_mb,
-	tfx_effects_in_use_mb,
-	tfx_control_emitter_queue_mb,
-	tfx_emitters_check_capture_mb,
-	tfx_free_effects_mb,
-	tfx_free_emitters_mb,
-	tfx_free_gpu_emitters_mb,
-	tfx_free_ribbon_emitters_mb,
-	tfx_free_path_quaternions_mb,
-	tfx_path_quaternions_mb,
-	tfx_effects_mb,
-	tfx_emitters_mb,
-	tfx_gpu_emitters_mb,
-	tfx_ribbon_emitters_mb,
-	tfx_deffered_spawn_work_mb,
-	tfx_deffered_ribbon_spawn_work_mb,
-	tfx_unique_sprite_ids_mb,
-	tfx_free_compute_controllers_mb,
-	//Effect Library Storage lists
-} tfx_memory_allocation_type;
 
 // -- [Bit_fields]
 typedef tfxU32 tfxParticleEmitterFlags;			//tfx_particle_emitter_flag_bits
@@ -4146,9 +4124,6 @@ struct tfx_vector_t {
 	tfxU32 capacity;
 	tfxU32 volatile locked;
 	tfxU32 alignment;
-#if defined(TFX_MEMORY_TRACKING)
-	tfx_memory_allocation_type allocation_type;
-#endif
 	T *data;
 
 	// Provide standard typedefs but we don't use them ourselves.
@@ -4158,7 +4133,7 @@ struct tfx_vector_t {
 
 	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline					tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
-	//inline					tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { TFX_ASSERT(0); return *this; }	//Use copy instead. 
+	//inline				tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { TFX_ASSERT(0); return *this; }	//Use copy instead. 
 	inline					~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers! Call the_containter.free();
 
 	inline void				init() { locked = false; current_size = capacity = alignment = 0; data = nullptr; }
@@ -4208,9 +4183,6 @@ struct tfx_vector_t {
 			new_data = (T *)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
-#if defined(TFX_MEMORY_TRACKING)
-		tfx_SetBlockMemoryType(new_data, allocation_type);
-#endif
 		if (data) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(T));
 			tfxFREE(data);
@@ -5277,7 +5249,7 @@ tfxAPI_EDITOR inline tfx_stream tfx__create_stream() {
 	tfx_stream_t blank_stream = { 0 };
 	tfx_stream stream = tfxNEW(tfx_stream);
 	*stream = blank_stream;
-	stream->magic = tfxINIT_MAGIC;
+	stream->magic = tfxINIT_MAGIC(tfx_struct_type_stream);
 	return stream;
 }
 
