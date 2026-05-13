@@ -52,9 +52,11 @@ void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 134217720) {
+	/*
+	if (offset_from_allocator == 3370376) {
 		int d = 0;
 	}
+	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Allocate(tfxMemoryAllocator, size);
@@ -67,9 +69,11 @@ void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 134217720) {
+	/*
+	if (offset_from_allocator == 3370376) {
 		int d = 0;
 	}
+	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
@@ -82,9 +86,11 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 134217720) {
+	/*
+	if (offset_from_allocator == 3370376) {
 		int d = 0;
 	}
+	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
@@ -99,6 +105,11 @@ void tfx__free_handle(tfx_allocator *allocator, void *handle) {
 		case tfx_struct_type_stream: {
 			tfx_stream stream = (tfx_stream)handle;
 			tfx_FreeStream(stream);
+			break;
+		}
+		case tfx_struct_type_effect_template: {
+			tfx_effect_template effect = (tfx_effect_template)handle;
+			tfx_FreeEffectTemplate(effect);
 			break;
 		}
 		case tfx_struct_type_effect_descriptor: {
@@ -143,7 +154,6 @@ void tfx__scan_memory_and_free_resources() {
 						case tfx_struct_type_effect_manager:
 						case tfx_struct_type_stream:
 						case tfx_struct_type_animation_manager:
-						case tfx_struct_type_effect_descriptor:
 						case tfx_struct_type_gpu_shapes:
 						case tfx_struct_type_package:
 						case tfx_struct_type_effect_template:
@@ -191,7 +201,7 @@ void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_heade
 				//break;
 				//}
 	} else {
-		tfxPrint("Allocation: %p, size: %zu, offset: %zi, type: UNKNOWN", allocation, current_block->size, offset_from_allocator);
+		tfxPrint("Allocation: %p, size: %zu, offset: %zi, type: %s", allocation, current_block->size, offset_from_allocator, current_block->size == 2 ? "Dummy Block In Allocator, ignore" : "UNKNOWN");
 	}
 }
 
@@ -3282,12 +3292,12 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 	while (stack.size()) {
 		tfx_effect_descriptor current = stack.pop_back();
 		if (current->state_properties.graph_list_index != tfxINVALID) {
-			if (!TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
+			if (TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
 				tfx__free_library_graph_list(current->library, current->state_properties.graph_list_index);
 			}
 		}
 		if (current->state_properties.transform_index != tfxINVALID) {
-			if (!TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
+			if (TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
 				tfx__free_library_graph_list(current->library, current->state_properties.transform_index);
 			}
 		}
@@ -3296,7 +3306,7 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 		}
 		current->children.free();
 		current->path.Clear();
-		if (!TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
+		if (TFX_VALID_HANDLE(current->library, tfx_struct_type_effect_library)) {
 			tfx__free_library_properties(current);
 		}
 		tfxFREE(current);
@@ -3443,7 +3453,6 @@ tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *na
 	}
 	tfx_effect_template effect_template = tfxNEW(tfx_effect_template);
 	memset(effect_template, 0, sizeof(tfx_effect_template_t));
-	effect_template->effect = tfx_NewEffectDescriptor(tfxEffectType);
 	effect_template->paths.init();
 	effect_template->magic = tfxINIT_MAGIC(tfx_struct_type_effect_template);
 	tfx_ResetTemplate(effect_template);
@@ -10819,7 +10828,7 @@ bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager) {
 
 void tfx_ResetTemplate(tfx_effect_template t) {
 	if (t->paths.Size()) {
-		t->paths.Clear();
+		t->paths.FreeAll();
 		tfx__free_effect(t->effect);
 	}
 }
@@ -14339,7 +14348,9 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 	pm->spawn_work.free();
 	pm->ribbon_work.free();
 	pm->control_work.free();
+	pm->ribbon_control_work.free();
 	pm->age_work.free();
+	pm->deffered_spawn_work.free();
 	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
@@ -14354,16 +14365,16 @@ void tfx__free_all_particle_lists(tfx_effect_manager pm) {
 	for (auto &buffer : pm->particle_array_buffers) {
 		tfx__free_soa_buffer(&buffer);
 	}
-	pm->particle_array_buffers.clear();
-	pm->particle_arrays.clear();
+	pm->particle_array_buffers.free();
+	pm->particle_arrays.free();
 }
 
 void tfx__free_all_spawn_location_lists(tfx_effect_manager pm) {
 	for (auto &buffer : pm->particle_location_buffers) {
 		tfx__free_soa_buffer(&buffer);
 	}
-	pm->particle_location_buffers.clear();
-	pm->particle_location_arrays.clear();
+	pm->particle_location_buffers.free();
+	pm->particle_location_arrays.free();
 }
 
 void tfx_SoftExpireAll(tfx_effect_manager pm) {
@@ -18519,8 +18530,10 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
 	TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
 	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
+
     tfx_storage_t store{};
 	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
+
     memcpy(tfxStore, &store, sizeof(tfx_storage_t));
 	tfxStore->default_memory_pool_size = memory_pool_size;
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
@@ -18621,12 +18634,14 @@ void tfx_EndTimelineFX() {
 
 	tfx__scan_memory_and_free_resources();
 
+	tfxFREE(tfxStore);
+
 	tfx_pool_stats_t stats = tfx_CreateMemorySnapshot(tfx_GetPool(tfxMemoryAllocator));
     if (stats.used_blocks > 0) {
         tfxPrint("There are still used memory blocks in TimelineFX, this indicates a memory leak and a possible bug!");
         tfxPrintMemoryBlocks(tfxMemoryAllocator, tfx__first_block_in_pool(tfx_GetPool(tfxMemoryAllocator)), true);
     } else {
-		tfxPrint("Successful shutdown of Zest Device.");
+		tfxPrint("Successful shutdown of TimelineFX.");
     }
 
 	for (int i = pool_count - 1; i != 0; --i) {
