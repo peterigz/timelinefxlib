@@ -4600,7 +4600,7 @@ struct tfx_storage_map_t {
 #define tfxMT_STACK_SIZE tfxMegabyte(4)
 #endif
 
-//Note this doesn't free memory, call tfx__free_soa_buffer to do that.
+//Note this doesn't free the data memory, call tfx__free_soa_buffer to do that.
 inline void tfx__init_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = 0;
 	buffer->struct_size = 0;
@@ -4615,6 +4615,7 @@ inline void tfx__init_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->resize_callback = nullptr;
 	buffer->struct_of_arrays = nullptr;
 	buffer->data = nullptr;
+	buffer->array_ptrs.free();
 	buffer->array_ptrs.init();
 }
 
@@ -8191,6 +8192,7 @@ tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress);
 tfxAPI_EDITOR tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type type);
+tfxAPI_EDITOR void tfx__free_graph_list_graphs(tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_gpu_particle_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);

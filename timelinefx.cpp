@@ -52,11 +52,10 @@ void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	/*
-	if (offset_from_allocator == 3370376) {
+	if (offset_from_allocator == 10917984) {
+		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
-	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Allocate(tfxMemoryAllocator, size);
@@ -69,11 +68,10 @@ void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	/*
-	if (offset_from_allocator == 3370376) {
+	if (offset_from_allocator == 10917984) {
+		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
-	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
@@ -86,11 +84,10 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	/*
-	if (offset_from_allocator == 3370376) {
+	if (offset_from_allocator == 10917984) {
+		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
-	*/
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
@@ -2458,8 +2455,7 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect, tfx_str64_t *name) {
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect
 	TFX_ASSERT(name->Length() > 0);                //Must have a name so that a hash can be generated
-	tfx_effect_descriptor ribbon = tfxNEW_ALIGNED(tfx_effect_descriptor, 16);
-	ribbon = tfx_NewEffectDescriptor(tfxRibbonType);
+	tfx_effect_descriptor ribbon = tfx_NewEffectDescriptor(tfxRibbonType);
 	ribbon->type = tfx_effect_descriptor_type::tfxRibbonType;
 	ribbon->library = effect->library;
 	ribbon->parent = effect;
@@ -14239,7 +14235,10 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 		ribbon_bucket.ribbon_emitter_indexes[0].free();
 		ribbon_bucket.ribbon_emitter_indexes[1].free();
 		ribbon_bucket.control_ribbon_queue.free();
-		ribbon_bucket.cached_static_path_segments.Clear();
+		//Must FreeAll (not Clear) — ribbon_segment_buckets.Clear() below leaves the bucket bytes in
+		//place, and the next Insert overwrites the slot with memcpy of {} which would otherwise drop
+		//these still-live pointers on the floor.
+		ribbon_bucket.cached_static_path_segments.FreeAll();
 		ribbon_bucket.active_ribbons = 0;
 		ribbon_bucket.globals.ribbon_count = 0;
 		ribbon_bucket.globals.segment_offset = 0;
@@ -14291,6 +14290,8 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 void tfx_FreeEffectManager(tfx_effect_manager pm) {
 	tfx__wait_for_effect_manager_update(pm);
 	tfx__free_all_particle_lists(pm);
+	tfx__free_all_spawn_location_lists(pm);
+	tfx__free_gpu_groups(pm);
 	for (auto &list : pm->free_particle_lists.data) {
 		list.free();
 	}
@@ -14307,6 +14308,10 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 		}
 	}
 	pm->instance_buffer.free();
+	for (tfxEachLayer) {
+		pm->instance_buffer_for_recording[0][layer].free();
+		pm->instance_buffer_for_recording[1][layer].free();
+	}
 	pm->effects_in_use[0].free();
 	pm->effects_in_use[1].free();
 	pm->control_emitter_queue.free();
@@ -14350,7 +14355,12 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 	pm->control_work.free();
 	pm->ribbon_control_work.free();
 	pm->age_work.free();
+	pm->sorting_work_entry.free();
 	pm->deffered_spawn_work.free();
+	pm->deffered_ribbon_spawn_work.free();
+	pm->free_ribbon_segment_lists.FreeAll();
+	pm->warmup_effects[0].free();
+	pm->warmup_effects[1].free();
 	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
