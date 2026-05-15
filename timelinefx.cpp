@@ -52,7 +52,7 @@ void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 10917984) {
+	if (offset_from_allocator == 22128192) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -68,7 +68,7 @@ void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 10917984) {
+	if (offset_from_allocator == 22128192) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -84,7 +84,7 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 10917984) {
+	if (offset_from_allocator == 22128192) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -9409,7 +9409,10 @@ void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
 	//Claim ownership of pm before any other thread can issue a tfx_UpdateEffectManager on it.
 	//The flag is checked under update_thread_mutex by tfx_UpdateEffectManager so callers will see this and bail.
+	//recording_thread_id lets re-entrant calls (tfx_ReconfigureEffectManager / tfx_ClearEffectManager
+	//made from this function itself) skip the external-recording wait while still blocking other threads.
 	tfx__sync_lock(&pm->update_thread_mutex);
+	pm->recording_thread_id = tfx__current_thread_id();
 	pm->flags |= tfxEffectManagerFlags_recording_sprites;
 	tfx__wait_for_effect_manager_update_locked(pm);
 	tfx__sync_unlock(&pm->update_thread_mutex);
@@ -9888,6 +9891,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	tfx_ClearEffectManager(pm, false, false);
 	tfx__sync_lock(&pm->update_thread_mutex);
 	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+	memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
 	tfx__sync_unlock(&pm->update_thread_mutex);
 	pm->flags &= ~tfxEffectManagerFlags_animation_loops;
 
@@ -10333,6 +10337,14 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	tfx_sprite_data_t &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 	animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 	tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
+	//Insert above did a shallow copy of sprite_data.compressed, so frame_meta and ribbon_frame_meta
+	//currently alias buffers owned by the library. Detach and deep copy so the animation manager
+	//owns its own buffers and the library data isn't mutated by the offset adjustments below.
+	metrics.frame_meta.init();
+	metrics.frame_meta.copy(sprite_data.compressed.frame_meta);
+	metrics.ribbon_frame_meta.init();
+	metrics.ribbon_frame_meta.copy(sprite_data.compressed.ribbon_frame_meta);
+	metrics.per_property_ribbon_counts.init();
 	metrics.name = effect->name;
 	metrics.frames_after_compression = settings.frames_after_compression;
 	metrics.real_frames = settings.real_frames;
@@ -10688,6 +10700,11 @@ void tfx_ResetAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->ribbon_properties.clear();
 	animation_manager->animation_ribbon_buckets.clear();
 	animation_manager->sprite_data_settings.clear();
+	for (tfx_sprite_data_metrics_t &metrics : animation_manager->effect_animation_info.data) {
+		metrics.ribbon_frame_meta.free();
+		metrics.per_property_ribbon_counts.free();
+		metrics.frame_meta.free();
+	}
 	animation_manager->effect_animation_info.Clear();
 	animation_manager->particle_shapes.Clear();
 	for (tfx_bitmap_t &bitmap : animation_manager->color_ramps.color_ramp_bitmaps) {
@@ -10718,9 +10735,17 @@ void tfx_FreeAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->ribbon_graph_data.free();
 	animation_manager->ribbon_offsets.free();
 	animation_manager->ribbon_property_metrics.free();
+	for (tfx_sprite_data_metrics_t &metrics : animation_manager->effect_animation_info.data) {
+		metrics.frame_meta.free();
+		metrics.ribbon_frame_meta.free();
+		metrics.per_property_ribbon_counts.free();
+	}
 	animation_manager->effect_animation_info.FreeAll();
 	animation_manager->sprite_data_settings.free();
 	animation_manager->particle_shapes.FreeAll();
+	for (tfx_bitmap_t &bitmap : animation_manager->color_ramps.color_ramp_bitmaps) {
+		tfx__free_bitmap(&bitmap);
+	}
 	animation_manager->color_ramps.color_ramp_bitmaps.free();
 	animation_manager->color_ramps.color_ramp_ids.FreeAll();
 	animation_manager->color_ramps.color_ramp_count = 0;
@@ -12079,24 +12104,29 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed_time) {
 	//Wait for the previous frame's update thread to finish
 	tfx__complete_all_work(&pm->work_queue);
 
-	pm->manager_work.elapsed_time = elapsed_time;
-	pm->manager_work.pm = pm;
-
 	if ((pm->flags & tfxEffectManagerFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
 		tfx__sync_lock(&pm->update_thread_mutex);
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+			//Bail without touching manager_work — the recording thread owns it and reads
+			//manager_work.elapsed_time every iteration; a stray write (e.g. caller passing
+			//0) would stall the recording (frame_length goes to 0, particles stop aging).
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
+		pm->manager_work.elapsed_time = elapsed_time;
+		pm->manager_work.pm = pm;
 		tfx__wait_for_effect_manager_update_locked(pm);
 		tfx__sync_unlock(&pm->update_thread_mutex);
 		tfx__update_effect_manager(pm);
 	} else {
 		tfx__sync_lock(&pm->update_thread_mutex);
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+			//See comment above — same reasoning for the multi-threaded branch.
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
+		pm->manager_work.elapsed_time = elapsed_time;
+		pm->manager_work.pm = pm;
 		tfx__wait_for_effect_manager_update_locked(pm);
 		bool spawned = tfx__create_thread(&pm->update_thread, tfx__update_effect_manager_thread, pm);
 		if (spawned) {
@@ -13842,6 +13872,7 @@ void tfx__toggle_sprites_with_uid(tfx_effect_manager pm, bool switch_on) {
 
 void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_external_recording(pm);
 	tfx_ClearEffectManager(pm, true, true);
 	for (auto &bank : pm->free_particle_lists.data) {
 		bank.free();
@@ -14181,6 +14212,7 @@ void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max, tfxU3
 }
 
 void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, bool free_sprite_buffers) {
+	tfx__wait_for_external_recording(pm);
 	tfx__wait_for_effect_manager_update(pm);
 	if (free_particle_banks) {
 		tfx__free_all_particle_lists(pm);
@@ -14288,6 +14320,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 }
 
 void tfx_FreeEffectManager(tfx_effect_manager pm) {
+	tfx__wait_for_external_recording(pm);
 	tfx__wait_for_effect_manager_update(pm);
 	tfx__free_all_particle_lists(pm);
 	tfx__free_all_spawn_location_lists(pm);

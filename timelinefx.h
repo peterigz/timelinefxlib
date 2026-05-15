@@ -312,6 +312,26 @@ tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
 #endif
 }
 
+//Portable thread identifier helpers. Used to allow re-entrant calls from a
+//thread that already owns a long-running operation (e.g. sprite data recording)
+//while making external threads wait until that operation finishes.
+#ifdef _WIN32
+typedef DWORD tfx_thread_id_t;
+tfxINTERNAL inline tfx_thread_id_t tfx__current_thread_id() { return GetCurrentThreadId(); }
+tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) { return a == b; }
+tfxINTERNAL inline void tfx__thread_sleep_ms(int ms) { Sleep(ms); }
+#else
+typedef pthread_t tfx_thread_id_t;
+tfxINTERNAL inline tfx_thread_id_t tfx__current_thread_id() { return pthread_self(); }
+tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) { return pthread_equal(a, b) != 0; }
+tfxINTERNAL inline void tfx__thread_sleep_ms(int ms) {
+	struct timespec ts;
+	ts.tv_sec = ms / 1000;
+	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+	nanosleep(&ts, NULL);
+}
+#endif
+
 #define tfx__MAXIMUM_BLOCK_SIZE (TFX_ONE << TFX_MAX_SIZE_INDEX)
 
 enum tfx__constants {
@@ -7742,6 +7762,11 @@ typedef struct tfx_effect_manager_s {
 	pthread_t update_thread;
 #endif
 	bool update_thread_active;
+	//Thread id of the thread that currently owns a long-running operation on
+	//this pm (sprite data recording). Only valid while
+	//tfxEffectManagerFlags_recording_sprites is set, both written and read
+	//under update_thread_mutex.
+	tfx_thread_id_t recording_thread_id;
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;
@@ -8008,6 +8033,21 @@ tfxINTERNAL inline void tfx__wait_for_effect_manager_update(tfx_effect_manager p
 	tfx__sync_lock(&pm->update_thread_mutex);
 	tfx__wait_for_effect_manager_update_locked(pm);
 	tfx__sync_unlock(&pm->update_thread_mutex);
+}
+//If another thread is currently recording sprite data on this pm, block until
+//it finishes. Re-entrant calls from the recording thread itself pass through
+//immediately (tfx__record_sprite_data internally calls tfx_ReconfigureEffectManager
+//and tfx_ClearEffectManager while the recording flag is still set).
+tfxINTERNAL inline void tfx__wait_for_external_recording(tfx_effect_manager pm) {
+	tfx_thread_id_t me = tfx__current_thread_id();
+	for (;;) {
+		tfx__sync_lock(&pm->update_thread_mutex);
+		bool blocked = (pm->flags & tfxEffectManagerFlags_recording_sprites) != 0
+			&& !tfx__thread_id_equal(pm->recording_thread_id, me);
+		tfx__sync_unlock(&pm->update_thread_mutex);
+		if (!blocked) break;
+		tfx__thread_sleep_ms(1);
+	}
 }
 #ifdef _WIN32
 unsigned WINAPI tfx__update_effect_manager_thread(void *data);
