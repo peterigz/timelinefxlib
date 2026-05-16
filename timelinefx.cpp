@@ -52,7 +52,7 @@ void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 22128192) {
+	if (offset_from_allocator == 29907648) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -68,7 +68,7 @@ void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 22128192) {
+	if (offset_from_allocator == 29907648) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -84,7 +84,7 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 22128192) {
+	if (offset_from_allocator == 29907648) {
 		tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
@@ -9425,6 +9425,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	int extra_frame_count = 0;
 	tfxU32 offset = 0;
 	bool particles_started = false;
+	bool ribbons_started = false;
 	bool start_counting_extra_frames = false;
 	pm->animation_length_in_time = (float)frames * frame_length - 1.f;
 	*progress = tfxCalculateFrames;
@@ -9442,6 +9443,7 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tfx_vector_t<tfx_frame_meta_t> tmp_frame_meta;
 	tfx_vector_t<tfx_ribbon_frame_meta_t> tmp_ribbon_frame_meta;
 	tfxU32 sprites_in_layers = 0;
+	tfxU32 ribbons_in_buckets = 0;
 	tfx_vec3_t pm_camera_position = pm->camera_position;
 	tfxEffectID preview_effect_index;
 
@@ -9481,7 +9483,6 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	frame = 0;
 	total_sprites = 0;
-	sprites_in_layers = 0;
 	tmp_frame_meta.clear();
 	tmp_ribbon_frame_meta.clear();
 	tfxU32 total_ribbons = 0;
@@ -9492,10 +9493,10 @@ TFX_ENABLE_COMPILER_WARNING()
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
 		tfx__update_effect_manager(pm);
-		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
 			sprites_in_layers = 0;
+			ribbons_in_buckets = 0;
 			for (tfxEachLayer) {
 				if (frame >= tmp_frame_meta.size()) {
 					tmp_frame_meta.push_back({});
@@ -9505,7 +9506,6 @@ TFX_ENABLE_COMPILER_WARNING()
 				total_sprites += pm->layer_sizes[layer];
 				sprites_in_layers += pm->layer_sizes[layer];
 				particles_started = total_sprites > 0;
-				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
 			//Count ribbon data if exists
 			if (frame >= tmp_ribbon_frame_meta.size()) {
@@ -9514,24 +9514,27 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
 				tmp_ribbon_frame_meta[frame].ribbon_count += bucket.active_ribbons;
 				total_ribbons += bucket.active_ribbons;
+				ribbons_in_buckets += bucket.active_ribbons;
+				ribbons_started = total_ribbons > 0;
 			}
 		}
 
-		if (auto_set_length && !(settings->animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
+		if (auto_set_length && !(settings->animation_flags & tfxAnimationFlags_loop) && (particles_started || ribbons_started) && sprites_in_layers == 0 && ribbons_in_buckets == 0) {
 			break;
 		}
 
 		offset++;
 
-		if (particles_started)
+		if (particles_started || ribbons_started) {
 			frame++;
+		}
 
-		if (settings->animation_flags & tfxAnimationFlags_loop && particles_started) {
+		if (settings->animation_flags & tfxAnimationFlags_loop && (particles_started || ribbons_started)) {
 			if (frame == frames) {
 				frame = 0;
 				start_counting_extra_frames = true;
 			}
-			if (!particles_processed_last_frame)
+			if (!sprites_in_layers && !ribbons_in_buckets)
 				break;
 		}
 		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
@@ -9636,7 +9639,21 @@ TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	);
 TFX_ENABLE_COMPILER_WARNING()
 
-	if (total_sprites == 0) {
+	if (total_sprites == 0 && total_ribbons == 0) {
+		tfx_DisablePMSpawning(pm, false);
+		tfx_ClearEffectManager(pm, false, false);
+		tfx__sync_lock(&pm->update_thread_mutex);
+		pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+		memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
+		tfx__sync_unlock(&pm->update_thread_mutex);
+		pm->flags &= ~tfxEffectManagerFlags_animation_loops;
+		pm->camera_position = pm_camera_position;
+		tfx__toggle_sprites_with_uid(pm, false);
+		for (tfxEachLayer) {
+			pm->instance_buffer_for_recording[0][layer].free();
+			pm->instance_buffer_for_recording[1][layer].free();
+		}
+		effect->warmup_time = saved_warmup;
 		return;
 	}
 
@@ -9671,9 +9688,11 @@ TFX_ENABLE_COMPILER_WARNING()
 	offset = 0;
 	extra_frame_count = 0;
 	particles_started = false;
+	ribbons_started = false;
 	start_counting_extra_frames = false;
 	tfx_DisablePMSpawning(pm, false);
 	total_sprites = 0;
+	tfxU32 total_ribbons_written = 0;
 	tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
 	tfx_vector_t<tfxU32> running_ribbon_count;
 	tfx_vector_t<tfxU32> running_ribbon_count_per_bucket;
@@ -9696,6 +9715,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		//invalidate above forces all post-warmup captured_indexes to INVALID for one frame. Clear it now
 		//that every layer has been processed; subsequent frames take the normal age == 0 / self-ref paths.
 		bool particles_processed_last_frame = false;
+		bool ribbons_processed_last_frame = false;
 
 		if (offset >= start_frame) {
 			if (offset == start_frame && start_frame > 0) {
@@ -9767,6 +9787,9 @@ TFX_ENABLE_COMPILER_WARNING()
 					fresh_ribbon_count += fresh_per_bucket[bucket_idx];
 					bucket_idx++;
 				}
+				total_ribbons_written += fresh_ribbon_count;
+				ribbons_started = total_ribbons_written > 0;
+				ribbons_processed_last_frame = fresh_ribbon_count > 0;
 
 				if (running_ribbon_count[frame] > 0 && fresh_ribbon_count > 0) {
 					//Save ALL existing ribbon data for this frame to a temporary buffer
@@ -9817,15 +9840,15 @@ TFX_ENABLE_COMPILER_WARNING()
 
 		offset++;
 
-		if (particles_started)
+		if (particles_started || ribbons_started)
 			frame++;
 
-		if (settings->animation_flags & tfxAnimationFlags_loop && particles_started) {
+		if (settings->animation_flags & tfxAnimationFlags_loop && (particles_started || ribbons_started)) {
 			if (frame == frames) {
 				frame = 0;
 				start_counting_extra_frames = true;
 			}
-			if (!particles_processed_last_frame)
+			if (!particles_processed_last_frame && !ribbons_processed_last_frame)
 				break;
 		}
 		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
@@ -18857,17 +18880,19 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 		tfx__free_soa_buffer(&sprite_data->real_time_ribbons_buffer);
 		tfx__init_soa_buffer(&sprite_data->compressed_sprites_buffer);
 		tfx__init_soa_buffer(&sprite_data->compressed_ribbons_buffer);
-		sprite_data->normal.frame_meta.free();
-		sprite_data->compressed.frame_meta.free();
-	}
-	else {
+	} else {
 		tfx__free_soa_buffer(&sprite_data->compressed_sprites_buffer);
 		tfx__free_soa_buffer(&sprite_data->real_time_sprites_buffer);
 		tfx__free_soa_buffer(&sprite_data->compressed_ribbons_buffer);
 		tfx__free_soa_buffer(&sprite_data->real_time_ribbons_buffer);
-		sprite_data->normal.frame_meta.free();
-		sprite_data->compressed.frame_meta.free();
 	}
+	sprite_data->normal.frame_meta.free();
+	sprite_data->normal.ribbon_frame_meta.free();
+	sprite_data->compressed.frame_meta.free();
+	sprite_data->compressed.ribbon_frame_meta.free();
+	sprite_data->normal.per_property_ribbon_counts.free();
+	sprite_data->compressed.per_property_ribbon_counts.free();
+	sprite_data->shared_segments.free();
 }
 
 bool tfx__valid_effect_id(tfx_effect_manager pm, tfxEffectID id) {
