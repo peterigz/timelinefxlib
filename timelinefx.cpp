@@ -10341,11 +10341,11 @@ void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_des
 	}
 }
 
-void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position) {
+void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position, tfx_sprite_data_t *external_sprite_data) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
-	if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
+	if (!external_sprite_data && !effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		TFX_ASSERT(pm);        //You must pass an appropriate particle manager if the animation needs recording
 		int progress;
 		tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
@@ -10357,7 +10357,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	tfxU32 ribbon_property_start = animation_manager->ribbon_properties.current_size;
 	tfx__add_effect_emitter_properties(animation_manager, effect, ribbon_indexes, &has_animated_shape);
 
-	tfx_sprite_data_t &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
+	tfx_sprite_data_t &sprite_data = !external_sprite_data ? effect->library->pre_recorded_effects.At(effect->path_hash) : *external_sprite_data;
 	animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 	tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
 	//Insert above did a shallow copy of sprite_data.compressed, so frame_meta and ribbon_frame_meta
@@ -10369,10 +10369,22 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	metrics.ribbon_frame_meta.copy(sprite_data.compressed.ribbon_frame_meta);
 	metrics.per_property_ribbon_counts.init();
 	metrics.name = effect->name;
-	metrics.frames_after_compression = settings.frames_after_compression;
-	metrics.real_frames = settings.real_frames;
-	metrics.animation_length_in_time = settings.animation_length_in_time;
-	metrics.animation_flags = settings.animation_flags;
+	if (!external_sprite_data) {
+		metrics.frames_after_compression = settings.frames_after_compression;
+		metrics.real_frames = settings.real_frames;
+		metrics.animation_length_in_time = settings.animation_length_in_time;
+		metrics.animation_flags = settings.animation_flags;
+	} else {
+		//tfx_RecordEffect writes recording-derived values into sprite_data->compressed
+		//and sprite_data->normal but does NOT write back to library sprite_data_settings,
+		//so `settings` above is stale. animation_length_in_time and animation_flags
+		//arrived on the metrics via the Insert(sprite_data.compressed) above and are
+		//correct. The pre/post-compression frame counts are NOT stored on the metrics
+		//directly during recording — mirror the assignments that the recording flow
+		//would normally write into settings, sourcing them from the sprite_data itself.
+		metrics.frames_after_compression = external_sprite_data->compressed.frame_count;
+		metrics.real_frames = external_sprite_data->normal.frame_count;
+	}
 	metrics.flags = has_animated_shape ? tfxAnimationManagerFlags_has_animated_shapes : 0;
 	tfx_sprite_data_soa_t &sprites = sprite_data.compressed_sprites;
 	metrics.start_offset = animation_manager->sprite_data.current_size;

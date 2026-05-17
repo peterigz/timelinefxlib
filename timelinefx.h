@@ -6458,11 +6458,10 @@ typedef struct tfx_preview_camera_settings_s {
 
 //todo: this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 typedef struct tfx_sprite_sheet_settings_s {
-	tfx_vec3_t position;
 	tfx_vec2_t frame_size;
-	float scale;
 	float zoom;
 	int frames;
+	float current_time;
 	int current_frame;
 	int frame_offset;
 	int extra_frames_count;
@@ -6477,6 +6476,9 @@ typedef struct tfx_sprite_sheet_settings_s {
 	tfx_export_color_options color_option;
 	tfx_export_options export_option;
 	tfx_camera_settings_t camera_settings;
+	//Maybe irrelevent:
+	float scale;
+	tfx_vec3_t position;
 } tfx_sprite_sheet_settings_t;
 
 //This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
@@ -9742,7 +9744,7 @@ tfxINTERNAL void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_
 tfxINTERNAL void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties);
-tfxINTERNAL inline void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
+tfxAPI_EDITOR inline void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
 }
@@ -10878,11 +10880,12 @@ tfxAPI void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_mana
 Add sprite data to an animation manager sprite data buffer from an effect. This will record the
 animation if necessary and then convert the sprite data to tfx_sprite_data_t ready for uploading
 to the GPU
-* @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @param animation_manager       A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param effect_index            The index of the effect. This is the index returned when calling tfx_AddAnimationInstance
 * @param position                A tfx_vec3_t vector object containing the x, y and z coordinates
+* @param sprite_data             Optional advanced usage if you want to use sprite data you recorded in another process. Pass 0 to just use the record or lookup pre-recorded data for the effect.
 */
-tfxAPI void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position);
+tfxAPI void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position, tfx_sprite_data_t *sprite_data);
 
 /*
 Add an animation instance to the animation manager.
