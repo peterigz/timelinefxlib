@@ -5429,6 +5429,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("animation_magenta_mask", tfxBool);
 	names_and_types.Insert("animation_magenta_mask_always", tfxBool);
 	names_and_types.Insert("frames", tfxUInt);
+	names_and_types.Insert("export_frame_count", tfxUInt);
 	names_and_types.Insert("current_frame", tfxUInt);
 	names_and_types.Insert("frame_offset", tfxUInt);
 	names_and_types.Insert("extra_frames_count", tfxSInt);
@@ -5968,6 +5969,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	if (property_name == "spawn_amount")				value.Setf("%u", shared_properties->spawn_amount);
 	else if (property_name == "spawn_amount_variation") value.Setf("%u", shared_properties->spawn_amount_variation);
 	else if (property_name == "frames")					value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames);
+	else if (property_name == "export_frame_count")		value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_frame_count);
 	else if (property_name == "current_frame")			value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].current_frame);
 	else if (property_name == "seed")					value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed);
 	else if (property_name == "layer")					value.Setf("%u", shared_properties->layer);
@@ -6253,6 +6255,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "layer" && shared_properties) shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	else if (*field == "single_shot_limit" && shared_properties) shared_properties->single_shot_limit = value;
 	else if (*field == "frames") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames = value;
+	else if (*field == "export_frame_count") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_frame_count = value;
 	else if (*field == "current_frame") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].current_frame = value;
 	else if (*field == "seed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed = value;
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;

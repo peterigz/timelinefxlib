@@ -6461,6 +6461,7 @@ typedef struct tfx_sprite_sheet_settings_s {
 	tfx_vec2_t frame_size;
 	float zoom;
 	int frames;
+	int export_frame_count;
 	float current_time;
 	int current_frame;
 	int frame_offset;
