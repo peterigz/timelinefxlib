@@ -14522,7 +14522,10 @@ tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm) {
 
 tfxU32 tfx__get_ribbon_slot(tfx_effect_manager pm) {
 	if (!pm->free_ribbon_emitters.empty()) {
-		return pm->free_ribbon_emitters.pop_back();
+		tfxU32 index = pm->free_ribbon_emitters.pop_back();
+		pm->ribbon_emitters[index].ribbon_indexes[0].free();
+		pm->ribbon_emitters[index].ribbon_indexes[1].free();
+		return index;
 	}
 	if (pm->ribbon_emitters.current_size == pm->ribbon_emitters.capacity) {
 		return tfxINVALID;

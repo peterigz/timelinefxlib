@@ -7203,6 +7203,8 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 color_ramp_texture_index;
 	float lerp;
 	float time;
+	float ndc_offset_x;
+	float ndc_offset_y;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
