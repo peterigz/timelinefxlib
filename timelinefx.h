@@ -50,7 +50,7 @@
 		-[Graph_types]				
 		-[Bit_fields]				
 	[Constants]							Various constant definitions
-	[Preset_spline paths] 	 			Arrays of preset path nodes
+	[Preset_spline_paths] 	 			Arrays of preset path nodes
 	[String_Buffers]					Basic string buffers for storing names of things in the library and reading from library files.
 	[Containers_and_Memory]				Container structs and lists and defines for memory is allocated (uses Zest Pocket Allocator by default)
 	[Multithreading_Work_Queues]		Implementation for work queues for threading
@@ -3653,6 +3653,7 @@ typedef enum {
 	tfxPresetPath_vline  			                            = 0,
 	tfxPresetPath_hline,
 	tfxPresetPath_ring,
+	tfxPresetPath_flat_ring,
 	tfxPresetPath_spiral720,
 	tfxPresetPath_spiral_ball,
 	tfxPresetPath_whirlpool,
@@ -3783,6 +3784,15 @@ const float tfx__path_preset_ring[102] = {
 	0.000000f, -0.249572f, 4.921146f, 0.000000f, -0.738500f, 4.820669f, 0.000000f, -1.197192f, 4.623828f, 0.000000f, -1.606872f, 4.338683f, 0.000000f, -1.950766f, 3.976906f, 0.000000f, -2.214796f, 3.553310f, 0.000000f, -2.388151f, 3.085236f, 0.000000f, -2.463735f, 2.591847f, 
 	0.000000f, -2.438454f, 2.093344f, 0.000000f, -2.313342f, 1.610133f, 0.000000f, -2.093522f, 1.162000f, 0.000000f, -1.787992f, 0.767288f, 0.000000f, -1.409262f, 0.442159f, 0.000000f, -0.972837f, 0.199923f, 0.000000f, -0.496583f, 0.050498f, 0.000000f, 0.000000f, 0.000000f, 
 	0.000000f, 0.496584f, 0.050498f, 0.000000f, 0.972837f, 0.199923f
+}; 
+
+ 
+const float tfx__path_preset_flat_ring[102] = {
+	-0.496584f, 0.497365f, 0.100989f, 0.000000f, 0.496584f, 0.050498f, 0.496584f, 0.497366f, 0.100988f, 0.972836f, 0.499680f, 0.250395f, 1.409254f, 0.503429f, 0.492603f, 1.788014f, 0.508467f, 0.817689f, 2.093529f, 0.514578f, 1.212354f, 2.313358f, 0.521515f, 1.660432f, 
+	2.438463f, 0.528997f, 2.143584f, 2.463756f, 0.536718f, 2.642038f, 2.388158f, 0.544355f, 3.135355f, 2.214803f, 0.551601f, 3.603376f, 1.950770f, 0.558159f, 4.026901f, 1.606868f, 0.563765f, 4.388653f, 1.197189f, 0.568178f, 4.673762f, 0.738498f, 0.571222f, 4.870571f, 
+	0.249572f, 0.572777f, 4.971040f, -0.249573f, 0.572777f, 4.971035f, -0.738498f, 0.571226f, 4.870591f, -1.197197f, 0.568175f, 4.673766f, -1.606884f, 0.563758f, 4.388648f, -1.950765f, 0.558157f, 4.026912f, -2.214801f, 0.551597f, 3.603371f, -2.388153f, 0.544351f, 3.135355f, 
+	-2.463733f, 0.536715f, 2.642040f, -2.438456f, 0.528996f, 2.143587f, -2.313348f, 0.521512f, 1.660436f, -2.093539f, 0.514572f, 1.212360f, -1.787986f, 0.508463f, 0.817693f, -1.409262f, 0.503430f, 0.492603f, -0.972837f, 0.499680f, 0.250396f, -0.496584f, 0.497365f, 0.100989f, 
+	0.000000f, 0.496584f, 0.050498f, 0.496584f, 0.497366f, 0.100988f
 };
 
 const float tfx__path_preset_spiral720[96] = {
