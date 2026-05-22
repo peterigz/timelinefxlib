@@ -1609,7 +1609,7 @@ tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
 tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	int16_t x_scaled = (int16_t)(x * 32767.f / max_value);
 	int16_t y_scaled = (int16_t)(y * 32767.f / max_value);
-	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
+	return ((tfxU32)(uint16_t)x_scaled) | ((tfxU32)(uint16_t)y_scaled << 16);
 }
 
 tfxU32 tfx__pack16bit_unorm(float x, float y) {
@@ -2924,6 +2924,7 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index].type = tfxOvertime_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index].type = tfxOvertime_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].type = tfxOvertime_heat_response;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], 30.f, tfxVelocityTurbulancePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index].type = tfxOvertime_velocity_turbulance;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index].type = tfxOvertime_direction_turbulance;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index], 0.f, tfxDirectionOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index].type = tfxOvertime_direction;
@@ -2962,6 +2963,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index].type = tfxOvertime_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index].type = tfxOvertime_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].type = tfxOvertime_heat_response;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].type = tfxOverlength_width;
@@ -3060,6 +3062,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 0.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], 0.f, tfxFrameratePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], 1.f, tfxGlobalPercentPreset);
@@ -3101,6 +3104,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 0.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
@@ -4620,14 +4624,8 @@ void tfx__init_library(tfx_library library) {
 	library->free_particle_emitter_properties.init();
 	library->free_infos.init();
 	library->free_keyframes.init();
-	tfx_color_ramp_t ramp{};
-	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
-		ramp.colors[x].color = 0xFFFFFFFF;
-	}
+
 	library->color_ramps.color_ramp_ids.init();
-	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
-	tfxU32 id = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
-	library->color_ramps.color_ramp_ids.Insert(hash, id);
 	library->gpu_shapes = tfx_CreateGPUShapesList();
 	library->library_file_path.SetText("");
 	library->paths.init();
@@ -4881,8 +4879,6 @@ void tfx__update_all_library_graphs(tfx_library library) {
 			} else if (!tfx__is_color_graph_type(graph.type) && (tfx__is_lerp_graph(&graph))) {
 				tfx__update_lerp_graph(&graph);
 				tfx__update_graph_wide_oscillator(&graph);
-			} else if (tfx__is_color_graph_type(graph.type)) {
-				tfx__update_color_ramp(&graph_list, &graph_list.color_ramps);
 			}
 		}
 	}
@@ -4923,7 +4919,6 @@ void tfx__update_all_library_gpu_properties(tfx_library library) {
 }
 
 bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index) {
-	tfx__update_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
 	return tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 }
 
@@ -4936,7 +4931,6 @@ bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect) {
 	bool status = false;
 	for (tfx_effect_descriptor emitter : effect->children) {
 		tfxU32 index = emitter->state_properties.graph_list_index;
-		tfx__update_color_ramp(&library->graphs[index], &library->graphs[index].color_ramps);
 		status |= tfx__edit_color_ramp_bitmap(library, &library->graphs[index]);
 	}
 	return status;
@@ -5011,6 +5005,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("overtime_alpha_sharpness", tfxEmitter_overtime_alpha_sharpness_index);
 	tfxStore->graph_indexes.Insert("overtime_curved_alpha", tfxEmitter_overtime_curved_alpha_index);
 	tfxStore->graph_indexes.Insert("overtime_gradient_mapper", tfxEmitter_overtime_gradient_mapper_index);
+	tfxStore->graph_indexes.Insert("overtime_heat_response", tfxEmitter_overtime_heat_response_index);
 	tfxStore->graph_indexes.Insert("overtime_velocity_turbulance", tfxEmitter_overtime_velocity_turbulance_index);
 	tfxStore->graph_indexes.Insert("overtime_direction_turbulance", tfxEmitter_overtime_direction_turbulance_index);
 	tfxStore->graph_indexes.Insert("overtime_velocity_adjuster", tfxEmitter_overtime_velocity_adjuster_index);
@@ -5858,6 +5853,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOvertime_alpha_sharpness: return "overtime_alpha_sharpness"; break;
 	case tfxOvertime_curved_alpha: return "overtime_curved_alpha"; break;
 	case tfxOvertime_gradient_mapper: return "overtime_gradient_mapper"; break;
+	case tfxOvertime_heat_response: return "overtime_heat_response"; break;
 	case tfxOvertime_velocity: return "overtime_velocity"; break;
 	case tfxOvertime_width: return "overtime_width"; break;
 	case tfxOvertime_height: return "overtime_height"; break;
@@ -7825,51 +7821,52 @@ void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect, bool includ
 	}
 }
 
-tfxKey tfx__hash_color_ramp(tfx_color_ramp_t *ramp) {
-	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, tfxCOLOR_RAMP_WIDTH * sizeof(tfx_rgba8_t), 0);
-	return hash;
-}
-
-tfx_bitmap_t tfx__create_bitmap(int width, int height, int channels) {
-	TFX_ASSERT(width > 0 && height > 0 && channels > 0);
+tfx_bitmap_t tfx__create_bitmap(int width, int height, tfx_color_format format) {
+	TFX_ASSERT(width > 0 && height > 0);
 	tfx_bitmap_t bitmap = {};
-    bitmap.size = width * height * channels;
+	int bytes_per_pixel = 0;
+	switch (format) {
+		case tfx_color_format_rgba8: bytes_per_pixel = 4; break;
+		case tfx_color_format_rgba16f: bytes_per_pixel = 8; break;
+		case tfx_color_format_rgba32f: bytes_per_pixel = 16; break;
+	}
+    bitmap.size = width * height * bytes_per_pixel;
     if (bitmap.size > 0) {
         bitmap.data = (tfx_byte*)tfxALLOCATE_ALIGNED(bitmap.size, 16);
         bitmap.width = width;
         bitmap.height = height;
-        bitmap.channels = channels;
-        bitmap.stride = width * channels;
+		bitmap.format = format;
+        bitmap.bytes_per_pixel = bytes_per_pixel;
+        bitmap.stride = width * bytes_per_pixel;
     }
 	return bitmap;
 }
-void tfx__plot_bitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color) {
 
-    tfx_size pos = y * image->stride + (x * image->channels);
+void tfx__plot_bitmap_rgba8(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color) {
+	TFX_ASSERT(image->format == tfx_color_format_rgba8);
+
+    tfx_size pos = y * image->stride + (x * image->bytes_per_pixel);
 
     if (pos >= image->size) {
         return;
     }
 
-    if (image->channels == 4) {
-		*(image->data + pos) = color.r;
-		*(image->data + pos + 1) = color.g;
-		*(image->data + pos + 2) = color.b;
-		*(image->data + pos + 3) = color.a;
-    }
-    else if (image->channels == 3) {
-		*(image->data + pos) = color.r;
-		*(image->data + pos + 1) = color.g;
-		*(image->data + pos + 2) = color.b;
-    }
-    else if (image->channels == 2) {
-		*(image->data + pos) = color.r;
-		*(image->data + pos + 3) = color.a;
-    }
-    else if (image->channels == 1) {
-		*(image->data + pos) = color.r;
+	*(image->data + pos) = color.r;
+	*(image->data + pos + 1) = color.g;
+	*(image->data + pos + 2) = color.b;
+	*(image->data + pos + 3) = color.a;
+
+}
+void tfx__plot_bitmap_rgba16f(tfx_bitmap_t *image, int x, int y, tfx_rgba16f_t color) {
+	TFX_ASSERT(image->format == tfx_color_format_rgba16f);
+
+    tfx_size pos = y * image->stride + (x * image->bytes_per_pixel);
+
+    if (pos >= image->size) {
+        return;
     }
 
+	*(tfx_rgba16f_t *)(image->data + pos) = color;
 }
 
 void tfx__free_bitmap(tfx_bitmap_t *bitmap) {
@@ -7878,31 +7875,18 @@ void tfx__free_bitmap(tfx_bitmap_t *bitmap) {
 	}
 }
 
-void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *color_ramp, float gamma) {
-	float r, g, b, a = 0;
+void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tfxU32 y) {
+	float r, g, b, a;
+	tfx128 rgba;
 	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
 	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
 	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
+	tfx_color_ramp_t *color_ramp = &graph_list->color_ramps;
 
 	tfx_easing_function blendfactor_easing = tfx__get_easing_function(blendfactor->easing_type);
 
-	bool blendfactor_is_bezier_graph = tfx__graph_has_bezier_curves(blendfactor);
-	bool blendfactor_has_oscillator = tfx__graph_can_oscillate(blendfactor);
-	if (color_ramp->flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
-		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
-			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
-
-			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * t + color_ramp->offsets.x));
-			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * t + color_ramp->offsets.y));
-			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * t + color_ramp->offsets.z));
-			a = tfx__sample_multi_node_graph(blendfactor, t, t);
-			color_ramp->colors[f].r = tfxU32(r * 255.f);
-			color_ramp->colors[f].g = tfxU32(g * 255.f);
-			color_ramp->colors[f].b = tfxU32(b * 255.f);
-			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
-		}
-	} else if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch || color_ramp->interpolation_mode == tfxColorInterpolation_hsl) {
+	if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch || color_ramp->interpolation_mode == tfxColorInterpolation_hsl) {
 		// Collect all unique node frame positions from R, G, B graphs
 		float stop_frames[256];
 		tfxU32 stop_count = 0;
@@ -7942,7 +7926,7 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 			}
 		}
 		// Generate ramp pixels
-		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH - 1; ++f) {
 			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
 			a = tfx__sample_multi_node_graph(blendfactor, t, t);
 			// Find surrounding stops
@@ -7973,65 +7957,89 @@ void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *colo
 			} else {
 				rgb = tfx__hsl_to_srgb(color.x, color.y, color.z);
 			}
-			r = tfx__gamma_correct(rgb.x, gamma);
-			g = tfx__gamma_correct(rgb.y, gamma);
-			b = tfx__gamma_correct(rgb.z, gamma);
-			color_ramp->colors[f].r = tfxU32(r * 255.f);
-			color_ramp->colors[f].g = tfxU32(g * 255.f);
-			color_ramp->colors[f].b = tfxU32(b * 255.f);
-			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
+
+			rgba = tfx128Set(a, rgb.z, rgb.y, rgb.x);
+			tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
+			tfx__plot_bitmap_rgba16f(bitmap, f, y, half);
 		}
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(red) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(green) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(blue) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(blendfactor) * 255.f);
+		r = tfx__gamma_correct(tfx__get_graph_last_value(red), tfxGAMMA);
+		g = tfx__gamma_correct(tfx__get_graph_last_value(green), tfxGAMMA);
+		b = tfx__gamma_correct(tfx__get_graph_last_value(blue), tfxGAMMA);
+		a = tfx__get_graph_last_value(blendfactor);
+		rgba = tfx128Set(a, b, g, r);
+		tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
+		tfx__plot_bitmap_rgba16f(bitmap, tfxCOLOR_RAMP_WIDTH - 1, y, half);
 	} else {
-		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH - 1; ++f) {
 			float t = (float)f / tfxCOLOR_RAMP_WIDTH;
 			if (color_ramp->interpolation_mode == tfxColorInterpolation_linear_rgb) {
-				r = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(red, t), gamma);
-				g = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(green, t), gamma);
-				b = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(blue, t), gamma);
+				r = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(red, t), tfxGAMMA);
+				g = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(green, t), tfxGAMMA);
+				b = tfx__gamma_correct(tfx__get_linear_rgb_graph_value(blue, t), tfxGAMMA);
 			} else {
-				r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), gamma);
-				g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), gamma);
-				b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), gamma);
+				r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, t), tfxGAMMA);
+				g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, t), tfxGAMMA);
+				b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), tfxGAMMA);
 			}
 			a = tfx__sample_multi_node_graph(blendfactor, t, t);
-			color_ramp->colors[f].r = tfxU32(r * 255.f);
-			color_ramp->colors[f].g = tfxU32(g * 255.f);
-			color_ramp->colors[f].b = tfxU32(b * 255.f);
-			color_ramp->colors[f].a = tfx__Clamp(0, 255, tfxU32(a * 255.f));
+			rgba = tfx128Set(a, b, g, r);
+			tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
+			tfx__plot_bitmap_rgba16f(bitmap, f, y, half);
 		}
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(red) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(green) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(blue) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(blendfactor) * 255.f);
+		r = tfx__gamma_correct(tfx__get_graph_last_value(red), tfxGAMMA);
+		g = tfx__gamma_correct(tfx__get_graph_last_value(green), tfxGAMMA);
+		b = tfx__gamma_correct(tfx__get_graph_last_value(blue), tfxGAMMA);
+		a = tfx__get_graph_last_value(blendfactor);
+		rgba = tfx128Set(a, b, g, r);
+		tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
+		tfx__plot_bitmap_rgba16f(bitmap, tfxCOLOR_RAMP_WIDTH - 1, y, half);
 	}
 }
 
-void tfx__plot_color_ramp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y) {
-	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
-		tfx_rgba8_t color = ramp->colors[x];
-		if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
-			color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
-		}
-		tfx__plot_bitmap(bitmap, x, y, color);
-	}
-}
-
-tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp) {
+tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_graph_list_t *graph_list) {
 	tfxU32 layer = ramp_data->color_ramp_count / 256;
 	tfxU32 y = ramp_data->color_ramp_count % 256;
 	if (ramp_data->color_ramp_bitmaps.size() <= layer) {
-		tfx_bitmap_t bitmap = tfx__create_bitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
+		tfx_bitmap_t bitmap = tfx__create_bitmap(tfxCOLOR_RAMP_WIDTH, 256, tfx_color_format_rgba16f);
 		ramp_data->color_ramp_bitmaps.push_back(bitmap);
 	}
 	tfx_bitmap_t &current_bitmap = ramp_data->color_ramp_bitmaps[layer];
-	tfx__plot_color_ramp(&current_bitmap, ramp, y);
+	tfx__plot_color_ramp(graph_list, &current_bitmap, y);
 	tfxU32 ramp_id = tfxMakeColorRampIndex(layer, y);
 	ramp_data->color_ramp_count++;
 	return ramp_id;
+}
+
+tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
+	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
+	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
+	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
+	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
+	tfx_vector_t<float> values;
+	for(tfxBucketLoop(red->nodes, i)) {
+		values.push_back(red->nodes[i].frame);
+		values.push_back(red->nodes[i].value);
+	}
+	for(tfxBucketLoop(green->nodes, i)) {
+		values.push_back(green->nodes[i].frame);
+		values.push_back(green->nodes[i].value);
+	}
+	for(tfxBucketLoop(blue->nodes, i)) {
+		values.push_back(blue->nodes[i].frame);
+		values.push_back(blue->nodes[i].value);
+	}
+	values.push_back((float)blendfactor->flags);
+	for(tfxBucketLoop(blendfactor->nodes, i)) {
+		values.push_back(blendfactor->nodes[i].frame);
+		values.push_back(blendfactor->nodes[i].value);
+		values.push_back(blendfactor->nodes[i].left.x);
+		values.push_back(blendfactor->nodes[i].left.y);
+		values.push_back(blendfactor->nodes[i].right.x);
+		values.push_back(blendfactor->nodes[i].right.y);
+	}
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, values.data, values.size_in_bytes(), 0);
+	values.free();
+	return hash;
 }
 
 void tfx__create_color_ramp_bitmaps(tfx_library library) {
@@ -8044,12 +8052,11 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 	library->color_ramps.color_ramp_count = 0;
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		if (graph_list.effect_descriptor_type == tfxEmitterType || graph_list.effect_descriptor_type == tfxRibbonType) {
-			tfx_color_ramp_t &ramp = graph_list.color_ramps;
-			tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+			tfxKey hash = tfx__hash_color_graphs(&graph_list);
 			if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
 				graph_list.color_ramp_bitmap_indexes = library->color_ramps.color_ramp_ids.At(hash);
 			} else {
-				graph_list.color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
+				graph_list.color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &graph_list);
 				library->color_ramps.color_ramp_ids.Insert(hash, graph_list.color_ramp_bitmap_indexes);
 			}
 		}
@@ -8057,9 +8064,8 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 }
 
 bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
-	tfx_color_ramp_t &ramp = graph_list->color_ramps;
 	if (!tfxColorRampIsEdited(graph_list->color_ramp_bitmap_indexes)) {
-		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
+		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
 		tfxFlagColorRampIDAsEdited(graph_list->color_ramp_bitmap_indexes);
 		return true;
 	}
@@ -8067,7 +8073,7 @@ bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_li
 		tfxU32 layer = tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes);
 		tfxU32 index = tfxColorRampIndex(graph_list->color_ramp_bitmap_indexes);
 		tfx_bitmap_t &bitmap = library->color_ramps.color_ramp_bitmaps[layer];
-		tfx__plot_color_ramp(&bitmap, &ramp, index);
+		tfx__plot_color_ramp(graph_list, &bitmap, index);
 	}
 	return false;
 }
@@ -8077,28 +8083,28 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *
 	if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		graph_list->color_ramp_bitmap_indexes = library->color_ramps.color_ramp_ids.At(hash);
 	} else {
-		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &graph_list->color_ramps);
+		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
 		library->color_ramps.color_ramp_ids.Insert(hash, graph_list->color_ramp_bitmap_indexes);
 	}
 }
 
-void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
-	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list) {
+	tfxKey hash = tfx__hash_color_graphs(graph_list);
 	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		animation_manager->emitter_properties[properties_index].color_ramp_indexes = animation_manager->color_ramps.color_ramp_ids.At(hash);
 	} else {
-		tfxU32 ramp_id = tfx__add_color_ramp_to_bitmap(&animation_manager->color_ramps, ramp);
+		tfxU32 ramp_id = tfx__add_color_ramp_to_bitmap(&animation_manager->color_ramps, graph_list);
 		animation_manager->emitter_properties[properties_index].color_ramp_indexes = ramp_id;
 		animation_manager->color_ramps.color_ramp_ids.Insert(hash, ramp_id);
 	}
 }
 
-void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
-	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list) {
+	tfxKey hash = tfx__hash_color_graphs(graph_list);
 	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		animation_manager->ribbon_properties[properties_index].color_ramp_index = animation_manager->color_ramps.color_ramp_ids.At(hash);
 	} else {
-		tfxU32 ramp_id = tfx__add_color_ramp_to_bitmap(&animation_manager->color_ramps, ramp);
+		tfxU32 ramp_id = tfx__add_color_ramp_to_bitmap(&animation_manager->color_ramps, graph_list);
 		animation_manager->ribbon_properties[properties_index].color_ramp_index = ramp_id;
 		animation_manager->color_ramps.color_ramp_ids.Insert(hash, ramp_id);
 	}
@@ -8986,7 +8992,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 	while (tfx__file_exists_in_package(package, bitmap_file_name.c_str())) {
 		tfx_package_entry_info_t *bitmap_file = tfx__get_package_file(package, bitmap_file_name.c_str());
-		tfx_bitmap_t bitmap = tfx__create_bitmap(tfxCOLOR_RAMP_WIDTH, tfxCOLOR_RAMP_WIDTH, 4);
+		tfx_bitmap_t bitmap = tfx__create_bitmap(tfxCOLOR_RAMP_WIDTH, tfxCOLOR_RAMP_WIDTH, tfx_color_format_rgba16f);
 		memcpy(bitmap.data, bitmap_file->data.data, bitmap.size);
 		bitmap_file_name.Clear();
 		bitmap_index++;
@@ -10266,7 +10272,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			tfx__readbarrier;
 			tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
 			animation_manager->emitter_properties.push_back_copy(properties);
-			tfx__copy_emitter_color_ramp_to_animation_manager(animation_manager, index, &graph_list.color_ramps);
+			tfx__copy_emitter_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
 		}
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[effect->state_properties.property_index];
@@ -10321,7 +10327,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			tfx__readbarrier;
 			tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
 			animation_manager->ribbon_properties.push_back_copy(properties);
-			tfx__copy_ribbon_color_ramp_to_animation_manager(animation_manager, index, &graph_list.color_ramps);
+			tfx__copy_ribbon_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
 		}
 	} else {
 		for (tfx_effect_descriptor sub : effect->children) {
@@ -17111,7 +17117,6 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 						tfx__sample_graph(intensity_graph, age_lerp),
 						tfx__sample_graph(gradient_mapper_graph, age_lerp), 128.f
 					);
-					float test = tfx__sample_graph(intensity_graph, age_lerp);
 					segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(
 						tfx__sample_graph(curved_alpha_graph, age_lerp),
 						tfx__sample_graph(alpha_sharpness_graph, age_lerp)
@@ -18366,6 +18371,9 @@ float tfx__sample_graph(tfx_graph_t *graph, float t) {
 	if (tfx__graph_can_oscillate(graph)) {
 		value *= (tfxOSCILLATOR_SIN(time + graph->oscillator.offset_x, graph->oscillator.frequency, graph->oscillator.amplitude) + graph->oscillator.offset_y);
 	}
+	if (value < 0.f) {
+		int d = 0;
+	}
 	return value;
 }
 
@@ -18734,7 +18742,7 @@ void tfx_EndTimelineFX() {
 	free(tfxMemoryAllocator);
 }
 
-void tfx_SetColorRampFormat(tfx_color_ramp_format color_format) {
+void tfx_SetColorRampFormat(tfx_color_format color_format) {
 	tfxStore->color_ramp_format = color_format;
 }
 

@@ -2176,10 +2176,8 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideCast _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
 #define tfxWideConvert _mm256_cvtepi32_ps 
-#ifdef tfxHALFFLOATS
 #define tfxWideConvertHalfsToFloats _mm256_cvtph_ps 
 #define tfxWideConvertFloatsToHalfs(floats) _mm256_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
-#endif
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
@@ -2248,10 +2246,8 @@ typedef __m128i tfxWideIntLoader;
 #endif
 #define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
 #define tfxWideStoreHalfs _mm_store_si128
-#ifdef tfxHALFFLOATS
 #define tfxWideConvertHalfsToFloats _mm_cvtph_ps 
 #define tfxWideConvertFloatsToHalfs(floats) _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
-#endif
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mullo_epi32
@@ -2446,6 +2442,18 @@ const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.0002f);
 const tfxWideArray tfxWIDEEPSILON     = tfxWideSetConst(1e-12f);
 const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
+typedef struct tfx_rgba16f_s {
+	union {
+		struct {
+			tfxU16 r;
+			tfxU16 g;
+			tfxU16 b;
+			tfxU16 a;
+		};
+		tfxU64 packed;
+	};
+} tfx_rgba16f_t;
+
 #ifdef tfxX86
 typedef __m128 tfx128;
 typedef __m128i tfx128i;
@@ -2480,6 +2488,13 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
 	return _mm_sub_ps(fi, j);
 }
 
+tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
+	__m128i half = _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT);
+	tfx_rgba16f_t result;
+	_mm_storel_epi64((__m128i *)&result, half);
+	return result;
+}
+
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return __rdtsc();
 }
@@ -2505,6 +2520,13 @@ typedef union {
 } tfx128Array;
 
 #define tfxFloor128 vrndmq_f32
+
+tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
+	float16x4_t half = vcvt_f16_f32(floats);
+	tfx_rgba16f_t result;
+	result.packed = vget_lane_u64(vreinterpret_u64_f16(half), 0);
+	return result;
+}
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return mach_absolute_time();
@@ -2786,10 +2808,11 @@ typedef enum {
 	tfxGraphCategory_max
 } tfx_graph_category;
 
-typedef enum tfx_color_ramp_format {
-	tfx_color_format_rgba,
-	tfx_color_format_bgra
-} tfx_color_ramp_format;
+typedef enum tfx_color_format {
+	tfx_color_format_rgba8,
+	tfx_color_format_rgba16f,
+	tfx_color_format_rgba32f,
+} tfx_color_format;
 
 //--------------------------------------------
 //--Graph_types
@@ -2862,6 +2885,7 @@ typedef enum {
 	tfxOvertime_alpha_sharpness,
 	tfxOvertime_curved_alpha,
 	tfxOvertime_gradient_mapper,
+	tfxOvertime_heat_response,
 	tfxOvertime_velocity,
 	tfxOvertime_width,
 	tfxOvertime_height,
@@ -2990,6 +3014,7 @@ typedef enum {
 	tfxEmitter_overtime_intensity_index,
 	tfxEmitter_overtime_alpha_sharpness_index,
 	tfxEmitter_overtime_curved_alpha_index,
+	tfxEmitter_overtime_heat_response_index,
 	tfxEmitter_overtime_gradient_mapper_index,
 	tfxEmitter_overtime_velocity_index,
 	tfxEmitter_overtime_width_index,
@@ -3038,6 +3063,7 @@ typedef enum {
 	tfxRibbon_overtime_alpha_sharpness_index,
 	tfxRibbon_overtime_curved_alpha_index,
 	tfxRibbon_overtime_gradient_mapper_index,
+	tfxRibbon_overtime_heat_response_index,
 	tfxRibbon_overtime_width_index,
 	tfxRibbon_overtime_overal_scale_index,
 	tfxRibbon_overtime_uv_offset_y_index,
@@ -5410,7 +5436,7 @@ typedef struct tfx_storage_s {
 	tfx_data_types_dictionary_t data_types;
 	float circle_path_x[tfxCIRCLENODES];
 	float circle_path_z[tfxCIRCLENODES];
-	tfx_color_ramp_format color_ramp_format;
+	tfx_color_format color_ramp_format;
 	tfx_queue_processor_t thread_queues;
 	tfx_hasher_t hasher;
 #ifdef __cplusplus
@@ -5900,6 +5926,7 @@ typedef struct tfx_rgba8_s {
 		struct { tfxU32 color; };
 	};
 } tfx_rgba8_t;
+
 #define tfx_SWIZZLE_RGBA_TO_BGRA(rgba) ((rgba & 0xFF000000) | ((rgba & 0x00FF0000) >> 16) | (rgba & 0x0000FF00) | ((rgba & 0x000000FF) << 16))
 
 typedef struct tfx_rgb_s {
@@ -6312,18 +6339,13 @@ typedef struct tfx_color_ramp_s {
 	tfx_vec3_t offsets;
 	tfxColorRampFlags flags;
 	tfx_color_interpolation_mode interpolation_mode;
-	tfx_rgba8_t colors[tfxCOLOR_RAMP_WIDTH];
 }tfx_color_ramp_t;
-
-typedef struct tfx_color_ramp_hash_s {
-	tfxKey hash;		//A hash of the color ramp
-	tfxU32 index;		//The index to lookup the ramp in the bitmap array
-}tfx_color_ramp_hash_t;
 
 typedef struct tfx_bitmap_s {
 	int width;
 	int height;
-	int channels;
+	int bytes_per_pixel;
+	tfx_color_format format;
 	int stride;
 	tfx_size size;
 	tfx_byte *data;
@@ -7215,6 +7237,7 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	float time;
 	float ndc_offset_x;
 	float ndc_offset_y;
+	tfxU32 debug_buffer_index;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
@@ -8117,7 +8140,6 @@ tfxAPI_EDITOR void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scal
 tfxAPI_EDITOR void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value);
 tfxAPI_EDITOR void tfx__update_lerp_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__update_lerp_graphs_of_effect(tfx_effect_descriptor effect, bool include_children);
-tfxAPI_EDITOR void tfx__update_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
 tfxAPI_EDITOR bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
@@ -8140,16 +8162,16 @@ tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
-tfxINTERNAL tfxKey tfx__hash_color_ramp(tfx_color_ramp_t *ramp);
-tfxINTERNAL tfx_bitmap_t tfx__create_bitmap(int width, int height, int channels);
-tfxINTERNAL void tfx__plot_bitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color);
+tfxINTERNAL tfx_bitmap_t tfx__create_bitmap(int width, int height, tfx_color_format format);
+tfxINTERNAL void tfx__plot_bitmap_rgba8(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color);
+tfxINTERNAL void tfx__plot_bitmap_rgba16f(tfx_bitmap_t *image, int x, int y, tfx_rgba16f_t color);
 tfxINTERNAL void tfx__free_bitmap(tfx_bitmap_t *bitmap);
-tfxINTERNAL void tfx__plot_color_ramp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y);
+tfxINTERNAL void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tfxU32 y);
 tfxINTERNAL void tfx__create_color_ramp_bitmaps(tfx_library library);
 tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *list);
-tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
-tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
-tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
+tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_graph_list_t *graph_list);
+tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
+tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
 tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, float osc_t);
 
@@ -9923,9 +9945,9 @@ tfxAPI void tfx_EndTimelineFX();
 Set the color format used for storing color ramps. Color ramps are generated by particle emitters and dictate how the particle colors change over the lifetime
 of the particle. They can be uploaded to the GPU so you can set your preference for the color format as you need. The format should be immediately after you
 call tfx_InitialiseTimelineFX
-* @param color_format        Pass the tfx_color_ramp_format, either tfx_color_ramp_format_rgba or tfx_color_ramp_format_bgra
+* @param color_format        Pass the tfx_color_format, either tfx_color_format or tfx_color_format
 */
-tfxAPI void tfx_SetColorRampFormat(tfx_color_ramp_format color_format);
+tfxAPI void tfx_SetColorRampFormat(tfx_color_format color_format);
 
 //--------------------------------
 //Library_functions
