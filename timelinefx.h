@@ -2495,6 +2495,11 @@ tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
 	return result;
 }
 
+tfxINTERNAL inline tfx128 tfxHalfToFloat128(const tfx_rgba16f_t half) {
+	__m128i packed = _mm_loadl_epi64((const __m128i *)&half);
+	return _mm_cvtph_ps(packed);
+}
+
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return __rdtsc();
 }
@@ -2526,6 +2531,12 @@ tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
 	tfx_rgba16f_t result;
 	result.packed = vget_lane_u64(vreinterpret_u64_f16(half), 0);
 	return result;
+}
+
+tfxINTERNAL inline tfx128 tfxHalfToFloat128(const tfx_rgba16f_t half) {
+	uint64x1_t packed = vcreate_u64(half.packed);
+	float16x4_t halves = vreinterpret_f16_u64(packed);
+	return vcvt_f32_f16(halves);
 }
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
@@ -2878,6 +2889,7 @@ typedef enum {
 	tfxOvertime_green,
 	tfxOvertime_blue,
 	tfxOvertime_blendfactor,
+	tfxOvertime_heat_response,
 	tfxOvertime_velocity_adjuster,
 	tfxOvertime_velocity_falloff,
 	//--These compiled graph values are uploaded to the GPU
@@ -2885,7 +2897,6 @@ typedef enum {
 	tfxOvertime_alpha_sharpness,
 	tfxOvertime_curved_alpha,
 	tfxOvertime_gradient_mapper,
-	tfxOvertime_heat_response,
 	tfxOvertime_velocity,
 	tfxOvertime_width,
 	tfxOvertime_height,
@@ -3104,7 +3115,7 @@ typedef enum {
 	tfxOvertime_start = tfxOvertime_red,
 	tfxOvertime_end = tfxOvertime_clip_end,
 	tfxOvertime_color_start = tfxOvertime_red,
-	tfxOvertime_color_end = tfxOvertime_blendfactor,
+	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
 	tfxOverlength_end = tfxOverlength_ribbon_fixed_angle,
 	tfxFactor_start = tfxFactor_life,
@@ -6608,10 +6619,6 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxKey paired_emitter_hash;
 	//Layer of the effect manager that the particle is added to
 	tfxU32 layer;
-	//Thermal ramps in the frag shader for more realistic fire/heat 
-	float heat_response_boost;
-	float heat_response_sharpness;
-	float heat_response_curve;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {
@@ -6624,9 +6631,6 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_vec3_t fixed_angle_normal;
 	tfxRibbonBucketComputeShaderType angle_type;
 	tfxU32 animation_property_index;
-	float heat_response_boost;
-	float heat_response_sharpness;
-	float heat_response_curve;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6806,13 +6810,13 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU32 lookup_offset;
 	tfxU32 angle_type;
 	tfx_vec3_t position;
-	float heat_response_boost;
+	tfxU32 padding1;
 	tfx_vec3_t captured_position;
-	float heat_response_sharpness;
+	tfxU32 padding2;
 	tfx_vec3_t scale;
-	float heat_response_curve;
+	tfxU32 padding3;
 	tfx_vec3_t fixed_angle_normal;
-	int padding;
+	int padding4;
 } tfx_gpu_ribbon_emitter_t;
 
 //---- GPU compute particle buffer management ----
@@ -7237,7 +7241,6 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	float time;
 	float ndc_offset_x;
 	float ndc_offset_y;
-	tfxU32 debug_buffer_index;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
@@ -7319,12 +7322,9 @@ typedef struct tfx_gpu_particle_properties_s {
 	tfx_vec2_t image_handle;			
 	tfxU32 color_ramp_indexes;			//[Row of color ramp bitmap, texture array]
 	tfxU32 flags;						//Flags like billboard alignment type
-	float heat_response_boost;			//Thermal ramp values for the frag shader
-	float heat_response_sharpness;
-	float heat_response_curve;
 	tfxU32 start_frame_index;
 	float animation_frames;
-	tfxU32 padding[3];
+	int padding[2];
 } tfx_gpu_particle_properties_t;
 
 typedef struct tfx_gpu_graph_data_s {
@@ -7561,9 +7561,6 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 flags;
 	tfxU32 graph_lookup_offset;
 	tfxU32 bucket_index;
-	float heat_response_boost;
-	float heat_response_sharpness;
-	float heat_response_curve;
 } tfx_animation_ribbon_properties_t;
 
 typedef struct tfx_animation_ribbon_bucket_s {

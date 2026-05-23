@@ -3062,7 +3062,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 0.f, tfxIntensityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], 0.f, tfxFrameratePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], 1.f, tfxGlobalPercentPreset);
@@ -3104,7 +3104,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 0.f, tfxIntensityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
@@ -4586,9 +4586,6 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	}
 	tfx_ribbon_emitter_properties_t properties{};
 	properties.fixed_angle_normal = { 0.f, 1.f, 0.f };
-	properties.heat_response_boost = 2.f;
-	properties.heat_response_sharpness = 8.f;
-	properties.heat_response_curve = 1.1f;
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
 }
@@ -4599,9 +4596,6 @@ tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
 		return library->free_particle_gpu_properties.pop_back();
 	}
 	tfx_gpu_particle_properties_t properties{};
-	properties.heat_response_boost = 2.f;
-	properties.heat_response_sharpness = 8.f;
-	properties.heat_response_curve = 1.1f;
 	library->particle_gpu_properties.push_back(properties);
 	return library->particle_gpu_properties.current_size - 1;
 }
@@ -5072,6 +5066,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_overtime_blue", tfxEmitter_overtime_blue_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_opacity", tfxEmitter_overtime_blendfactor_index);    //Legacy
 	tfxStore->graph_indexes.Insert("emitter_overtime_blendfactor", tfxEmitter_overtime_blendfactor_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_heat_response", tfxEmitter_overtime_heat_response_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_intensity", tfxEmitter_overtime_intensity_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_alpha_sharpness", tfxEmitter_overtime_alpha_sharpness_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_curved_alpha", tfxEmitter_overtime_curved_alpha_index);
@@ -5111,6 +5106,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overtime_blue", tfxRibbon_overtime_blue_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_opacity", tfxRibbon_overtime_blendfactor_index);    //Legacy
 	tfxStore->graph_indexes.Insert("ribbon_overtime_blendfactor", tfxRibbon_overtime_blendfactor_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_heat_response", tfxRibbon_overtime_heat_response_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_intensity", tfxRibbon_overtime_intensity_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_alpha_sharpness", tfxRibbon_overtime_alpha_sharpness_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_curved_alpha", tfxRibbon_overtime_curved_alpha_index);
@@ -5172,9 +5168,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("emitter_handle_x", tfxFloat);
 	names_and_types.Insert("emitter_handle_y", tfxFloat);
 	names_and_types.Insert("emitter_handle_z", tfxFloat);
-	names_and_types.Insert("heat_response_boost", tfxFloat);
-	names_and_types.Insert("heat_response_sharpness", tfxFloat);
-	names_and_types.Insert("heat_response_curve", tfxFloat);
 	names_and_types.Insert("end_behaviour", tfxSInt);
 	names_and_types.Insert("angle_setting", tfxUInt);
 	names_and_types.Insert("angle_offset", tfxFloat);
@@ -5308,6 +5301,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_blue", tfxAttributeGraph);
 	names_and_types.Insert("overtime_opacity", tfxAttributeGraph);    //Legacy
 	names_and_types.Insert("overtime_blendfactor", tfxAttributeGraph);
+	names_and_types.Insert("overtime_heat_response", tfxAttributeGraph);
 	names_and_types.Insert("overtime_intensity", tfxAttributeGraph);
 	names_and_types.Insert("overtime_red_hint", tfxAttributeGraph);
 	names_and_types.Insert("overtime_green_hint", tfxAttributeGraph);
@@ -6042,9 +6036,6 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
-	else if (property_name == "heat_response_boost") value.Setf("%f", gpu_properties ? gpu_properties->heat_response_boost : ribbon_properties->heat_response_boost);
-	else if (property_name == "heat_response_sharpness") value.Setf("%f", gpu_properties ? gpu_properties->heat_response_sharpness : ribbon_properties->heat_response_sharpness);
-	else if (property_name == "heat_response_curve") value.Setf("%f", gpu_properties ? gpu_properties->heat_response_curve : ribbon_properties->heat_response_curve);
 	else if (property_name == "image_start_frame") value.Setf("%f", shared_properties->start_frame);
 	else if (property_name == "image_end_frame") value.Setf("%f", effect->state_properties.end_frame);
 	else if (property_name == "image_frame_rate") value.Setf("%f", shared_properties->frame_rate);
@@ -6390,17 +6381,11 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
-		else if (*field == "heat_response_boost") gpu_properties->heat_response_boost = value;
-		else if (*field == "heat_response_sharpness") gpu_properties->heat_response_sharpness = value ? value : 1.f;
-		else if (*field == "heat_response_curve") gpu_properties->heat_response_curve = value ? value : 1.1f;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
 		else if (*field == "ribbon_fixed_angle_normal_y") ribbon_properties->fixed_angle_normal.y = value;
 		else if (*field == "ribbon_fixed_angle_normal_z") ribbon_properties->fixed_angle_normal.z = value;
-		else if (*field == "heat_response_boost") ribbon_properties->heat_response_boost = value;
-		else if (*field == "heat_response_sharpness") ribbon_properties->heat_response_sharpness = value ? value : 1.f;
-		else if (*field == "heat_response_curve") ribbon_properties->heat_response_curve = value ? value : 1.1f;
 	}
 }
 void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256_t *field, bool value) {
@@ -6533,9 +6518,6 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
-	file->AddLine("heat_response_boost=%f", gpu_properties->heat_response_boost);
-	file->AddLine("heat_response_sharpness=%f", gpu_properties->heat_response_sharpness);
-	file->AddLine("heat_response_curve=%f", gpu_properties->heat_response_curve);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
@@ -6592,9 +6574,6 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
-	file->AddLine("heat_response_boost=%f", ribbon_properties->heat_response_boost);
-	file->AddLine("heat_response_sharpness=%f", ribbon_properties->heat_response_sharpness);
-	file->AddLine("heat_response_curve=%f", ribbon_properties->heat_response_curve);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
 	file->AddLine("layer=%i", shared_properties->layer);
 
@@ -7685,6 +7664,7 @@ void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool include_types) {
 	for (tfxBucketLoop(from->nodes, i)) {
 		to->nodes.push_back(from->nodes[i]);
 	}
+	to->uid_counter = from->uid_counter;
 	to->oscillator = from->oscillator;
 	to->easing_type = from->easing_type;
 	to->wide_graph = from->wide_graph;
@@ -7882,6 +7862,7 @@ void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tf
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
 	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
 	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
+	tfx_graph_t *heat_response = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_heat_response_index] : &graph_list->graphs[tfxRibbon_overtime_heat_response_index];
 	tfx_color_ramp_t *color_ramp = &graph_list->color_ramps;
 
 	tfx_easing_function blendfactor_easing = tfx__get_easing_function(blendfactor->easing_type);
@@ -7952,19 +7933,21 @@ void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tf
 				}
 			}
 			tfx_vec3_t rgb;
+			float heat = tfx__sample_multi_node_graph(heat_response, t, t);
 			if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch) {
 				rgb = tfx__oklch_to_srgb(color.x, color.y, color.z);
 			} else {
 				rgb = tfx__hsl_to_srgb(color.x, color.y, color.z);
 			}
 
-			rgba = tfx128Set(a, rgb.z, rgb.y, rgb.x);
+			rgba = tfx128Set(a, rgb.z * heat, rgb.y * heat, rgb.x * heat);
 			tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
 			tfx__plot_bitmap_rgba16f(bitmap, f, y, half);
 		}
-		r = tfx__gamma_correct(tfx__get_graph_last_value(red), tfxGAMMA);
-		g = tfx__gamma_correct(tfx__get_graph_last_value(green), tfxGAMMA);
-		b = tfx__gamma_correct(tfx__get_graph_last_value(blue), tfxGAMMA);
+		float heat = tfx__get_graph_last_value(heat_response);
+		r = tfx__gamma_correct(tfx__get_graph_last_value(red) * heat, tfxGAMMA);
+		g = tfx__gamma_correct(tfx__get_graph_last_value(green) * heat, tfxGAMMA);
+		b = tfx__gamma_correct(tfx__get_graph_last_value(blue) * heat, tfxGAMMA);
 		a = tfx__get_graph_last_value(blendfactor);
 		rgba = tfx128Set(a, b, g, r);
 		tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
@@ -7982,13 +7965,15 @@ void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tf
 				b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, t), tfxGAMMA);
 			}
 			a = tfx__sample_multi_node_graph(blendfactor, t, t);
-			rgba = tfx128Set(a, b, g, r);
+			float heat = tfx__sample_multi_node_graph(heat_response, t, t);
+			rgba = tfx128Set(a, b * heat, g * heat, r * heat);
 			tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
 			tfx__plot_bitmap_rgba16f(bitmap, f, y, half);
 		}
-		r = tfx__gamma_correct(tfx__get_graph_last_value(red), tfxGAMMA);
-		g = tfx__gamma_correct(tfx__get_graph_last_value(green), tfxGAMMA);
-		b = tfx__gamma_correct(tfx__get_graph_last_value(blue), tfxGAMMA);
+		float heat = tfx__get_graph_last_value(heat_response);
+		r = tfx__gamma_correct(tfx__get_graph_last_value(red) * heat, tfxGAMMA);
+		g = tfx__gamma_correct(tfx__get_graph_last_value(green) * heat, tfxGAMMA);
+		b = tfx__gamma_correct(tfx__get_graph_last_value(blue) * heat, tfxGAMMA);
 		a = tfx__get_graph_last_value(blendfactor);
 		rgba = tfx128Set(a, b, g, r);
 		tfx_rgba16f_t half = tfxFloatToHalf128(rgba);
@@ -10285,9 +10270,6 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 			properties.flags = effect->state_properties.property_flags;
 			properties.graph_lookup_offset = effect->gpu_lookup_offset;
-			properties.heat_response_boost = ribbon_properties.heat_response_boost;
-			properties.heat_response_sharpness = ribbon_properties.heat_response_sharpness;
-			properties.heat_response_curve = ribbon_properties.heat_response_curve;
 			tfx_image_data_t &image = *effect->state_properties.image;
 			properties.animation_frames = image.animation_frames;
 			if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
@@ -11191,9 +11173,6 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].lookup_offset = child->gpu_lookup_offset;
 				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
 				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].heat_response_boost = ribbon_properties->heat_response_boost;
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].heat_response_sharpness = ribbon_properties->heat_response_sharpness;
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].heat_response_curve = ribbon_properties->heat_response_curve;
 
 				ribbon_emitter.amount_remainder = 0.f;
 				ribbon_emitter.qty_step_size = 0.f;
