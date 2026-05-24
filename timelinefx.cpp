@@ -14334,6 +14334,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 	pm->free_path_quaternions.clear();
 	pm->instance_buffer.clear();
 	for (tfxEachLayer) {
+		pm->layer_sizes[layer] = 0;
 		pm->instance_buffer_for_recording[0][layer].clear();
 		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
 			pm->instance_buffer_for_recording[1][layer].clear();
