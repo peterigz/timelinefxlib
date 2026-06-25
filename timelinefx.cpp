@@ -3384,6 +3384,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	} else if (effect_to_clone->type == tfxEmitterType || effect_to_clone->type == tfxRibbonType) {
 		clone->state_properties.graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->state_properties.graph_list_index, destination_library) : effect_to_clone->state_properties.graph_list_index;
 		clone->state_properties.transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->state_properties.transform_index, destination_library) : effect_to_clone->state_properties.transform_index;
+		clone->state_flags |= tfx__is_ordered_effect(clone->parent) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 		tfx__update_emitter_max_life(clone);
 		tfx__update_lerp_graphs_of_effect(clone, false);
 		tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
@@ -3433,6 +3434,18 @@ tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effec
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
 	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
 	tfx__remap_paired_emitters(effect_to_clone, clone);
+	return clone;
+}
+
+tfx_effect_descriptor tfx__clone_emitter_into_effect(tfx_effect_descriptor emitter_to_clone, tfx_effect_descriptor effect, tfxEffectCloningFlags flags) {
+	TFX_ASSERT_HANDLE(emitter_to_clone);		//effect to clone is not a valid handle
+	TFX_ASSERT_HANDLE(effect);		//Must be a valid effect to clone in to
+	TFX_ASSERT(tfx__is_emitter_type(emitter_to_clone));	//Emitter to clone must be either 
+	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(emitter_to_clone->type);
+	tfx__clone_effect(emitter_to_clone, clone, effect->library, flags);
+	clone->parent = effect;
+	clone->state_flags |= tfx__is_ordered_effect(effect) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
+	tfx__remap_paired_emitters(emitter_to_clone, clone);
 	return clone;
 }
 
