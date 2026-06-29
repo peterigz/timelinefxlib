@@ -12579,11 +12579,7 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count);
 
 	ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], ctx.emitter->age, ctx.emitter->oscillator_time));
-	ctx.time_step = tfxWideConverti(tfxWideSetSingle(ctx.emitter->age / 250.f));
-	tfxWideInt next_time_step = tfxWideConverti(tfxWideSetSingle((ctx.emitter->age + (float)pm.frame_length) / 250.f));
-	ctx.time_changed_mask = tfxWideLessi(ctx.time_step, next_time_step);
-	ctx.time_step_fraction = tfxWideSub(tfxWideSetSingle(ctx.emitter->age / 250.f), tfxWideConvert(ctx.time_step));
-	ctx.time_step_fraction = tfxWideMul(tfxWideMul(ctx.time_step_fraction, ctx.time_step_fraction), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), ctx.time_step_fraction)));
+	ctx.time_step = tfxWideConverti(tfxWideSetSingle(ctx.emitter->age / 250.f)); // seeds the random speed walk
 
 	ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
 	ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
@@ -15832,15 +15828,21 @@ void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data) 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_particle_emitter_state_t &emitter = entry->pm->emitters[emitter_index];
+	tfx_library library = emitter.library;
+
+	// "Motion Randomness Resolution" - how rapidly the heading picks a new random direction. Sampled
+	// once at spawn from the emitter age and stored per particle, then used at control time to set the
+	// value-noise bucket rate (see tfx_apply_motion_randomness).
+	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&entry->pm->particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 #ifdef tfxHALFFLOATS
 		entry->particle_data->noise_offset[index] = 0;
-		entry->particle_data->noise_resolution[index] = 0;
+		entry->particle_data->noise_resolution[index] = tfx__float_to_half(emitter_noise_resolution);
 #else
 		entry->particle_data->noise_offset[index] = 0.f;
-		entry->particle_data->noise_resolution[index] = 0.f;
+		entry->particle_data->noise_resolution[index] = emitter_noise_resolution;
 #endif
 	}
 }

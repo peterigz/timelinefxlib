@@ -8438,6 +8438,12 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 	return tfxWideConvert(h);
 }
 
+// White-noise scalar in [-1, 1] from a bucket seed and an axis constant (axis decorrelates the
+// three components). Pure hash - cheap, no simplex.
+tfxINTERNAL inline tfxWideFloat tfx__wide_white_unit(tfxWideInt seed, tfxWideInt axis) {
+	return tfxWideMul(tfxWideDiv(tfx__wide_seedgen(tfxWideXOri(seed, axis)), tfxMAXUINTf.m), tfxWideSetSingle(2.f));
+}
+
 //--------------------------------
 //Control particle inline functions and policies
 //--------------------------------
@@ -8948,8 +8954,6 @@ struct tfx_position_policy_context {
 	tfxU32 start_diff;
 	tfxWideInt capture_after_transform_flag;
 	tfxWideInt time_step;
-	tfxWideInt time_changed_mask;
-	tfxWideFloat time_step_fraction;
 	tfx_particle_emitter_state_t *emitter;
 	tfx_emitter_path_t *path;
 	tfx_graph_t *velocity_graph;
@@ -9205,16 +9209,19 @@ struct tfx_apply_curl_noise {
 
 struct tfx_apply_motion_randomness {
 	static inline void apply(tfxU32 index, tfx_effect_manager pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		//----Do the random calculation
+		const bool is_orbital = (ctx.emitter->state_properties.control_profile & tfxEmitterControlProfile_orbital) != 0;
 
-		tfxWideInt velocity_normal = tfxWideSetZeroi;
-		if (!(ctx.emitter->state_properties.control_profile & tfxEmitterControlProfile_orbital)) {
-			velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
+		// Continuous, stateless motion randomness. Non-orbital: the base heading is the particle's
+		// (constant) emission direction, loaded from velocity_normal. Orbital: ctx.velocity_x/y/z already
+		// holds the orbital velocity from the previous policy, so we perturb that in place. Either way
+		// velocity_normal is never written - the heading is recomputed from scratch every frame, so there
+		// is no per-frame state and "Vector is Emission Direction" alignment stays rock steady.
+		if (!is_orbital) {
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 			tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
 		}
 
 		tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
-		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
 		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
 
 		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
@@ -9225,68 +9232,68 @@ struct tfx_apply_motion_randomness {
 			lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(ctx.motion_randomness_graph->wide_oscillator.offset_x, ctx.motion_randomness_graph->wide_oscillator.frequency), ctx.motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), ctx.motion_randomness_graph->wide_oscillator.offset_y);
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
-		tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);
-		tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));
-		tfxWideFloat random_x, random_y, random_z;
-		tfx__wide_random_vector_in_cone(seed, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z, tfxWideMul(tfxDEGREERANGEMR.m, influence), &random_x, &random_y, &random_z);
-		speed = tfxWideAdd(speed, random_speed);
-		tfxWideFloat length = tfxWideMul(random_x, random_x);
-		length = tfxWideAdd(length, tfxWideMul(random_y, random_y));
-		length = tfxWideAdd(length, tfxWideMul(random_z, random_z));
-		length = tfxWideMul(tfxWideRSqrt(length), length);
-		tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE.m, length);
-		random_x = tfxWideMul(random_x, length_one);
-		random_y = tfxWideMul(random_y, length_one);
-		random_z = tfxWideMul(random_z, length_one);
-		ctx.velocity = tfxWideAdd(ctx.velocity, tfxWideMul(speed, ctx.global_noise));
-		//----
 
-		tfxWideInt packed_normal = tfxWideSetZeroi;
-		if (ctx.emitter->state_properties.control_profile & tfxEmitterControlProfile_orbital) {
-			tfxWideFloat vx, vy, vz;
-			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfx__wide_unpack10bit(velocity_normal, vx, vy, vz);
-			vx = tfxWideAdd(tfxWideMul(random_x, ctx.time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			vy = tfxWideAdd(tfxWideMul(random_y, ctx.time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			vz = tfxWideAdd(tfxWideMul(random_z, ctx.time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			ctx.velocity_x = tfxWideAdd(ctx.velocity_x, vx);
-			ctx.velocity_y = tfxWideAdd(ctx.velocity_y, vy);
-			ctx.velocity_z = tfxWideAdd(ctx.velocity_z, vz);
-			length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
-			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
-			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
-			length = tfxWideMul(tfxWideRSqrt(length), length);
-			ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
-			ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
-			ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
-			length = tfxWideMul(vx, vx);
-			length = tfxWideAdd(length, tfxWideMul(vy, vy));
-			length = tfxWideAdd(length, tfxWideMul(vz, vz));
-			length = tfxWideMul(tfxWideRSqrt(length), length);
-			vx = tfxWideDiv(vx, length);
-			vy = tfxWideDiv(vy, length);
-			vz = tfxWideDiv(vz, length);
-			packed_normal = tfx__wide_pack10bit_unsigned(vx, vy, vz);
-			tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, ctx.time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(ctx.time_changed_mask, tfxWIDEMINUSONEi.m)));
-			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
-		} else {
-			//Non Orbit emission direction
-			//Add the random direction to the current velocity
-			ctx.velocity_x = tfxWideAdd(tfxWideMul(random_x, ctx.time_step_fraction), tfxWideMul(ctx.velocity_x, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			ctx.velocity_y = tfxWideAdd(tfxWideMul(random_y, ctx.time_step_fraction), tfxWideMul(ctx.velocity_y, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			ctx.velocity_z = tfxWideAdd(tfxWideMul(random_z, ctx.time_step_fraction), tfxWideMul(ctx.velocity_z, tfxWideSub(tfxWIDEONE.m, ctx.time_step_fraction)));
-			length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
-			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
-			length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
-			length = tfxWideMul(tfxWideRSqrt(length), length);
-			ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
-			ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
-			ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
-			packed_normal = tfx__wide_pack10bit_unsigned(ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
-			tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, ctx.time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(ctx.time_changed_mask, tfxWIDEMINUSONEi.m)));
-			tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
-			//--
-		}
+		// Random speed walk (scalar only, no bearing on alignment).
+		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
+		tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));
+		speed = tfxWideAdd(speed, random_speed);
+		ctx.velocity = tfxWideAdd(ctx.velocity, tfxWideMul(speed, ctx.global_noise));
+
+		// Smooth random direction from interpolated WHITE noise (value noise) - no simplex, no acosf.
+		// The heading hashes a random target per "bucket" and smoothsteps between this bucket and the
+		// next, so it is C1 continuous across boundaries. The bucket rate (how rapidly a new direction is
+		// chosen) is the per-particle Motion Randomness Resolution (stored at spawn in noise_resolution):
+		// 300 reproduces the original 250ms period, higher = faster, lower = slower.
+		//
+		// The timeline is driven by PARTICLE age, not emitter age, for two reasons:
+		//  - A looped emitter wraps its age (age -= loop_length), which would snap every particle's phase
+		//    at once; particle age is monotonic so there is no loop spike.
+		//  - Each particle gets a phase_offset (so a cohort spawned together - e.g. on a loop - doesn't
+		//    all turn at the same moment) and a small rate_jitter (so trajectories don't share one kink
+		//    frequency, which is what reads as banding - a per-particle offset alone can't fix that
+		//    because it shifts phase, not frequency).
+		const tfxWideFloat motion_randomness_gain = tfxWideSetSingle(1.5f);                 // cone width per unit of influence
+		const tfxWideFloat inv_period_scale = tfxWideSetSingle(1.f / (250.f * 300.f));      // resolution 300 -> 250ms bucket
+
+		const tfxWideInt axis_x = tfxWideSetSinglei(0x1b56c4f9);
+		const tfxWideInt axis_y = tfxWideSetSinglei(0x68e31da4);
+		const tfxWideInt axis_z = tfxWideSetSinglei(0xb5297a4d);
+		const tfxWideInt axis_phase = tfxWideSetSinglei(0x27d4eb2f);
+		const tfxWideInt axis_rate  = tfxWideSetSinglei(0x165667b1);
+
+		const tfxWideFloat phase_offset = tfxWideMul(tfxWideAdd(tfxWideMul(tfx__wide_white_unit(uid, axis_phase), tfxWideSetSingle(0.5f)), tfxWideSetSingle(0.5f)), tfxWideSetSingle(256.f)); // [0,256) buckets
+		const tfxWideFloat rate_jitter  = tfxWideAdd(tfxWIDEONE.m, tfxWideMul(tfx__wide_white_unit(uid, axis_rate), tfxWideSetSingle(0.25f)));                                              // [0.75,1.25] x rate
+
+		const tfxWideFloat resolution = tfxWideLoad(&bank.noise_resolution[index]);
+		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfxWideFloat phase = tfxWideAdd(phase_offset, tfxWideMul(age, tfxWideMul(tfxWideMul(resolution, rate_jitter), inv_period_scale)));
+		tfxWideInt bucket = tfxWideConverti(phase);                                          // floor (phase >= 0)
+		tfxWideFloat frac = tfxWideSub(phase, tfxWideConvert(bucket));
+		frac = tfxWideMul(tfxWideMul(frac, frac), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), frac))); // smoothstep
+
+		const tfxWideInt dir_seed      = tfx__wide_seedgen_base(bucket, uid);
+		const tfxWideInt dir_seed_next = tfx__wide_seedgen_base(tfxWideAddi(bucket, tfxWIDEONEi.m), uid);
+
+		const tfxWideFloat one_minus_frac = tfxWideSub(tfxWIDEONE.m, frac);
+		tfxWideFloat noise_x = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_x), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_x), frac));
+		tfxWideFloat noise_y = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_y), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_y), frac));
+		tfxWideFloat noise_z = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_z), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_z), frac));
+
+		// Deflect the base direction by the noise vector and renormalise. influence scales the cone
+		// width: 0 -> travels straight along the base direction, larger -> wider wander.
+		const tfxWideFloat deflect = tfxWideMul(influence, motion_randomness_gain);
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, tfxWideMul(deflect, noise_x));
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, tfxWideMul(deflect, noise_y));
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, tfxWideMul(deflect, noise_z));
+
+		tfxWideFloat length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
+		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
+		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
+		tfxWideFloat inv_length = tfxWideRSqrt(length);
+		ctx.velocity_x = tfxWideMul(ctx.velocity_x, inv_length);
+		ctx.velocity_y = tfxWideMul(ctx.velocity_y, inv_length);
+		ctx.velocity_z = tfxWideMul(ctx.velocity_z, inv_length);
+
 		tfxWideStore(&bank.noise_offset[index], speed);
 
 		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
