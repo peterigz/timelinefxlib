@@ -16598,6 +16598,19 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 	float arc_size = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.age, emitter.oscillator_time);
 	float arc_offset = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.age, emitter.oscillator_time);
 
+	//Reuse arc_size/arc_offset (legacy 2d ellipse segment controls) to carve the ellipsoid down to a band of the polar angle
+	//measured from the +y (up) axis, with the azimuth sweeping the x-z plane to match the cylinder emitter. arc_offset is the start
+	//of the polar sweep and arc_size its span (both in radians), clamped to the valid [0, tfxPI] polar range. This keeps both edges
+	//independent so the band can be a top cap, a mid-latitude ring/disk, or (rotate the emitter 180) a dome. The default arc_size of
+	//2PI clamps to a full sphere, leaving existing effects unchanged.
+	float dome_polar_start = tfx__Clamp(0.f, tfxPI, arc_offset);
+	float dome_polar_end = arc_offset + arc_size;
+	dome_polar_end = tfx__Clamp(dome_polar_start, tfxPI, dome_polar_end);
+	//cos is decreasing in phi, so the start angle gives the upper cosine bound and the end angle the lower bound.
+	float dome_cosine_upper = cosf(dome_polar_start);
+	float dome_cosine_lower = cosf(dome_polar_end);
+	bool fill_area = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) != 0;
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &local_position_x = entry->particle_data->position_x[index];
@@ -16608,35 +16621,22 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 		tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 
 		tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
-		tfx_vec3_t position;
 
-		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area)) {
-			float theta = tfx_RandomRangeZeroToMax(&random, tfxPI2);
-			float v = tfx_RandomRangeZeroToMax(&random, 1.f);
-			float phi = acosf(2.f * v - 1.f);
-			float sin_theta = sinf(theta);
-			float cos_theta = cosf(theta);
-			float sin_phi = sinf(phi);
-			float cos_phi = cosf(phi);
-			local_position_x = half_emitter_size.x * sin_phi * cos_theta;
-			local_position_y = half_emitter_size.y * sin_phi * sin_theta;
-			local_position_z = half_emitter_size.z * cos_phi;
-		}
-		else {
-			position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
-			position.y = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
-			position.z = tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z);
-
-			while (powf(position.x / half_emitter_size.x, 2.f) + powf(position.y / half_emitter_size.y, 2.f) + powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
-				position.x = tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x);
-				position.y = tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y);
-				position.z = tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z);
-			}
-
-			local_position_x = position.x;
-			local_position_y = position.y;
-			local_position_z = position.z;
-		}
+		//Sample a direction directly inside the dome rather than rejection sampling the bounding box: cos(phi) is drawn uniformly
+		//within the polar band (which keeps the cap surface evenly covered) over a full azimuthal sweep. phi is measured from +y so
+		//cos(phi) drives the up axis and the azimuth sweeps x-z. For a filled ellipsoid the radius follows cbrt(u), the inverse-cdf
+		//for a uniform volume distribution; the shell keeps the radius at 1. Sampling the dome directly keeps the cost constant and
+		//the distribution exactly uniform no matter how small the dome becomes - a rejection approach would discard nearly every
+		//sample as the band narrows.
+		float theta = tfx_RandomRangeZeroToMax(&random, tfxPI2);
+		float cos_phi = tfx_RandomRangeFromTo(&random, dome_cosine_lower, dome_cosine_upper);
+		float sin_phi = sqrtf(tfx__Max(0.f, 1.f - cos_phi * cos_phi));
+		float sin_theta = sinf(theta);
+		float cos_theta = cosf(theta);
+		float radius = fill_area ? powf(tfx_RandomRangeZeroToMax(&random, 1.f), 1.f / 3.f) : 1.f;
+		local_position_x = half_emitter_size.x * radius * sin_phi * cos_theta;
+		local_position_y = half_emitter_size.y * radius * cos_phi;
+		local_position_z = half_emitter_size.z * radius * sin_phi * sin_theta;
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
