@@ -9248,10 +9248,8 @@ struct tfx_apply_motion_randomness {
 		// The timeline is driven by PARTICLE age, not emitter age, for two reasons:
 		//  - A looped emitter wraps its age (age -= loop_length), which would snap every particle's phase
 		//    at once; particle age is monotonic so there is no loop spike.
-		//  - Each particle gets a phase_offset (so a cohort spawned together - e.g. on a loop - doesn't
-		//    all turn at the same moment) and a small rate_jitter (so trajectories don't share one kink
-		//    frequency, which is what reads as banding - a per-particle offset alone can't fix that
-		//    because it shifts phase, not frequency).
+		//  - Each particle gets a phase_offset so a cohort spawned together (e.g. on a loop burst) doesn't
+		//    all turn at the same moment.
 		const tfxWideFloat motion_randomness_gain = tfxWideSetSingle(1.5f);                 // cone width per unit of influence
 		const tfxWideFloat inv_period_scale = tfxWideSetSingle(1.f / (250.f * 300.f));      // resolution 300 -> 250ms bucket
 
@@ -9259,14 +9257,12 @@ struct tfx_apply_motion_randomness {
 		const tfxWideInt axis_y = tfxWideSetSinglei(0x68e31da4);
 		const tfxWideInt axis_z = tfxWideSetSinglei(0xb5297a4d);
 		const tfxWideInt axis_phase = tfxWideSetSinglei(0x27d4eb2f);
-		const tfxWideInt axis_rate  = tfxWideSetSinglei(0x165667b1);
 
 		const tfxWideFloat phase_offset = tfxWideMul(tfxWideAdd(tfxWideMul(tfx__wide_white_unit(uid, axis_phase), tfxWideSetSingle(0.5f)), tfxWideSetSingle(0.5f)), tfxWideSetSingle(256.f)); // [0,256) buckets
-		const tfxWideFloat rate_jitter  = tfxWideAdd(tfxWIDEONE.m, tfxWideMul(tfx__wide_white_unit(uid, axis_rate), tfxWideSetSingle(0.25f)));                                              // [0.75,1.25] x rate
 
 		const tfxWideFloat resolution = tfxWideLoad(&bank.noise_resolution[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		tfxWideFloat phase = tfxWideAdd(phase_offset, tfxWideMul(age, tfxWideMul(tfxWideMul(resolution, rate_jitter), inv_period_scale)));
+		tfxWideFloat phase = tfxWideAdd(phase_offset, tfxWideMul(age, tfxWideMul(resolution, inv_period_scale)));
 		tfxWideInt bucket = tfxWideConverti(phase);                                          // floor (phase >= 0)
 		tfxWideFloat frac = tfxWideSub(phase, tfxWideConvert(bucket));
 		frac = tfxWideMul(tfxWideMul(frac, frac), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), frac))); // smoothstep
