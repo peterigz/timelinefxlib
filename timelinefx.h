@@ -8324,7 +8324,7 @@ tfxAPI_EDITOR void tfx__set_effect_name(tfx_effect_descriptor effect, const char
 tfxAPI_EDITOR bool tfx__rename_child(tfx_effect_descriptor effect, const char *new_name);
 tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_effect_descriptor excluding_effect, const char *name);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
-tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_emitter_into_effect(tfx_effect_descriptor emitter_to_clone, tfx_effect_descriptor effect, tfxEffectCloningFlags flags = 0);
+tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone, tfx_library library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst);
 tfxAPI_EDITOR void tfx__enable_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__render_all_emitters(tfx_effect_descriptor effect);

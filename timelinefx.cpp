@@ -2446,6 +2446,11 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 	emitter->library = effect->library;
 	emitter->parent = effect;
 	emitter->uid = ++effect->library->uid;
+	if (tfx__is_ordered_effect(effect)) {
+		emitter->state_flags |= tfxEmitterStateFlags_is_in_ordered_effect;
+	} else {
+		emitter->state_flags &= ~tfxEmitterStateFlags_is_in_ordered_effect;
+	}
 	effect->children.push_back(emitter);
 	tfx__update_library_effect_paths(effect->library);
 	tfx__reindex_effect(effect);
@@ -3431,20 +3436,18 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(effect_to_clone);		//effect to clone is not a valid handle
+	TFX_ASSERT(effect_to_clone->type == tfxEffectType || effect_to_clone->type == tfxFolder); //Use tfx__clone_emitter_into_effect for cloning emitters
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
 	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
 	tfx__remap_paired_emitters(effect_to_clone, clone);
 	return clone;
 }
 
-tfx_effect_descriptor tfx__clone_emitter_into_effect(tfx_effect_descriptor emitter_to_clone, tfx_effect_descriptor effect, tfxEffectCloningFlags flags) {
+tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone, tfx_library library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(emitter_to_clone);		//effect to clone is not a valid handle
-	TFX_ASSERT_HANDLE(effect);		//Must be a valid effect to clone in to
 	TFX_ASSERT(tfx__is_emitter_type(emitter_to_clone));	//Emitter to clone must be either 
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(emitter_to_clone->type);
-	tfx__clone_effect(emitter_to_clone, clone, effect->library, flags);
-	clone->parent = effect;
-	clone->state_flags |= tfx__is_ordered_effect(effect) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
+	tfx__clone_effect(emitter_to_clone, clone, library, flags);
 	tfx__remap_paired_emitters(emitter_to_clone, clone);
 	return clone;
 }
@@ -11896,8 +11899,12 @@ void tfx__update_effect_manager(void *data) {
 			//control_ribbons (appearance writes) phase entirely during warmup since no GPU instances
 			//are read until the first post-warmup frame.
 			pm->running_ribbon_vertex_count = 0;
+			//Pre-reserve so .next() can never reallocate while worker threads hold &work_entry pointers into
+			//this vector. ribbon_control_work is cleared each warmup tick so one entry per bucket is enough.
+			pm->ribbon_control_work.reserve(pm->ribbon_segment_buckets.Size());
 			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+				TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 				tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 				work_entry.pm = pm;
 				work_entry.ribbon_bucket = &bucket;
@@ -12003,8 +12010,13 @@ void tfx__update_effect_manager(void *data) {
 		}
 
 		pm->running_ribbon_vertex_count = 0;
+		//Pre-reserve so .next() can never reallocate while worker threads hold &work_entry pointers into this
+		//vector. Both the control_ribbons phase here and the control_ribbons_ages phase below push one entry
+		//per bucket and the vector is only cleared after both complete, so reserve two entries per bucket.
+		pm->ribbon_control_work.reserve(pm->ribbon_segment_buckets.Size() * 2);
 		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+			TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 			work_entry.pm = pm;
 			work_entry.ribbon_bucket = &bucket;
@@ -12022,6 +12034,7 @@ void tfx__update_effect_manager(void *data) {
 
 		pm->running_ribbon_vertex_count = 0;
 		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+			TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
 			work_entry.pm = pm;
@@ -12053,11 +12066,16 @@ void tfx__update_effect_manager(void *data) {
 	}
 
 	pm->sorting_work_entry.clear();
+	//Pre-reserve so .next() can never reallocate while worker threads hold &work_entry pointers into this
+	//vector. Guaranteed-order effects push one entry per layer; reserve the worst case (every in-use effect
+	//on every layer) so the dispatch loop below can never grow the vector while entries are in flight.
+	pm->sorting_work_entry.reserve(pm->effects_in_use[next_buffer].current_size * tfxLAYERS);
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
 		tfx_effect_state_t &effect = pm->effects[effect_index.index];
 		if (effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
 			if (effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order) {
 				for (tfxEachLayer) {
+					TFX_ASSERT(pm->sorting_work_entry.current_size != pm->sorting_work_entry.capacity);
 					tfx_sort_work_entry_t &work_entry = pm->sorting_work_entry.next();
 					work_entry.bank = &pm->particle_arrays;
 					work_entry.depth_indexes = &effect.instance_data.depth_indexes[layer][effect.instance_data.current_depth_buffer_index[layer]];
