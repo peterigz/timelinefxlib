@@ -2446,11 +2446,6 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 	emitter->library = effect->library;
 	emitter->parent = effect;
 	emitter->uid = ++effect->library->uid;
-	if (tfx__is_ordered_effect(effect)) {
-		emitter->state_flags |= tfxEmitterStateFlags_is_in_ordered_effect;
-	} else {
-		emitter->state_flags &= ~tfxEmitterStateFlags_is_in_ordered_effect;
-	}
 	effect->children.push_back(emitter);
 	tfx__update_library_effect_paths(effect->library);
 	tfx__reindex_effect(effect);
@@ -3389,7 +3384,6 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	} else if (effect_to_clone->type == tfxEmitterType || effect_to_clone->type == tfxRibbonType) {
 		clone->state_properties.graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->state_properties.graph_list_index, destination_library) : effect_to_clone->state_properties.graph_list_index;
 		clone->state_properties.transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->state_properties.transform_index, destination_library) : effect_to_clone->state_properties.transform_index;
-		clone->state_flags |= tfx__is_ordered_effect(clone->parent) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 		tfx__update_emitter_max_life(clone);
 		tfx__update_lerp_graphs_of_effect(clone, false);
 		tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
@@ -10979,7 +10973,6 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		state_flags |= shared_properties->emission_type == tfxLine && property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 		state_flags |= (gpu_properties->flags & 0x3) == tfxBillboarding_free_align || ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 		state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
-		state_flags |= tfx__is_ordered_effect(emitter->parent) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 		if (emitter->state_properties.path_attributes != tfxINVALID) {
 			tfx_emitter_path_t *path = &emitter->library->paths[emitter->state_properties.path_attributes];
 			state_flags |= (path->settings.rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
@@ -15425,7 +15418,7 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
 
 	if (work_entry->amount_to_spawn > 0) {
-		if (emitter.state_flags & tfxEmitterStateFlags_is_in_ordered_effect) {
+		if (work_entry->root_effect_flags & tfxEffectPropertyFlags_is_ordered) {
 			TFX_ASSERT(work_entry->depth_indexes);	//This must have been set if the effect is ordered!
 			if (work_entry->depth_indexes && work_entry->depth_indexes->capacity <= work_entry->depth_indexes->current_size + work_entry->amount_to_spawn) {
 				tfxU32 new_capacity = work_entry->depth_indexes->current_size + work_entry->amount_to_spawn;

@@ -3606,7 +3606,6 @@ typedef enum {
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
 	tfxEmitterStateFlags_has_rotated_path                       = 1 << 27,
 	tfxEmitterStateFlags_max_active_paths_reached               = 1 << 28,
-	tfxEmitterStateFlags_is_in_ordered_effect                   = 1 << 29,
 	tfxEmitterStateFlags_wrap_single_sprite                     = 1 << 30,
 	tfxEmitterStateFlags_src_ribbon_is_also_relative	        = 1 << 31,	    //Flagged when emission type is spawn on ribbon and both the emitter and ribbon emitter are relative.
 } tfx_emitter_state_flag_bits;
