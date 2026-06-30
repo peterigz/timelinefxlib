@@ -6104,7 +6104,6 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "hidden") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden);
 	else if (property_name == "relative_angle") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
 	else if (property_name == "match_amount_to_grid_points") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
-	else if (property_name == "image_handle_auto_center") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center);
 	else if (property_name == "single") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single);
 	else if (property_name == "wrap_single_sprite") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite);
 	else if (property_name == "spawn_on_grid") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
@@ -6427,8 +6426,6 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_relative_angle; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_relative_angle; }
 	} else if (*field == "match_amount_to_grid_points") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_match_amount_to_grid_points; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_match_amount_to_grid_points; }
-	} else if (*field == "image_handle_auto_center") {
-		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center; }
 	} else if (*field == "single") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_single; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_single; }
 	} else if (*field == "wrap_single_sprite") {
@@ -6547,7 +6544,6 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("billboard_option=%i", gpu_properties->flags & 0x3);
 	file->AddLine("vector_align_type=%i", properties->vector_align_type);
 
-	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
 	file->AddLine("match_amount_to_grid_points=%i", (flags & tfxEmitterPropertyFlags_match_amount_to_grid_points));
 	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
@@ -9260,9 +9256,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			TFX_ASSERT(current_effect);
 			tfx__initialise_unitialised_graphs(effect_stack.back());
 			tfx__update_emitter_max_life(effect_stack.back());
-			if (effect_stack.back()->state_properties.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-				lib->particle_gpu_properties[effect_stack.back()->state_properties.gpu_property_index].image_handle = { .5f, .5f };
-			}
 			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 			TFX_ASSERT(current_effect);
 			TFX_ASSERT_HANDLE(effect_stack.back());
@@ -11243,12 +11236,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 					c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxKill) << 8);
 					c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxLetFree) << 9);
 					properties.compute_flags[emitter.property_index] = c.flags;
-					if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-						c.image_handle = tfx_vec2_t(0.5f, 0.5f);
-					}
-					else {
-						c.image_handle = properties.image_handle[emitter.property_index];
-					}
+					c.image_handle = properties.image_handle[emitter.property_index];
 					c.image_handle = properties.image_handle[emitter.property_index];
 				}
 			}*/
@@ -12419,13 +12407,11 @@ tfxAPI tfx_effect_descriptor tfx_NewEffectDescriptor(tfx_effect_descriptor_type 
 	switch (type) {
 	case tfxEffectType:
 		new_effect->effect_flags = tfxEffectPropertyFlags_global_uniform_size | tfxEffectPropertyFlags_none;
-		new_effect->state_properties.property_flags = tfxEmitterPropertyFlags_image_handle_auto_center |
-			tfxEmitterPropertyFlags_base_uniform_size |
+		new_effect->state_properties.property_flags = tfxEmitterPropertyFlags_base_uniform_size |
 			tfxEmitterPropertyFlags_lifetime_uniform_size;
 		break;
 	case tfxEmitterType:
-		new_effect->state_properties.property_flags = tfxEmitterPropertyFlags_image_handle_auto_center |
-			tfxEmitterPropertyFlags_base_uniform_size |
+		new_effect->state_properties.property_flags = tfxEmitterPropertyFlags_base_uniform_size |
 			tfxEmitterPropertyFlags_lifetime_uniform_size;
 		break;
 	break;

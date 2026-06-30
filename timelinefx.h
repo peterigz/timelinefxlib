@@ -3494,7 +3494,6 @@ typedef enum {
 typedef enum {
 	tfxEmitterPropertyFlags_none							    = 0,
 	//First 2 bits reserved for billboarding type
-	tfxEmitterPropertyFlags_image_handle_auto_center		    = 1 << 2,		//Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_edge_traversal					    = 1 << 3,       //Line and Path emitters only: make particles traverse the line/path
 	tfxEmitterPropertyFlags_base_uniform_size				    = 1 << 4,       //Keep the base particle size uniform
 	tfxEmitterPropertyFlags_lifetime_uniform_size			    = 1 << 5,		//Keep the size over lifetime of the particle uniform
