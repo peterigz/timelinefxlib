@@ -52,8 +52,8 @@ void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 29907648) {
-		tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 13719744) {
+		//tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
 	if (!allocation) {
@@ -68,8 +68,8 @@ void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 29907648) {
-		tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 13719744) {
+		//tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
 	if (!allocation) {
@@ -84,8 +84,8 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 29907648) {
-		tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 13719744 && block->size == 176) {
+		//tfxPrint("%p, %zi", allocation, block->size);
 		int d = 0;
 	}
 	if (!allocation) {
@@ -6447,7 +6447,7 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 	} else if (*field == "image_random_start_frame") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_random_start_frame; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_random_start_frame; }
 	} else if (*field == "global_uniform_size") {
-		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_global_uniform_size; } else { effect->state_properties.property_flags &= ~tfxEffectPropertyFlags_global_uniform_size; }
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_global_uniform_size; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_global_uniform_size; }
 	} else if (*field == "base_uniform_size") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_base_uniform_size; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size; }
 	} else if (*field == "lifetime_uniform_size") {
@@ -18692,8 +18692,8 @@ void tfx_EndTimelineFX() {
 		tfx_FreeEffectManager(effect_manager);
 	}
 	tfxStore->effect_managers.FreeAll();
-	for (tfx_library library : tfxStore->libraries.data) {
-		tfx_FreeLibrary(library);
+	while (tfxStore->libraries.Size()) {
+		tfx_FreeLibrary(tfxStore->libraries.data.back());
 	}
 	tfxStore->libraries.FreeAll();
 	tfxStore->graph_indexes.FreeAll();
