@@ -3778,7 +3778,6 @@ void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start, int
 
 void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfxU32 node_count = (tfxU32)path->buffers.nodes.current_size;
-	/*
 	if (node_count == 0) {
 		//Add a small dummy path if the node count is 0
 		path->buffers.nodes.resize(4);
@@ -3786,7 +3785,6 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 		node_count = 4;
 		path->settings.node_count = 4;
 	}
-	*/
 	path->settings.node_count = node_count;
 	if (!path->buffers.node_buffer.capacity) {
 		tfx__init_paths_soa(&path->buffers.node_buffer, &path->buffers.node_soa, node_count);
@@ -9301,6 +9299,10 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			effect_stack.pop();
 		}
 
+	}
+
+	if (package->header.file_version < tfxFILE_VERSION) {
+		error |= tfxErrorCode_file_version_out_of_date;
 	}
 
 	if (uid >= 0) {

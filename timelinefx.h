@@ -3322,6 +3322,7 @@ typedef enum {
 	tfxErrorCode_invalid_format                                 = 1 << 8,
 	tfxErrorCode_no_inventory                                   = 1 << 9,
 	tfxErrorCode_invalid_inventory                              = 1 << 10,
+	tfxErrorCode_file_version_out_of_date                       = 1 << 11,
 	tfxErrorCode_library_loaded_without_shape_loader            = 1 << 13,
 	tfxErrorCode_library_object_could_not_be_created            = 1 << 14
 } tfx_error_flag_bits;
@@ -6230,7 +6231,7 @@ typedef struct tfx_profile_tag_s {
 
 const tfxU32 tfxMAGIC_NUMBER = 559433300;                //'!XFT'
 const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
-const tfxU32 tfxFILE_VERSION = 2;
+const tfxU32 tfxFILE_VERSION = 3;	//Any version before 3 was when 2d effects were still a thing.
 
 typedef struct tfx_package_entry_info_t {
 	tfx_str512_t file_name;                     //The name of the file stored in the package
