@@ -3442,7 +3442,6 @@ tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone,
 	TFX_ASSERT(tfx__is_emitter_type(emitter_to_clone));	//Emitter to clone must be either 
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(emitter_to_clone->type);
 	tfx__clone_effect(emitter_to_clone, clone, library, flags);
-	tfx__remap_paired_emitters(emitter_to_clone, clone);
 	return clone;
 }
 
