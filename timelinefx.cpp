@@ -2447,6 +2447,13 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 	emitter->parent = effect;
 	emitter->uid = ++effect->library->uid;
 	effect->children.push_back(emitter);
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+	if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
+		tfx_effect_descriptor dst_emitter = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
+		if (dst_emitter->parent != effect) {
+			shared_properties->paired_emitter_hash = 0;
+		}
+	}
 	tfx__update_library_effect_paths(effect->library);
 	tfx__reindex_effect(effect);
 	return effect->children.back();
@@ -3316,20 +3323,14 @@ void tfx__free_effect(tfx_effect_descriptor effect) {
 
 void tfx__store_paired_emitters(tfx_effect_descriptor effect, tfx_vector_t<tfx_paired_emitter_t> *paired_emitters) {
 	if (effect->type == tfxEffectType) {
-		for (tfx_effect_descriptor e : effect->children) {
-			tfx__store_paired_emitters(e, paired_emitters);
-		}
-	}
-	else if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
-		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
-		if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && effect->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
-			tfx_paired_emitter_t pair;
-			pair.src_emitter = effect;
-			pair.dst_emitter = effect->library->effect_paths.At(shared_properties->paired_emitter_hash);
-			paired_emitters->push_back(pair);
-		}
-		for (tfx_effect_descriptor e : effect->children) {
-			tfx__store_paired_emitters(e, paired_emitters);
+		for (tfx_effect_descriptor emitter : effect->children) {
+			tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+			if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
+				tfx_paired_emitter_t pair;
+				pair.src_emitter = emitter;
+				pair.dst_emitter = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
+				paired_emitters->push_back(pair);
+			}
 		}
 	}
 }
