@@ -10854,6 +10854,34 @@ void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter
 	tfx__get_shared_emitter_properties(emitter)->spawn_amount = amount;
 }
 
+void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v) {
+	TFX_ASSERT_HANDLE(emitter); //Not a valid emitter handle
+	TFX_ASSERT(emitter->type == tfxEmitterType || emitter->type == tfxRibbonType);
+	tfx_graph_list_t *graph_list = tfx__get_library_graph_list(emitter->library, emitter->state_properties.graph_list_index);
+	if (emitter->type == tfxEmitterType) {
+		tfx_graph_t *graph = &graph_list->graphs[tfxEmitter_base_life_index];
+		tfx__reset_graph(graph, v, tfxLifePreset);
+	} else {
+		tfx_graph_t *graph = &graph_list->graphs[tfxRibbon_base_life_index];
+		tfx__reset_graph(graph, v, tfxLifePreset);
+	}
+	tfx__update_emitter_max_life(emitter);
+}
+
+void tfx_ClearVariationLifetimeGraph(tfx_effect_descriptor emitter, float v) {
+	TFX_ASSERT_HANDLE(emitter); //Not a valid emitter handle
+	TFX_ASSERT(emitter->type == tfxEmitterType || emitter->type == tfxRibbonType);
+	tfx_graph_list_t *graph_list = tfx__get_library_graph_list(emitter->library, emitter->state_properties.graph_list_index);
+	if (emitter->type == tfxEmitterType) {
+		tfx_graph_t *graph = &graph_list->graphs[tfxEmitter_variation_life_index];
+		tfx__reset_graph(graph, v, tfxLifePreset);
+	} else {
+		tfx_graph_t *graph = &graph_list->graphs[tfxRibbon_variation_life_index];
+		tfx__reset_graph(graph, v, tfxLifePreset);
+	}
+	tfx__update_emitter_max_life(emitter);
+}
+
 void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager animation_manager) {
 	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
 	return animation_manager->emitter_properties.data;

@@ -68,6 +68,7 @@
 		-[Particle_Manager_functions]	Create and update functions for effect managers where the main work is done to update particles every frame
 		-[Animation_manager]			Animation manager functions for playing pre-recorded effect data
 		-[Effect_templates]				Functions for working with effect templates which help modify effects in the library without actually changing the base effect in the library.
+		-[Editing_graphs]				Functions to configure effect/emitter graphs
 		-[General_helpers]				General math functions and other helpers.
 */
 
@@ -11301,6 +11302,12 @@ Set the single spawn amount for an emitter. Only affects emitters that have the 
 * @param amount					 A float of the amount that you want to set the single spawn amount to.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
+
+//--------------------------------
+//Editing_graphs
+//--------------------------------
+void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v );
+void tfx_ClearVariationLifetimeGraph(tfx_effect_descriptor emitter, float v);
 
 //--------------------------------
 //General_helpers
