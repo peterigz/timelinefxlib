@@ -7474,7 +7474,7 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
 		return { 0.f, -1080.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
-		return { 0.f, 0.f };
+		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
 		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxPercentOvertime:
