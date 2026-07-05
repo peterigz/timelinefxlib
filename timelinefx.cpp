@@ -14182,7 +14182,7 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager effect_manager, void 
 			tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
 			memcpy((tfx_ribbon_segment_t *)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
 			memcpy((tfx_ribbon_t *)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
-			bucket->globals.segment_offset = running_segment_offset;
+			bucket->globals.segment_offset = running_segment_offset - bucket->lowest_segment_index;
 			running_segment_offset += segment_count;
 			running_ribbon_offset += ribbon_count;
 			bucket = effect_manager->ribbon_segment_buckets.next_item();
