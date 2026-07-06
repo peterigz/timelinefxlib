@@ -16040,6 +16040,8 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		range = emission_angle_variation * .5f;
 	}
 
+	tfx_graph_t *ribbon_scale_graph = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index];
+
 	int node = 0;
 	float t = 0.f;
 	tfxU32 qi = emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
@@ -16072,6 +16074,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		}
 
 		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
+		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, ribbon_instance.position.w) * entry->overal_scale;
 
 		tfx_quaternion_t q = tfx__unpack16bit_quaternion_from_gpu(ribbon_instance.quaternion);
 		entry->particle_data->quaternion[index] = ribbon_instance.quaternion;
@@ -16091,25 +16094,29 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * ribbon_scale;
+			local_position_y = lerp_position.y + pos.y * ribbon_scale;
+			local_position_z = lerp_position.z + pos.z * ribbon_scale;
 		} else if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			//When neither ribbon or particle emitter is relative then we don't need to add on the emitter position because the ribbon will have already been positioned
 			//in emitter space when it spawned.
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x *= entry->overal_scale;
-			local_position_y *= entry->overal_scale;
-			local_position_z *= entry->overal_scale;
+			local_position_x *= ribbon_scale;
+			local_position_y *= ribbon_scale;
+			local_position_z *= ribbon_scale;
 		} else if(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			//if ribbon emitter is relative and the particle emitter is not relative then we need to add on the emitter position to get the correct spawn
 			//location as the ribbon_instance position will not include the emitter position (as it's relative and therefore added each update.
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = pos.x * entry->overal_scale;
-			local_position_y = pos.y * entry->overal_scale;
-			local_position_z = pos.z * entry->overal_scale;
+			local_position_x = pos.x * ribbon_scale;
+			local_position_y = pos.y * ribbon_scale;
+			local_position_z = pos.z * ribbon_scale;
+		} else {
+			local_position_x *= ribbon_scale;
+			local_position_y *= ribbon_scale;
+			local_position_z *= ribbon_scale;
 		}
 
 		if (properties.emission_direction == tfxPathGradient) {
