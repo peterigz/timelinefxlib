@@ -7052,6 +7052,7 @@ typedef struct tfx_spawn_points_soa_s {
 	float *captured_position_y;
 	float *captured_position_z;
 	float *age;
+	float *spawn_count;
 } tfx_spawn_points_soa_t;
 
 typedef struct tfx_sprite_transform_s {
@@ -7388,6 +7389,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxParticleEmitterFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
+	tfxU32 spawn_points_ready;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 #else
@@ -9633,7 +9635,7 @@ tfxINTERNAL void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
+tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL void tfx__update_emitter_state(tfx_effect_manager pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_effect_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
@@ -9651,6 +9653,7 @@ tfxINTERNAL void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data);
