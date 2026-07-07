@@ -6266,7 +6266,8 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 				value = 3;
 			}
 		}
-		gpu_particle_properties->flags |= value;
+		//Make sure we clear out the bits first before setting
+		gpu_particle_properties->flags = (gpu_particle_properties->flags & ~0x3u) | (value & 0x3u);
 	}
 	else if (*field == "vector_align_type" && emitter_properties) emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
 	else if (*field == "angle_setting" && emitter_properties) emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
