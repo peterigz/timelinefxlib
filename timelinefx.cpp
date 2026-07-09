@@ -1439,6 +1439,26 @@ tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float 
 	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
 
+//Tilt a direction vector (typically a path gradient/tangent) by a pitch and yaw offset that are expressed relative
+//to the direction itself rather than to fixed world axes. This keeps the path gradient emission controls intuitive:
+//a pitch and yaw of 0 always emit straight along the path regardless of how the path or emitter is oriented, a
+//positive pitch always tilts the emission away from the path along its local up axis and a positive yaw always
+//swings it around that same up axis. Without this the offset would rotate about world X/Y and so the meaning of
+//the controls would depend entirely on which way the path happened to be pointing.
+tfxINTERNAL tfx_vec3_t tfx__tilt_direction_relative_to_frame(tfx_vec3_t direction, float pitch, float yaw) {
+	tfx_vec3_t forward = tfx__normalize_vec3(&direction);
+	//Choose a reference up that isn't parallel to forward so the cross product that builds the frame stays stable.
+	tfx_vec3_t reference_up = fabsf(forward.y) > 0.999f ? tfx_vec3_t(0.f, 0.f, 1.f) : tfx_vec3_t(0.f, 1.f, 0.f);
+	tfx_vec3_t right = tfx__cross_product_vec3(reference_up, forward);
+	right = tfx__normalize_vec3(&right);
+	tfx_vec3_t up = tfx__cross_product_vec3(forward, right);
+	//Pitch rotates about the frame's right axis (tilts up/down from the path), yaw about the frame's up axis.
+	tfx_quaternion_t pitch_quaternion = tfx__quaternion_from_axis_angle(right.x, right.y, right.z, pitch);
+	tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(up.x, up.y, up.z, yaw);
+	tfx_quaternion_t tilt = yaw_quaternion * pitch_quaternion;
+	return tfx__rotate_vector_quaternion(&tilt, forward);
+}
+
 void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
 	//This calculates the position on a catmull rom spline for 4 (sse) or 8 (avx) particles at a time.
 	//pi contains the first index in the path node list, t is the % of the segment on the path to calcuate for. 
@@ -16074,6 +16094,12 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 			tfx__catmull_rom_spline_3d_soa(path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, node, t, &point.x);
 		}
 
+		if (properties.emission_direction == tfxPathGradient) {
+			//The emission direction is the ribbon path tangent at the spawn point. Normalizing is deferred to
+			//tfx__tilt_direction_relative_to_frame below.
+			velocity_direction = tfx__catmull_rom_spline_gradient_3d_soa(&path->buffers.node_soa.x[node], &path->buffers.node_soa.y[node], &path->buffers.node_soa.z[node], t);
+		}
+
 		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
 		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, ribbon_instance.position.w) * entry->overal_scale;
 
@@ -16121,9 +16147,15 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		}
 
 		if (properties.emission_direction == tfxPathGradient) {
-			tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
-			tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
-			rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
+			//Tilt the ribbon path tangent by the emission pitch/yaw relative to the path direction, then follow
+			//the ribbon instance's orientation (the same quaternion applied to the spawn position above).
+			tfx_vec3_t rotated_normal = tfx__tilt_direction_relative_to_frame(velocity_direction, emission_pitch, emission_yaw);
+			rotated_normal = tfx__rotate_vector_quaternion(&q, rotated_normal);
+			//Non-relative particles store their heading in world space, so bake in the emitter/effect world rotation.
+			//Relative particles keep a local heading and get the emitter rotation applied later when transformed.
+			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
+			}
 			if (range != 0.f) {
 				rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
 			}
@@ -16915,6 +16947,11 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 		float &path_position = entry->particle_data->path_position[index];
 		float &path_offset = entry->particle_data->path_offset[index];
 
+		//Records the per-path rotation quaternion applied to this particle (if any) so the path gradient emission
+		//direction can be rotated by the same amount as the position further down.
+		bool has_path_rotation = false;
+		tfx_quaternion_t path_rotation;
+
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) {
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->settings.node_count - 3);
 			t = (float)tfx_RandomRangeZeroToMaxInt(&random, (int)grid_points.x) * increment;
@@ -16971,8 +17008,11 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 		if (path->settings.extrusion_type == tfxExtrusionLinear) {
 			if (properties.emission_direction == tfxPathGradient) {
+				//Scale the raw path gradient by the emitter size so the emission direction is tangent to the path
+				//as it is actually displayed (the node positions below are also scaled by emitter_size). Normalizing
+				//is deferred to tfx__tilt_direction_relative_to_frame further down.
 				velocity_direction = tfx__catmull_rom_spline_gradient_3d_soa(&path->buffers.node_soa.x[node], &path->buffers.node_soa.y[node], &path->buffers.node_soa.z[node], t);
-				velocity_direction = tfx__normalize_vec3_fast(&velocity_direction);
+				velocity_direction = velocity_direction * emitter.emitter_size;
 			}
 			float radius = extrusion * .5f;
 			path_offset = tfx_RandomRangeFromTo(&random, -radius, radius);
@@ -16995,11 +17035,14 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			local_position_z = rz * radius * emitter.emitter_size.z;
 			local_position_y = point.y * emitter.emitter_size.y;
 			if (properties.emission_direction == tfxPathGradient) {
+				//Rotate the gradient by the same arc offset that was applied to the position, then scale by the
+				//emitter size so the emission direction follows the extruded path as it is actually displayed.
+				//Normalizing is deferred to tfx__tilt_direction_relative_to_frame further down.
 				velocity_direction = tfx__catmull_rom_spline_gradient_3d_soa(&path->buffers.node_soa.x[node], &path->buffers.node_soa.y[node], &path->buffers.node_soa.z[node], t);
-				velocity_direction = tfx__normalize_vec3_fast(&velocity_direction);
 				tfx_vec3_t v = velocity_direction;
 				velocity_direction.x = v.x * cos_path_offset - v.z * sin_path_offset;
 				velocity_direction.z = v.x * sin_path_offset + v.z * cos_path_offset;
+				velocity_direction = velocity_direction * emitter.emitter_size;
 			}
 		}
 
@@ -17014,6 +17057,8 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			}
 			tfx_quaternion_t q = tfx__unpack16bit_quaternion(emitter.path_state.path_quaternions[qi].quaternion);
 			entry->particle_data->quaternion[index] = emitter.path_state.path_quaternions[qi].quaternion;
+			path_rotation = q;
+			has_path_rotation = true;
 			tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
 			rp = tfx__rotate_vector_quaternion(&q, rp);
 			local_position_x = rp.x;
@@ -17032,19 +17077,22 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
-			if (properties.emission_direction == tfxPathGradient) {
-				tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
-				tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
-				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
-				if (range != 0.f) {
-					rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
-				}
-				entry->particle_data->velocity_normal[index] = tfx__pack10bit_unsigned(&rotated_normal);
-			}
 		}
-		else if (properties.emission_direction == tfxPathGradient) {
-			tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
-			tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
+
+		if (properties.emission_direction == tfxPathGradient) {
+			//Tilt the path tangent by the emission pitch/yaw expressed relative to the path direction so the
+			//controls stay intuitive whatever the path orientation (see tfx__tilt_direction_relative_to_frame).
+			tfx_vec3_t rotated_normal = tfx__tilt_direction_relative_to_frame(velocity_direction, emission_pitch, emission_yaw);
+			//Follow any per-path rotation (spiral orientation, rotation range/pitch/yaw, rotation cycle) that was
+			//applied to the particle position so the emission direction rotates rigidly with the path.
+			if (has_path_rotation) {
+				rotated_normal = tfx__rotate_vector_quaternion(&path_rotation, rotated_normal);
+			}
+			//Non-relative particles store their heading in world space, so bake in the emitter/effect world rotation.
+			//Relative particles keep a local heading and get the emitter rotation applied later when transformed.
+			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
+			}
 			if (range != 0.f) {
 				rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
 			}
