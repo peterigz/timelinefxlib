@@ -2737,8 +2737,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library lib
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.state_properties.property_index].emission_direction;
 
 	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
-	float parent_pitch = 0.f;
-	float parent_yaw = 0.f;
+	bool apply_world_rotation = false;
 	if (emission_type != tfxPoint) {
 		if (emission_direction == tfxOutwards) {
 
@@ -2801,13 +2800,11 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library lib
 			}
 		}
 		else {
-			parent_pitch = emitter.world_rotations.pitch;
-			parent_yaw = emitter.world_rotations.yaw;
+			apply_world_rotation = true;
 		}
 	}
 	else {
-		parent_pitch = emitter.world_rotations.pitch;
-		parent_yaw = emitter.world_rotations.yaw;
+		apply_world_rotation = true;
 	}
 
 	float sin_pitch = sinf(emission_pitch);
@@ -2822,6 +2819,11 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library lib
 	direction.x = to_handle.x * cos_yaw - direction.z * sin_yaw;
 	direction.z = to_handle.x * sin_yaw + direction.z * cos_yaw;
 	tfx_vec3_t v = direction;
+	//Bake in the emitter's world rotation for Specified/Point emission (non-relative only). The pitch/yaw offset
+	//above was applied in the emitter's local frame; rotating afterwards carries it into world space.
+	if (apply_world_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+		v = tfx__rotate_vector_quaternion(&emitter.rotation, v);
+	}
 	if (range != 0) {
 		v = tfx__random_vector_in_cone(random, v, range);
 	}
