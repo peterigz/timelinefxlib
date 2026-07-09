@@ -15008,6 +15008,9 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		gpu_emitter.position = ribbon_emitter.world_position;
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
+	} else {
+		gpu_emitter.position = tfx_vec3_t();
+		gpu_emitter.captured_position = tfx_vec3_t();
 	}
 	gpu_emitter.scale = parent_effect.overal_scale;
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
@@ -15139,6 +15142,16 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 
 	tfx__transform_3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overal_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
+
+	if (shared_properties.emission_type == tfxSpawnOnRibbon && emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative && emitter.other_emitter_index != tfxINVALID) {
+		//Spawn-on-ribbon where both this emitter and the ribbon are relative: adopt the ribbon emitter's world rotation
+		//outright as this emitter's rotation. The relative transform path (tfx__control_particle_transform) then rotates the
+		//ribbon-local particle positions and path-gradient headings by the ribbon's live orientation every frame, so the
+		//particles sit on the ribbon and track its roll/pitch/yaw for their whole lifetime with no special handling in the
+		//spawn function. captured_rotation was taken from the previous frame's (already adopted) value above, so motion
+		//interpolation stays consistent.
+		emitter.rotation = pm->ribbon_emitters[emitter.other_emitter_index].rotation;
+	}
 
 	if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
 		emitter.captured_position = emitter.world_position;
@@ -16118,31 +16131,33 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		TFX_ASSERT(qi < ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size);
 
 		if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			//if ribbon emitter is relative and the particle emitter is not relative then we need to add on the emitter position to get the correct spawn
-			//location as the ribbon_instance position will not include the emitter position (as it's relative and therefore added each update.
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
-			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			//The ribbon emitter is relative but the particle emitter is not, so the spawn position must end up in world
+			//space. ribbon_instance.position/quaternion only carry the ribbon's local (path) transform - the ribbon emitter's
+			//own world rotation and position are applied by the GPU every frame (emitter_position/emitter_quaternion in
+			//ribbons.comp). Bake that same ribbon emitter world transform in here (rotation, not the particle emitter's) so
+			//the spawn location matches the rendered ribbon, including any roll/pitch/yaw coming from its transform graphs.
+			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, ribbon_emitter.captured_position, ribbon_emitter.world_position);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z));
 			local_position_x = lerp_position.x + pos.x * ribbon_scale;
 			local_position_y = lerp_position.y + pos.y * ribbon_scale;
 			local_position_z = lerp_position.z + pos.z * ribbon_scale;
-		} else if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			//When neither ribbon or particle emitter is relative then we don't need to add on the emitter position because the ribbon will have already been positioned
-			//in emitter space when it spawned.
-			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x *= ribbon_scale;
-			local_position_y *= ribbon_scale;
-			local_position_z *= ribbon_scale;
-		} else if(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && !(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			//if ribbon emitter is relative and the particle emitter is not relative then we need to add on the emitter position to get the correct spawn
-			//location as the ribbon_instance position will not include the emitter position (as it's relative and therefore added each update.
-			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = pos.x * ribbon_scale;
-			local_position_y = pos.y * ribbon_scale;
-			local_position_z = pos.z * ribbon_scale;
+		} else if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			//The ribbon is not relative, so ribbon_instance.quaternion already holds its world rotation and
+			//ribbon_instance.position is its world position (the GPU adds no emitter transform for a non-relative ribbon).
+			//A spawn-on-ribbon particle is never transform_relative unless both emitters are relative, so this world
+			//position is used directly. Only the segment (the path point) is scaled by the ribbon scale - matching the GPU
+			//which scales the segment, not the world position - so recompute from the unscaled point rather than scaling the
+			//already world-offset position. Applies whether or not the particle emitter itself is flagged relative.
+			tfx_vec3_t scaled_point = point * ribbon_scale;
+			tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&q, scaled_point) + ribbon_instance.position.xyz();
+			local_position_x = world_position.x;
+			local_position_y = world_position.y;
+			local_position_z = world_position.z;
 		} else {
+			//Both the ribbon and the particle emitter are relative. The position stays in ribbon-local space and the emitter's
+			//world rotation is applied every frame by the transform_relative path. tfx__update_emitter has already adopted the
+			//ribbon emitter's world rotation for this emitter, so that transform lands the particles on the ribbon and tracks
+			//its live roll/pitch/yaw - nothing to do here beyond the ribbon scale.
 			local_position_x *= ribbon_scale;
 			local_position_y *= ribbon_scale;
 			local_position_z *= ribbon_scale;
@@ -16153,10 +16168,19 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 			//the ribbon instance's orientation (the same quaternion applied to the spawn position above).
 			tfx_vec3_t rotated_normal = tfx__tilt_direction_relative_to_frame(velocity_direction, emission_pitch, emission_yaw);
 			rotated_normal = tfx__rotate_vector_quaternion(&q, rotated_normal);
-			//Non-relative particles store their heading in world space, so bake in the emitter/effect world rotation.
-			//Relative particles keep a local heading and get the emitter rotation applied later when transformed.
+			//Non-relative particles store their heading in world space, so bake in the world rotation here.
+			//Relative particles keep a local heading and get the emitter rotation applied later at transform time. For the
+			//both-relative case tfx__update_emitter has already adopted the ribbon emitter's world rotation as this emitter's
+			//rotation, so that later transform swings the heading onto the live ribbon - nothing to do here for it.
 			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
+				//When the ribbon is relative, q (ribbon_instance.quaternion) only holds the path rotation, so bake in the ribbon
+				//emitter's world rotation to match the spawn position and the GPU's emitter_quaternion. A non-relative ribbon
+				//already has its world rotation folded into q, so nothing more is needed - the particle emitter's own rotation
+				//must NOT be applied here, as the heading follows the ribbon (not the particle emitter) and applying it would
+				//double-rotate the heading relative to the spawn position.
+				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+					rotated_normal = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, rotated_normal);
+				}
 			}
 			if (range != 0.f) {
 				rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
@@ -17317,7 +17341,11 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time));
 			ribbon.position.w = 0.f;
 			ribbon.start_index = ribbon_emitter.static_segment_start_index;
-			ribbon.flags |= tfxRibbonFlags_active;
+			//Assign (not OR) so a slot recycled from the shared bucket free-list starts clean. Otherwise a stale
+			//tfxRibbonFlags_relative left by a previous relative emitter's ribbon would persist when a non-relative
+			//emitter reuses the slot, making the GPU treat it as relative and rotate/offset its (already world-space)
+			//position by the emitter transform - the ribbon then jumps to a far off location.
+			ribbon.flags = tfxRibbonFlags_active;
 			if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 				ribbon.flags |= tfxRibbonFlags_relative;
 			} else {
