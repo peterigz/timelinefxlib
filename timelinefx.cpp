@@ -2382,6 +2382,7 @@ bool tfx__is_emitter_type(tfx_effect_descriptor emitter) {
 bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	for (tfx_effect_descriptor child : effect->children) {
+		if (tfx__is_descriptor_hidden(child)) continue;
 		float qty = tfx__get_graph_last_value(tfx__get_descriptor_graph(child, tfxEmitter_base_amount_index)) + tfx__get_graph_last_value(tfx__get_descriptor_graph(child, tfxEmitter_variation_amount_index));
 		if (child->state_properties.path_attributes != tfxINVALID && tfx__get_shared_emitter_properties(child)->emission_type == tfxPath) {
 			tfx_emitter_path_t *path = tfx_GetEmitterPath(child);
@@ -8203,6 +8204,7 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 
 	for (tfx_effect_descriptor child : effect->children) {
 		if (!tfx__is_emitter_type(child)) continue;
+		if (tfx__is_descriptor_hidden(child)) continue;
 
 		tfx_graph_list_t &child_graphs = child->library->graphs[child->state_properties.graph_list_index];
 		tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
