@@ -11020,7 +11020,10 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 		tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 		state_flags |= property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		state_flags |= (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && shared_properties->single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
+		//wrap_single_sprite only makes sense for a looping single-spawn emitter. The property flag's UI checkbox
+		//is hidden unless the emitter is single-spawn, so it can be left set after single-spawn is turned off. Gate
+		//the effective state flag on single here so a stuck property flag can't corrupt sprite-data recording.
+		state_flags |= (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && shared_properties->single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
 		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single ? tfxEmitterStateFlags_is_single : 0;
 		state_flags |= (shared_properties->emission_type != tfxLine && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) || (shared_properties->emission_type == tfxLine && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) ? tfxEmitterStateFlags_not_line : 0;
 		state_flags |= emitter_properties->angle_settings != tfxAngleSettingFlags_align_roll && !(property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
@@ -15651,7 +15654,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
 		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc() + entry->particle_uid++;
 		age_accumulator += frame_fraction;
-		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_animation_loops) {
+		if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_animation_loops) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
 		} else {
 			max_age = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
@@ -18120,10 +18123,10 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt remove = tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_remove);
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
-	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite), tfxWideSetZeroi);
+	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
 	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning)), tfxWideSetZeroi);
-	if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
-		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite), tfxWideSetZeroi);
+	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
+		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
 	}
 	const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
 
