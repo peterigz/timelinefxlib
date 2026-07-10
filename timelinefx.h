@@ -2800,6 +2800,7 @@ typedef enum {
 	tfxPathDirectionOvertimePreset,
 	tfxPathTranslationOvertimePreset,
 	tfxUVOvertimePreset,
+	tfxPathPositionPreset,
 } tfx_graph_preset;
 
 typedef enum {

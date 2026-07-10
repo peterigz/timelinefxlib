@@ -7522,6 +7522,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxUVOvertimePreset:
 		return { 0.f, -1000.f };
+	case tfx_graph_preset::tfxPathPositionPreset:
+		return { 0.f, 0.f };
 	}
 	return { 0.f, 0.f };
 }
@@ -7593,6 +7595,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { 1.f, 1000.f };
 	case tfx_graph_preset::tfxUVOvertimePreset:
 		return { 1.f, 1000.f };
+	case tfx_graph_preset::tfxPathPositionPreset:
+		return { 1.f, 1.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
 }
