@@ -2469,7 +2469,7 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 	emitter->uid = ++effect->library->uid;
 	effect->children.push_back(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-	if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
+	if ((shared_properties->emission_type == tfxSpawnOnRibbon || shared_properties->emission_type == tfxOtherEmitter) && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
 		tfx_effect_descriptor dst_emitter = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
 		if (dst_emitter->parent != effect) {
 			shared_properties->paired_emitter_hash = 0;
@@ -3348,7 +3348,7 @@ void tfx__store_paired_emitters(tfx_effect_descriptor effect, tfx_vector_t<tfx_p
 	if (effect->type == tfxEffectType) {
 		for (tfx_effect_descriptor emitter : effect->children) {
 			tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-			if (shared_properties->emission_type == tfxSpawnOnRibbon || (shared_properties->emission_type == tfxOtherEmitter && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash))) {
+			if ((shared_properties->emission_type == tfxSpawnOnRibbon || shared_properties->emission_type == tfxOtherEmitter) && shared_properties->paired_emitter_hash != 0 && emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
 				tfx_paired_emitter_t pair;
 				pair.src_emitter = emitter;
 				pair.dst_emitter = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
@@ -3458,6 +3458,9 @@ tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effec
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
 	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
 	tfx__remap_paired_emitters(effect_to_clone, clone);
+	//NOTE: the GPU compute lookup nodes must NOT be rebuilt here - the clone is a detached descriptor that is not yet a
+	//member of the library tree, so tfx__update_library_compute_nodes() would not assign it a fresh gpu_lookup_offset. The
+	//rebuild is done by the editor once the clone has been inserted into the tree (see Editor::CopyEffectEmitter).
 	return clone;
 }
 
@@ -3466,6 +3469,8 @@ tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone,
 	TFX_ASSERT(tfx__is_emitter_type(emitter_to_clone));	//Emitter to clone must be either 
 	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(emitter_to_clone->type);
 	tfx__clone_effect(emitter_to_clone, clone, library, flags);
+	//NOTE: do not rebuild the GPU compute lookup nodes here - the clone is not in the library tree yet so it would not get a
+	//fresh gpu_lookup_offset. The editor rebuilds the table after inserting the clone (see Editor::CopyEffectEmitter).
 	return clone;
 }
 
@@ -8183,6 +8188,10 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	}
 	else {
 		max_life = tfx__get_graph_first_value(&life) + tfx__get_graph_first_value(&life_variation);
+		if (emitter->parent) {
+			global_adjust = tfx__get_graph_max_value(&emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index].graphs[tfxEffect_global_life_index]);
+			max_life *= global_adjust;
+		}
 	}
 
 	return max_life * max_life_factor;
