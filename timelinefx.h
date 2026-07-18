@@ -2258,8 +2258,10 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideDiv _mm256_div_ps
 #ifdef tfxUSEFMA
 #define tfxWideMulAdd(a, b, c) _mm256_fmadd_ps(a, b, c)
+#define tfxWideMulSub(a, b, c) _mm256_fmsub_ps(a, b, c)
 #else
 #define tfxWideMulAdd(a, b, c) tfxWideAdd(tfxWideMul(a, b), c)
+#define tfxWideMulSub(a, b, c) tfxWideSub(tfxWideMul(a, b), c)
 #endif
 #define tfxWideAddi _mm256_add_epi32
 #define tfxWideSubi _mm256_sub_epi32
