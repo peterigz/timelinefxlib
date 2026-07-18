@@ -8220,10 +8220,10 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 		bool is_ribbon = child->type == tfxRibbonType;
 		bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
 
-		tfx_graph_t *life_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_base_life_index : tfxEmitter_base_life_index];
-		tfx_graph_t *life_variation_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_variation_life_index : tfxEmitter_variation_life_index];
-		tfx_graph_t *amount_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_base_amount_index : tfxEmitter_base_amount_index];
-		tfx_graph_t *amount_variation_graph = &child_graphs.graphs[is_ribbon ? tfxRibbon_variation_amount_index : tfxEmitter_variation_amount_index];
+		tfx_graph_t *life_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_base_life_index : (int)tfxEmitter_base_life_index];
+		tfx_graph_t *life_variation_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_variation_life_index : (int)tfxEmitter_variation_life_index];
+		tfx_graph_t *amount_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_base_amount_index : (int)tfxEmitter_base_amount_index];
+		tfx_graph_t *amount_variation_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_variation_amount_index : (int)tfxEmitter_variation_amount_index];
 
 		//tfxOtherEmitter spawns scale particle life by the factor_life graph; upper-bound with its max value.
 		float life_factor = 1.f;

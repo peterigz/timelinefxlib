@@ -2113,6 +2113,113 @@ tfxAPI tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, t
 
 #define tfx128SetConst(value) {value, value, value, value}
 
+//Half float conversion on x86 needs the F16C instruction set. MSVC exposes the intrinsics from immintrin.h
+//regardless of the /arch setting, but gcc and clang refuse to compile them unless the target actually enables
+//F16C (-mf16c, or anything that implies it such as -march=native on a modern cpu). Rather than force every
+//project that includes TimelineFX to add the compiler flag, detect it here and fall back to a scalar
+//implementation when it's not available. Define tfxF16C to declare that the hardware instructions can be used.
+#if defined(tfxX86)
+#if defined(__F16C__) || (defined(_MSC_VER) && !defined(__clang__))
+#define tfxF16C
+#endif
+#endif
+
+#if !defined(tfxF16C) && defined(tfxX86)
+//Software float <-> half conversion, used when the compiler hasn't been told that F16C is available.
+//Round to nearest even, matching what _mm_cvtps_ph with _MM_FROUND_TO_NEAREST_INT does.
+tfxINTERNAL inline tfxU16 tfx__float_to_half_scalar(float value) {
+	union { float f; tfxU32 u; } input;
+	input.f = value;
+	tfxU32 sign = (input.u >> 16) & 0x8000;
+	tfxU32 exponent_and_mantissa = input.u & 0x7fffffff;
+	tfxU32 exponent = exponent_and_mantissa >> 23;
+
+	if (exponent_and_mantissa >= 0x47800000) {
+		//Too large for a half, or inf/nan
+		if (exponent_and_mantissa > 0x7f800000) {
+			return (tfxU16)(sign | 0x7e00);	//nan, quieted
+		}
+		return (tfxU16)(sign | 0x7c00);		//infinity
+	}
+
+	if (exponent_and_mantissa < 0x38800000) {
+		//Subnormal in half precision, or small enough to flush to zero
+		if (exponent_and_mantissa < 0x33000000) {
+			return (tfxU16)sign;
+		}
+		tfxU32 shift = 126 - exponent;
+		tfxU32 full_mantissa = (exponent_and_mantissa & 0x7fffff) | 0x800000;
+		tfxU32 half_mantissa = full_mantissa >> shift;
+		tfxU32 remainder = full_mantissa & ((1u << shift) - 1);
+		tfxU32 halfway = 1u << (shift - 1);
+		if (remainder > halfway || (remainder == halfway && (half_mantissa & 1))) {
+			half_mantissa++;
+		}
+		return (tfxU16)(sign | half_mantissa);
+	}
+
+	//Normal range. Rebias the exponent from 127 to 15 (a subtraction of 112 << 23) and round the mantissa
+	//from 23 bits down to 10.
+	tfxU32 rebiased = exponent_and_mantissa + 0xc8000000;
+	tfxU32 rounded = rebiased + 0x0fff + ((rebiased >> 13) & 1);
+	return (tfxU16)(sign | (rounded >> 13));
+}
+
+tfxINTERNAL inline float tfx__half_to_float_scalar(tfxU16 half) {
+	tfxU32 sign = (tfxU32)(half & 0x8000) << 16;
+	tfxU32 exponent = (half >> 10) & 0x1f;
+	tfxU32 mantissa = half & 0x3ff;
+	union { float f; tfxU32 u; } output;
+
+	if (exponent == 0) {
+		//Zero or subnormal. Subnormal halves are mantissa * 2^-24 which is exactly representable as a float.
+		float value = (float)mantissa * (1.f / 16777216.f);
+		return sign ? -value : value;
+	}
+	if (exponent == 0x1f) {
+		output.u = sign | 0x7f800000 | (mantissa << 13);
+		return output.f;
+	}
+	output.u = sign | ((exponent + 112) << 23) | (mantissa << 13);
+	return output.f;
+}
+
+tfxINTERNAL inline __m128i tfx__cvtps_ph_scalar(__m128 floats) {
+	float unpacked[4];
+	tfxU16 halves[8] = { 0 };
+	_mm_storeu_ps(unpacked, floats);
+	for (int index = 0; index != 4; ++index) {
+		halves[index] = tfx__float_to_half_scalar(unpacked[index]);
+	}
+	return _mm_loadu_si128((const __m128i *)halves);
+}
+
+tfxINTERNAL inline __m128 tfx__cvtph_ps_scalar(__m128i halves) {
+	tfxU16 unpacked[8];
+	_mm_storeu_si128((__m128i *)unpacked, halves);
+	return _mm_set_ps(tfx__half_to_float_scalar(unpacked[3]), tfx__half_to_float_scalar(unpacked[2]), tfx__half_to_float_scalar(unpacked[1]), tfx__half_to_float_scalar(unpacked[0]));
+}
+
+#ifdef tfxUSEAVX
+tfxINTERNAL inline __m128i tfx__cvtps_ph256_scalar(__m256 floats) {
+	float unpacked[8];
+	tfxU16 halves[8];
+	_mm256_storeu_ps(unpacked, floats);
+	for (int index = 0; index != 8; ++index) {
+		halves[index] = tfx__float_to_half_scalar(unpacked[index]);
+	}
+	return _mm_loadu_si128((const __m128i *)halves);
+}
+
+tfxINTERNAL inline __m256 tfx__cvtph_ps256_scalar(__m128i halves) {
+	tfxU16 unpacked[8];
+	_mm_storeu_si128((__m128i *)unpacked, halves);
+	return _mm256_set_ps(tfx__half_to_float_scalar(unpacked[7]), tfx__half_to_float_scalar(unpacked[6]), tfx__half_to_float_scalar(unpacked[5]), tfx__half_to_float_scalar(unpacked[4]),
+		tfx__half_to_float_scalar(unpacked[3]), tfx__half_to_float_scalar(unpacked[2]), tfx__half_to_float_scalar(unpacked[1]), tfx__half_to_float_scalar(unpacked[0]));
+}
+#endif
+#endif
+
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
 //Note that avx is currently only slightly faster than SSE, probably because memory bandwidth/caching becomes more of an issue at that point. But also I could be doing it wrong!
@@ -2177,8 +2284,13 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideCast _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
 #define tfxWideConvert _mm256_cvtepi32_ps 
-#define tfxWideConvertHalfsToFloats _mm256_cvtph_ps 
+#ifdef tfxF16C
+#define tfxWideConvertHalfsToFloats _mm256_cvtph_ps
 #define tfxWideConvertFloatsToHalfs(floats) _mm256_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
+#else
+#define tfxWideConvertHalfsToFloats tfx__cvtph_ps256_scalar
+#define tfxWideConvertFloatsToHalfs(floats) tfx__cvtps_ph256_scalar(floats)
+#endif
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
@@ -2247,8 +2359,13 @@ typedef __m128i tfxWideIntLoader;
 #endif
 #define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
 #define tfxWideStoreHalfs _mm_store_si128
-#define tfxWideConvertHalfsToFloats _mm_cvtph_ps 
+#ifdef tfxF16C
+#define tfxWideConvertHalfsToFloats _mm_cvtph_ps
 #define tfxWideConvertFloatsToHalfs(floats) _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
+#else
+#define tfxWideConvertHalfsToFloats tfx__cvtph_ps_scalar
+#define tfxWideConvertFloatsToHalfs(floats) tfx__cvtps_ph_scalar(floats)
+#endif
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mullo_epi32
@@ -2490,7 +2607,11 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
 }
 
 tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
+#ifdef tfxF16C
 	__m128i half = _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT);
+#else
+	__m128i half = tfx__cvtps_ph_scalar(floats);
+#endif
 	tfx_rgba16f_t result;
 	_mm_storel_epi64((__m128i *)&result, half);
 	return result;
@@ -2498,7 +2619,11 @@ tfxINTERNAL inline tfx_rgba16f_t tfxFloatToHalf128(const tfx128 floats) {
 
 tfxINTERNAL inline tfx128 tfxHalfToFloat128(const tfx_rgba16f_t half) {
 	__m128i packed = _mm_loadl_epi64((const __m128i *)&half);
+#ifdef tfxF16C
 	return _mm_cvtph_ps(packed);
+#else
+	return tfx__cvtph_ps_scalar(packed);
+#endif
 }
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
