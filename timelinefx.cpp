@@ -2051,7 +2051,10 @@ tfx_package_entry_info_t *tfx__get_package_file(tfx_package package, const char 
 			TFX_ASSERT(file);        //couldn't open the file!
 			tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
-			fread(entry->data.data, 1, entry->file_size, file);
+			if (fread(entry->data.data, 1, entry->file_size, file) != (size_t)entry->file_size) {
+				fclose(file);
+				return nullptr;
+			}
 			fclose(file);
 		}
 		else {
@@ -3399,8 +3402,8 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 	tfx_library library = effect_to_clone->library;
 
 	if (effect_to_clone->type == tfxEffectType) {
-		clone->state_properties.transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->state_properties.transform_index, destination_library) : clone->state_properties.transform_index = effect_to_clone->state_properties.transform_index;
-		clone->state_properties.graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->state_properties.graph_list_index, destination_library) : clone->state_properties.graph_list_index = effect_to_clone->state_properties.graph_list_index;
+		clone->state_properties.transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->state_properties.transform_index, destination_library) : effect_to_clone->state_properties.transform_index;
+		clone->state_properties.graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->state_properties.graph_list_index, destination_library) : effect_to_clone->state_properties.graph_list_index;
 		if (flags & tfxEffectCloningFlags_history) {
 			clone->effect_flags |= tfxEffectPropertyFlags_history_effect;
 		}

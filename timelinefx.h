@@ -2026,21 +2026,23 @@ tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, 
 
 	hasher->total_length += length;
 	unsigned char *data = (unsigned char *)input;
+	tfxU64 buffer_size = hasher->buffer_size;
 
-	if (hasher->buffer_size + length < tfx__HASH_MAX_BUFFER_SIZE)
+	if (buffer_size + length < tfx__HASH_MAX_BUFFER_SIZE)
 	{
 		while (length-- > 0)
-			hasher->buffer[hasher->buffer_size++] = *data++;
+			hasher->buffer[buffer_size++] = *data++;
+		hasher->buffer_size = buffer_size;
 		return 1;
 	}
 
 	const unsigned char *stop = data + length;
 	const unsigned char *stopBlock = stop - tfx__HASH_MAX_BUFFER_SIZE;
 
-	if (hasher->buffer_size > 0)
+	if (buffer_size > 0)
 	{
-		while (hasher->buffer_size < tfx__HASH_MAX_BUFFER_SIZE)
-			hasher->buffer[hasher->buffer_size++] = *data++;
+		while (buffer_size < tfx__HASH_MAX_BUFFER_SIZE)
+			hasher->buffer[buffer_size++] = *data++;
 
 		tfx__hasher_process(hasher->buffer, &hasher->state[0], &hasher->state[1], &hasher->state[2], &hasher->state[3]);
 	}
@@ -2054,9 +2056,10 @@ tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, 
 	}
 	hasher->state[0] = s0; hasher->state[1] = s1; hasher->state[2] = s2; hasher->state[3] = s3;
 
-	hasher->buffer_size = stop - data;
-	for (tfxU64 i = 0; i < hasher->buffer_size; i++)
+	buffer_size = (tfxU64)(stop - data);
+	for (tfxU64 i = 0; i < buffer_size; i++)
 		hasher->buffer[i] = data[i];
+	hasher->buffer_size = buffer_size;
 
 	return 1;
 }
@@ -6521,7 +6524,7 @@ typedef struct tfx_graph_id_s {
 	tfxKey path_hash;
 } tfx_graph_id_t;
 
-typedef struct tfx_graph_s {
+typedef struct TFX_ALIGN_AFFIX(16) tfx_graph_s {
 	tfx_oscillator_wide_t wide_oscillator;
 	tfx_graph_wide_t wide_graph;
 	tfx_graph_preset graph_preset;
@@ -6538,7 +6541,7 @@ typedef struct tfx_graph_s {
 	float gamma;
 	tfx_oscillator_t oscillator;
 	tfxGraphFlags flags;
-} tfx_graph_t TFX_ALIGN_AFFIX(16);
+} tfx_graph_t;
 
 typedef struct tfx_graph_list_s {
 #ifdef __cplusplus
@@ -6810,7 +6813,7 @@ typedef struct tfx_common_state_properties_s {
 //This is a struct that stores an emitter state that is currently active in a effect manager.
 //Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
 //      and dynamic variables that change each frame.
-typedef struct tfx_particle_emitter_state_s {
+typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_common_state_properties_t state_properties;
 
 	//State data
@@ -6851,10 +6854,10 @@ typedef struct tfx_particle_emitter_state_s {
 	float emission_alternator;
 	tfxEmitterStateFlags state_flags;
 	tfx_path_state_t path_state;
-} tfx_particle_emitter_state_t TFX_ALIGN_AFFIX(16);
+} tfx_particle_emitter_state_t;
 
 //This is a struct that stores an effect state that is currently active in a effect manager.
-typedef struct tfx_effect_state_s {
+typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	//State data that can change every frame
 	tfx_quaternion_t rotation;
 	float age;			//Tracks the age with the effect loop
@@ -6905,7 +6908,7 @@ typedef struct tfx_effect_state_s {
 #endif
 	tfxU32 emitter_start_size;
 
-} tfx_effect_state_t TFX_ALIGN_AFFIX(16);
+} tfx_effect_state_t;
 
 typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
 	tfx_vec4_t position;
@@ -7013,7 +7016,7 @@ typedef enum tfx_gpu_particle_field_e {
 #define tfxGPU_SHADOW_OFFSET(field, pos, capacity) ((field) * (capacity) + (pos))
 //---- end GPU Validation Shadow Mode ----
 
-typedef struct tfx_ribbon_emitter_state_s {
+typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//State data
 	float frame;
 	float age;
@@ -7058,7 +7061,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	tfxKey ribbon_bucket_id;
 	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
 	tfx_vec3_t emitter_size;
-} tfx_ribbon_emitter_state_t TFX_ALIGN_AFFIX(16);
+} tfx_ribbon_emitter_state_t;
 
 //An tfx_effect_descriptor_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters,
 //an emitter which spawns all of the particles or a ribbon for spawning ribbon segments.
