@@ -85,8 +85,12 @@ All functions in the library will be marked this way for clarity and naturally t
 #else
 #define tfxAPI 
 #endif    
-#define tfxINTERNAL static    
-#define tfxAPI_EDITOR 
+#if defined(__GNUC__) || defined(__clang__)
+#define tfxINTERNAL static __attribute__((unused))
+#else
+#define tfxINTERNAL static
+#endif
+#define tfxAPI_EDITOR
 
 //Override this if you'd prefer a different way to allocate the pools for sub allocation in host memory.
 #ifndef tfxALLOCATE_POOL
@@ -145,7 +149,13 @@ typedef int tfx_bool;
 typedef void *tfx_pool;
 
 #if !defined (TFX_ASSERT)
+#if defined(NDEBUG)
+//Unlike assert, this keeps the condition in the release build as an unevaluated operand so that
+//variables only used inside asserts do not become unused-variable warnings.
+#define TFX_ASSERT(condition) ((void)sizeof((condition) ? 1 : 0))
+#else
 #define TFX_ASSERT assert
+#endif
 #endif
 
 #define TFX_DEPRECATED assert(0 && "Function is deprecated");
@@ -2012,7 +2022,6 @@ tfxINTERNAL inline tfxU64 tfx__hash_process_single(tfxU64 previous, tfxU64 input
 	return tfx__hash_rotate_left(previous + input * tfx__PRIME2, 31) * tfx__PRIME1;
 }
 tfxINTERNAL inline void tfx__hasher_process(const void *data, tfxU64 *state0, tfxU64 *state1, tfxU64 *state2, tfxU64 *state3) {
-	tfxU64 *block = (tfxU64 *)data;
 	tfxU64 blocks[4];
 	memcpy(blocks, data, sizeof(tfxU64) * 4);
 	*state0 = tfx__hash_process_single(*state0, blocks[0]);
@@ -2048,7 +2057,6 @@ tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, 
 	}
 
 	tfxU64 s0 = hasher->state[0], s1 = hasher->state[1], s2 = hasher->state[2], s3 = hasher->state[3];
-	int test = tfx__ptr_is_aligned(&s0, 8);
 	while (data <= stopBlock)
 	{
 		tfx__hasher_process(data, &s0, &s1, &s2, &s3);
@@ -2191,7 +2199,7 @@ tfxINTERNAL inline __m128i tfx__cvtps_ph_scalar(__m128 floats) {
 	float unpacked[4];
 	tfxU16 halves[8] = { 0 };
 	_mm_storeu_ps(unpacked, floats);
-	for (int index = 0; index != 4; ++index) {
+	for (tfxU32 index = 0; index != 4; ++index) {
 		halves[index] = tfx__float_to_half_scalar(unpacked[index]);
 	}
 	return _mm_loadu_si128((const __m128i *)halves);
@@ -2208,7 +2216,7 @@ tfxINTERNAL inline __m128i tfx__cvtps_ph256_scalar(__m256 floats) {
 	float unpacked[8];
 	tfxU16 halves[8];
 	_mm256_storeu_ps(unpacked, floats);
-	for (int index = 0; index != 8; ++index) {
+	for (tfxU32 index = 0; index != 8; ++index) {
 		halves[index] = tfx__float_to_half_scalar(unpacked[index]);
 	}
 	return _mm_loadu_si128((const __m128i *)halves);
@@ -2315,7 +2323,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfxWideSet(lookup[index.a[7] + offset], lookup[index.a[6] + offset], lookup[index.a[5] + offset], lookup[index.a[4] + offset], lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
-#define tfxWideSetConst(value) {value, value, value, value, value, value, value, value}
+#define tfxWideSetConst(value) {{value, value, value, value, value, value, value, value}}
 
 typedef union {
 	int a[8];
@@ -2327,7 +2335,7 @@ typedef union {
 	__m256 m;
 } tfxWideArray;
 
-const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3, 4, 5, 6, 7 };
+const tfxWideArrayi tfxBASEINDEX = { { 0, 1, 2, 3, 4, 5, 6, 7 } };
 
 #else
 
@@ -2415,7 +2423,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideFloor tfxFloor128
 #endif
 
-#define tfxWideSetConst(value) {value, value, value, value}
+#define tfxWideSetConst(value) {{value, value, value, value}}
 
 typedef union {
 	int a[4];
@@ -2508,7 +2516,7 @@ static inline int tfx__neon_movemask_ps(float32x4_t v) {
 #define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
 #define tfxSIMD_XOR(a,b) vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 
-#define tfxWideSetConst(value) {value, value, value, value}
+#define tfxWideSetConst(value) {{value, value, value, value}}
 
 typedef union {
 	int a[4];
@@ -2525,7 +2533,7 @@ typedef union {
 #define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
-const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3 };
+const tfxWideArrayi tfxBASEINDEX = { { 0, 1, 2, 3 } };
 
 #endif
 
@@ -4200,7 +4208,6 @@ struct tfx_str_t {
 		}
 
 		const int write_off = (current_size != 0) ? current_size : 1;
-		const int needed_sz = write_off + len;
 		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
 		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
@@ -4223,7 +4230,6 @@ struct tfx_str_t {
 		}
 
 		const int write_off = (current_size != 0) ? current_size : 1;
-		const int needed_sz = write_off + len;
 		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
 		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
@@ -4243,7 +4249,6 @@ struct tfx_str_t {
 		}
 
 		const int write_off = (current_size != 0) ? current_size : 1;
-		const int needed_sz = write_off + len;
 		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
 		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 
@@ -4329,8 +4334,8 @@ struct tfx_vector_t {
 	typedef value_type *iterator;
 	typedef const value_type *const_iterator;
 
-	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-	inline					tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
+	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
+	inline					tfx_vector_t() : current_size(0), capacity(0), locked(0), alignment(0), data(nullptr) {}
 	//inline				tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { TFX_ASSERT(0); return *this; }	//Use copy instead. 
 	inline					~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers! Call the_containter.free();
 
@@ -4364,11 +4369,11 @@ struct tfx_vector_t {
 	inline const T &back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline T &parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
 	inline const T &parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
-	inline void				copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+	inline void				copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
 	inline tfxU32			_grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void				resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void				resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-	inline void				resize(tfxU32 new_size, const T &v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
+	inline void				resize(tfxU32 new_size, const T &v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy((void *)&data[n], (const void *)&v, sizeof(v)); current_size = new_size; }
 	inline void				shrink(tfxU32 new_size) { TFX_ASSERT(new_size <= current_size); current_size = new_size; }
 	inline void				set_alignment(tfxU32 align_to) { TFX_ASSERT(0 == (align_to & (align_to - 1)) && "must align to a power of two"); alignment = align_to; }
 	inline void				reserve(tfxU32 new_capacity) {
@@ -4382,7 +4387,7 @@ struct tfx_vector_t {
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
 		if (data) {
-			memcpy(new_data, data, (size_t)current_size * sizeof(T));
+			memcpy((void *)new_data, (const void *)data, (size_t)current_size * sizeof(T));
 			tfxFREE(data);
 		}
 		data = new_data;
@@ -4400,7 +4405,7 @@ struct tfx_vector_t {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
-		memcpy(&data[current_size], &v, sizeof(T));
+		memcpy((void *)&data[current_size], (const void *)&v, sizeof(T));
 		tfxU32 index = current_size++;
 		tfx__exchange((tfx_thread_access volatile *)&locked, 0);
 		return index;
@@ -4409,31 +4414,31 @@ struct tfx_vector_t {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
-		memcpy(&data[current_size], &v, sizeof(T));
-		current_size++; 
+		memcpy((void *)&data[current_size], (const void *)&v, sizeof(T));
+		current_size++;
 		return data[current_size - 1];
 	}
 	inline T &push_back_copy(const T &v) {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
-		memcpy(&data[current_size], &v, sizeof(v));
+		memcpy((void *)&data[current_size], (const void *)&v, sizeof(v));
 		current_size++; 
 		return data[current_size - 1];
 	}
 	inline T &next() {
 		return push_back(T());
 	}
-	inline void				zero() { TFX_ASSERT(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
+	inline void				zero() { TFX_ASSERT(capacity > 0); memset((void *)data, 0, capacity * sizeof(T)); }
 	inline void				pop() { TFX_ASSERT(current_size > 0); current_size--; }
 	inline T &pop_back() { TFX_ASSERT(current_size > 0); current_size--; return data[current_size]; }
 	inline void				push_front(const T &v) { if (current_size == 0) push_back(v); else insert(data, v); }
-	inline T *erase(const T *it) { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
+	inline T *erase(const T *it) { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove((void *)(data + off), (const void *)(data + off + 1), ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
 	inline T				pop_front() { TFX_ASSERT(current_size > 0); T front = data[0]; erase(data); return front; }
-	inline T *erase(const T *it, const T *it_last) { TFX_ASSERT(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
-	inline T *erase_unsorted(const T *it) { TFX_ASSERT(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
-	inline T *insert(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
-	inline T *insert_after(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
+	inline T *erase(const T *it, const T *it_last) { TFX_ASSERT(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove((void *)(data + off), (const void *)(data + off + count), ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
+	inline T *erase_unsorted(const T *it) { TFX_ASSERT(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy((void *)(data + off), (const void *)(data + current_size - 1), sizeof(T)); current_size--; return data + off; }
+	inline T *insert(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove((void *)(data + off + 1), (const void *)(data + off), ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy((void *)(data + off), (const void *)&v, sizeof(T)); current_size++; return data + off; }
+	inline T *insert_after(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove((void *)(data + off + 1), (const void *)(data + off), ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy((void *)(data + off), (const void *)&v, sizeof(T)); current_size++; return data + off; }
 	inline bool				contains(const T &v) const { const T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data++ == v) return true; return false; }
 	inline T *find(const T &v) { T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
 	inline const T *find(const T &v) const { const T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
@@ -4850,7 +4855,7 @@ inline void tfx__add_struct_array(tfx_soa_buffer_t *buffer, size_t unit_size, si
 //of memory required to contain all the data in the buffer for each array in the struct of arrays.
 inline size_t tfx__get_soa_capacity_requirement(tfx_soa_buffer_t *buffer, size_t capacity) {
 	size_t size_requirement = 0;
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		size_requirement += buffer->array_ptrs[i].unit_size * capacity;
 		size_t mod = size_requirement % buffer->alignment;
 		size_requirement += mod ? buffer->alignment - mod : 0;
@@ -4864,7 +4869,7 @@ inline size_t tfx__get_soa_capacity_requirement(tfx_soa_buffer_t *buffer, size_t
 inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, tfxU32 alignment = 4, tfxU32 buffer_amount = 0) {
 	TFX_ASSERT(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);    //Must be an unitialised soa buffer
 	TFX_ASSERT(alignment >= 4);        //Alignment must be 4 or greater
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
 	buffer->buffer_amount = buffer_amount;
@@ -4878,7 +4883,7 @@ inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_
 	memset(buffer->data, 0, buffer->current_arena_size);
 	buffer->struct_of_arrays = struct_of_arrays;
 	size_t running_offset = 0;
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->array_ptrs[i].ptr = (char *)buffer->data + running_offset;
 		memcpy((char *)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void *));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
@@ -4901,7 +4906,7 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
 	if (keep_data) {
-		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+		for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
 			size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
 			if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
@@ -4921,7 +4926,7 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 	buffer->capacity = new_capacity;
 	buffer->current_arena_size = new_capacity * buffer->struct_size;
 	running_offset = 0;
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->array_ptrs[i].ptr = (char *)buffer->data + running_offset;
 		memcpy((char *)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void *));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
@@ -4950,7 +4955,7 @@ inline void tfx__resize_soa_buffer(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 
 //Copy a buffer
 inline void tfx__copy_soa_buffer(tfx_soa_buffer_t *dst, tfx_soa_buffer_t *src) {
-	memcpy(dst, src, sizeof(tfx_soa_buffer_t));
+	memcpy((void *)dst, (const void *)src, sizeof(tfx_soa_buffer_t));
 	dst->array_ptrs.init();
 	dst->array_ptrs.copy(src->array_ptrs);
 }
@@ -5063,7 +5068,7 @@ inline void tfx__trim_soa_buffer(tfx_soa_buffer_t *buffer) {
 	TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		size_t capacity = new_capacity * buffer->array_ptrs[i].unit_size;
 		size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
 		if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
@@ -5083,7 +5088,7 @@ inline void tfx__trim_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->capacity = new_capacity;
 	buffer->current_arena_size = new_capacity * buffer->struct_size;
 	running_offset = 0;
-	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->array_ptrs[i].ptr = (char *)buffer->data + running_offset;
 		memcpy((char *)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void *));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
@@ -5122,7 +5127,7 @@ struct tfx_bucket_array_t {
 	tfx_thread_access volatile locked;
 	tfx_vector_t<tfx_bucket_t<T> *> bucket_list;
 
-	tfx_bucket_array_t() : size_of_each_bucket(8), current_size(0), capacity(0), locked(0) {}
+	tfx_bucket_array_t() : current_size(0), capacity(0), size_of_each_bucket(8), locked(0) {}
 
 	inline void			 init() { size_of_each_bucket = 8; current_size = capacity = locked = 0; bucket_list.init(); }
 	inline bool          empty() { return current_size == 0; }
@@ -5270,7 +5275,7 @@ struct tfx_bucket_array_t {
 	}
 
 	inline bool find(T *it, tfxU32 &index) {
-		for (int i = 0; i != current_size; ++i) {
+		for (tfxU32 i = 0; i != current_size; ++i) {
 			if (it == &(*this)[i]) {
 				index = i;
 				return true;
@@ -5280,7 +5285,7 @@ struct tfx_bucket_array_t {
 	}
 
 	inline T *find(T *it) {
-		for (int i = 0; i != current_size; ++i) {
+		for (tfxU32 i = 0; i != current_size; ++i) {
 			if (*it == (*this)[i]) {
 				return &(*this)[i];
 			}
@@ -5290,7 +5295,7 @@ struct tfx_bucket_array_t {
 
 	inline void trim_buckets() {
 		if (active_buckets() < bucket_list.current_size) {
-			for (int i = active_buckets(); i != bucket_list.current_size; ++i) {
+			for (tfxU32 i = active_buckets(); i != bucket_list.current_size; ++i) {
 				bucket_list[i]->data.free();
 				tfxFREE(bucket_list[i]);
 				capacity -= size_of_each_bucket;
@@ -5329,7 +5334,7 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 	dst->size_of_each_bucket = src->size_of_each_bucket;
 }
 
-#define tfxBucketLoop(bucket, index) int index = 0; index != bucket.current_size; ++index
+#define tfxBucketLoop(bucket, index) tfxU32 index = 0; index != bucket.current_size; ++index
 
 struct tfx_line_t {
 	const char *start;
@@ -5339,9 +5344,9 @@ struct tfx_line_t {
 
 tfxAPI_EDITOR inline int tfx_FindInLine(tfx_line_t *line, const char *needle) {
 	size_t needle_length = strlen(needle);
-	if (needle_length > line->length) return -1;
+	if (needle_length > (size_t)line->length) return -1;
 	tfxU32 pos = 0;
-	while (needle_length + pos <= line->length) {
+	while (needle_length + pos <= (size_t)line->length) {
 		if (strncmp(line->start + pos, needle, needle_length) == 0) {
 			return pos;
 		}
@@ -5688,7 +5693,7 @@ tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_pro
 		tfxU32 original_read_entry = queue->next_read_entry;
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
-		if (original_read_entry != queue->next_write_entry) {
+		if (original_read_entry != (tfxU32)queue->next_write_entry) {
 			if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
 				tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 				entry.call_back(queue, entry.data);
@@ -5703,7 +5708,7 @@ tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
 	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
-	if (original_read_entry != queue->next_write_entry) {
+	if (original_read_entry != (tfxU32)queue->next_write_entry) {
 		if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
 			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 			entry.call_back(queue, entry.data);
@@ -5719,7 +5724,7 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 	}
 
 	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUE_ENTRIES;
-	while (new_entry_to_write == queue->next_read_entry) {        //Not enough room in work queue
+	while (new_entry_to_write == (tfxU32)queue->next_read_entry) {        //Not enough room in work queue
 		//We can do this because we're single producer
 		tfx__do_next_work_queue_entry(queue);
 	}
@@ -5735,7 +5740,6 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 }
 
 tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
-	tfx_work_queue_entry_t entry = { 0 };
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfx__do_next_work_queue_entry(queue);
 	}
@@ -7773,7 +7777,7 @@ typedef struct tfx_animation_manager_s {
 	//Callback which you can assign in order to decide if an animation instance should be added to the render queue
 	//the next frame. This callback is called inside the tfx_UpdateAnimationManager function. Set the callback
 	//with SetAnimationManagerCallback
-	bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
+	bool (*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data);
 
 	//Ribbon management
 	tfx_vector_t<tfxU32> ribbon_offsets;
@@ -8719,7 +8723,6 @@ tfxINTERNAL inline void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWide
 	tfxWideFloat y = tfxWideMul(sqrt_one_minus_z_squared, sin);
 
 	// Calculate the rotation axis (cross product of (0, 0, 1) and cone_direction)
-	tfx_vec3_t north_pole = { 0, 0, 1.f };
 	tfxWideFloat rotation_axis_x, rotation_axis_y, rotation_axis_z;
 	rotation_axis_x = tfxWideSub(tfxWideSetZero, velocity_normal_y);
 	rotation_axis_y = velocity_normal_x;
@@ -8956,8 +8959,6 @@ tfxAPI_EDITOR inline tfxU16 tfx__pack_octahedral_vec3(tfx_vec3_t v) {
 		p.x = px;
 		p.y = py;
 	} else {
-		float temp_x = copysignf(1.f, px);
-		float temp_y = copysignf(1.f, py);
 		p.x = (1.f - fabsf(py)) * copysignf(1.f, px);
 		p.y = (1.f - fabsf(px)) * copysignf(1.f, py);
 	}
@@ -9727,9 +9728,9 @@ template<typename T>
 tfxINTERNAL inline void tfx__wrap_single_particle_instances(T *instance, tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	for (tfxEachLayer) {
-		for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
+		for (tfxU32 i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
 			if (instance[i].captured_index != tfxINVALID && instance[i].captured_index & 0x80000000) {
-				for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
+				for (tfxU32 j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
 					if (sprites.uid[j].uid == sprites.uid[i].uid) {
 						instance[i].captured_index = j;
 					}
@@ -9914,7 +9915,7 @@ tfxINTERNAL void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_
 tfxINTERNAL void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties);
-tfxAPI_EDITOR inline void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
+tfxAPI_EDITOR void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
 }
@@ -9971,10 +9972,8 @@ tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_insta
 tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_effect_manager pm);
 tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_effect_manager pm);
-tfxINTERNAL tfxU32 tfx__get_particle_index_slot(tfx_effect_manager pm, tfxParticleID particle_id);
 tfxINTERNAL tfxU32 tfx__allocate_path_quaternion(tfx_effect_manager pm, tfxU32 amount);
 tfxINTERNAL void tfx__free_path_quaternion(tfx_effect_manager pm, tfxU32 index);
-tfxINTERNAL void tfx__free_particle_index(tfx_effect_manager pm, tfxU32 *index);
 tfxINTERNAL tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index);
 tfxINTERNAL void tfx__reset_particle_effect_flags(tfx_effect_manager pm);
 tfxINTERNAL void tfx__free_compute_slot(tfx_effect_manager pm, unsigned int slot_id);
