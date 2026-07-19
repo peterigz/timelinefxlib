@@ -2314,7 +2314,10 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package)
 
 tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
 	TFX_ASSERT_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
-	//Note: tfx_stream_t does not copy the memory, only the pointer, so if you Free on the stream you pass in it will also free the file_data here as well
+	//Note: tfx__copy_stream deep copies the buffer, so the package owns its own copy of the data. The
+	//caller keeps ownership of the stream passed in and is free to release it as soon as this returns;
+	//the package's copy is released by tfx__free_package. The one exception is passing the package's
+	//own file_data back in, which skips the copy entirely - there the buffer is shared by definition.
 	package->flags |= tfxPackageFlags_loaded_from_memory;
 	if (stream != package->file_data) {
 		if (!package->file_data) {
