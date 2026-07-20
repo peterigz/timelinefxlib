@@ -4640,6 +4640,7 @@ void tfx__init_library(tfx_library library) {
 	library->pre_recorded_effects.init();
 	library->paths.init();
 	library->graphs.init();
+	library->graphs.set_alignment(16);
 	library->sprite_sheet_settings.init();
 	library->sprite_data_settings.init();
 	library->preview_camera_settings.init();

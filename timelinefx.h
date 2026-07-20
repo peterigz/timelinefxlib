@@ -4380,8 +4380,16 @@ struct tfx_vector_t {
 		if (new_capacity <= capacity)
 			return;
 		T *new_data;
-		if (alignment > 0) {
-			new_data = (T *)tfxALLOCATE_ALIGNED((size_t)new_capacity * sizeof(T), alignment);
+		// Honour both an explicitly requested alignment and the element type's natural
+		// alignment. Over-aligned types (anything embedding a 16 byte SIMD member, such as
+		// tfx_graph_t) must go through the aligned allocator: the plain allocator only
+		// guarantees tfx__MEMORY_ALIGNMENT (8 on 64 bit), which leaves those elements
+		// misaligned and faults on the aligned SIMD moves the compiler emits in optimised
+		// builds. Falling back to alignof(T) also means containers that never called
+		// set_alignment (and the copy constructor, which resets alignment to 0) stay safe.
+		tfxU32 required_alignment = alignment > (tfxU32)alignof(T) ? alignment : (tfxU32)alignof(T);
+		if (required_alignment > (tfxU32)tfx__MEMORY_ALIGNMENT) {
+			new_data = (T *)tfxALLOCATE_ALIGNED((size_t)new_capacity * sizeof(T), required_alignment);
 		} else {
 			new_data = (T *)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		}
