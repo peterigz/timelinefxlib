@@ -7085,7 +7085,7 @@ tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _fram
 
 void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
 	for (tfxBucketLoop(graph->nodes, i)) {
-		if (graph->nodes[i].frame == node->frame && graph->nodes[i].value == node->value) {
+		if (graph->nodes[i].frame == node->frame) {
 			return;
 		}
 	}
