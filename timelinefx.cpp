@@ -51,8 +51,8 @@ void tfxAddHostMemoryPool(size_t size) {
 void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 13719744) {
-		//tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 82014832) {
+		int d = 0;
 	}
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
@@ -65,8 +65,8 @@ void *tfxAllocate(size_t size) {
 void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 13719744) {
-		//tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 82014832) {
+		int d = 0;
 	}
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
@@ -80,8 +80,8 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 13719744 && block->size == 176) {
-		//tfxPrint("%p, %zi", allocation, block->size);
+	if (offset_from_allocator == 82014832) {
+		int d = 0;
 	}
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
