@@ -1,6 +1,43 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
 
+//static asserts for tfx_str_t to pin the c++ layouts to the the exact layout the c mirrors are forced to have 
+#define tfx__pin_str_mirror(size)	\
+static_assert(sizeof(tfx_str##size##_t) == size + sizeof(tfxU32), "tfx_str" #size "_t layout no longer matches the C mirror struct in timelinefx.h");	\
+static_assert(offsetof(tfx_str##size##_t, data) == 0, "tfx_str" #size "_t layout no longer matches the C mirror struct in timelinefx.h");	\
+static_assert(offsetof(tfx_str##size##_t, current_size) == size, "tfx_str" #size "_t layout no longer matches the C mirror struct in timelinefx.h")
+
+tfx__pin_str_mirror(32);
+tfx__pin_str_mirror(64);
+tfx__pin_str_mirror(128);
+tfx__pin_str_mirror(256);
+tfx__pin_str_mirror(512);
+#undef tfx__pin_str_mirror
+
+static_assert(sizeof(tfx_vec2_t) == 8, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
+static_assert(offsetof(tfx_vec2_t, x) == 0, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
+static_assert(offsetof(tfx_vec2_t, y) == 4, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
+
+//tfx_image_data_t offsets on 64 bit pointers; the sizeof(void *) != 8 term makes these asserts
+//hold trivially on 32 bit targets, where the pointer-dependent offsets differ.
+#define tfx__pin_image_data_offset(field, expected)	\
+static_assert(sizeof(void *) != 8 || offsetof(tfx_image_data_t, field) == expected, "tfx_image_data_t." #field " moved; the C API reads this struct through tfx_GetLibraryImage")
+
+tfx__pin_image_data_offset(ptr, 0);
+tfx__pin_image_data_offset(shape_index, 8);
+tfx__pin_image_data_offset(name, 12);
+tfx__pin_image_data_offset(image_hash, 272);
+tfx__pin_image_data_offset(image_size, 280);
+tfx__pin_image_data_offset(image_index, 288);
+tfx__pin_image_data_offset(animation_frames, 292);
+tfx__pin_image_data_offset(max_radius, 296);
+tfx__pin_image_data_offset(import_filter, 300);
+tfx__pin_image_data_offset(compute_shape_index, 304);
+#ifndef tfxCUSTOM_IMAGE_DATA
+static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 312, "tfx_image_data_t size changed; the C API reads this struct through tfx_GetLibraryImage");
+#endif
+#undef tfx__pin_image_data_offset
+
 #ifdef _WIN32
 #if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
 	FILE *tfx__open_file(const char *file_name, const char *mode) {
@@ -3991,10 +4028,10 @@ tfxU32 tfx_GetLibraryImageCount(tfx_library library) {
 	return library->particle_shapes.Size();
 }
 
-tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index) {
+tfx_image_data_t *tfx_GetLibraryImage(tfx_library library, tfxU32 index) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT(index < library->particle_shapes.Size());
-	return library->particle_shapes.data[index];
+	return &library->particle_shapes.data[index];
 }
 
 tfx_effect_descriptor tfx__insert_library_effect(tfx_library library, tfx_effect_descriptor effect, tfx_effect_descriptor position) {
@@ -12455,7 +12492,7 @@ tfxAPI tfx_effect_descriptor tfx_NewEffectDescriptor(tfx_effect_descriptor_type 
 	return new_effect;
 }
 
-void ListEffectNames(tfx_library library) {
+void tfx_ListEffectNames(tfx_library library) {
 	tfxU32 index = 0;
 	for (tfx_effect_descriptor effect : library->effects) {
 		printf("%i) %s\n", index++, effect->name.c_str());

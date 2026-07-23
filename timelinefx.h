@@ -10203,15 +10203,13 @@ Get a particle image from a library by it's index
 * @param tfx_library                A valid pointer to a tfx_library
 * @return image						A tfx_image_data_t object with all the details of the image
 */
-TFX_DISABLE_COMPILER_WARNING("-Wreturn-type-c-linkage")
-tfxAPI tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index);
-TFX_ENABLE_COMPILER_WARNING()
+tfxAPI tfx_image_data_t *tfx_GetLibraryImage(tfx_library library, tfxU32 index);
 
 /*
 Output all the effect names in a library to the console
 * @param tfx_library                A valid pointer to a tfx_library
 */
-tfxAPI void ListEffectNames(tfx_library library);
+tfxAPI void tfx_ListEffectNames(tfx_library library);
 
 /*
 Get an effect in the library by it's index. If you need to get an effect in a folder or an emitter then you can use tfx_GetLibraryEffectPath instead.
@@ -10509,7 +10507,7 @@ tfxAPI void tfx_SetSeed(tfx_effect_manager pm, tfxU64 seed);
 /*
 Add an effect to a tfx_effect_manager_t from an effect template
 * @param pm                         A pointer to an initialised tfx_effect_manager_t.
-* @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_PrepareEffectTemplate
+* @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_CreateEffectTemplate
 * @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
 									For example by calling tfx_SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the effect manager if it's out of space and reached it's effect limit.
   @returns							True if the effect was succesfully added.
@@ -11017,7 +11015,7 @@ Get the sprite data settings for an effect in a library. Sprite data settings ar
 * @param effect					Pointer the the effect that you want the sprite settings for.
 * @returns						Pointer to the tfx_sprite_data_settings
 */
-tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library library, tfx_effect_descriptor effect);
+tfxAPI tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library library, tfx_effect_descriptor effect);
 
 /*
 Get the sprite data settings for an effect in a library by it's path. Sprite data settings are the settings for an effect in the editor relating to setting up pre-baked effects
@@ -11025,7 +11023,7 @@ Get the sprite data settings for an effect in a library by it's path. Sprite dat
 * @param path					const char* string of the path to the effect. Must be the path to a root effect.
 * @returns						Pointer to the tfx_sprite_data_settings
 */
-tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library library, const char *path);
+tfxAPI tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library library, const char *path);
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
@@ -11447,8 +11445,8 @@ tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *
 //--------------------------------
 //Editing_graphs
 //--------------------------------
-void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v );
-void tfx_ClearVariationLifetimeGraph(tfx_effect_descriptor emitter, float v);
+tfxAPI void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v );
+tfxAPI void tfx_ClearVariationLifetimeGraph(tfx_effect_descriptor emitter, float v);
 
 //--------------------------------
 //General_helpers
