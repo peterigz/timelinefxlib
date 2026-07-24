@@ -158,6 +158,20 @@ typedef void *tfx_pool;
 #endif
 #endif
 
+#define TFX_VALIDATE_EFFECT(pm, effect_id, return_value) do { \
+if (!tfx__valid_effect_id(pm, effect_id)) { \
+	TFX_ASSERT(0 && "Invalid effect id passed to TimelineFX API function"); \
+	return return_value; \
+} \
+} while (0)
+
+#define TFX_VALIDATE_ANIMATION(animation_manager, animation_id, return_value) do { \
+if (!tfx__valid_animation_id(animation_manager, animation_id)) { \
+	TFX_ASSERT(0 && "Invalid animation id passed to TimelineFX API function"); \
+	return return_value; \
+} \
+} while (0)
+
 #define TFX_DEPRECATED assert(0 && "Function is deprecated");
 
 #define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxSTRUCT_IDENTIFIER)
@@ -10003,6 +10017,7 @@ tfxINTERNAL void tfx__reset_controller_ptr(tfx_effect_manager pm, void *ptr);
 tfxINTERNAL void tfx__update_compute(tfx_effect_manager pm, void *sampled_particles, unsigned int sample_size = 100);
 tfxINTERNAL void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 tfxINTERNAL bool tfx__valid_effect_id(tfx_effect_manager pm, tfxEffectID id);
+tfxINTERNAL bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimationID id);
 
 //--------------------------------
 //Effect templates
@@ -10226,6 +10241,16 @@ You will need this function to apply user data and update callbacks to effects a
 tfxAPI tfx_effect_descriptor tfx_GetLibraryEffectPath(tfx_library library, const char *path);
 
 /*
+Check whether a path resolves to an effect or emitter in the library. tfx_GetLibraryEffectPath asserts
+in debug builds and returns NULL in release builds when a path is missing, so use this to probe a path
+safely before looking it up.
+* @param library                A valid pointer to a tfx_library_t
+* @param path                   Path to the effect or emitter
+* @returns                      true if the path exists in the library
+*/
+tfxAPI bool tfx_IsValidEffectPath(tfx_library library, const char *path);
+
+/*
 Free all the memory used by a library
 * param tfx_library				A pointer to the library that you want to free
 */
@@ -10321,6 +10346,7 @@ Initialize a effect manager with a tfx_effect_manager_info_t object which contai
 * @param pm						A pointer to an unitialised tfx_effect_manager_t. If you want to reconfigure a effect manager for a different usage then you can call tfx_ReconfigureEffectManager.
 * @param library                A pointer to a tfx_library_t that you will be using to add all of the effects from to the effect manager.
 * @param info                   A tfx_effect_manager_info_t pointer containing the configuration for the effect manager.
+* @returns                      A handle to the new effect manager, or NULL if the allocation failed (out of memory).
 */
 tfxAPI tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info);
 
@@ -10730,6 +10756,18 @@ Get the buffer of emitter indexes in the effect manager.
 * @returns                Pointer to the tfxvec of effect indexes
 */
 tfxAPI tfxU32 *tfx_GetPMEmitterBuffer(tfx_effect_manager pm, int *count);
+
+/*
+Error-handling contract for the effect manager functions that take a tfxEffectID (below):
+Every such function validates the id. In debug builds an invalid id trips an assert at the call site.
+In release builds the call is a documented no-op instead of undefined behaviour: mutators return
+without touching any state, functions that return a pointer return NULL, and functions that return a
+value return 0. This means a stale effect id (for example one that expired a frame earlier than the
+caller expected) can never write through a bad index and corrupt the effect manager. Effect ids are
+produced by tfx_AddEffectTemplateToEffectManager and should be treated as invalid once the effect has
+expired or been removed. The same contract applies to the animation manager functions that take a
+tfxAnimationID.
+*/
 
 /*
 Set the position of an effect

@@ -4115,13 +4115,20 @@ tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index) {
 
 tfx_effect_descriptor tfx_GetLibraryEffectPath(tfx_library library, const char *path) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	TFX_ASSERT(library->effect_paths.ValidName(path));        //Effect was not found by that name
+	if (!library->effect_paths.ValidName(path)) {
+		TFX_ASSERT(0 && "Effect was not found by that path. Use tfx_IsValidEffectPath to check a path first.");
+		return nullptr;
+	}
 	return library->effect_paths.At(path);
 }
 
 bool tfx__is_valid_effect_path(tfx_library library, const char *path) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	return library->effect_paths.ValidName(path);
+}
+
+bool tfx_IsValidEffectPath(tfx_library library, const char *path) {
+	return tfx__is_valid_effect_path(library, path);
 }
 
 bool tfx__is_valid_effect_key(tfx_library library, tfxKey key) {
@@ -11025,6 +11032,7 @@ void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time) {
 }
 
 void tfx_AdvanceEffectTime(tfx_effect_manager pm, tfxEffectID effect_id, float time) {
+	TFX_VALIDATE_EFFECT(pm, effect_id, );
 	time += pm->effects[effect_id].age;
 	tfx__add_warmup_effect(pm, effect_id, time);
 }
@@ -12260,17 +12268,20 @@ void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes) 
 
 void tfx_SoftExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 }
 
 void tfx_HardExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
 }
 
 void *tfx_GetEffectUserData(tfx_effect_manager pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
 	return pm->effects[effect_index].user_data;
 }
 
@@ -14850,7 +14861,7 @@ void tfx__dump_snapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>>
 }
 
 void tfx_SetEffectUserData(tfx_effect_manager pm, tfxU32 effect_index, void *data) {
-	TFX_ASSERT(effect_index < pm->effects.current_size);    //effect index is out of bounds of the array
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].user_data = data;
 }
 
@@ -19008,6 +19019,10 @@ bool tfx__valid_effect_id(tfx_effect_manager pm, tfxEffectID id) {
 	return id != tfxINVALID && pm->effects.capacity > id;
 }
 
+bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimationID id) {
+	return id != tfxINVALID && animation_manager->instances.current_size > id;
+}
+
 tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup setup) {
 	tfx_effect_manager_info_t info = { 0 };
 	info.warmup_delta_time = 1000.0 / 60.0;
@@ -19093,6 +19108,9 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
 	tfx_effect_manager pm = tfxNEW_ALIGNED(tfx_effect_manager, 16);
 	TFX_ASSERT(pm);		//Unable to allocate the particle manager, out of memory?
+	if (!pm) {
+		return nullptr;	//Out of memory. Release builds return null here rather than dereferencing a null pm.
+	}
 	tfxStore->effect_managers.Insert((tfxKey)pm, pm);
 	memset((void *)pm, 0, sizeof(tfx_effect_manager_t));
 	pm->particle_arrays.init();
@@ -19118,42 +19136,45 @@ tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
 }
 
 void tfx_SetEffectPosition(tfx_effect_manager pm, tfxEffectID effect_index, float x, float y, float z) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_vec3_t position(x, y, z);
 	pm->effects[effect_index].local_position = position;
 }
 
 void tfx_SetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_index, tfx_vec3_t position) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_position = position;
 }
 
 void tfx_SetAnimationPosition(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float position[3]) {
+	TFX_VALIDATE_ANIMATION(animation_manager, effect_index, );
 	animation_manager->instances[effect_index].position.x = position[0];
 	animation_manager->instances[effect_index].position.y = position[1];
 	animation_manager->instances[effect_index].position.z = position[2];
 }
 
 tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager animation_manager, tfxAnimationID animation_id) {
+	TFX_VALIDATE_ANIMATION(animation_manager, animation_id, nullptr);
 	return &animation_manager->instances[animation_id];
 }
 
 void tfx_SetAnimationScale(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float scale) {
+	TFX_VALIDATE_ANIMATION(animation_manager, effect_index, );
 	animation_manager->instances[effect_index].scale = scale;
 }
 
 void tfx_MoveEffectVec3(tfx_effect_manager pm, tfxEffectID effect_index, tfx_vec3_t amount) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_position += amount;
 }
 
 void tfx_MoveEffect(tfx_effect_manager pm, tfxEffectID effect_index, float x, float y, float z) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_position += {x, y, z};
 }
 
 tfxAPI void tfx_GetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_index, float out_position[3]) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_vec3_t position = pm->effects[effect_index].local_position;
 	out_position[0] = position.x;
 	out_position[1] = position.y;
@@ -19161,7 +19182,7 @@ tfxAPI void tfx_GetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_
 }
 
 tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_effect_manager pm, tfxEffectID effect_index, tfxU32 *sprite_count) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
 	tfx_effect_instance_data_t &instance_data = pm->effects[effect_index].instance_data;
 	*sprite_count = instance_data.instance_count;
 	return &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[instance_data.instance_start_index];
@@ -19189,89 +19210,89 @@ void tfx_ResetInstanceBufferLoopIndex(tfx_effect_manager pm) {
 }
 
 void tfx_SetEffectRoll(tfx_effect_manager pm, tfxEffectID effect_index, float roll) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.roll = roll;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectPitch(tfx_effect_manager pm, tfxEffectID effect_index, float pitch) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.pitch = pitch;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectYaw(tfx_effect_manager pm, tfxEffectID effect_index, float pitch) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.pitch = pitch;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectWidthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float width) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.x = width;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectHeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float height) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.y = height;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectDepthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float depth) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.z = depth;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectLifeMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float life) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.life = life;
 }
 
 void tfx_SetEffectParticleWidthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float width) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.size_x = width;
 }
 
 void tfx_SetEffectParticleHeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float height) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.size_y = height;
 }
 
 void tfx_SetEffectVelocityMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float velocity) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.velocity = velocity;
 }
 
 void tfx_SetEffectSpinMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float spin) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.spin = spin;
 }
 
 void tfx_SetEffectIntensityMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float intensity) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.intensity = intensity;
 }
 
 void tfx_SetEffectSplatterMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float splatter) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.splatter = splatter;
 }
 
 void tfx_SetEffectWeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float weight) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.weight = weight;
 }
 
 void tfx_SetEffectOveralScale(tfx_effect_manager pm, tfxEffectID effect_index, float overal_scale) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].overal_scale = overal_scale;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_overal_scale;
 }
 
 void tfx_SetEffectBaseNoiseOffset(tfx_effect_manager pm, tfxEffectID effect_index, float noise_offset) {
-	TFX_ASSERT(tfx__valid_effect_id(pm, effect_index));    //Not a valid effect id. Make sure that when you call tfx_AddEffectTemplateToEffectManager you check that it returns true.
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].noise_base_offset = noise_offset;
 }
 
