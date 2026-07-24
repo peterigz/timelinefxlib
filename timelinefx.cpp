@@ -12134,7 +12134,7 @@ void tfx__update_stage(void *data) {
 }
 
 #ifdef _WIN32
-unsigned WINAPI tfx__update_stage_thread(void *data) {
+unsigned TFX_THREAD_CALL tfx__update_stage_thread(void *data) {
 #else
 void *tfx__update_stage_thread(void *data) {
 #endif
@@ -18669,7 +18669,7 @@ void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 }
 
 #ifdef _WIN32
-unsigned WINAPI tfx__thread_worker(void *arg) {
+unsigned TFX_THREAD_CALL tfx__thread_worker(void *arg) {
 #else
 void *tfx__thread_worker(void *arg) {
 #endif
@@ -19217,3 +19217,11 @@ void tfx_SetEffectBaseNoiseOffset(tfx_stage pm, tfxEffectID effect_index, float 
 	pm->effects[effect_index].noise_base_offset = noise_offset;
 }
 
+tfx_version_t tfx_GetVersion() {
+	tfx_version_t version{};
+	version.name = TFX_VERSION_NAME;
+	version.major = TFX_VERSION_MAJOR;
+	version.minor = TFX_VERSION_MINOR;
+	version.patch = TFX_VERSION_PATCH;
+	return version;
+}

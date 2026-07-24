@@ -1,6 +1,11 @@
 #ifndef TFX_LIBRARY_HEADER
 #define TFX_LIBRARY_HEADER
 
+#define TFX_VERSION_NAME "Alpha"
+#define TFX_VERSION_MAJOR 0
+#define TFX_VERSION_MINOR 33
+#define TFX_VERSION_PATCH 0
+
 #define TFX_STRINGIFY(x) #x
 #if defined(__clang__)
 #define TFX_DISABLE_COMPILER_WARNING(w) \
@@ -128,6 +133,7 @@ All functions in the library will be marked this way for clarity and naturally t
 
 #if defined(_WIN32)
 #include <process.h>
+#include <intrin.h>
 #include <SDKDDKVer.h>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -135,6 +141,15 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <Windows.h>
 #else
 #include <pthread.h>
+#endif
+
+// Calling convention for functions handed to the OS thread-creation call
+// (__stdcall on Windows). __stdcall is a compiler keyword, so this does not
+// depend on <Windows.h>'s WINAPI macro.
+#if defined(_WIN32)
+#define TFX_THREAD_CALL __stdcall
+#else
+#define TFX_THREAD_CALL
 #endif
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
@@ -342,7 +357,7 @@ tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
 //thread that already owns a long-running operation (e.g. sprite data recording)
 //while making external threads wait until that operation finishes.
 #ifdef _WIN32
-typedef DWORD tfx_thread_id_t;
+typedef unsigned long tfx_thread_id_t;
 tfxINTERNAL inline tfx_thread_id_t tfx__current_thread_id() { return GetCurrentThreadId(); }
 tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) { return a == b; }
 tfxINTERNAL inline void tfx__thread_sleep_ms(int ms) { Sleep(ms); }
@@ -509,13 +524,12 @@ static inline int tfx__scan_forward(tfx_size bitmap)
 }
 
 #ifdef _WIN32
-#include <Windows.h>
 static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_access* target, tfx_thread_access value, tfx_thread_access original) {
-	return InterlockedCompareExchange(target, value, original);
-}	
+	return _InterlockedCompareExchange((volatile long *)target, value, original);
+}
 
 static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
-	return InterlockedExchange((volatile LONG *)target, value);
+	return _InterlockedExchange((volatile long *)target, value);
 }
 #endif
 
@@ -1838,9 +1852,6 @@ typedef unsigned short tfxUShort;
 #define tfxMAX_SEGMENT_COUNT 1024 
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
-#define TFX_VERSION "Alpha"
-#define TFX_VERSION_NUMBER 6.18.2024
-
 #define tfxMAX_FRAME 20000.f
 #define tfxCOLOR_RAMP_WIDTH 256
 #define tfxNullParent 0xFFFFFFFF
@@ -1939,7 +1950,7 @@ tfxINTERNAL inline tfxU64 tfx_AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_
 }
 
 tfxINTERNAL inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
-	tfxU32 result = _InterlockedExchangeAdd((LONG *)value, amount_to_add);
+	tfxU32 result = _InterlockedExchangeAdd((long *)value, amount_to_add);
 	return result;
 }
 #else
@@ -5621,7 +5632,7 @@ typedef struct tfx_storage_s {
 	tfx_stage current_pm;
 	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
-	HANDLE threads[tfxMAX_THREADS];
+	void *threads[tfxMAX_THREADS];
 #else
 	pthread_t threads[tfxMAX_THREADS];
 #endif
@@ -5644,7 +5655,7 @@ extern tfx_allocator *tfxMemoryAllocator;
 // Platform-specific atomic operations
 tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
 #ifdef _WIN32
-	return InterlockedIncrement((LONG *)value);
+	return _InterlockedIncrement((long *)value);
 #else
 	return __sync_fetch_and_add(value, 1) + 1;
 #endif
@@ -5652,7 +5663,7 @@ tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
 
 tfxINTERNAL inline int tfx__atomic_compare_exchange(volatile int *dest, int exchange, int comparand) {
 #ifdef _WIN32
-	return InterlockedCompareExchange((LONG *)dest, exchange, comparand) == comparand;
+	return _InterlockedCompareExchange((long *)dest, exchange, comparand) == comparand;
 #else
 	return __sync_bool_compare_and_swap(dest, comparand, exchange);
 #endif
@@ -5770,7 +5781,7 @@ tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
 }
 
 #ifdef _WIN32
-unsigned WINAPI tfx__thread_worker(void *arg);
+unsigned TFX_THREAD_CALL tfx__thread_worker(void *arg);
 #else
 void *tfx__thread_worker(void *arg);
 #endif
@@ -5778,7 +5789,7 @@ void *tfx__thread_worker(void *arg);
 // Thread creation helper function
 tfxINTERNAL inline int tfx__create_worker_thread(tfx_storage_t * storage, int thread_index) {
 #ifdef _WIN32
-	storage->threads[thread_index] = (HANDLE)_beginthreadex(
+	storage->threads[thread_index] = (void *)_beginthreadex(
 		NULL,
 		0,
 		tfx__thread_worker,
@@ -5814,8 +5825,8 @@ tfxINTERNAL inline void tfx__cleanup_thread(tfx_storage_t * storage, int thread_
 // Use tfx__join_thread to wait for it to complete and clean up the handle.
 tfxINTERNAL inline int tfx__create_thread(
 #ifdef _WIN32
-	HANDLE *thread_handle,
-	unsigned (WINAPI *proc)(void *),
+	void **thread_handle,
+	unsigned (TFX_THREAD_CALL *proc)(void *),
 #else
 	pthread_t *thread_handle,
 	void *(*proc)(void *),
@@ -5823,7 +5834,7 @@ tfxINTERNAL inline int tfx__create_thread(
 	void *data)
 {
 #ifdef _WIN32
-	*thread_handle = (HANDLE)_beginthreadex(NULL, 0, proc, data, 0, NULL);
+	*thread_handle = (void *)_beginthreadex(NULL, 0, proc, data, 0, NULL);
 	return *thread_handle != NULL;
 #else
 	return pthread_create(thread_handle, NULL, proc, data) == 0;
@@ -5833,7 +5844,7 @@ tfxINTERNAL inline int tfx__create_thread(
 // Wait for a thread created with tfx__create_thread to finish and clean up the handle.
 tfxINTERNAL inline void tfx__join_thread(
 #ifdef _WIN32
-	HANDLE *thread_handle
+	void **thread_handle
 #else
 	pthread_t *thread_handle
 #endif
@@ -6452,6 +6463,13 @@ typedef struct tfx_package_s {
 extern tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 #endif
+
+typedef struct tfx_version_s {
+	const char *name;
+	int major;
+	int minor;
+	int patch;
+} tfx_version_t;
 
 typedef struct tfx_attribute_node_s {
 	float frame;
@@ -7951,7 +7969,7 @@ typedef struct tfx_stage_s {
 	tfx_sync_t update_thread_mutex;
 
 #ifdef _WIN32
-	HANDLE update_thread;
+	void *update_thread;
 #else
 	pthread_t update_thread;
 #endif
@@ -8251,7 +8269,7 @@ tfxINTERNAL inline void tfx__wait_for_external_recording(tfx_stage pm) {
 	}
 }
 #ifdef _WIN32
-unsigned WINAPI tfx__update_stage_thread(void *data);
+unsigned TFX_THREAD_CALL tfx__update_stage_thread(void *data);
 #else
 void *tfx__update_stage_thread(void *data);
 #endif
@@ -11826,5 +11844,7 @@ Retrieve image data point from a tfx_gpu_shapes handle containing a list of tfx_
 * @returns index				An index into the array where the new image data was added
 */
 tfxAPI tfx_gpu_image_data_t *tfx_GetGPUShape(tfx_gpu_shapes shapes, tfxU32 index);
+
+tfxAPI tfx_version_t tfx_GetVersion();
 
 #endif
