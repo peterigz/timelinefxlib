@@ -285,10 +285,6 @@ void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, boo
     tfxPrint("Free blocks: %u, Used blocks: %u", stats.free_blocks, stats.used_blocks);
 }
 
-tfx_storage_t *tfx_GetGlobals() {
-	return tfxStore;
-}
-
 #define tfxNoise2dPermMOD12LoopUnroll(i)    \
     gi0.a[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + tfx_permutation_table[jj.a[i]]]];    \
     gi1.a[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + i1.a[i] + tfx_permutation_table[jj.a[i] + j1.a[i]]]];    \

@@ -9975,7 +9975,6 @@ tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_descriptor effect);
 #endif		//__cpluscplus
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
-tfxAPI tfx_storage_t *tfx_GetGlobals();
 tfxAPI float tfx_DegreesToRadians(float degrees);
 tfxAPI float tfx_RadiansToDegrees(float radians);
 
