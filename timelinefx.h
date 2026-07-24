@@ -5316,7 +5316,7 @@ struct tfx_line_t {
 	int length;
 };
 
-tfxAPI_EDITOR inline int tfx_FindInLine(tfx_line_t *line, const char *needle) {
+tfxINTERNAL inline int tfx__find_in_line(tfx_line_t *line, const char *needle) {
 	size_t needle_length = strlen(needle);
 	if (needle_length > (size_t)line->length) return -1;
 	tfxU32 pos = 0;
@@ -5431,7 +5431,7 @@ tfxAPI_EDITOR inline tfx_stream tfx__create_stream() {
 	return stream;
 }
 
-tfxAPI_EDITOR inline void tfx_FreeStream(tfx_stream stream) {
+tfxAPI_EDITOR inline void tfx__free_stream(tfx_stream stream) {
 	stream->Free();
 	tfxFREE(stream);
 }
@@ -5544,9 +5544,6 @@ typedef struct tfx_data_types_dictionary_s {
 	tfx_storage_map_t names_and_types;
 #endif
 } tfx_data_types_dictionary_t;
-
-tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
-tfxAPI_EDITOR void tfx__initialise_graph_indexes();
 
 //Global variables
 typedef struct tfx_storage_s {
@@ -5987,10 +5984,7 @@ typedef struct tfx_quaternion_s {
 
 tfxINTERNAL void tfx__to_quaternion2d(tfx_quaternion_t * q, float angle);
 tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t * q, tfx_vec2_t v);
-tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t * q, tfx_vec3_t v);
 tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t * q);
-tfxAPI_EDITOR tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
-tfxAPI_EDITOR void tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll, tfxWideInt *out_xy, tfxWideInt *out_zw);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t * normalised_dir);
 
@@ -6075,9 +6069,6 @@ const tfxWideArray one_div_32767_wide = tfxWideSetConst(1 / 32767.f);
 typedef struct tfx_rgba_s {
 	float r, g, b, a;
 } tfx_rgba_t;
-
-tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { tfx_rgba_t color = { 1.f, 1.f, 1.f, 1.f }; return color; }
-tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { tfx_rgba_t color = { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; return color; }
 
 typedef struct tfx_mat4_s {
 	tfx_vec4_t v[4];
@@ -6507,7 +6498,6 @@ typedef struct tfx_graph_list_s {
 	tfx_index color_ramp_bitmap_indexes;
 } tfx_graph_list_t;
 
-tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size);
 
 typedef struct tfx_path_nodes_soa_s {
 	float *x;
@@ -7760,7 +7750,6 @@ typedef struct tfx_stage_info_s {
 											//nearest multiple of 32.
 	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
-	//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
@@ -8036,6 +8025,25 @@ tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, t
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation);
+tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
+tfxINTERNAL bool tfx__validate_package(tfx_package package);
+tfxINTERNAL void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data);
+
+
+
+tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
+tfxAPI_EDITOR void tfx__initialise_graph_indexes();
+tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
+tfxAPI_EDITOR bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
+tfxAPI_EDITOR void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
+tfxAPI_EDITOR tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node);
+tfxAPI_EDITOR bool tfx__is_root_effect(tfx_effect_descriptor effect);
+tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t * q, tfx_vec3_t v);
+tfxAPI_EDITOR tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
+tfxAPI_EDITOR void tfx__wide_euler_to_packed_quaternion(tfxWideFloat pitch, tfxWideFloat yaw, tfxWideFloat roll, tfxWideInt *out_xy, tfxWideInt *out_zw);
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { tfx_rgba_t color = { 1.f, 1.f, 1.f, 1.f }; return color; }
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { tfx_rgba_t color = { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; return color; }
+tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size);
 tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter);
 
 //--------------------------------
@@ -8061,9 +8069,6 @@ tfxAPI_EDITOR bool tfx__file_exists_in_package(tfx_package package, const char *
 tfxAPI_EDITOR void tfx__free_package(tfx_package package);
 tfxAPI_EDITOR void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfxU64 size);
 tfxAPI_EDITOR void tfx__copy_stream(tfx_stream dst, tfx_stream src);
-tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
-tfxINTERNAL bool tfx__validate_package(tfx_package package);
-tfxINTERNAL void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data);
 
 //Some file IO functions for the editor
 tfxAPI_EDITOR bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
@@ -9823,8 +9828,6 @@ tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 	return graph->flags & tfxGraphFlags_use_bezier_sampling && graph->easing_type != tfxGraphEasingType_constant;
 }
 
-tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
-
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data);
@@ -9854,7 +9857,6 @@ tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_stage pm);
 tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_stage pm);
-tfxAPI_EDITOR bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 tfxINTERNAL bool tfx__control_profile_has_noise(tfxEmitterControlProfileFlags flags);
 tfxINTERNAL void tfx__init_sprite_data_soa(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
@@ -9865,7 +9867,6 @@ tfxINTERNAL void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_
 tfxINTERNAL void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties);
-tfxAPI_EDITOR void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
 }
@@ -9900,7 +9901,6 @@ tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
 		type == tfxOvertime_width || type == tfxOvertime_height;
 }
 
-tfxAPI_EDITOR tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node);
 tfxINTERNAL void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_ribbon_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
@@ -9935,7 +9935,6 @@ tfxINTERNAL void tfx__free_all_particle_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_spawn_location_lists(tfx_stage pm);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
-//Compute stuff doesn't work currently. Keeping this here for now for when I get back to implementing compute shaders for TimelineFX
 tfxINTERNAL void tfx__enable_compute(tfx_stage pm) { pm->flags |= tfxStageFlags_use_compute_shader; }
 tfxINTERNAL void tfx__disable_compute(tfx_stage pm) { pm->flags &= ~tfxStageFlags_use_compute_shader; }
 tfxINTERNAL int tfx__add_compute_controller(tfx_stage pm);
@@ -9964,7 +9963,6 @@ tfxINTERNAL void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_dat
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
-tfxAPI_EDITOR bool tfx__is_root_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__reset_effect_parents(tfx_effect_descriptor effect);
 tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_descriptor effect);
 

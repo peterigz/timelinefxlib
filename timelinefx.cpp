@@ -146,7 +146,7 @@ void tfx__free_handle(tfx_allocator *allocator, void *handle) {
     switch (struct_type) {
 		case tfx_struct_type_stream: {
 			tfx_stream stream = (tfx_stream)handle;
-			tfx_FreeStream(stream);
+			tfx__free_stream(stream);
 			break;
 		}
 		case tfx_struct_type_effect_template: {
@@ -2141,7 +2141,7 @@ void tfx__free_package(tfx_package package) {
 	}
 	package->inventory.entries.FreeAll();
 	if (package->file_data) {
-		tfx_FreeStream(package->file_data);
+		tfx__free_stream(package->file_data);
 	}
 	package->file_path.Free();
 	tfxFREE(package);
