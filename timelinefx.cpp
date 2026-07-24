@@ -1,6 +1,19 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
 
+// The OS threading/timing layer lives here, not in timelinefx.h, so <Windows.h>
+// (and its macro pollution) never reaches library consumers. See the include
+// block and tfx_sync_t in timelinefx.h.
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#else
+#include <time.h>
+#include <unistd.h>
+#endif
+
 //static asserts for tfx_str_t to pin the c++ layouts to the the exact layout the c mirrors are forced to have 
 #define tfx__pin_str_mirror(size)	\
 static_assert(sizeof(tfx_str##size##_t) == size + sizeof(tfxU32), "tfx_str" #size "_t layout no longer matches the C mirror struct in timelinefx.h");	\
@@ -18681,6 +18694,124 @@ void *tfx__thread_worker(void *arg) {
 }
 
 // Safe version that always returns at least 1
+//-----------------------------------------------------------
+// OS threading + timing layer. Declared in timelinefx.h; implemented here so
+// <Windows.h> / pthread details never reach library consumers.
+//-----------------------------------------------------------
+#ifdef _WIN32
+// Pin the opaque tfx_sync_t storage in timelinefx.h to the real Win32 types.
+static_assert(sizeof(((tfx_sync_t *)0)->mutex) == sizeof(CRITICAL_SECTION),
+	"tfx_sync_t::mutex storage no longer matches sizeof(CRITICAL_SECTION); update the void* array in timelinefx.h");
+static_assert(sizeof(((tfx_sync_t *)0)->empty_condition) == sizeof(CONDITION_VARIABLE),
+	"tfx_sync_t::empty_condition storage no longer matches sizeof(CONDITION_VARIABLE); update timelinefx.h");
+static_assert(sizeof(((tfx_sync_t *)0)->full_condition) == sizeof(CONDITION_VARIABLE),
+	"tfx_sync_t::full_condition storage no longer matches sizeof(CONDITION_VARIABLE); update timelinefx.h");
+static_assert(alignof(CRITICAL_SECTION) <= alignof(void *),
+	"CRITICAL_SECTION needs stronger alignment than the void* storage in tfx_sync_t provides");
+static_assert(alignof(CONDITION_VARIABLE) <= alignof(void *),
+	"CONDITION_VARIABLE needs stronger alignment than the void* storage in tfx_sync_t provides");
+
+static CRITICAL_SECTION *tfx__cs(tfx_sync_t *sync) { return (CRITICAL_SECTION *)sync->mutex; }
+static CONDITION_VARIABLE *tfx__cv_empty(tfx_sync_t *sync) { return (CONDITION_VARIABLE *)sync->empty_condition; }
+static CONDITION_VARIABLE *tfx__cv_full(tfx_sync_t *sync) { return (CONDITION_VARIABLE *)sync->full_condition; }
+
+void tfx__sync_init(tfx_sync_t *sync) {
+	InitializeCriticalSection(tfx__cs(sync));
+	InitializeConditionVariable(tfx__cv_empty(sync));
+	InitializeConditionVariable(tfx__cv_full(sync));
+}
+void tfx__sync_cleanup(tfx_sync_t *sync) { DeleteCriticalSection(tfx__cs(sync)); }
+void tfx__sync_lock(tfx_sync_t *sync) { EnterCriticalSection(tfx__cs(sync)); }
+void tfx__sync_unlock(tfx_sync_t *sync) { LeaveCriticalSection(tfx__cs(sync)); }
+void tfx__sync_wait_empty(tfx_sync_t *sync) { SleepConditionVariableCS(tfx__cv_empty(sync), tfx__cs(sync), INFINITE); }
+void tfx__sync_wait_full(tfx_sync_t *sync) { SleepConditionVariableCS(tfx__cv_full(sync), tfx__cs(sync), INFINITE); }
+void tfx__sync_signal_empty(tfx_sync_t *sync) { WakeConditionVariable(tfx__cv_empty(sync)); }
+void tfx__sync_signal_full(tfx_sync_t *sync) { WakeConditionVariable(tfx__cv_full(sync)); }
+
+tfx_thread_id_t tfx__current_thread_id(void) { return GetCurrentThreadId(); }
+void tfx__thread_sleep_ms(int ms) { Sleep(ms); }
+
+tfxU32 tfx_Millisecs(void) {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	tfxU64 ms = (tfxU64)(counter.QuadPart * 1000LL / frequency.QuadPart);
+	return (tfxU32)ms;
+}
+tfxU64 tfx_Microsecs(void) {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	tfxU64 us = (tfxU64)(counter.QuadPart * 1000000LL / frequency.QuadPart);
+	return us;
+}
+
+void tfx__cleanup_thread(tfx_storage_t *storage, int thread_index) {
+	if (storage->threads[thread_index]) {
+		WaitForSingleObject(storage->threads[thread_index], INFINITE);
+		CloseHandle(storage->threads[thread_index]);
+		storage->threads[thread_index] = NULL;
+	}
+}
+void tfx__join_thread(void **thread_handle) {
+	if (*thread_handle) {
+		WaitForSingleObject(*thread_handle, INFINITE);
+		CloseHandle(*thread_handle);
+		*thread_handle = NULL;
+	}
+}
+
+unsigned int tfx_HardwareConcurrency(void) {
+	SYSTEM_INFO sysinfo;
+	GetSystemInfo(&sysinfo);
+	return sysinfo.dwNumberOfProcessors;
+}
+#else
+void tfx__sync_init(tfx_sync_t *sync) {
+	pthread_mutex_init(&sync->mutex, NULL);
+	pthread_cond_init(&sync->empty_condition, NULL);
+	pthread_cond_init(&sync->full_condition, NULL);
+}
+void tfx__sync_cleanup(tfx_sync_t *sync) {
+	pthread_mutex_destroy(&sync->mutex);
+	pthread_cond_destroy(&sync->empty_condition);
+	pthread_cond_destroy(&sync->full_condition);
+}
+void tfx__sync_lock(tfx_sync_t *sync) { pthread_mutex_lock(&sync->mutex); }
+void tfx__sync_unlock(tfx_sync_t *sync) { pthread_mutex_unlock(&sync->mutex); }
+void tfx__sync_wait_empty(tfx_sync_t *sync) { pthread_cond_wait(&sync->empty_condition, &sync->mutex); }
+void tfx__sync_wait_full(tfx_sync_t *sync) { pthread_cond_wait(&sync->full_condition, &sync->mutex); }
+void tfx__sync_signal_empty(tfx_sync_t *sync) { pthread_cond_signal(&sync->empty_condition); }
+void tfx__sync_signal_full(tfx_sync_t *sync) { pthread_cond_signal(&sync->full_condition); }
+
+tfx_thread_id_t tfx__current_thread_id(void) { return pthread_self(); }
+void tfx__thread_sleep_ms(int ms) {
+	struct timespec ts;
+	ts.tv_sec = ms / 1000;
+	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+	nanosleep(&ts, NULL);
+}
+
+void tfx__cleanup_thread(tfx_storage_t *storage, int thread_index) {
+	pthread_join(storage->threads[thread_index], NULL);
+}
+void tfx__join_thread(pthread_t *thread_handle) {
+	if (*thread_handle) {
+		pthread_join(*thread_handle, NULL);
+		*thread_handle = 0;
+	}
+}
+
+unsigned int tfx_HardwareConcurrency(void) {
+#ifdef _SC_NPROCESSORS_ONLN
+	long count = sysconf(_SC_NPROCESSORS_ONLN);
+	return (count > 0) ? (unsigned int)count : 0;
+#else
+	return 0;
+#endif
+}
+#endif
+
 unsigned int tfx_HardwareConcurrencySafe(void) {
     unsigned int count = tfx_HardwareConcurrency();
     return count > 0 ? count : 1;

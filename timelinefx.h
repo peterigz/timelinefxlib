@@ -132,13 +132,14 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <errno.h>
 
 #if defined(_WIN32)
+// <Windows.h> is deliberately NOT included here — it leaks a large macro
+// surface (min/max, near/far, GDI names, ...) into every consumer TU. The few
+// OS primitives the library needs are isolated in timelinefx.cpp; this header
+// only needs <process.h> (_beginthreadex) and <intrin.h> (atomic intrinsics),
+// neither of which pollutes the macro namespace. The OS mutex/condition
+// objects are held as opaque storage in tfx_sync_t below.
 #include <process.h>
 #include <intrin.h>
-#include <SDKDDKVer.h>
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <Windows.h>
 #else
 #include <pthread.h>
 #endif
@@ -268,9 +269,18 @@ tfx__static_assert(TFX_MAX_SIZE_INDEX < 64);
 
 typedef struct tfx_sync_s {
 #ifdef _WIN32
-	CRITICAL_SECTION mutex;
-	CONDITION_VARIABLE empty_condition;
-	CONDITION_VARIABLE full_condition;
+	// Opaque storage for a Win32 CRITICAL_SECTION + two CONDITION_VARIABLEs, so
+	// this header does not need <Windows.h>. void* arrays give natural pointer
+	// alignment (which both types require). The exact sizes are pinned by
+	// static_assert against the real Win32 types in timelinefx.cpp; the OS calls
+	// that reinterpret this storage also live there.
+#if defined(tfx__64BIT)
+	void *mutex[5];              // sizeof(CRITICAL_SECTION) == 40 on x64
+#else
+	void *mutex[6];              // sizeof(CRITICAL_SECTION) == 24 on x86
+#endif
+	void *empty_condition[1];    // sizeof(CONDITION_VARIABLE) == sizeof(void*)
+	void *full_condition[1];
 #else
 	pthread_mutex_t mutex;
 	pthread_cond_t empty_condition;
@@ -282,96 +292,38 @@ typedef struct tfx_sync_s {
 extern "C" {
 #endif
 
-// Initialize synchronization primitives
-tfxINTERNAL inline void tfx__sync_init(tfx_sync_t *sync) {
-#ifdef _WIN32
-	InitializeCriticalSection(&sync->mutex);
-	InitializeConditionVariable(&sync->empty_condition);
-	InitializeConditionVariable(&sync->full_condition);
-#else
-	pthread_mutex_init(&sync->mutex, NULL);
-	pthread_cond_init(&sync->empty_condition, NULL);
-	pthread_cond_init(&sync->full_condition, NULL);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_cleanup(tfx_sync_t *sync) {
-#ifdef _WIN32
-	DeleteCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_destroy(&sync->mutex);
-	pthread_cond_destroy(&sync->empty_condition);
-	pthread_cond_destroy(&sync->full_condition);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_lock(tfx_sync_t *sync) {
-#ifdef _WIN32
-	EnterCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_lock(&sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_unlock(tfx_sync_t *sync) {
-#ifdef _WIN32
-	LeaveCriticalSection(&sync->mutex);
-#else
-	pthread_mutex_unlock(&sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_wait_empty(tfx_sync_t *sync) {
-#ifdef _WIN32
-	SleepConditionVariableCS(&sync->empty_condition, &sync->mutex, INFINITE);
-#else
-	pthread_cond_wait(&sync->empty_condition, &sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_wait_full(tfx_sync_t *sync) {
-#ifdef _WIN32
-	SleepConditionVariableCS(&sync->full_condition, &sync->mutex, INFINITE);
-#else
-	pthread_cond_wait(&sync->full_condition, &sync->mutex);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
-#ifdef _WIN32
-	WakeConditionVariable(&sync->empty_condition);
-#else
-	pthread_cond_signal(&sync->empty_condition);
-#endif
-}
-
-tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
-#ifdef _WIN32
-		WakeConditionVariable(&sync->full_condition);
-#else
-		pthread_cond_signal(&sync->full_condition);
-#endif
-}
+// Synchronization primitive operations. Implemented in timelinefx.cpp so the
+// OS threading APIs (Win32 CRITICAL_SECTION/CONDITION_VARIABLE or pthreads)
+// stay out of this header.
+void tfx__sync_init(tfx_sync_t *sync);
+void tfx__sync_cleanup(tfx_sync_t *sync);
+void tfx__sync_lock(tfx_sync_t *sync);
+void tfx__sync_unlock(tfx_sync_t *sync);
+void tfx__sync_wait_empty(tfx_sync_t *sync);
+void tfx__sync_wait_full(tfx_sync_t *sync);
+void tfx__sync_signal_empty(tfx_sync_t *sync);
+void tfx__sync_signal_full(tfx_sync_t *sync);
 
 //Portable thread identifier helpers. Used to allow re-entrant calls from a
 //thread that already owns a long-running operation (e.g. sprite data recording)
 //while making external threads wait until that operation finishes.
 #ifdef _WIN32
 typedef unsigned long tfx_thread_id_t;
-tfxINTERNAL inline tfx_thread_id_t tfx__current_thread_id() { return GetCurrentThreadId(); }
-tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) { return a == b; }
-tfxINTERNAL inline void tfx__thread_sleep_ms(int ms) { Sleep(ms); }
 #else
 typedef pthread_t tfx_thread_id_t;
-tfxINTERNAL inline tfx_thread_id_t tfx__current_thread_id() { return pthread_self(); }
-tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) { return pthread_equal(a, b) != 0; }
-tfxINTERNAL inline void tfx__thread_sleep_ms(int ms) {
-	struct timespec ts;
-	ts.tv_sec = ms / 1000;
-	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
-	nanosleep(&ts, NULL);
-}
 #endif
+// GetCurrentThreadId / Sleep (Win32) and pthread_self / nanosleep both pull in
+// OS headers, so these are implemented in timelinefx.cpp. The comparison has no
+// OS dependency and stays inline.
+tfx_thread_id_t tfx__current_thread_id(void);
+void tfx__thread_sleep_ms(int ms);
+tfxINTERNAL inline bool tfx__thread_id_equal(tfx_thread_id_t a, tfx_thread_id_t b) {
+#ifdef _WIN32
+	return a == b;
+#else
+	return pthread_equal(a, b) != 0;
+#endif
+}
 
 #define tfx__MAXIMUM_BLOCK_SIZE (TFX_ONE << TFX_MAX_SIZE_INDEX)
 
@@ -1966,21 +1918,10 @@ inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
 #endif
 
 #ifdef _WIN32
-tfxINTERNAL tfxU32 tfx_Millisecs(void) {
-	LARGE_INTEGER frequency, counter;
-	QueryPerformanceFrequency(&frequency);
-	QueryPerformanceCounter(&counter);
-	tfxU64 ms = (tfxU64)(counter.QuadPart * 1000LL / frequency.QuadPart);
-	return (tfxU32)ms;
-}
-
-tfxINTERNAL tfxU64 tfx_Microsecs(void) {
-	LARGE_INTEGER frequency, counter;
-	QueryPerformanceFrequency(&frequency);
-	QueryPerformanceCounter(&counter);
-	tfxU64 us = (tfxU64)(counter.QuadPart * 1000000LL / frequency.QuadPart);
-	return (tfxU64)us;
-}
+// Implemented in timelinefx.cpp — the QueryPerformanceCounter path needs
+// <Windows.h>. The Apple/Linux timers below have no such dependency.
+tfxU32 tfx_Millisecs(void);
+tfxU64 tfx_Microsecs(void);
 #elif defined(__APPLE__)
 #include <mach/mach_time.h>
 tfxINTERNAL inline tfxU32 tfx_Millisecs(void) {
@@ -5671,7 +5612,9 @@ tfxINTERNAL inline int tfx__atomic_compare_exchange(volatile int *dest, int exch
 
 tfxINTERNAL inline void tfx__memory_barrier(void) {
 #ifdef _WIN32
-	MemoryBarrier();
+	// Full hardware memory fence. _mm_mfence (SSE2, via <intrin.h>) replaces the
+	// Win32 MemoryBarrier() macro so this header does not need <Windows.h>.
+	_mm_mfence();
 #else
 	__sync_synchronize();
 #endif
@@ -5808,18 +5751,9 @@ tfxINTERNAL inline int tfx__create_worker_thread(tfx_storage_t * storage, int th
 #endif
 }
 
-// Thread cleanup helper function
-tfxINTERNAL inline void tfx__cleanup_thread(tfx_storage_t * storage, int thread_index) {
-#ifdef _WIN32
-	if (storage->threads[thread_index]) {
-		WaitForSingleObject(storage->threads[thread_index], INFINITE);
-		CloseHandle(storage->threads[thread_index]);
-		storage->threads[thread_index] = NULL;
-	}
-#else
-	pthread_join(storage->threads[thread_index], NULL);
-#endif
-}
+// Thread cleanup helper function. Implemented in timelinefx.cpp: the Win32 path
+// uses WaitForSingleObject/CloseHandle which need <Windows.h>.
+void tfx__cleanup_thread(tfx_storage_t *storage, int thread_index);
 
 // Create a single thread that runs a function once (not a pool worker).
 // Use tfx__join_thread to wait for it to complete and clean up the handle.
@@ -5841,42 +5775,17 @@ tfxINTERNAL inline int tfx__create_thread(
 #endif
 }
 
-// Wait for a thread created with tfx__create_thread to finish and clean up the handle.
-tfxINTERNAL inline void tfx__join_thread(
+// Wait for a thread created with tfx__create_thread to finish and clean up the
+// handle. Implemented in timelinefx.cpp (Win32 path needs <Windows.h>).
 #ifdef _WIN32
-	void **thread_handle
+void tfx__join_thread(void **thread_handle);
 #else
-	pthread_t *thread_handle
+void tfx__join_thread(pthread_t *thread_handle);
 #endif
-) {
-#ifdef _WIN32
-	if (*thread_handle) {
-		WaitForSingleObject(*thread_handle, INFINITE);
-		CloseHandle(*thread_handle);
-		*thread_handle = NULL;
-	}
-#else
-	if (*thread_handle) {
-		pthread_join(*thread_handle, NULL);
-		*thread_handle = 0;
-	}
-#endif
-}
 
-tfxAPI inline unsigned int tfx_HardwareConcurrency(void) {
-#ifdef _WIN32
-	SYSTEM_INFO sysinfo;
-	GetSystemInfo(&sysinfo);
-	return sysinfo.dwNumberOfProcessors;
-#else
-#ifdef _SC_NPROCESSORS_ONLN
-	long count = sysconf(_SC_NPROCESSORS_ONLN);
-	return (count > 0) ? (unsigned int)count : 0;
-#else
-	return 0;
-#endif
-#endif
-}
+// Implemented in timelinefx.cpp — the Win32 path uses GetSystemInfo (needs
+// <Windows.h>).
+tfxAPI unsigned int tfx_HardwareConcurrency(void);
 
 // Safe version that always returns at least 1
 tfxAPI unsigned int tfx_HardwareConcurrencySafe(void);
