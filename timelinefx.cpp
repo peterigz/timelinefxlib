@@ -179,7 +179,7 @@ void tfx__scan_memory_and_free_resources() {
 					tfx_struct_type struct_type = (tfx_struct_type)TFX_STRUCT_TYPE(allocation);
 					switch (struct_type) {
 						case tfx_struct_type_effect_library:	
-						case tfx_struct_type_effect_manager:
+						case tfx_struct_type_stage:
 						case tfx_struct_type_stream:
 						case tfx_struct_type_animation_manager:
 						case tfx_struct_type_gpu_shapes:
@@ -208,7 +208,7 @@ tfx_allocator *tfxGetAllocator() {
 const char *tfx__struct_type_to_string(tfx_struct_type struct_type) {
     switch (struct_type) {
 		case tfx_struct_type_effect_library			: return "effect_library"; break;
-		case tfx_struct_type_effect_manager			: return "effect_manager"; break;
+		case tfx_struct_type_stage			: return "stage"; break;
 		case tfx_struct_type_stream    				: return "stream"; break;
 		case tfx_struct_type_animation_manager 		: return "animation_mananger"; break;
 		case tfx_struct_type_effect_descriptor 		: return "effect_descriptor"; break;
@@ -880,10 +880,10 @@ static bool tfx__string_to_int(const char *str, int *result) {
 	return true;
 }
 
-tfx_random_t tfx_NewRandom(tfxU32 seed) {
+tfx_random_t tfx_CreateRandom(tfxU32 seed) {
 	tfx_random_t random;
 	memset(random.seeds, 0, sizeof(tfxU64) * 2);
-	tfx_RandomReSeed(&random, seed);
+	tfx_RandomReseed(&random, seed);
 	return random;
 }
 
@@ -895,18 +895,18 @@ void tfx_AdvanceRandom(tfx_random_t *random) {
 	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
 }
 
-void tfx_RandomReSeedTime(tfx_random_t *random) {
+void tfx_RandomReseedTime(tfx_random_t *random) {
 	random->seeds[0] = tfx_Millisecs(); random->seeds[1] = (tfxU64)tfx_Millisecs() * 2;
 	tfx_AdvanceRandom(random);
 }
 
-void tfx_RandomReSeed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
+void tfx_RandomReseed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
 	random->seeds[0] = seed1;
 	random->seeds[1] = seed2;
 	tfx_AdvanceRandom(random);
 }
 
-void tfx_RandomReSeed(tfx_random_t *random, tfxU64 seed) {
+void tfx_RandomReseed(tfx_random_t *random, tfxU64 seed) {
 	random->seeds[0] = seed;
 	random->seeds[1] = seed * 2;
 	tfx_AdvanceRandom(random);
@@ -1908,7 +1908,7 @@ float tfx__interpolate_float(float tween, float from, float to) {
 
 void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
 	*out_q = tfx__euler_to_quaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
-	*out_scale = parent->overal_scale;
+	*out_scale = parent->overall_scale;
 
 	*out_rotations = parent->world_rotations + *out_local_rotations;
 
@@ -2522,7 +2522,7 @@ tfx_effect_descriptor tfx__add_emitter_to_effect(tfx_effect_descriptor effect, t
 tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect, tfx_str64_t *name) {
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect
 	TFX_ASSERT(name->Length() > 0);                //Must have a name so that a hash can be generated
-	tfx_effect_descriptor ribbon = tfx_NewEffectDescriptor(tfxRibbonType);
+	tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
 	ribbon->type = tfx_effect_descriptor_type::tfxRibbonType;
 	ribbon->library = effect->library;
 	ribbon->parent = effect;
@@ -2572,7 +2572,7 @@ tfx_effect_descriptor tfx__add_effect_to_emitter(tfx_effect_descriptor emitter, 
 tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor emitter) {
 	TFX_ASSERT_HANDLE(emitter);	//Not a valid emitter
 	TFX_ASSERT(emitter->type == tfxEmitterType);
-	tfx_effect_descriptor new_effect = tfx_NewEffectDescriptor(tfxEffectType);
+	tfx_effect_descriptor new_effect = tfx_CreateEffectDescriptor(tfxEffectType);
 	new_effect->library = emitter->library;
 	new_effect->uid = ++emitter->library->uid;
 	new_effect->name.Set("New Effect");
@@ -2756,7 +2756,7 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 	return rotated_vector;
 }
 
-tfx_vec3_t tfx__get_emission_direciton_3d(tfx_effect_manager pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
+tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
 	//----Emission
 	float range = emission_angle_variation * .5f;
@@ -2915,7 +2915,7 @@ void tfx__reset_effect_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_pitch_spin_index], 1.f, tfxGlobalPercentPresetSigned, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_pitch_spin_index].type = tfxGlobal_pitch_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_yaw_spin_index], 1.f, tfxGlobalPercentPresetSigned, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_yaw_spin_index].type = tfxGlobal_yaw_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_stretch_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_stretch_index].type = tfxGlobal_stretch;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_overal_scale_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_overal_scale_index].type = tfxGlobal_overal_scale;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_overall_scale_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_overall_scale_index].type = tfxGlobal_overall_scale;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_intensity_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_intensity_index].type = tfxGlobal_intensity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_splatter_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_splatter_index].type = tfxGlobal_splatter;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index].type = tfxGlobal_emitter_width;
@@ -3018,7 +3018,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index], 0.f, tfxAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index].type = tfxVariation_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].type = tfxVariation_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].type = tfxOvertime_width;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index].type = tfxOvertime_overal_ribbon_scale;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overall_scale_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overall_scale_index].type = tfxOvertime_overall_ribbon_scale;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].type = tfxOvertime_red;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].type = tfxOvertime_green;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].type = tfxOvertime_blue;
@@ -3064,7 +3064,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_pitch_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_pitch_spin_index], 1.f, tfxGlobalPercentPresetSigned);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_yaw_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_yaw_spin_index], 1.f, tfxGlobalPercentPresetSigned);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_stretch_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_stretch_index], 1.f, tfxGlobalPercentPreset);
-		if (library->graphs[graph_list_index].graphs[tfxEffect_global_overal_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_overal_scale_index], 1.f, tfxGlobalPercentPreset);
+		if (library->graphs[graph_list_index].graphs[tfxEffect_global_overall_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_overall_scale_index], 1.f, tfxGlobalPercentPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_intensity_index], 1.f, tfxGlobalPercentPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_splatter_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_splatter_index], 1.f, tfxGlobalPercentPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index], 1.f, tfxGlobalPercentPreset);
@@ -3159,7 +3159,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overall_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_overall_scale_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset);
@@ -3461,11 +3461,11 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 
 	for (tfx_effect_descriptor child : effect_to_clone->children) {
 		if (child->type == tfxEmitterType || child->type == tfxRibbonType) {
-			tfx_effect_descriptor emitter_copy = tfx_NewEffectDescriptor(child->type);
+			tfx_effect_descriptor emitter_copy = tfx_CreateEffectDescriptor(child->type);
 			tfx__clone_effect(child, emitter_copy, destination_library, flags);
 			tfx__add_emitter_to_effect(clone, emitter_copy, child->type);
 		} else if (child->type == tfxEffectType) {
-			tfx_effect_descriptor effect_copy = tfx_NewEffectDescriptor(tfxEffectType);
+			tfx_effect_descriptor effect_copy = tfx_CreateEffectDescriptor(tfxEffectType);
 			tfx__clone_effect(child, effect_copy, destination_library, flags);
 			tfx__add_effect_to_emitter(clone, effect_copy);
 		}
@@ -3477,7 +3477,7 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 	if (TFX_VALID_HANDLE(*dst, tfx_struct_type_effect_descriptor)) {
 		tfx__clear_effect(*dst);
 	} else {
-		*dst = tfx_NewEffectDescriptor(src->type);
+		*dst = tfx_CreateEffectDescriptor(src->type);
 	}
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
@@ -3488,7 +3488,7 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(effect_to_clone);		//effect to clone is not a valid handle
 	TFX_ASSERT(effect_to_clone->type == tfxEffectType || effect_to_clone->type == tfxFolder); //Use tfx__clone_emitter_into_effect for cloning emitters
-	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(effect_to_clone->type);
+	tfx_effect_descriptor clone = tfx_CreateEffectDescriptor(effect_to_clone->type);
 	tfx__clone_effect(effect_to_clone, clone, destination_library, flags);
 	tfx__remap_paired_emitters(effect_to_clone, clone);
 	//NOTE: the GPU compute lookup nodes must NOT be rebuilt here - the clone is a detached descriptor that is not yet a
@@ -3500,7 +3500,7 @@ tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effec
 tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone, tfx_library library, tfxEffectCloningFlags flags) {
 	TFX_ASSERT_HANDLE(emitter_to_clone);		//effect to clone is not a valid handle
 	TFX_ASSERT(tfx__is_emitter_type(emitter_to_clone));	//Emitter to clone must be either 
-	tfx_effect_descriptor clone = tfx_NewEffectDescriptor(emitter_to_clone->type);
+	tfx_effect_descriptor clone = tfx_CreateEffectDescriptor(emitter_to_clone->type);
 	tfx__clone_effect(emitter_to_clone, clone, library, flags);
 	//NOTE: do not rebuild the GPU compute lookup nodes here - the clone is not in the library tree yet so it would not get a
 	//fresh gpu_lookup_offset. The editor rebuilds the table after inserting the clone (see Editor::CopyEffectEmitter).
@@ -4061,7 +4061,7 @@ tfx_effect_descriptor tfx__add_library_effect(tfx_library library, tfx_effect_de
 
 tfx_effect_descriptor tfx__add_new_library_folder(tfx_library library, tfx_str64_t *name) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	tfx_effect_descriptor folder = tfx_NewEffectDescriptor(tfxFolder);
+	tfx_effect_descriptor folder = tfx_CreateEffectDescriptor(tfxFolder);
 	folder->library = library;
 	folder->name = *name;
 	folder->type = tfxFolder;
@@ -4075,7 +4075,7 @@ tfx_effect_descriptor tfx__add_new_library_folder(tfx_library library, tfx_str64
 
 tfx_effect_descriptor tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	tfx_effect_descriptor effect = tfx_NewEffectDescriptor(tfxEffectType);
+	tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
 	effect->library = library;
 	effect->type = tfxEffectType;
 	effect->state_properties.property_index = tfx__allocate_library_particle_emitter_properties(library);
@@ -4236,7 +4236,7 @@ tfx_effect_descriptor tfx__library_move_down(tfx_library library, tfx_effect_des
 	return nullptr;
 }
 
-void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, tfx_uv_lookup uv_lookup) {
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
     TFX_ASSERT(uv_lookup);  //You must set a function that applies the uv coordinates for each image you load
 	tfxU32 index = 0;
@@ -4264,7 +4264,7 @@ void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, 
 	}
 }
 
-void tfx_BuildLibraryGPUShapeData(tfx_library library, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void tfx_BuildLibraryGPUShapeData(tfx_library library, tfx_gpu_shapes shapes, tfx_uv_lookup uv_lookup) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT_HANDLE(shapes);	//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
 	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
@@ -4310,7 +4310,7 @@ tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes() {
 	return tfxStore->gpu_graph_data.size_in_bytes();
 }
 
-void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, tfx_uv_lookup uv_lookup) {
 	TFX_ASSERT_HANDLE(shapes);				//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
 	TFX_ASSERT_HANDLE(animation_manager);	//animation_manager handle not initialised! Use tfx_CreateAnimationManagerFor2d/3d and load or record sprite data into it.
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
@@ -5008,7 +5008,9 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("global_pitch_spin", tfxEffect_global_pitch_spin_index);
 	tfxStore->graph_indexes.Insert("global_yaw_spin", tfxEffect_global_yaw_spin_index);
 	tfxStore->graph_indexes.Insert("global_stretch", tfxEffect_global_stretch_index);
-	tfxStore->graph_indexes.Insert("global_overal_scale", tfxEffect_global_overal_scale_index);
+	tfxStore->graph_indexes.Insert("global_overall_scale", tfxEffect_global_overall_scale_index);
+	//files spelled this "overal/global_overall_scale", tfxAttributeGraph);
+	tfxStore->graph_indexes.Insert("global_overal_scale", tfxEffect_global_overall_scale_index);
 	tfxStore->graph_indexes.Insert("global_intensity", tfxEffect_global_intensity_index);
 	tfxStore->graph_indexes.Insert("global_splatter", tfxEffect_global_splatter_index);
 	tfxStore->graph_indexes.Insert("global_emitter_width", tfxEffect_global_emitter_width_index);
@@ -5163,7 +5165,9 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_variation_width", tfxRibbon_variation_width_index);
 
 	tfxStore->graph_indexes.Insert("ribbon_overtime_width", tfxRibbon_overtime_width_index);
-	tfxStore->graph_indexes.Insert("ribbon_overtime_overal_scale", tfxRibbon_overtime_overal_scale_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_overall_scale", tfxRibbon_overtime_overall_scale_index);
+	//files spelled this "overal/global_overall_scale", tfxAttributeGraph);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_overal_scale", tfxRibbon_overtime_overall_scale_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_red", tfxRibbon_overtime_red_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_green", tfxRibbon_overtime_green_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_blue", tfxRibbon_overtime_blue_index);
@@ -5304,6 +5308,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("global_pitch_spin", tfxAttributeGraph);
 	names_and_types.Insert("global_yaw_spin", tfxAttributeGraph);
 	names_and_types.Insert("global_stretch", tfxAttributeGraph);
+	names_and_types.Insert("global_overall_scale", tfxAttributeGraph);
+	//files spelled this "overal/global_overall_scale", tfxAttributeGraph);
 	names_and_types.Insert("global_overal_scale", tfxAttributeGraph);
 	names_and_types.Insert("global_intensity", tfxAttributeGraph);
 	names_and_types.Insert("global_splatter", tfxAttributeGraph);
@@ -5353,6 +5359,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_width", tfxAttributeGraph);
 	names_and_types.Insert("overtime_height", tfxAttributeGraph);
 	names_and_types.Insert("overtime_overal_scale", tfxAttributeGraph);
+	//files spelled this "overal/global_overall_scale", tfxAttributeGraph);
+	names_and_types.Insert("overtime_overall_scale", tfxAttributeGraph);
 	names_and_types.Insert("overtime_weight", tfxAttributeGraph);
 	names_and_types.Insert("overtime_spin", tfxAttributeGraph);
 	names_and_types.Insert("overtime_roll_spin", tfxAttributeGraph);
@@ -5837,7 +5845,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxGlobal_pitch_spin: return "global_pitch_spin"; break;
 	case tfxGlobal_yaw_spin: return "global_yaw_spin"; break;
 	case tfxGlobal_stretch: return "global_stretch"; break;
-	case tfxGlobal_overal_scale: return "global_overal_scale"; break;
+	case tfxGlobal_overall_scale: return "global_overall_scale"; break;
 	case tfxGlobal_intensity: return "global_intensity"; break;
 	case tfxGlobal_splatter: return "global_splatter"; break;
 	case tfxGlobal_emitter_width: return "global_emitter_width"; break;
@@ -5894,7 +5902,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOvertime_velocity: return "overtime_velocity"; break;
 	case tfxOvertime_width: return "overtime_width"; break;
 	case tfxOvertime_height: return "overtime_height"; break;
-	case tfxOvertime_overal_ribbon_scale: return "overtime_overal_scale"; break;
+	case tfxOvertime_overall_ribbon_scale: return "overtime_overall_scale"; break;
 	case tfxOvertime_weight: return "overtime_weight"; break;
 	case tfxOvertime_pitch_spin: return "overtime_pitch_spin"; break;
 	case tfxOvertime_yaw_spin: return "overtime_yaw_spin"; break;
@@ -8736,7 +8744,7 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	return stats;
 }
 
-tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager animation_manager, tfx_shape_loader shape_loader, void *user_data) {
 	//TFX_ASSERT(shape_loader);            //Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 	if (!tfxStore->data_types.initialised) {
 		tfx__initialise_dictionary(&tfxStore->data_types);
@@ -9039,7 +9047,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	return error;
 }
 
-tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
+tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data) {
 	TFX_ASSERT_HANDLE(lib);	//Library is not initialised!
 	if (!tfxStore->data_types.initialised) {
 		tfx__initialise_dictionary(&tfxStore->data_types);
@@ -9068,7 +9076,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
-	//You must call tfx_InitialiseTimelineFX() before doing anything!    
+	//You must call tfx_BeginTimelineFX() before doing anything!    
 	tmpStack(tfx_effect_descriptor, effect_stack);
 	tmpStack(tfx_str256_t, pair);
 
@@ -9086,14 +9094,14 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			context_set = true;
 			if (context == tfxStartFolder) {
-				tfx_effect_descriptor effect = tfx_NewEffectDescriptor(tfxFolder);
+				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxFolder);
 				effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				effect->library = lib;
 				effect->type = tfx_effect_descriptor_type::tfxFolder;
 				effect->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEffect) {
-				tfx_effect_descriptor effect = tfx_NewEffectDescriptor(tfxEffectType);
+				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
 				if (current_effect) {
 					continue;	//ignore any sub effects from older versions. All sub emitters will be put into the root effect.
 				}
@@ -9113,7 +9121,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEmitter) {
-				tfx_effect_descriptor emitter = tfx_NewEffectDescriptor(tfxEmitterType);
+				tfx_effect_descriptor emitter = tfx_CreateEffectDescriptor(tfxEmitterType);
 				emitter->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				emitter->state_properties.path_attributes = tfxINVALID;
 				emitter->effect_flags = 0;
@@ -9132,7 +9140,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter->uid = uid++;
 				effect_stack.push_back(emitter);
 			} else if (context == tfxStartRibbonEmitter) {
-				tfx_effect_descriptor ribbon = tfx_NewEffectDescriptor(tfxRibbonType);
+				tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
 				ribbon->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				ribbon->state_properties.path_attributes = tfxINVALID;
 				ribbon->effect_flags = 0;
@@ -9328,7 +9336,7 @@ tfx_library tfx_CreateLibrary() {
 	return library;
 }
 
-tfx_library tfx_LoadEffectLibrary(const char *filename, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
+tfx_library tfx_LoadEffectLibrary(const char *filename, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data) {
 	tfx_library library = tfx_CreateLibrary();
 	TFX_ASSERT_HANDLE(library);	//Could not create library handle, out of memory?
 
@@ -9344,7 +9352,7 @@ tfx_library tfx_LoadEffectLibrary(const char *filename, void(*shape_loader)(cons
 	return library;
 }
 
-tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
+tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data) {
 	tfx_library library = tfx_CreateLibrary();
 	TFX_ASSERT_HANDLE(library);	//Could not create library handle, out of memory?
 
@@ -9392,15 +9400,15 @@ void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
-	//Claim ownership of pm before any other thread can issue a tfx_UpdateEffectManager on it.
-	//The flag is checked under update_thread_mutex by tfx_UpdateEffectManager so callers will see this and bail.
-	//recording_thread_id lets re-entrant calls (tfx_ReconfigureEffectManager / tfx_ClearEffectManager
+void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
+	//Claim ownership of pm before any other thread can issue a tfx_UpdateStage on it.
+	//The flag is checked under update_thread_mutex by tfx_UpdateStage so callers will see this and bail.
+	//recording_thread_id lets re-entrant calls (tfx_ReconfigureStage / tfx_ClearStage
 	//made from this function itself) skip the external-recording wait while still blocking other threads.
 	tfx__sync_lock(&pm->update_thread_mutex);
 	pm->recording_thread_id = tfx__current_thread_id();
-	pm->flags |= tfxEffectManagerFlags_recording_sprites;
-	tfx__wait_for_effect_manager_update_locked(pm);
+	pm->flags |= tfxStageFlags_recording_sprites;
+	tfx__wait_for_stage_update_locked(pm);
 	tfx__sync_unlock(&pm->update_thread_mutex);
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	float frame_length = 1000.f / update_frequency;
@@ -9433,32 +9441,32 @@ void tfx__record_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect
 	tfx_vec3_t pm_camera_position = pm->camera_position;
 	tfxEffectID preview_effect_index;
 
-	tfx_ReconfigureEffectManager(pm, effect->sort_passes);
+	tfx_ReconfigureStage(pm, effect->sort_passes);
 	tfxU32 struct_size = sizeof(tfx_instance_t);
 	for (tfxEachLayer) {
 		pm->instance_buffer_for_recording[0][layer].free();
 		pm->instance_buffer_for_recording[0][layer] = tfxCreateBuffer(struct_size, 16);
-		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
 			pm->instance_buffer_for_recording[1][layer].free();
 			pm->instance_buffer_for_recording[1][layer] = tfxCreateBuffer(struct_size, 16);
 			
 		}
 	}
-	pm->flags |= settings->animation_flags & tfxAnimationFlags_loop ? tfxEffectManagerFlags_animation_loops : 0;
-	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
+	pm->flags |= settings->animation_flags & tfxAnimationFlags_loop ? tfxStageFlags_animation_loops : 0;
+	if (!(pm->flags & tfxStageFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
 	pm->unique_particle_id = 0;
-	tfx_SetSeed(pm, settings->seed);
+	tfx_SetStageSeed(pm, settings->seed);
 	float saved_warmup = effect->warmup_time;
 	effect->warmup_time = 0;
-	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
-	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
+	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
-		&pm->effects[preview_effect_index].overal_scale,
+		&pm->effects[preview_effect_index].overall_scale,
 		&pm->effects[preview_effect_index].world_position,
 		&pm->effects[preview_effect_index].local_position,
 		&pm->effects[preview_effect_index].translation,
@@ -9477,7 +9485,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	pm->manager_work.pm = pm;
 
 	while (frame < frames && offset < 99999) {
-		tfx__update_effect_manager(pm);
+		tfx__update_stage(pm);
 
 		if (offset >= start_frame) {
 			sprites_in_layers = 0;
@@ -9605,17 +9613,17 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 	tmp_ribbon_frame_meta.free();
 
-	tfx_ReconfigureEffectManager(pm, effect->sort_passes);
-	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
+	tfx_ReconfigureStage(pm, effect->sort_passes);
+	if (!(pm->flags & tfxStageFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
-	tfx_SetSeed(pm, settings->seed);
-	preview_effect_index = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
-	tfx_SetEffectPositionVec3(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
+	tfx_SetStageSeed(pm, settings->seed);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
+	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
 		&pm->effects[preview_effect_index].local_rotations,
-		&pm->effects[preview_effect_index].overal_scale,
+		&pm->effects[preview_effect_index].overall_scale,
 		&pm->effects[preview_effect_index].world_position,
 		&pm->effects[preview_effect_index].local_position,
 		&pm->effects[preview_effect_index].translation,
@@ -9625,13 +9633,13 @@ TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 TFX_ENABLE_COMPILER_WARNING()
 
 	if (total_sprites == 0 && total_ribbons == 0) {
-		tfx_DisablePMSpawning(pm, false);
-		tfx_ClearEffectManager(pm, false, false);
+		tfx_DisableStageSpawning(pm, false);
+		tfx_ClearStage(pm, false, false);
 		tfx__sync_lock(&pm->update_thread_mutex);
-		pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+		pm->flags &= ~tfxStageFlags_recording_sprites;
 		memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
 		tfx__sync_unlock(&pm->update_thread_mutex);
-		pm->flags &= ~tfxEffectManagerFlags_animation_loops;
+		pm->flags &= ~tfxStageFlags_animation_loops;
 		pm->camera_position = pm_camera_position;
 		tfx__toggle_sprites_with_uid(pm, false);
 		for (tfxEachLayer) {
@@ -9675,7 +9683,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	particles_started = false;
 	ribbons_started = false;
 	start_counting_extra_frames = false;
-	tfx_DisablePMSpawning(pm, false);
+	tfx_DisableStageSpawning(pm, false);
 	total_sprites = 0;
 	tfxU32 total_ribbons_written = 0;
 	tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
@@ -9691,11 +9699,11 @@ TFX_ENABLE_COMPILER_WARNING()
 	pm->unique_particle_id = 0;
 
 	while (frame < frames && offset < 99999) {
-		tfx__update_effect_manager(pm);
+		tfx__update_stage(pm);
 		for (tfxEachLayer) {
 			tfx__invalidate_new_captured_index(tfxCastBufferRef(tfx_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 		}
-		//tfx__update_effect_manager sets warmup_just_finished after running the warmup loop so that the
+		//tfx__update_stage sets warmup_just_finished after running the warmup loop so that the
 		//invalidate above forces all post-warmup captured_indexes to INVALID for one frame. Clear it now
 		//that every layer has been processed; subsequent frames take the normal age == 0 / self-ref paths.
 		bool particles_processed_last_frame = false;
@@ -9856,7 +9864,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 
 	// Copy ribbon segment data from buckets into shared_segments and remap start_index
-	// This must happen before ClearEffectManager which frees bucket segment data
+	// This must happen before ClearStage which frees bucket segment data
 	if (total_ribbons > 0) {
 		sprite_data->real_time_ribbons_buffer.current_size = total_ribbons;
 		TFX_ASSERT(sprite_data->real_time_ribbons_buffer.current_size <= sprite_data->real_time_ribbons_buffer.capacity);
@@ -9889,13 +9897,13 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfx__free_soa_buffer(&temp_ribbons_buffer);
 	}
 
-	tfx_DisablePMSpawning(pm, false);
-	tfx_ClearEffectManager(pm, false, false);
+	tfx_DisableStageSpawning(pm, false);
+	tfx_ClearStage(pm, false, false);
 	tfx__sync_lock(&pm->update_thread_mutex);
-	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+	pm->flags &= ~tfxStageFlags_recording_sprites;
 	memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
 	tfx__sync_unlock(&pm->update_thread_mutex);
-	pm->flags &= ~tfxEffectManagerFlags_animation_loops;
+	pm->flags &= ~tfxStageFlags_animation_loops;
 
 	if (settings->playback_speed < 1.f) {
 		tfx__compress_sprite_data(pm, effect, frame_length, progress);
@@ -9934,7 +9942,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	effect->warmup_time = saved_warmup;
 }
 
-void tfx__compress_sprite_data(tfx_effect_manager pm, tfx_effect_descriptor effect, float frame_length, int *progress) {
+void tfx__compress_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, float frame_length, int *progress) {
 	*progress = tfxLinkUpSprites;
 	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
@@ -10315,7 +10323,7 @@ void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_des
 	}
 }
 
-void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_effect_manager pm, tfx_vec3_t camera_position, tfx_sprite_data_t *external_sprite_data) {
+void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_stage pm, tfx_vec3_t camera_position, tfx_sprite_data_t *external_sprite_data) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
@@ -10772,14 +10780,14 @@ void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_man
 	animation_manager->buffer_metrics.ribbon_offsets_size_in_bytes = animation_manager->buffer_metrics.ribbon_offsets_size * sizeof(tfxU32) * animation_manager->buffer_metrics.instances_size;
 }
 
-void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_effect_manager pm, float update_frequency, float camera_position[3]) {
+void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_stage pm, float update_frequency, float camera_position[3]) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT_HANDLE(pm);	//Not a valid particle manager handle
 	int progress;
 	tfx__record_sprite_data(pm, t->effect, &t->effect->library->sprite_data_settings[t->effect->sprite_data_settings_index], nullptr, update_frequency, camera_position, &progress);
 }
 
-void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_effect_manager pm, float update_frequency, float camera_position[3]) {
+void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_stage pm, float update_frequency, float camera_position[3]) {
 	TFX_ASSERT_HANDLE(effect);	//Not a valid effect 
 	TFX_ASSERT_HANDLE(pm);		//Not a valid particle manager handle
 	int progress;
@@ -10920,43 +10928,33 @@ void tfx_SetTemplateEffectUserData(tfx_effect_template t, void *data) {
 	t->effect->user_data = data;
 }
 
-void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_effect_manager pm, tfxEffectID effect_index)) {
+void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_stage pm, tfxEffectID effect_index)) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	t->effect->update_callback = update_callback;
 }
 
-bool tfx_AddEffectTemplateToEffectManager(tfx_effect_manager pm, tfx_effect_template effect_template, tfxEffectID *effect_id) {
+tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	tfxEffectID id;
-	id = tfx__add_effect_to_effect_manager(pm, effect_template->effect, pm->current_ebuff, 0, 0.f);
-	if (effect_id) {
-		*effect_id = id;
-	}
-	return id != tfxINVALID;
+	return tfx__add_effect_to_stage(pm, effect_template->effect, pm->current_ebuff, 0, 0.f);
 }
 
-bool tfx_AddRawEffectToEffectManager(tfx_effect_manager pm, tfx_effect_descriptor effect, tfxEffectID *effect_id) {
+tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
-	tfxEffectID id;
-	id = tfx__add_effect_to_effect_manager(pm, effect, pm->current_ebuff, 0, 0.f);
-	if (effect_id) {
-		*effect_id = id;
-	}
-	return id != tfxINVALID;
+	return tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
 }
 
-void tfx_SetEffectWarmupTime(tfx_effect_template effect_template, float millisecs) {
+void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect_template, float millisecs) {
 	TFX_ASSERT_HANDLE(effect_template);
 	TFX_ASSERT(millisecs > 0.f);
 	effect_template->effect->warmup_time = millisecs;
 }
 
-void tfx_SetWarmUpDeltaTime(tfx_effect_manager pm, double delta_time) {
+void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
 	pm->warmup_delta_time = delta_time;
 }
 
-void tfx_AdvanceEffectTime(tfx_effect_manager pm, tfxEffectID effect_id, float time) {
+void tfx_AdvanceEffectTime(tfx_stage pm, tfxEffectID effect_id, float time) {
 	TFX_VALIDATE_EFFECT(pm, effect_id, );
 	time += pm->effects[effect_id].age;
 	tfx__add_warmup_effect(pm, effect_id, time);
@@ -10993,13 +10991,13 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 	}
 }
 
-void tfx__add_warmup_effect(tfx_effect_manager pm, tfxEffectID effect_id, float millisecs) {
+void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID effect_id, float millisecs) {
 	//Coalesce repeated requests for the same effect into a single entry. Without this the warmup loop
 	//iterates each duplicate, double-spawning, double-controlling and double-aging the same emitter in
 	//one tick — the second age work entry runs with a stale start_index after the first compacted the
 	//particle bank, corrupting bank.depth_index for ordered effects and tripping the sprite-buffer
 	//assert on the first post-warmup frame. Hit by editor slider scrubs that fire faster than
-	//tfx_UpdateEffectManager can drain the queue. The pending_warmup flag is the O(1) fast path; the
+	//tfx_UpdateStage can drain the queue. The pending_warmup flag is the O(1) fast path; the
 	//list scan only runs when a duplicate is detected. The flag is cleared in the warmup loop when an
 	//entry isn't re-added to the next buffer (i.e., effect.total_age has reached entry.millisecs).
 	tfx_effect_state_t &effect = pm->effects[effect_id];
@@ -11020,12 +11018,12 @@ void tfx__add_warmup_effect(tfx_effect_manager pm, tfxEffectID effect_id, float 
 	pm->warmup_effects[0].push_back(entry);
 }
 
-tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning) {
+tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
 
 	TFX_ASSERT(effect->type == tfxEffectType);
-	if (pm->flags & tfxEffectManagerFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
+	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
 		return tfxINVALID;
 	}
 	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
@@ -11108,7 +11106,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				state_flags = child->state_flags;
 				/*
 				Remove if not needed
-				if (!(pm->flags & tfxEffectManagerFlags_disable_spawning)) {
+				if (!(pm->flags & tfxStageFlags_disable_spawning)) {
 					state_flags &= ~tfxEmitterStateFlags_is_single;
 				}
 				*/
@@ -11217,7 +11215,7 @@ tfxEffectID tfx__add_effect_to_effect_manager(tfx_effect_manager pm, tfx_effect_
 				}
 			}
 
-			/*if (pm->flags & tfxEffectManagerFlags_use_compute_shader && tfx_GetEffectInfo(child)->children.empty()) {
+			/*if (pm->flags & tfxStageFlags_use_compute_shader && tfx_GetEffectInfo(child)->children.empty()) {
 				int free_slot = AddComputeController();
 				if (free_slot != -1) {
 					emitter.compute_slot_id = free_slot;
@@ -11410,7 +11408,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	}
 }
 
-int tfx__add_compute_controller(tfx_effect_manager pm) {
+int tfx__add_compute_controller(tfx_stage pm) {
 	//Compute slots should only ever be added for the bottom emitter that has no sub effects
 	unsigned int free_slot;
 	if (!pm->free_compute_controllers.empty()) {
@@ -11424,16 +11422,16 @@ int tfx__add_compute_controller(tfx_effect_manager pm) {
 	return free_slot;
 }
 
-void tfx__reset_particle_ptr(tfx_effect_manager pm, void *ptr) {
+void tfx__reset_particle_ptr(tfx_stage pm, void *ptr) {
 	pm->new_compute_particle_ptr = ptr;
 	pm->new_compute_particle_index = 0;
 }
 
-void tfx__reset_controller_ptr(tfx_effect_manager pm, void *ptr) {
+void tfx__reset_controller_ptr(tfx_stage pm, void *ptr) {
 	pm->compute_controller_ptr = ptr;
 }
 
-void tfx__update_compute(tfx_effect_manager pm, void *sampled_particles, unsigned int sample_size) {
+void tfx__update_compute(tfx_stage pm, void *sampled_particles, unsigned int sample_size) {
 	for (tfxU32 i = 0; i != sample_size; ++i) {
 		if (pm->compute_global_state.current_length == 0)
 			break;
@@ -11450,12 +11448,12 @@ void tfx__update_compute(tfx_effect_manager pm, void *sampled_particles, unsigne
 	}
 }
 
-tfx_compute_particle_t *tfx__grab_compute_particle(tfx_effect_manager pm, unsigned int layer) {
+tfx_compute_particle_t *tfx__grab_compute_particle(tfx_stage pm, unsigned int layer) {
 	TFX_ASSERT(pm->new_compute_particle_ptr);        //Use must assign the compute ptr to point to an area in memory where you can stage new particles for uploading to the GPU - See ResetComputePtr
 	return (static_cast<tfx_compute_particle_t *>(pm->new_compute_particle_ptr) + pm->new_compute_particle_index++);
 }
 
-void tfx__free_particle_list(tfx_effect_manager pm, tfxU32 index) {
+void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {
 	if (pm->free_particle_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
 		pm->free_particle_lists.At(pm->emitters[index].source_emitter->path_hash).push_back(pm->emitters[index].particles_index);
 	}
@@ -11467,7 +11465,7 @@ void tfx__free_particle_list(tfx_effect_manager pm, tfxU32 index) {
 	}
 }
 
-void tfx__free_spawn_location_list(tfx_effect_manager pm, tfxU32 index) {
+void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index) {
 	if (pm->free_particle_location_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].spawn_locations_index != tfxINVALID) {
 		tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		pm->free_particle_location_lists.At(pm->emitters[index].source_emitter->path_hash).push_back(pm->emitters[index].spawn_locations_index);
@@ -11480,7 +11478,7 @@ void tfx__free_spawn_location_list(tfx_effect_manager pm, tfxU32 index) {
 	}
 }
 
-void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_effect_manager pm) {
+void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm) {
 	tfxU32 depth_starting_index = sprites->depth_starting_index[layer];
 	tfxU32 current_depth_buffer = sprites->current_depth_buffer_index[layer];
 	tfx_vector_t<tfx_depth_index_t> &current_depth_indexes = sprites->depth_indexes[layer][current_depth_buffer];
@@ -11523,8 +11521,8 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
-void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count) {
-	bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
+void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count) {
+	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
 	float &timeout_counter = effect.timeout_counter;
 	//During warmup the ebuff is held constant so we mustn't clear or push to next_buffer's lists. If
@@ -11541,7 +11539,7 @@ void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect
 	instance_data.instance_count = 0;
 
 	tfx__update_effect(pm, effect_index.index);
-	if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
+	if (pm->flags & tfxStageFlags_auto_order_effects) {
 		tfx_vec3_t effect_to_camera = effect.world_position - pm->camera_position;
 		effect_index.depth = tfx__vec3_length_fast(&effect_to_camera);
 	}
@@ -11562,7 +11560,7 @@ void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect
 
 	for (int emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
 		//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-		//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+		//by calling tfx_SetStageWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
 		//would cause more work entries to be created.
 		TFX_ASSERT(pm->spawn_work.current_size != pm->spawn_work.capacity);
 		tfx_spawn_work_entry_t *spawn_work_entry = &pm->spawn_work.next();
@@ -11610,7 +11608,7 @@ void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect
 		}
 	}
 
-	if (!(pm->flags & tfxEffectManagerFlags_recording_sprites)) {
+	if (!(pm->flags & tfxStageFlags_recording_sprites)) {
 		instance_data.cumulative_index_point[0] = 0;
 		instance_data.cumulative_index_point[1] = instance_data.sprite_index_point[0];
 		instance_data.cumulative_index_point[2] = instance_data.cumulative_index_point[1] + instance_data.sprite_index_point[1];
@@ -11622,7 +11620,7 @@ void tfx__simulate_effect_spawn(tfx_effect_manager pm, tfx_effect_index_t effect
 	*last_instance_count += instance_data.instance_count;
 }
 
-void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 index, bool is_recording) {
+void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording) {
 	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 	int particles_to_update = bank.current_size;
 	tfxU32 running_start_index = 0;
@@ -11653,7 +11651,7 @@ void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 index, bool is_
 	*/
 	while (particles_to_update > 0) {
 		//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-		//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+		//by calling tfx_SetStageWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
 		//would cause more work entries to be created.
 		TFX_ASSERT(pm->control_work.current_size != pm->control_work.capacity);
 		tfx_control_work_entry_t &work_entry = pm->control_work.next();
@@ -11696,10 +11694,10 @@ void tfx__simulate_emitter_control(tfx_effect_manager pm, tfxU32 index, bool is_
 	}
 }
 
-void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index) {
+void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index) {
 	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 	//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-	//by calling tfx_SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+	//by calling tfx_SetStageWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
 	//would cause more work entries to be created.
 	TFX_ASSERT(pm->age_work.current_size != pm->age_work.capacity);
 	tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
@@ -11713,7 +11711,7 @@ void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index) {
 	work_entry.start_diff = circular_start - block_start_index;
 	work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
 	work_entry.pm = pm;
-	if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+	if (!(pm->flags & tfxStageFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 		tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particle_age);
 	}
 	else {
@@ -11721,7 +11719,7 @@ void tfx__simulate_emitter_age(tfx_effect_manager pm, tfxU32 index) {
 	}
 }
 
-void tfx__set_effect_manager_timings(tfx_effect_manager pm, double elapsed_time, double max_frame_length) {
+void tfx__set_stage_timings(tfx_stage pm, double elapsed_time, double max_frame_length) {
 	pm->frame_length = tfx__Min(elapsed_time, max_frame_length);
 	pm->frame_length_wide = tfxWideSetSingle((float)pm->frame_length);
 	pm->update_time = elapsed_time / 1000.0;
@@ -11729,17 +11727,17 @@ void tfx__set_effect_manager_timings(tfx_effect_manager pm, double elapsed_time,
 	pm->new_compute_particle_index = 0;
 }
 
-void tfx__update_effect_manager(void *data) {
-	tfx_effect_manager pm = (tfx_effect_manager)data;
+void tfx__update_stage(void *data) {
+	tfx_stage pm = (tfx_stage)data;
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfxPROFILE;
 
 	double elapsed_time = pm->manager_work.elapsed_time;
 
 	tfx__sync_lock(&pm->updating);
-	pm->flags |= tfxEffectManagerFlags_updating;
+	pm->flags |= tfxStageFlags_updating;
 
-	if (pm->flags & tfxEffectManagerFlags_auto_order_effects) {
+	if (pm->flags & tfxStageFlags_auto_order_effects) {
 		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
 		for (tfxU32 i = 1; i < effects_in_use.current_size; ++i) {
 			tfx_effect_index_t key = effects_in_use[i];
@@ -11756,8 +11754,8 @@ void tfx__update_effect_manager(void *data) {
 	tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 	pm->current_ribbon_count = 0;
 
-	pm->current_sprite_buffer = pm->flags & tfxEffectManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
-	pm->flags &= ~tfxEffectManagerFlags_has_ribbons_to_draw;
+	pm->current_sprite_buffer = pm->flags & tfxStageFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
+	pm->flags &= ~tfxStageFlags_has_ribbons_to_draw;
 
 	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
 
@@ -11777,12 +11775,12 @@ void tfx__update_effect_manager(void *data) {
 	//phases as the normal update so threading is fully utilised. The warmup list is double-buffered:
 	//entries whose effect age hasn't yet reached the requested warmup time are re-added to the next buffer.
 	//During warmup current_ebuff is held constant — tfx__simulate_effect_spawn gates all writes to
-	//next_buffer's lists on tfxEffectManagerFlags_warming_up so non-warming effects already in
+	//next_buffer's lists on tfxStageFlags_warming_up so non-warming effects already in
 	//effects_in_use[current_ebuff] are not disturbed and the normal update below picks up where it left off.
 	if (pm->warmup_effects[0].current_size > 0) {
 		tfxU32 current_warmup_buffer = 0;
-		pm->flags |= tfxEffectManagerFlags_warming_up;
-		tfx__set_effect_manager_timings(pm, pm->warmup_delta_time, pm->max_frame_length);
+		pm->flags |= tfxStageFlags_warming_up;
+		tfx__set_stage_timings(pm, pm->warmup_delta_time, pm->max_frame_length);
 		while (pm->warmup_effects[current_warmup_buffer].current_size > 0) {
 			tfxU32 next_warmup_buffer = current_warmup_buffer ^ 1;
 
@@ -11932,7 +11930,7 @@ void tfx__update_effect_manager(void *data) {
 		}
 		pm->warmup_effects[0].clear();
 		pm->warmup_effects[1].clear();
-		pm->flags &= ~tfxEffectManagerFlags_warming_up;
+		pm->flags &= ~tfxStageFlags_warming_up;
 		//The last warmup tick left spawn_work and control_emitter_queue populated. The normal update below
 		//assumes both are empty before its spawn phase, so reset them here.
 		pm->control_emitter_queue.clear();
@@ -11943,7 +11941,7 @@ void tfx__update_effect_manager(void *data) {
 		tfx__reset_ribbon_buffer_requirements(pm);
 	}
 
-	tfx__set_effect_manager_timings(pm, elapsed_time, pm->max_frame_length);
+	tfx__set_stage_timings(pm, elapsed_time, pm->max_frame_length);
 
 	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
 	pm->effects_in_use[next_buffer].clear();
@@ -11994,7 +11992,7 @@ void tfx__update_effect_manager(void *data) {
 			}
 	}
 
-	bool is_recording = (pm->flags & tfxEffectManagerFlags_recording_sprites) > 0 && (pm->flags & tfxEffectManagerFlags_using_uids) > 0;
+	bool is_recording = (pm->flags & tfxStageFlags_recording_sprites) > 0 && (pm->flags & tfxStageFlags_using_uids) > 0;
 	{
 		for (int index : pm->control_emitter_queue) {
 			tfx__simulate_emitter_control(pm, index, is_recording);
@@ -12070,7 +12068,7 @@ void tfx__update_effect_manager(void *data) {
 					tfx_sort_work_entry_t &work_entry = pm->sorting_work_entry.next();
 					work_entry.bank = &pm->particle_arrays;
 					work_entry.depth_indexes = &effect.instance_data.depth_indexes[layer][effect.instance_data.current_depth_buffer_index[layer]];
-					if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
+					if (!(pm->flags & tfxStageFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
 						tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__insertion_sort_depth);
 					}
 					else {
@@ -12100,7 +12098,7 @@ void tfx__update_effect_manager(void *data) {
 
 	pm->current_ebuff = next_buffer;
 
-	if (pm->flags & tfxEffectManagerFlags_update_bounding_boxes) {
+	if (pm->flags & tfxStageFlags_update_bounding_boxes) {
 		for (tfxU32 i = 0; i != pm->effects_in_use[pm->current_ebuff].size(); ++i) {
 			tfx_effect_index_t effect_index = pm->effects_in_use[pm->current_ebuff][i];
 			tfx_effect_state_t &effect = pm->effects[effect_index.index];
@@ -12130,28 +12128,28 @@ void tfx__update_effect_manager(void *data) {
 
 	tfx__complete_all_work(&pm->work_queue);
 
-	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
-	pm->flags &= ~tfxEffectManagerFlags_updating;
+	pm->flags &= ~tfxStageFlags_update_base_values;
+	pm->flags &= ~tfxStageFlags_updating;
 	tfx__sync_unlock(&pm->updating);
 }
 
 #ifdef _WIN32
-unsigned WINAPI tfx__update_effect_manager_thread(void *data) {
+unsigned WINAPI tfx__update_stage_thread(void *data) {
 #else
-void *tfx__update_effect_manager_thread(void *data) {
+void *tfx__update_stage_thread(void *data) {
 #endif
-	tfx_effect_manager pm = (tfx_effect_manager)data;
-	tfx__update_effect_manager(pm);
+	tfx_stage pm = (tfx_stage)data;
+	tfx__update_stage(pm);
 	return 0;
 }
 
-void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed_time) {
+void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 	//Wait for the previous frame's update thread to finish
 	tfx__complete_all_work(&pm->work_queue);
 
-	if ((pm->flags & tfxEffectManagerFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
+	if ((pm->flags & tfxStageFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
 		tfx__sync_lock(&pm->update_thread_mutex);
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+		if (pm->flags & tfxStageFlags_recording_sprites) {
 			//Bail without touching manager_work — the recording thread owns it and reads
 			//manager_work.elapsed_time every iteration; a stray write (e.g. caller passing
 			//0) would stall the recording (frame_length goes to 0, particles stop aging).
@@ -12160,57 +12158,57 @@ void tfx_UpdateEffectManager(tfx_effect_manager pm, double elapsed_time) {
 		}
 		pm->manager_work.elapsed_time = elapsed_time;
 		pm->manager_work.pm = pm;
-		tfx__wait_for_effect_manager_update_locked(pm);
+		tfx__wait_for_stage_update_locked(pm);
 		tfx__sync_unlock(&pm->update_thread_mutex);
-		tfx__update_effect_manager(pm);
+		tfx__update_stage(pm);
 	} else {
 		tfx__sync_lock(&pm->update_thread_mutex);
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites) {
+		if (pm->flags & tfxStageFlags_recording_sprites) {
 			//See comment above — same reasoning for the multi-threaded branch.
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
 		pm->manager_work.elapsed_time = elapsed_time;
 		pm->manager_work.pm = pm;
-		tfx__wait_for_effect_manager_update_locked(pm);
-		bool spawned = tfx__create_thread(&pm->update_thread, tfx__update_effect_manager_thread, pm);
+		tfx__wait_for_stage_update_locked(pm);
+		bool spawned = tfx__create_thread(&pm->update_thread, tfx__update_stage_thread, pm);
 		if (spawned) {
 			pm->update_thread_active = true;
 		}
 		tfx__sync_unlock(&pm->update_thread_mutex);
 		if (!spawned) {
-			tfx__update_effect_manager(pm);
+			tfx__update_stage(pm);
 		}
 	}
 }
 
-void *tfx_GetSpriteImagePointer(tfx_effect_manager pm, tfxU32 property_indexes) {
+void *tfx_GetSpriteImagePointer(tfx_stage pm, tfxU32 property_indexes) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_DEPRECATED;
 	//return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image->ptr;
 	return 0;
 }
 
-void tfx_SoftExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
+void tfx_SoftExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 }
 
-void tfx_HardExpireEffect(tfx_effect_manager pm, tfxEffectID effect_index) {
+void tfx_HardExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
 }
 
-void *tfx_GetEffectUserData(tfx_effect_manager pm, tfxEffectID effect_index) {
+void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
 	return pm->effects[effect_index].user_data;
 }
 
-void tfx_GetCapturedInstanceTransform(tfx_effect_manager pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
+void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx_vec3_t position = static_cast<tfx_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
 	out_position[0] = position.x;
@@ -12388,7 +12386,7 @@ void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
 }
 
-tfxAPI tfx_effect_descriptor tfx_NewEffectDescriptor(tfx_effect_descriptor_type type) {
+tfxAPI tfx_effect_descriptor tfx_CreateEffectDescriptor(tfx_effect_descriptor_type type) {
 	tfx_effect_descriptor_t blank_effect = {};
 	tfx_effect_descriptor new_effect = tfxNEW_ALIGNED(tfx_effect_descriptor, 16);
 	*new_effect = blank_effect;
@@ -12440,7 +12438,7 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
@@ -12450,7 +12448,7 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
@@ -12524,7 +12522,7 @@ void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry
 
 void tfx_setup_path_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	TFX_ASSERT(ctx.emitter->state_properties.path_attributes != tfxINVALID);
 	ctx.path = &ctx.emitter->library->paths[ctx.emitter->state_properties.path_attributes];
@@ -12536,20 +12534,20 @@ void tfx_setup_path_policy::apply(tfx_control_work_entry_t *work_entry, tfx_posi
 	ctx.emitter_offset_y = tfxWideSetSingle(ctx.emitter->handle.y);
 	ctx.emitter_offset_z = tfxWideSetSingle(ctx.emitter->handle.z);
 	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], ctx.emitter->age, ctx.emitter->oscillator_time));
-	ctx.overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
+	ctx.overall_scale_wide = tfxWideSetSingle(work_entry->overall_scale);
 	ctx.capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 }
 
 void tfx_setup_line_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	ctx.emitter_height = tfxWideSetSingle(ctx.emitter->emitter_size.y);
 }
 
 void tfx_setup_orbital_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count);
 	ctx.emitter_offset_x = tfxWideSetZero;
@@ -12565,7 +12563,7 @@ void tfx_setup_orbital_policy::apply(tfx_control_work_entry_t *work_entry, tfx_p
 
 void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count);
@@ -12608,11 +12606,11 @@ void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_po
 
 	ctx.work_entry = work_entry;
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	ctx.emitter = &pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[ctx.emitter->particles_index];
 	tfx_library library = ctx.emitter->library;
-	ctx.overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
+	ctx.overall_scale_wide = tfxWideSetSingle(work_entry->overall_scale);
 	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], ctx.emitter->age, ctx.emitter->oscillator_time));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -12626,7 +12624,7 @@ void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *da
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat emitter_size_y = tfxWideSetSingle(emitter.emitter_size.y);
@@ -12651,7 +12649,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfxU32 emitter_index = work_entry->emitter_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat emitter_size_y = tfxWideSetSingle(emitter.emitter_size.y);
@@ -12675,7 +12673,7 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
@@ -12688,7 +12686,7 @@ void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 	const tfxWideFloat global_stretch = tfxWideSetSingle(work_entry->global_stretch);
 	tfxWideArray stretch;
 	tfxU32 start_diff = work_entry->start_diff;
@@ -12809,7 +12807,7 @@ TFX_ENABLE_COMPILER_WARNING()
 				sprites[sprite_depth_index].position.z = position_z.a[j];
 				tfx_vec3_t sprite_plus_camera_position = sprites[sprite_depth_index].position.xyz() - pm.camera_position;
 				(*work_entry->depth_indexes)[sprite_depth_index - work_entry->cumulative_index_point - work_entry->effect_instance_offset].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
-				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
+				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
 					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
 					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
@@ -12827,7 +12825,7 @@ TFX_ENABLE_COMPILER_WARNING()
 				sprites[running_sprite_index].position.x = position_x.a[j];
 				sprites[running_sprite_index].position.y = position_y.a[j];
 				sprites[running_sprite_index].position.z = position_z.a[j];
-				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
+				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
 					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
 					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
@@ -12846,7 +12844,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 
 	//The only bank-side state this function maintains is the spawn_locations ring used by other emitters
@@ -12866,7 +12864,7 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	const bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position
@@ -12922,7 +12920,7 @@ void tfx__control_ribbons(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
 	tfx_ribbon_bucket_t *ribbon_bucket = work_entry->ribbon_bucket;
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	for (int index : ribbon_bucket->control_ribbon_queue) {
 		if (pm->ribbon_emitters[index].active_ribbons > 0) {
 			work_entry->ribbon_index = index;
@@ -12938,7 +12936,7 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
 	tfxU32 ribbon_index = work_entry->ribbon_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_index];
 	tfx_ribbon_bucket_t *bucket = work_entry->ribbon_bucket;
 	tfx_graph_list_t &graph_list = ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
@@ -13030,7 +13028,7 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 void tfx__control_ribbon_hide(tfx_work_queue_t *queue, void *data) {
 	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
 	tfxU32 ribbon_index = work_entry->ribbon_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_index];
 	tfx_ribbon_bucket_t *bucket = work_entry->ribbon_bucket;
 	for (tfxU32 index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
@@ -13055,7 +13053,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
 	tfxU32 ribbon_index = work_entry->ribbon_index;
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_index];
 	tfx_library library = ribbon_emitter.library;
 	tfx_shared_properties_t *shared_properties = &library->shared_properties[ribbon_emitter.state_properties.shared_index];
@@ -13093,7 +13091,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	}
 
 	if (bucket->highest_ribbon_index >= bucket->lowest_ribbon_index) {
-		pm.flags |= tfxEffectManagerFlags_has_ribbons_to_draw;
+		pm.flags |= tfxStageFlags_has_ribbons_to_draw;
 		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
 		pm.running_ribbon_vertex_count += ribbon_count * ribbon_emitter.segment_count * bucket->buffer_info.vertices_per_segment;
 	}
@@ -13107,7 +13105,7 @@ void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data) {
 void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13190,7 +13188,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13363,7 +13361,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13400,12 +13398,12 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
-	const tfxWideFloat overal_scale = tfxWideSetSingle(work_entry->overal_scale);
+	const tfxWideFloat overall_scale = tfxWideSetSingle(work_entry->overall_scale);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
@@ -13498,8 +13496,8 @@ TFX_ENABLE_COMPILER_WARNING()
 			scale_y = tfxWideMul(lookup_height, base_size_y);
 		}
 
-		scale_x = tfxWideMul(scale_x, overal_scale);
-		scale_y = tfxWideMul(scale_y, overal_scale);
+		scale_x = tfxWideMul(scale_x, overall_scale);
+		scale_y = tfxWideMul(scale_y, overall_scale);
 
 		//Zero scale for particles flagged as removed so they are invisible while still occupying the ring buffer
 		{
@@ -13537,7 +13535,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
@@ -13670,7 +13668,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 	tfx_image_data_t *image = emitter.state_properties.image;
@@ -13685,7 +13683,7 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
 	tfxWideInt particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.gpu_property_index << 16);
-	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxEffectManagerFlags_recording_sprites) && !(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) && (pm->flags & tfxEffectManagerFlags_using_uids) ? 0 : image->compute_shape_index);
+	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxStageFlags_recording_sprites) && !(pm->flags & tfxStageFlags_record_with_compute_image_index) && (pm->flags & tfxStageFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -13758,7 +13756,7 @@ TFX_ENABLE_COMPILER_WARNING()
 void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
@@ -13782,7 +13780,7 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 	//This function is only run when recording sprite data
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13834,7 +13832,7 @@ void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data) {
 	//assert can fire because two sprite slots with the same stale uid get linked across frames.
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -13853,49 +13851,49 @@ void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_effect_manager pm, int *count) {
+tfx_effect_index_t *tfx_GetStageEffectBuffer(tfx_stage pm, int *count) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	*count = pm->effects_in_use[pm->current_ebuff].current_size;
 	return pm->effects_in_use[pm->current_ebuff].data;
 }
 
-tfxU32 *tfx_GetPMEmitterBuffer(tfx_effect_manager pm, int *count) {
+tfxU32 *tfx_GetStageEmitterBuffer(tfx_stage pm, int *count) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	*count = pm->control_emitter_queue.current_size;
 	return pm->control_emitter_queue.data;
 }
 
-void tfx__toggle_sprites_with_uid(tfx_effect_manager pm, bool switch_on) {
+void tfx__toggle_sprites_with_uid(tfx_stage pm, bool switch_on) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (switch_on) {
 		for (tfxEachLayer) {
 			pm->unique_sprite_ids[0][layer].reserve(pm->max_cpu_particles_per_layer[layer]);
 			pm->unique_sprite_ids[1][layer].reserve(pm->max_cpu_particles_per_layer[layer]);
 		}
-		pm->flags |= tfxEffectManagerFlags_using_uids;
+		pm->flags |= tfxStageFlags_using_uids;
 	}
 	else {
 		for (tfxEachLayer) {
 			pm->unique_sprite_ids[0][layer].free();
 			pm->unique_sprite_ids[1][layer].free();
 		}
-		pm->flags &= ~tfxEffectManagerFlags_using_uids;
+		pm->flags &= ~tfxStageFlags_using_uids;
 	}
 }
 
-void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes) {
+void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_external_recording(pm);
-	tfx_ClearEffectManager(pm, true, true);
+	tfx_ClearStage(pm, true, true);
 	for (auto &bank : pm->free_particle_lists.data) {
 		bank.free();
 	}
 	pm->free_particle_lists.FreeAll();
 
-	tfxEffectManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) |
-											(pm->flags & tfxEffectManagerFlags_double_buffer_sprites) |
-											(pm->flags & tfxEffectManagerFlags_record_with_compute_image_index) |
-											(pm->flags & tfxEffectManagerFlags_recording_sprites);
+	tfxStageFlags current_flags = (pm->flags & tfxStageFlags_dynamic_sprite_allocation) |
+											(pm->flags & tfxStageFlags_double_buffer_sprites) |
+											(pm->flags & tfxStageFlags_record_with_compute_image_index) |
+											(pm->flags & tfxStageFlags_recording_sprites);
 
 	tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_instance_t));
 
@@ -13904,7 +13902,7 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes)
 	pm->instance_buffer.clear();
 	for (tfxEachLayer) {
 		pm->unique_sprite_ids[0][layer].clear();
-		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
 			pm->unique_sprite_ids[0][layer].clear();
 		}
 	}
@@ -13913,45 +13911,45 @@ void tfx_ReconfigureEffectManager(tfx_effect_manager pm, tfxU32 req_sort_passes)
 	pm->effects.clear();
 }
 
-void tfx_TogglePMOrderEffects(tfx_effect_manager pm, bool yesno) {
+void tfx_ToggleStageOrderEffects(tfx_stage pm, bool yesno) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (yesno) {
-		pm->flags |= tfxEffectManagerFlags_auto_order_effects;
+		pm->flags |= tfxStageFlags_auto_order_effects;
 	}
 	else {
-		pm->flags &= ~tfxEffectManagerFlags_auto_order_effects;
+		pm->flags &= ~tfxStageFlags_auto_order_effects;
 	}
 }
 
-void tfx_SetSeed(tfx_effect_manager pm, tfxU64 seed) {
-	tfx_RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
-	tfx_RandomReSeed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
+void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed) {
+	tfx_RandomReseed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
+	tfx_RandomReseed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
 }
 
-tfxU32 tfx_TotalSpriteCount(tfx_effect_manager pm) {
+tfxU32 tfx_TotalSpriteCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return pm->instance_buffer.current_size;
 }
 
-void tfx_ForcePMSingleThreaded(tfx_effect_manager pm, bool switch_on) {
+void tfx_ForceStageSingleThreaded(tfx_stage pm, bool switch_on) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	if (switch_on) pm->flags |= tfxEffectManagerFlags_single_threaded; else pm->flags &= ~tfxEffectManagerFlags_single_threaded;
+	if (switch_on) pm->flags |= tfxStageFlags_single_threaded; else pm->flags &= ~tfxStageFlags_single_threaded;
 }
 
 /*
 Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
-* @param pm                       A pointer to an intialised tfx_effect_manager_t.
+* @param pm                       A pointer to an intialised tfx_stage_t.
 */
-tfx_instance_t *tfx_GetInstanceBuffer(tfx_effect_manager pm) {
+tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer);
 }
 
-tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_effect_manager pm, tfxU32 layer) {
+tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT(layer < tfxLAYERS);
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	tfxU32 layer_offset = 0;
 	for (tfxU32 i = 0; i < layer; ++i) {
 		layer_offset += pm->layer_sizes[i];
@@ -13959,43 +13957,43 @@ tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_effect_manager pm, tfxU32 layer
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + layer_offset;
 }
 
-int tfx_GetInstanceCount(tfx_effect_manager pm) {
+int tfx_GetInstanceCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	return pm->instance_buffer.current_size;
 }
 
-int tfx_GetInstanceCountByLayer(tfx_effect_manager pm, tfxU32 layer) {
+int tfx_GetInstanceCountByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(layer < tfxLAYERS);
 	return pm->layer_sizes[layer];
 }
 
-double tfx_GetUpdateTime(tfx_effect_manager pm) {
+double tfx_GetUpdateTime(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	return pm->update_time;
 }
 
-tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_effect_manager pm, tfxKey bucket_hash) {
+tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxKey bucket_hash) {
 	tfx_ribbon_bucket_t *bucket = nullptr;
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_hash)) {
 		bucket = &pm->ribbon_segment_buckets.At(bucket_hash);
 	}
 	return bucket;
 }
 
-bool tfx_HasRibbonsToDraw(tfx_effect_manager pm) {
-	tfx__wait_for_effect_manager_update(pm);
+bool tfx_HasRibbonsToDraw(tfx_stage pm) {
+	tfx__wait_for_stage_update(pm);
 	if (pm) {
-		if (pm->flags & tfxEffectManagerFlags_has_ribbons_to_draw) {
+		if (pm->flags & tfxStageFlags_has_ribbons_to_draw) {
 			return true;
 		}
 	} else {
-		for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
-			tfx__wait_for_effect_manager_update(pm);
-			if (pm->flags & tfxEffectManagerFlags_has_ribbons_to_draw) {
+		for (tfx_stage pm : tfxStore->stages.data) {
+			tfx__wait_for_stage_update(pm);
+			if (pm->flags & tfxStageFlags_has_ribbons_to_draw) {
 				return true;
 			}
 		}
@@ -14003,7 +14001,7 @@ bool tfx_HasRibbonsToDraw(tfx_effect_manager pm) {
 	return false;
 }
 
-tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_effect_manager pm, tfxKey bucket_hash) {
+tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxKey bucket_hash) {
 	tfx_ribbon_buffer_info_t info{};
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_hash)) {
 		info = pm->ribbon_segment_buckets.At(bucket_hash).buffer_info;
@@ -14015,7 +14013,7 @@ tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch() {
 	return {};
 }
 
-void tfx__reset_ribbon_buffer_requirements(tfx_effect_manager pm) {
+void tfx__reset_ribbon_buffer_requirements(tfx_stage pm) {
 	pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes = 0;
 	pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes = 0;
 	pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes = 0;
@@ -14029,7 +14027,7 @@ void tfx__reset_ribbon_buffer_requirements(tfx_effect_manager pm) {
 	}
 }
 
-void tfx__update_ribbon_buffer_requirements(tfx_effect_manager pm) {
+void tfx__update_ribbon_buffer_requirements(tfx_stage pm) {
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 	while (bucket) {
 		if (bucket->lowest_ribbon_index > bucket->highest_ribbon_index) {
@@ -14045,7 +14043,7 @@ void tfx__update_ribbon_buffer_requirements(tfx_effect_manager pm) {
 	pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes += pm->gpu_ribbon_emitters.size_in_bytes();
 }
 
-bool tfx__next_ribbon_bucket(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
+bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 	if (bucket) {
 		ribbon_dispatch->ribbon_data = bucket;
@@ -14054,8 +14052,8 @@ bool tfx__next_ribbon_bucket(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbo
 	return false;
 }
 
-bool tfx_NextRibbonDispatch(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
-	tfx__wait_for_effect_manager_update(pm);
+bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
+	tfx__wait_for_stage_update(pm);
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 	while (bucket) {
 		if (bucket->active_ribbons == 0) {
@@ -14084,12 +14082,12 @@ bool tfx_NextRibbonDispatch(tfx_effect_manager pm, tfx_ribbon_dispatch_t *ribbon
 	return false;
 }
 
-void tfx_ResetRibbonDispatchIterator(tfx_effect_manager pm) {
+void tfx_ResetRibbonDispatchIterator(tfx_stage pm) {
 	pm->ribbon_segment_buckets.iterator_index = 0;
 }
 
-tfx_effect_manager tfx__next_global_effect_manager() {
-	tfx_effect_manager *next_pm = tfxStore->effect_managers.next_item();
+tfx_stage tfx__next_global_stage() {
+	tfx_stage *next_pm = tfxStore->stages.next_item();
 	return next_pm ? *next_pm : nullptr;
 }
 
@@ -14099,23 +14097,23 @@ tfx_library tfx__next_global_library() {
 }
 
 tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
-	tfx_effect_manager pm = tfx__next_global_effect_manager();
+	tfx_stage pm = tfx__next_global_stage();
 	tfxStore->ribbon_buffer_requirements->segment_buffer_size_in_bytes = 0;
 	tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes = 0;
 	tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes = 0;
 	while (pm) {
-		tfx__wait_for_effect_manager_update(pm);
+		tfx__wait_for_stage_update(pm);
 		tfxStore->ribbon_buffer_requirements->segment_buffer_size_in_bytes += pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes;
 		tfxStore->ribbon_buffer_requirements->ribbon_buffer_size_in_bytes += pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes;
 		tfxStore->ribbon_buffer_requirements->emitter_buffer_size_in_bytes += pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes;
-		pm = tfx__next_global_effect_manager();
+		pm = tfx__next_global_stage();
 	}
 	return *tfxStore->ribbon_buffer_requirements;
 }
 
-void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager effect_manager, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
+void tfx_CopyRibbonDataToStagingBuffers(tfx_stage stage, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
 	//Make sure that you setup the ribbon buffers
-	TFX_ASSERT_HANDLE(effect_manager); //If effect manager count is greater then 0 then effect_managers must be an array of tfx_effect_manager
+	TFX_ASSERT_HANDLE(stage); //If effect manager count is greater then 0 then stages must be an array of tfx_stage
 	TFX_ASSERT(emitters_dst);
 	TFX_ASSERT(segments_dst);
 	TFX_ASSERT(ribbons_dst);
@@ -14123,11 +14121,11 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager effect_manager, void 
 		tfxU32 running_segment_offset = 0;
 		tfxU32 running_ribbon_offset = 0;
 		tfxU32 running_emitter_offset = 0;
-		tfx__wait_for_effect_manager_update(effect_manager);
-		tfx_ribbon_bucket_t *bucket = effect_manager->ribbon_segment_buckets.next_item();
+		tfx__wait_for_stage_update(stage);
+		tfx_ribbon_bucket_t *bucket = stage->ribbon_segment_buckets.next_item();
 		while (bucket) {
 			if (bucket->active_ribbons == 0) {
-				bucket = effect_manager->ribbon_segment_buckets.next_item();
+				bucket = stage->ribbon_segment_buckets.next_item();
 				continue;
 			}
 			tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
@@ -14137,46 +14135,46 @@ void tfx_CopyRibbonDataToStagingBuffers(tfx_effect_manager effect_manager, void 
 			bucket->globals.segment_offset = running_segment_offset - bucket->lowest_segment_index;
 			running_segment_offset += segment_count;
 			running_ribbon_offset += ribbon_count;
-			bucket = effect_manager->ribbon_segment_buckets.next_item();
+			bucket = stage->ribbon_segment_buckets.next_item();
 		}
-		memcpy((tfx_gpu_ribbon_emitter_t*)emitters_dst + running_emitter_offset, effect_manager->gpu_ribbon_emitters.data, effect_manager->gpu_ribbon_emitters.size_in_bytes());
-		running_emitter_offset += effect_manager->gpu_ribbon_emitters.size();
+		memcpy((tfx_gpu_ribbon_emitter_t*)emitters_dst + running_emitter_offset, stage->gpu_ribbon_emitters.data, stage->gpu_ribbon_emitters.size_in_bytes());
+		running_emitter_offset += stage->gpu_ribbon_emitters.size();
 	}
 }
 
-size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_effect_manager pm) {
+size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_stage pm) {
 	return pm->info.max_ribbon_segments * sizeof(tfx_ribbon_segment_t);
 }
 
-size_t tfx_GetSegmentVertexBufferMaxSizeInBytes(tfx_effect_manager pm, tfxU32 vertex_size) {
+size_t tfx_GetSegmentVertexBufferMaxSizeInBytes(tfx_stage pm, tfxU32 vertex_size) {
 	tfx_ribbon_buffer_info_t buffer_info = tfx_GenerateRibbonBufferInfo(pm->info.ribbon_tessellation);
 	return pm->info.max_ribbon_segments * buffer_info.vertices_per_segment * (vertex_size ? vertex_size : sizeof(tfx_ribbon_vertex_t));
 }
 
-size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_effect_manager pm) {
+size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_stage pm) {
 	tfx_ribbon_buffer_info_t buffer_info = tfx_GenerateRibbonBufferInfo(pm->info.ribbon_tessellation);
 	return pm->info.max_ribbon_segments * sizeof(tfxU32) * buffer_info.indices_per_segment;
 }
 
-size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_effect_manager pm) {
+size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_stage pm) {
 	return pm->info.max_ribbons * sizeof(tfx_ribbon_t);
 }
 
-size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_effect_manager pm) {
+size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_stage pm) {
 	return pm->info.max_effects * sizeof(tfx_gpu_ribbon_emitter_t);
 }
 
-size_t tfx_ParticlePropertiesBufferSizeInBytes(tfx_library library) {
+size_t tfx_GetParticlePropertiesBufferSizeInBytes(tfx_library library) {
 	return library->particle_gpu_properties.current_size * sizeof(tfx_gpu_particle_properties_t);
 }
 
-void *tfx_ParticlePropertiesBuffer(tfx_library library) {
+void *tfx_GetParticlePropertiesBuffer(tfx_library library) {
 	return library->particle_gpu_properties.data;
 }
 
 size_t tfx_GetTotalSegmentBufferMaxSizeInBytes() {
 	size_t total = 0;
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+	for (tfx_stage pm : tfxStore->stages.data) {
 		total += tfx_GetSegmentBufferMaxSizeInBytes(pm);
 	}
 	return total;
@@ -14184,7 +14182,7 @@ size_t tfx_GetTotalSegmentBufferMaxSizeInBytes() {
 
 size_t tfx_GetTotalSegmentVertexBufferMaxSizeInBytes(tfxU32 vertex_size) {
 	size_t total = 0;
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+	for (tfx_stage pm : tfxStore->stages.data) {
 		total += tfx_GetSegmentVertexBufferMaxSizeInBytes(pm, vertex_size);
 	}
 	return total;
@@ -14192,7 +14190,7 @@ size_t tfx_GetTotalSegmentVertexBufferMaxSizeInBytes(tfxU32 vertex_size) {
 
 size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes() {
 	size_t total = 0;
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+	for (tfx_stage pm : tfxStore->stages.data) {
 		total += tfx_GetSegmentIndexBufferMaxSizeInBytes(pm);
 	}
 	return total;
@@ -14200,7 +14198,7 @@ size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes() {
 
 size_t tfx_GetTotalRibbonBufferMaxSizeInBytes() {
 	size_t total = 0;
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+	for (tfx_stage pm : tfxStore->stages.data) {
 		total += tfx_GetRibbonBufferMaxSizeInBytes(pm);
 	}
 	return total;
@@ -14208,13 +14206,13 @@ size_t tfx_GetTotalRibbonBufferMaxSizeInBytes() {
 
 size_t tfx_GetTotalEmitterBufferMaxSizeInBytes() {
 	size_t total = 0;
-	for (tfx_effect_manager pm : tfxStore->effect_managers.data) {
+	for (tfx_stage pm : tfxStore->stages.data) {
 		total += tfx_GetEmitterBufferMaxSizeInBytes(pm);
 	}
 	return total;
 }
 
-void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
+void tfx_SetStageWorkQueueSizes(tfx_stage pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
 	pm->spawn_work.reserve(spawn_work_max);
 	pm->ribbon_work.reserve(spawn_work_max);
 	pm->control_work.reserve(control_work_max);
@@ -14222,9 +14220,9 @@ void tfx_SetPMWorkQueueSizes(tfx_effect_manager pm, tfxU32 spawn_work_max, tfxU3
 	pm->sorting_work_entry.reserve(age_work_max);
 }
 
-void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, bool free_sprite_buffers) {
+void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buffers) {
 	tfx__wait_for_external_recording(pm);
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	if (free_particle_banks) {
 		tfx__free_all_particle_lists(pm);
 		tfx__free_all_spawn_location_lists(pm);
@@ -14312,7 +14310,7 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 	//that double-dispatches age work against the same bank.
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
-	pm->flags &= ~tfxEffectManagerFlags_warming_up;
+	pm->flags &= ~tfxStageFlags_warming_up;
 	for (tfxU32 i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
@@ -14324,16 +14322,16 @@ void tfx_ClearEffectManager(tfx_effect_manager pm, bool free_particle_banks, boo
 	for (tfxEachLayer) {
 		pm->layer_sizes[layer] = 0;
 		pm->instance_buffer_for_recording[0][layer].clear();
-		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
 			pm->instance_buffer_for_recording[1][layer].clear();
 		}
 	}
 	pm->running_ribbon_vertex_count = 0;
 }
 
-void tfx_FreeEffectManager(tfx_effect_manager pm) {
+void tfx_FreeStage(tfx_stage pm) {
 	tfx__wait_for_external_recording(pm);
-	tfx__wait_for_effect_manager_update(pm);
+	tfx__wait_for_stage_update(pm);
 	tfx__free_all_particle_lists(pm);
 	tfx__free_all_spawn_location_lists(pm);
 	tfx__free_gpu_groups(pm);
@@ -14348,7 +14346,7 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 
 	for (tfxEachLayer) {
 		pm->unique_sprite_ids[0][layer].free();
-		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
 			pm->unique_sprite_ids[1][layer].free();
 		}
 	}
@@ -14416,7 +14414,7 @@ void tfx_FreeEffectManager(tfx_effect_manager pm) {
 	tfxFREE(pm);
 }
 
-void tfx__free_all_particle_lists(tfx_effect_manager pm) {
+void tfx__free_all_particle_lists(tfx_stage pm) {
 	for (auto &buffer : pm->particle_array_buffers) {
 		tfx__free_soa_buffer(&buffer);
 	}
@@ -14424,7 +14422,7 @@ void tfx__free_all_particle_lists(tfx_effect_manager pm) {
 	pm->particle_arrays.free();
 }
 
-void tfx__free_all_spawn_location_lists(tfx_effect_manager pm) {
+void tfx__free_all_spawn_location_lists(tfx_stage pm) {
 	for (auto &buffer : pm->particle_location_buffers) {
 		tfx__free_soa_buffer(&buffer);
 	}
@@ -14432,30 +14430,30 @@ void tfx__free_all_spawn_location_lists(tfx_effect_manager pm) {
 	pm->particle_location_arrays.free();
 }
 
-void tfx_SoftExpireAll(tfx_effect_manager pm) {
+void tfx_SoftExpireAll(tfx_stage pm) {
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
 		pm->emitters[effect_index.index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 	}
 }
 
-void tfx_KeepBoundingBoxesUpdated(tfx_effect_manager pm, bool yesno) {
+void tfx_KeepBoundingBoxesUpdated(tfx_stage pm, bool yesno) {
 	if (yesno) {
-		pm->flags |= tfxEffectManagerFlags_update_bounding_boxes;
+		pm->flags |= tfxStageFlags_update_bounding_boxes;
 	}
 	else {
-		pm->flags &= ~tfxEffectManagerFlags_update_bounding_boxes;
+		pm->flags &= ~tfxStageFlags_update_bounding_boxes;
 	}
 }
 
-void tfx_UpdatePMBaseValues(tfx_effect_manager pm) {
-	pm->flags |= tfxEffectManagerFlags_update_base_values;
+void tfx_UpdateStageBaseValues(tfx_stage pm) {
+	pm->flags |= tfxStageFlags_update_base_values;
 }
 
-bool tfx__free_pm_effect_capacity(tfx_effect_manager pm) {
+bool tfx__free_pm_effect_capacity(tfx_stage pm) {
 	return pm->effects.current_size < pm->max_effects;
 }
 
-tfx_effect_index_t tfx__get_effect_slot(tfx_effect_manager pm) {
+tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
     tfx_effect_index_t parent_index;
 	if (!pm->free_effects.empty()) {
         tfx__readbarrier;
@@ -14483,7 +14481,7 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_effect_manager pm) {
     return parent_index;
 }
 
-tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm) {
+tfxU32 tfx__get_emitter_slot(tfx_stage pm) {
 	if (!pm->free_emitters.empty()) {
 		return pm->free_emitters.pop_back();
 	}
@@ -14494,7 +14492,7 @@ tfxU32 tfx__get_emitter_slot(tfx_effect_manager pm) {
 	return pm->emitters.current_size - 1;
 }
 
-tfxU32 tfx__get_ribbon_slot(tfx_effect_manager pm) {
+tfxU32 tfx__get_ribbon_slot(tfx_stage pm) {
 	if (!pm->free_ribbon_emitters.empty()) {
 		tfxU32 index = pm->free_ribbon_emitters.pop_back();
 		pm->ribbon_emitters[index].ribbon_indexes[0].free();
@@ -14511,7 +14509,7 @@ tfxU32 tfx__get_ribbon_slot(tfx_effect_manager pm) {
 	return pm->ribbon_emitters.current_size - 1;
 }
 
-tfxU32 tfx__allocate_path_quaternion(tfx_effect_manager pm, tfxU32 amount) {
+tfxU32 tfx__allocate_path_quaternion(tfx_stage pm, tfxU32 amount) {
 	tfx_path_quaternion_t *q = (tfx_path_quaternion_t *)tfxALLOCATE(sizeof(tfx_path_quaternion_t) * amount);
 	if (!pm->free_path_quaternions.empty()) {
 		tfxU32 free_index = pm->free_path_quaternions.pop_back();
@@ -14526,7 +14524,7 @@ tfxU32 tfx__allocate_path_quaternion(tfx_effect_manager pm, tfxU32 amount) {
 	return pm->path_quaternions.current_size - 1;
 }
 
-void tfx__free_path_quaternion(tfx_effect_manager pm, tfxU32 index) {
+void tfx__free_path_quaternion(tfx_stage pm, tfxU32 index) {
 	if (pm->path_quaternions[index] != nullptr) {
 		tfxFREE(pm->path_quaternions[index]);
 		pm->path_quaternions[index] = nullptr;
@@ -14539,7 +14537,7 @@ tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx
 	return (*depth_indexes).current_size - 1;
 }
 
-void tfx_SetPMCamera(tfx_effect_manager pm, float front[3], float position[3]) {
+void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]) {
 	pm->camera_front.x = front[0];
 	pm->camera_front.y = front[1];
 	pm->camera_front.z = front[2];
@@ -14548,29 +14546,29 @@ void tfx_SetPMCamera(tfx_effect_manager pm, float front[3], float position[3]) {
 	pm->camera_position.z = position[2];
 }
 
-void tfx__reset_particle_effect_flags(tfx_effect_manager pm) {
+void tfx__reset_particle_effect_flags(tfx_stage pm) {
 	pm->flags = 0;
 }
 
-void tfx__free_compute_slot(tfx_effect_manager pm, unsigned int slot_id) {
+void tfx__free_compute_slot(tfx_stage pm, unsigned int slot_id) {
 	pm->free_compute_controllers.push_back(slot_id);
 }
 
-tfxU32 tfx_ParticleCount(tfx_effect_manager pm) {
+tfxU32 tfx_GetParticleCount(tfx_stage pm) {
 	return pm->instance_buffer.current_size;
 }
 
-tfxU32 tfx_RibbonCount(tfx_effect_manager pm) {
+tfxU32 tfx_GetRibbonCount(tfx_stage pm) {
 	return pm->current_ribbon_count;
 }
 
-tfxU32 tfx_EffectCount(tfx_effect_manager pm) {
+tfxU32 tfx_GetEffectCount(tfx_stage pm) {
 	tfxU32 count = 0;
 	count += pm->effects_in_use[pm->current_ebuff].current_size;
 	return count;
 }
 
-tfxU32 tfx_EmitterCount(tfx_effect_manager pm) {
+tfxU32 tfx_GetEmitterCount(tfx_stage pm) {
 	tfxU32 count = 0;
 	count += pm->control_emitter_queue.current_size;
 	return count;
@@ -14585,7 +14583,7 @@ void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	}
 }
 
-tfxU32 tfx__grab_particle_lists(tfx_effect_manager pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags) {
+tfxU32 tfx__grab_particle_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags) {
 	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
 		if (free_banks.current_size) {
@@ -14606,7 +14604,7 @@ tfxU32 tfx__grab_particle_lists(tfx_effect_manager pm, tfxKey emitter_hash, tfxU
 	return index;
 }
 
-tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_effect_manager pm) {
+tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_stage pm) {
 	if (pm->free_gpu_ribbon_emitters.current_size) {
 		return pm->free_gpu_ribbon_emitters.pop_back();
 	}
@@ -14615,11 +14613,11 @@ tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_effect_manager pm) {
 	return pm->gpu_ribbon_emitters.current_size - 1;
 }
 
-void tfx__free_gpu_emitter(tfx_effect_manager pm, tfxU32 index) {
+void tfx__free_gpu_emitter(tfx_stage pm, tfxU32 index) {
 	pm->free_gpu_ribbon_emitters.push_back(index);
 }
 
-tfxU32 tfx__grab_ribbon(tfx_effect_manager pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter) {
+tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter) {
 	TFX_ASSERT(bucket->flags & tfxRibbonBucketFlags_initialised);
 	if (bucket->free_ribbons.current_size) {
 		bucket->active_ribbons++;
@@ -14639,14 +14637,14 @@ tfxU32 tfx__grab_ribbon(tfx_effect_manager pm, tfx_ribbon_bucket_t *bucket, tfx_
 	return tfxINVALID;
 }
 
-void tfx__free_ribbon(tfx_effect_manager pm, tfxKey bucket_hash, tfxU32 ribbon_index) {
+void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_hash, tfxU32 ribbon_index) {
 	TFX_ASSERT(pm->ribbon_segment_buckets.ValidKey(bucket_hash));
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.At(bucket_hash);
 	bucket.free_ribbons.push_back(ribbon_index);
 	bucket.active_ribbons--;
 }
 
-void tfx_FreeParticleListsMemory(tfx_effect_manager pm, tfx_effect_descriptor emitter) {
+void tfx_FreeParticleListsMemory(tfx_stage pm, tfx_effect_descriptor emitter) {
 	if (pm->free_particle_lists.ValidKey(emitter->path_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter->path_hash);
 		for (tfxU32 i : free_banks) {
@@ -14666,7 +14664,7 @@ void tfx_FreeParticleListsMemory(tfx_effect_manager pm, tfx_effect_descriptor em
 	}
 }
 
-void tfx_FreeEffectListsMemory(tfx_effect_manager pm, tfx_effect_descriptor effect) {
+void tfx_FreeEffectListsMemory(tfx_stage pm, tfx_effect_descriptor effect) {
 	if (effect->type == tfxFolder) {
 		for (tfx_effect_descriptor child : effect->children) {
 			tfx_FreeEffectListsMemory(pm, child);
@@ -14677,7 +14675,7 @@ void tfx_FreeEffectListsMemory(tfx_effect_manager pm, tfx_effect_descriptor effe
 	}
 }
 
-tfxU32 tfx__grab_particle_location_lists(tfx_effect_manager pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
+tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
 	if (pm->free_particle_location_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter_hash);
 		if (free_banks.current_size) {
@@ -14703,7 +14701,7 @@ void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter) {
 	properties->ribbon_bucket_id = tfxRibbonBucketID(properties->bucket_info);
 }
 
-void tfx__init_ribbon_segment_buffer(tfx_effect_manager pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
+void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
 	memset(&bucket.ribbons, 0, sizeof(tfx_ribbon_soa_t));
 	bucket.segments.init();
@@ -14785,21 +14783,21 @@ void tfx__dump_snapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>>
 	}
 }
 
-void tfx_SetEffectUserData(tfx_effect_manager pm, tfxU32 effect_index, void *data) {
+void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].user_data = data;
 }
 
-void tfx_DisablePMSpawning(tfx_effect_manager pm, bool yesno) {
+void tfx_DisableStageSpawning(tfx_stage pm, bool yesno) {
 	if (yesno) {
-		pm->flags |= tfxEffectManagerFlags_disable_spawning;
+		pm->flags |= tfxStageFlags_disable_spawning;
 	}
 	else {
-		pm->flags &= ~tfxEffectManagerFlags_disable_spawning;
+		pm->flags &= ~tfxStageFlags_disable_spawning;
 	}
 }
 
-void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index) {
+void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	tfxPROFILE;
 
 	tfx_effect_state_t &effect = pm->effects[index];
@@ -14820,7 +14818,7 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 
 	if (!(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
 		effect.world_position = effect.local_position + effect.translation;
-		effect.world_position += effect.source_effect->emitter_handle * effect.overal_scale;
+		effect.world_position += effect.source_effect->emitter_handle * effect.overall_scale;
 		effect.world_rotations = effect.local_rotations;
 		effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
 	}
@@ -14852,9 +14850,9 @@ void tfx__update_effect(tfx_effect_manager pm, tfxU32 index, tfxU32 parent_index
 
 void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data) {
 	tfx_ribbon_work_entry_t *ribbon_work_entry = static_cast<tfx_ribbon_work_entry_t *>(data);
-	tfx_effect_manager pm = ribbon_work_entry->pm;
+	tfx_stage pm = ribbon_work_entry->pm;
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
-	const bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
+	const bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	for (int ribbon_emitter_index : ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
 		tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
 		tfx_effect_state_t &effect = pm->effects[ribbon_emitter.parent_index];
@@ -14884,7 +14882,7 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *work_queue, void *data) {
 	tfx_ribbon_work_entry_t *ribbon_work_entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 
-	tfx_effect_manager pm = ribbon_work_entry->pm;
+	tfx_stage pm = ribbon_work_entry->pm;
 
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
 	ribbon_emitter.ribbon_indexes[pm->current_ebuff ^ 1].clear();
@@ -14924,10 +14922,10 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	}
 	ribbon_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	ribbon_work_entry->parent_index = ribbon_emitter.parent_index;
-	ribbon_work_entry->overal_scale = parent_effect.overal_scale;
+	ribbon_work_entry->overall_scale = parent_effect.overall_scale;
 	ribbon_work_entry->graphs = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
 
-	tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overal_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
+	tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
 
 	tfx__update_ribbon_emitter_state(pm, ribbon_emitter, ribbon_emitter.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
 	ribbon_work_entry->new_ribbons = tfx__new_ribbons_needed(pm, &ribbon_work_entry->random, ribbon_emitter_index, &parent_effect, ribbon_work_entry->shared_properties);
@@ -14940,7 +14938,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.position = tfx_vec3_t();
 		gpu_emitter.captured_position = tfx_vec3_t();
 	}
-	gpu_emitter.scale = parent_effect.overal_scale;
+	gpu_emitter.scale = parent_effect.overall_scale;
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
 
 	double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
@@ -14997,7 +14995,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_spawn_work_entry_t *spawn_work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfxU32 emitter_index = spawn_work_entry->emitter_index;
 
-	tfx_effect_manager pm = spawn_work_entry->pm;
+	tfx_stage pm = spawn_work_entry->pm;
 
 	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 
@@ -15048,19 +15046,19 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 	spawn_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	spawn_work_entry->parent_index = emitter.parent_index;
-	spawn_work_entry->overal_scale = parent_effect.overal_scale;
+	spawn_work_entry->overall_scale = parent_effect.overall_scale;
 	tfx__update_emitter_state(pm, emitter, emitter.parent_index, spawn_work_entry->parent_spawn_controls, spawn_work_entry);
 
 	if ((emitter.state_flags & tfxEmitterStateFlags_is_line_loop_or_kill && emitter.state_flags & tfxEmitterStateFlags_loop) || (emitter.state_flags & tfxEmitterStateFlags_is_single && shared_properties.single_shot_limit > 1)) {
 		pm->emitters_check_capture.push_back(emitter_index);
 	}
 
-	//bool is_compute = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->flags & tfxEffectManagerFlags_use_compute_shader;
+	//bool is_compute = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->flags & tfxStageFlags_use_compute_shader;
 	tfxU32 max_spawn_count = tfx__new_sprites_needed(pm, spawn_work_entry, emitter_index, &parent_effect, &shared_properties);
 	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
 
 	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer][layer];
-	bool is_recording = (pm->flags & tfxEffectManagerFlags_recording_sprites) > 0 && (pm->flags & tfxEffectManagerFlags_using_uids) > 0;
+	bool is_recording = (pm->flags & tfxStageFlags_recording_sprites) > 0 && (pm->flags & tfxStageFlags_using_uids) > 0;
 	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
 	tfxU32 &effect_instance_index_point = instance_data.sprite_index_point[layer];
 	tfxU32 &instance_index_point = instance_data.sprite_index_point[layer];
@@ -15068,7 +15066,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		spawn_work_entry->depth_indexes = &instance_data.depth_indexes[layer][instance_data.current_depth_buffer_index[layer]];
 	}
 
-	tfx__transform_3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overal_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
+	tfx__transform_3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
 
 	if (shared_properties.emission_type == tfxSpawnOnRibbon && emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative && emitter.other_emitter_index != tfxINVALID) {
 		//Spawn-on-ribbon where both this emitter and the ribbon are relative: adopt the ribbon emitter's world rotation
@@ -15086,16 +15084,16 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
-	const bool warming_up = (pm->flags & tfxEffectManagerFlags_warming_up) > 0;
+	const bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
 	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
 	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
 	//re-establish instance_buffer state through the normal path.
 	if (!warming_up) {
-		if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+		if (pm->flags & tfxStageFlags_dynamic_sprite_allocation) {
 			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 				tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
-				if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+				if (pm->flags & tfxStageFlags_recording_sprites && pm->flags & tfxStageFlags_using_uids) {
 					uid_buffer.reserve(new_size);
 				}
 				instance_buffer.reserve(new_size);
@@ -15125,7 +15123,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	spawn_work_entry->max_spawn_count = max_spawn_count;
 
-	if (!(pm->flags & tfxEffectManagerFlags_disable_spawning)) {
+	if (!(pm->flags & tfxStageFlags_disable_spawning)) {
 		tfx__spawn_particles(pm, spawn_work_entry);
 	}
 
@@ -15137,7 +15135,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		effect_instance_index_point -= spawn_difference;
 		pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
 		instance_data.instance_count += emitter.sprites_count - spawn_difference;
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+		if (pm->flags & tfxStageFlags_recording_sprites && pm->flags & tfxStageFlags_using_uids) {
 			uid_buffer.current_size = instance_buffer.current_size;
 		}
 	}
@@ -15155,7 +15153,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 }
 
-tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
+tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 	tfx_random_t *random = &entry->random;
 	tfx_library library = emitter.library;
@@ -15282,7 +15280,7 @@ tfxU32 tfx__new_sprites_needed(tfx_effect_manager pm, tfx_spawn_work_entry_t *en
 	return emitter.amount_remainder >= 1.0 ? 0 : tfxU32((1.0 - emitter.amount_remainder) / step_size) + 1;
 }
 
-tfxU32 tfx__new_ribbons_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
+tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 	tfx_library library = ribbon_emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + ribbon_emitter.seed_index);
@@ -15320,11 +15318,11 @@ tfxU32 tfx__new_ribbons_needed(tfx_effect_manager pm, tfx_random_t *random, tfxU
 	return ribbon_emitter.amount_remainder >= 1.0 ? 0 : tfxU32((1.0 - ribbon_emitter.amount_remainder) / step_size) + 1;
 }
 
-void tfx_CompleteEffectManagerWork(tfx_effect_manager pm) {
-	tfx__wait_for_effect_manager_update(pm);
+void tfx_CompleteStageWork(tfx_stage pm) {
+	tfx__wait_for_stage_update(pm);
 }
 
-void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_entry) {
+void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	const tfx_shared_properties_t &shared_properties = *work_entry->shared_properties;
 	// Note that adding this in will mess up other emitter emission types and looped sprite recording || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning
@@ -15447,7 +15445,7 @@ void tfx__spawn_particles(tfx_effect_manager pm, tfx_spawn_work_entry_t *work_en
 
 void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	if ((work_entry->emission_type == tfxSpawnOnRibbon && emitter.other_emitter_index == tfxINVALID)
 		|| (work_entry->emission_type == tfxOtherEmitter && emitter.spawn_locations_index == tfxINVALID)) {
@@ -15510,7 +15508,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_random_t random = entry->random;
@@ -15562,7 +15560,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
 		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc() + entry->particle_uid++;
 		age_accumulator += frame_fraction;
-		if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_animation_loops) {
+		if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_animation_loops) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
 		} else {
 			max_age = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
@@ -15625,7 +15623,7 @@ void tfx__spawn_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 3 + emitter.seed_index);
 	const tfx_shared_properties_t &shared_properties = *entry->shared_properties;
@@ -15655,7 +15653,7 @@ void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data) {
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 5 + emitter.seed_index);
@@ -15772,7 +15770,7 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	tfxU32 emitter_index = entry->emitter_index;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 6 + emitter.seed_index);
@@ -15826,7 +15824,7 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 8 + emitter.seed_index);
@@ -15898,7 +15896,7 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_spawn_points_soa_t &spawn_points = pm.particle_location_arrays[emitter.spawn_locations_index];
 
@@ -15913,7 +15911,7 @@ void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = 0.0;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 
@@ -15949,7 +15947,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = 0.0;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 
@@ -15980,7 +15978,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		range = emission_angle_variation * .5f;
 	}
 
-	tfx_graph_t *ribbon_scale_graph = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_overtime_overal_scale_index];
+	tfx_graph_t *ribbon_scale_graph = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_overtime_overall_scale_index];
 
 	int node = 0;
 	float t = 0.f;
@@ -16020,7 +16018,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		}
 
 		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
-		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, ribbon_instance.position.w) * entry->overal_scale;
+		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, ribbon_instance.position.w) * entry->overall_scale;
 
 		tfx_quaternion_t q = tfx__unpack16bit_quaternion_from_gpu(ribbon_instance.quaternion);
 		entry->particle_data->quaternion[index] = ribbon_instance.quaternion;
@@ -16101,7 +16099,7 @@ void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = 0.0;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 
@@ -16163,7 +16161,7 @@ void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *dat
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 10 + emitter.seed_index);
 
@@ -16234,7 +16232,7 @@ void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 12 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
@@ -16284,9 +16282,9 @@ void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -16298,7 +16296,7 @@ void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 12 + emitter.seed_index);
 	float emission_pitch = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.age, emitter.oscillator_time);
@@ -16336,7 +16334,7 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 14 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
@@ -16597,9 +16595,9 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -16612,7 +16610,7 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 16 + emitter.seed_index);
@@ -16663,9 +16661,9 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -16678,7 +16676,7 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 17 + emitter.seed_index);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
@@ -16704,9 +16702,9 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -16718,7 +16716,7 @@ void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 26 + emitter.seed_index);
@@ -16782,7 +16780,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 26 + emitter.seed_index);
@@ -16986,9 +16984,9 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		if (properties.emission_direction == tfxPathGradient) {
@@ -17036,7 +17034,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data) {
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_emitter_index];
 	tfx_library_t *library = ribbon_emitter.library;
 	tfx_random_t random = entry->random;
@@ -17255,7 +17253,7 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_AlterRandomSeedU32(&random, 18 + emitter.seed_index);
 	tfxU32 sub_division = tfx__Min((tfxU32)entry->shared_properties->grid_points.x, 5);
@@ -17277,9 +17275,9 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -17292,7 +17290,7 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
 	double tween = entry->tween;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 19 + emitter.seed_index);
@@ -17376,9 +17374,9 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
-			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
-			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
-			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -17390,7 +17388,7 @@ void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 20 + emitter.seed_index);
@@ -17428,7 +17426,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 21 + emitter.seed_index);
@@ -17515,7 +17513,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_random_t random = entry->random;
-	tfx_effect_manager_t &pm = *entry->pm;
+	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 24 + emitter.seed_index);
@@ -17578,9 +17576,9 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 				}
 
 				if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-					local_position_x += splatx * entry->overal_scale;
-					local_position_y += splaty * entry->overal_scale;
-					local_position_z += splatz * entry->overal_scale;
+					local_position_x += splatx * entry->overall_scale;
+					local_position_y += splaty * entry->overall_scale;
+					local_position_z += splatz * entry->overall_scale;
 				}
 				else {
 					local_position_x += splatx;
@@ -17616,7 +17614,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle);
-				world_position = emitter.world_position + rotatevec * entry->overal_scale;
+				world_position = emitter.world_position + rotatevec * entry->overall_scale;
 			}
 		}
 
@@ -17673,7 +17671,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-void tfx__update_ribbon_emitter_state(tfx_effect_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry) {
+void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry) {
 	tfxPROFILE;
 
 	tfx_library library = ribbon.library;
@@ -17697,7 +17695,7 @@ void tfx__update_ribbon_emitter_state(tfx_effect_manager pm, tfx_ribbon_emitter_
 
 }
 
-void tfx__update_emitter_state(tfx_effect_manager pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
 	tfxPROFILE;
 
 	tfx_library library = emitter.library;
@@ -17734,7 +17732,7 @@ void tfx__update_emitter_state(tfx_effect_manager pm, tfx_particle_emitter_state
 	}
 }
 
-void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index) {
+void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	tfxPROFILE;
 
 	const float age = pm->effects[index].age;
@@ -17745,7 +17743,7 @@ void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index) {
 	tfx_vec3_t &translation = pm->effects[index].translation;
 	tfx_vec3_t &local_rotations = pm->effects[index].local_rotations;
 	tfx_vec3_t &emitter_size = pm->effects[index].emitter_size;
-	float &overal_scale = pm->effects[index].overal_scale;
+	float &overall_scale = pm->effects[index].overall_scale;
 	float &noise = pm->effects[index].noise;
 	tfxEffectStateFlags &state_flags = pm->effects[index].state_flags;
 
@@ -17777,7 +17775,7 @@ void tfx__update_effect_state(tfx_effect_manager pm, tfxU32 index) {
 		emitter_size.z = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_depth_index], age, oscillator_time);
 	}
 	//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
-	overal_scale = state_flags & tfxEffectStateFlags_override_overal_scale ? overal_scale : tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_overal_scale_index], age, oscillator_time);
+	overall_scale = state_flags & tfxEffectStateFlags_override_overall_scale ? overall_scale : tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_overall_scale_index], age, oscillator_time);
 	if (!(state_flags & tfxEffectStateFlags_override_orientiation)) {
 		local_rotations.roll = tfx__sample_multi_node_graph(&transform_list.graphs[tfxTransform_roll_index], age, oscillator_time);
 		local_rotations.pitch = tfx__sample_multi_node_graph(&transform_list.graphs[tfxTransform_pitch_index], age, oscillator_time);
@@ -17842,7 +17840,7 @@ tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
 
 //Find an existing group matching (property index to identify the emitter, bucket_index), or create a new one.
 //Returns the index into pm->gpu_groups.
-tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxU32 property_index, float max_life) {
+tfxU32 tfx__find_or_create_gpu_group(tfx_stage pm, tfxU32 property_index, float max_life) {
 	struct group_key_t {
 		tfxU32 property_index;
 		float max_life;
@@ -17877,7 +17875,7 @@ tfxU32 tfx__find_or_create_gpu_group(tfx_effect_manager pm, tfxU32 property_inde
 //Assign emitter_index to its (profile, life_bucket) group and reserve its particle capacity.
 //Must be called during emitter initialisation before any spawning occurs so ring_capacity
 //is stable by the time tfx__gpu_group_record_spawns runs.
-void tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_index) {
+void tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index) {
 	if (emitter_index == tfxINVALID) return;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 	tfxU32 group_index  = tfx__find_or_create_gpu_group(pm, emitter.state_properties.property_index, emitter.state_properties.max_life);
@@ -17891,7 +17889,7 @@ void tfx__assign_emitter_to_gpu_group(tfx_effect_manager pm, tfxU32 emitter_inde
 
 //Record new spawns into the emitter's group: advance ring_tail and accumulate this frame's count.
 //Returns the number of particles that could NOT be spawned if the gpu buffer ran out of space
-tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms) {
+tfxU32 tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms) {
 	tfxU32 group_index = pm->emitters[emitter_index].state_properties.gpu_group_index;
 	if (group_index == tfxINVALID) return count;
 	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
@@ -17909,10 +17907,10 @@ tfxU32 tfx__gpu_group_record_spawns(tfx_effect_manager pm, tfxU32 emitter_index,
 	return count - actual_number_added;
 }
 
-//Called once per frame from tfx_UpdateEffectManager.
+//Called once per frame from tfx_UpdateStage.
 //Seals this frame's spawn count into the tracking ring, then bumps ring_head past any
 //entries whose particles are guaranteed fully expired (spawn_time + life_ceiling <= now).
-void tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms) {
+void tfx__tick_gpu_groups(tfx_stage pm, float current_time_ms) {
 	for (tfxU32 i = 0; i < pm->gpu_groups.data.current_size; ++i) {
 		tfx_gpu_particle_group_t &group = pm->gpu_groups.data[i];
 
@@ -17945,14 +17943,14 @@ void tfx__tick_gpu_groups(tfx_effect_manager pm, float current_time_ms) {
 	}
 }
 
-void tfx__clear_gpu_groups(tfx_effect_manager pm) {
+void tfx__clear_gpu_groups(tfx_stage pm) {
 	for (tfx_gpu_particle_group_t &group : pm->gpu_groups.data) {
 		group.tracking.free();
 	}
 	pm->gpu_groups.Clear();
 }
 
-void tfx__free_gpu_groups(tfx_effect_manager pm) {
+void tfx__free_gpu_groups(tfx_stage pm) {
 	for (tfx_gpu_particle_group_t &group : pm->gpu_groups.data) {
 		group.tracking.free();
 	}
@@ -17963,7 +17961,7 @@ void tfx__free_gpu_groups(tfx_effect_manager pm) {
 void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_particle_age_work_entry_t *work_entry = static_cast<tfx_particle_age_work_entry_t *>(data);
-	tfx_effect_manager_t &pm = *work_entry->pm;
+	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_effect_state_t &effect = pm.effects[emitter.parent_index];
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes = nullptr;
@@ -17977,8 +17975,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
-	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning)), tfxWideSetZeroi);
-	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
+	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxStageFlags_disable_spawning)), tfxWideSetZeroi);
+	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_recording_sprites) {
 		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
 	}
 	const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
@@ -18401,7 +18399,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_effect_manager pm = work_entry->pm;
+	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
 
@@ -18428,15 +18426,15 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	tfx_effect_instance_data_t &sprites = pm->effects[emitter.parent_index].instance_data;
 	work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
-	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
+	work_entry->overall_scale = pm->effects[emitter.parent_index].overall_scale;
 	work_entry->path = emitter.state_properties.path_attributes != tfxINVALID ? &library->paths[emitter.state_properties.path_attributes] : nullptr;
 	work_entry->node_count = work_entry->path ? work_entry->path->settings.node_count : 0.f;
 	work_entry->sample_path_life = work_entry->path ? work_entry->shared_properties->emission_type == tfxPath && (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling) > 0 : false;
 
 	if (amount_to_update > 0) {
 		tfx_position_policy_context ctx = {};
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-			if (pm->flags & tfxEffectManagerFlags_warming_up) {
+		if (pm->flags & tfxStageFlags_recording_sprites && pm->flags & tfxStageFlags_using_uids) {
+			if (pm->flags & tfxStageFlags_warming_up) {
 				tfx__control_particle_uid_warmup(&pm->work_queue, work_entry);
 			} else {
 				tfx__control_particle_uid(&pm->work_queue, work_entry);
@@ -18592,7 +18590,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx__control_particle_line_behaviour_loop(&pm->work_queue, work_entry);
 			}
 		}
-		if (!(pm->flags & tfxEffectManagerFlags_warming_up)) {
+		if (!(pm->flags & tfxStageFlags_warming_up)) {
 			//There's no need to call controll functions in warm up if they don't write back to the particle bank.
 			tfx__control_particle_transform(&pm->work_queue, work_entry);
 			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
@@ -18651,7 +18649,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->memory_pool_count = 1;
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
 	//tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
-	tfxStore->effect_managers.init();
+	tfxStore->stages.init();
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfx__hash_initialise(&tfxStore->hasher, 0);
 }
@@ -18697,7 +18695,7 @@ unsigned int tfx_GetDefaultThreadCount(void) {
 
 //Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 //max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
-void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
+void tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size) {
 	if (!tfxMemoryAllocator) {
 		tfx_InitialiseTimelineFXMemory(memory_pool_size);
 	}
@@ -18713,11 +18711,11 @@ void tfx_EndTimelineFX() {
 	tfxStore->thread_queues.end_all_threads = true;
 	tfx__writebarrier;
 
-	for (tfx_effect_manager effect_manager : tfxStore->effect_managers.data) {
-		tfx_CompleteEffectManagerWork(effect_manager);
-		tfx_FreeEffectManager(effect_manager);
+	for (tfx_stage stage : tfxStore->stages.data) {
+		tfx_CompleteStageWork(stage);
+		tfx_FreeStage(stage);
 	}
-	tfxStore->effect_managers.FreeAll();
+	tfxStore->stages.FreeAll();
 	while (tfxStore->libraries.Size()) {
 		tfx_FreeLibrary(tfxStore->libraries.data.back());
 	}
@@ -18940,7 +18938,7 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	sprite_data->shared_segments.free();
 }
 
-bool tfx__valid_effect_id(tfx_effect_manager pm, tfxEffectID id) {
+bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id) {
 	return id != tfxINVALID && pm->effects.capacity > id;
 }
 
@@ -18948,8 +18946,8 @@ bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimati
 	return id != tfxINVALID && animation_manager->instances.current_size > id;
 }
 
-tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup setup) {
-	tfx_effect_manager_info_t info = { 0 };
+tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
+	tfx_stage_info_t info = { 0 };
 	info.warmup_delta_time = 1000.0 / 60.0;
 	info.max_particles = 10000;
 	info.max_effects = 1000;
@@ -18965,7 +18963,7 @@ tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup s
 	info.grow_staging_buffer_callback = nullptr;
 	info.max_particles = 5000;
 	switch (setup) {
-	case tfxEffectManagerSetup_group_sprites_by_effect:
+	case tfxStageSetup_group_sprites_by_effect:
 		info.group_sprites_by_effect = true;
 		info.auto_order_effects = true;
 		break;
@@ -18974,7 +18972,7 @@ tfx_effect_manager_info_t tfx_CreateEffectManagerInfo(tfx_effect_manager_setup s
 	return info;
 }
 
-void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
+void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
 	pm->lookup_mode = tfxFast;
 	pm->current_ebuff = 0;
 	pm->highest_compute_controller_index = 0;
@@ -18989,8 +18987,8 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 	pm->unique_particle_id = 0;
 	pm->unique_ribbon_id = 0;
 
-	pm->random = tfx_NewRandom(tfx_Millisecs());
-	pm->threaded_random = tfx_NewRandom(tfx_Millisecs());
+	pm->random = tfx_CreateRandom(tfx_Millisecs());
+	pm->threaded_random = tfx_CreateRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
 	pm->mt_batch_size = mt_batch_size;
 	pm->work_queue = { 0 };
@@ -19007,9 +19005,9 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 	pm->flags = 0;
 
 	if (double_buffered_sprites)
-		pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
+		pm->flags |= tfxStageFlags_double_buffer_sprites;
 
-	pm->flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
+	pm->flags |= dynamic_sprite_allocation ? tfxStageFlags_dynamic_sprite_allocation : 0;
 
 	pm->effects_in_use[0].reserve(pm->max_effects);
 	pm->effects_in_use[1].reserve(pm->max_effects);
@@ -19030,24 +19028,24 @@ void tfx__init_common_effect_manager(tfx_effect_manager pm, tfxU32 max_particles
 	pm->age_work.reserve(effects_limit);
 }
 
-tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
-	tfx_effect_manager pm = tfxNEW_ALIGNED(tfx_effect_manager, 16);
+tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
+	tfx_stage pm = tfxNEW_ALIGNED(tfx_stage, 16);
 	TFX_ASSERT(pm);		//Unable to allocate the particle manager, out of memory?
 	if (!pm) {
 		return nullptr;	//Out of memory. Release builds return null here rather than dereferencing a null pm.
 	}
-	tfxStore->effect_managers.Insert((tfxKey)pm, pm);
-	memset((void *)pm, 0, sizeof(tfx_effect_manager_t));
+	tfxStore->stages.Insert((tfxKey)pm, pm);
+	memset((void *)pm, 0, sizeof(tfx_stage_t));
 	pm->particle_arrays.init();
 	pm->particle_location_arrays.init();
 	pm->free_particle_lists.init();
 	pm->free_particle_location_lists.init();
-	pm->magic = tfxINIT_MAGIC(tfx_struct_type_effect_manager);
+	pm->magic = tfxINIT_MAGIC(tfx_struct_type_stage);
 	pm->info = info;
 	pm->warmup_delta_time = info.warmup_delta_time;
-	tfx__init_common_effect_manager(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
+	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
 
-	pm->flags |= info.auto_order_effects ? tfxEffectManagerFlags_auto_order_effects : 0;
+	pm->flags |= info.auto_order_effects ? tfxStageFlags_auto_order_effects : 0;
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = info.max_particles;
@@ -19060,22 +19058,20 @@ tfx_effect_manager tfx_CreateEffectManager(tfx_effect_manager_info_t info) {
 	return pm;
 }
 
-void tfx_SetEffectPosition(tfx_effect_manager pm, tfxEffectID effect_index, float x, float y, float z) {
+void tfx_SetEffectPosition(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_vec3_t position(x, y, z);
 	pm->effects[effect_index].local_position = position;
 }
 
-void tfx_SetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_index, tfx_vec3_t position) {
+void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position = position;
+	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
 }
 
 void tfx_SetAnimationPosition(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float position[3]) {
 	TFX_VALIDATE_ANIMATION(animation_manager, effect_index, );
-	animation_manager->instances[effect_index].position.x = position[0];
-	animation_manager->instances[effect_index].position.y = position[1];
-	animation_manager->instances[effect_index].position.z = position[2];
+	animation_manager->instances[effect_index].position = { position[0], position[1], position[2] };
 }
 
 tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager animation_manager, tfxAnimationID animation_id) {
@@ -19088,17 +19084,17 @@ void tfx_SetAnimationScale(tfx_animation_manager animation_manager, tfxAnimation
 	animation_manager->instances[effect_index].scale = scale;
 }
 
-void tfx_MoveEffectVec3(tfx_effect_manager pm, tfxEffectID effect_index, tfx_vec3_t amount) {
+void tfx_MoveEffectVec3(tfx_stage pm, tfxEffectID effect_index, float amount[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position += amount;
+	pm->effects[effect_index].local_position += { amount[0], amount[1], amount[2] };
 }
 
-void tfx_MoveEffect(tfx_effect_manager pm, tfxEffectID effect_index, float x, float y, float z) {
+void tfx_MoveEffect(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_position += {x, y, z};
 }
 
-tfxAPI void tfx_GetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_index, float out_position[3]) {
+tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float out_position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_vec3_t position = pm->effects[effect_index].local_position;
 	out_position[0] = position.x;
@@ -19106,15 +19102,15 @@ tfxAPI void tfx_GetEffectPositionVec3(tfx_effect_manager pm, tfxEffectID effect_
 	out_position[2] = position.z;
 }
 
-tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_effect_manager pm, tfxEffectID effect_index, tfxU32 *sprite_count) {
+tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 *sprite_count) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
 	tfx_effect_instance_data_t &instance_data = pm->effects[effect_index].instance_data;
 	*sprite_count = instance_data.instance_count;
 	return &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[instance_data.instance_start_index];
 }
 
-bool tfx_GetNextInstanceBuffer(tfx_effect_manager pm, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
-	tfx__wait_for_effect_manager_update(pm);
+bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
+	tfx__wait_for_stage_update(pm);
 	if (pm->effect_index_position >= pm->effects_in_use[pm->current_ebuff].current_size) {
 		*instances = nullptr;
 		*instance_data = nullptr;
@@ -19130,93 +19126,93 @@ bool tfx_GetNextInstanceBuffer(tfx_effect_manager pm, tfx_instance_t **instances
 	return true;
 }
 
-void tfx_ResetInstanceBufferLoopIndex(tfx_effect_manager pm) {
+void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 	pm->effect_index_position = 0;
 }
 
-void tfx_SetEffectRoll(tfx_effect_manager pm, tfxEffectID effect_index, float roll) {
+void tfx_SetEffectRoll(tfx_stage pm, tfxEffectID effect_index, float roll) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.roll = roll;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
-void tfx_SetEffectPitch(tfx_effect_manager pm, tfxEffectID effect_index, float pitch) {
+void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pitch) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.pitch = pitch;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
-void tfx_SetEffectYaw(tfx_effect_manager pm, tfxEffectID effect_index, float pitch) {
+void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float pitch) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_rotations.pitch = pitch;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
-void tfx_SetEffectWidthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float width) {
+void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.x = width;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
-void tfx_SetEffectHeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float height) {
+void tfx_SetEffectHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.y = height;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
-void tfx_SetEffectDepthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float depth) {
+void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float depth) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].emitter_size.z = depth;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
-void tfx_SetEffectLifeMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float life) {
+void tfx_SetEffectLifeMultiplier(tfx_stage pm, tfxEffectID effect_index, float life) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.life = life;
 }
 
-void tfx_SetEffectParticleWidthMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float width) {
+void tfx_SetEffectParticleWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.size_x = width;
 }
 
-void tfx_SetEffectParticleHeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float height) {
+void tfx_SetEffectParticleHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.size_y = height;
 }
 
-void tfx_SetEffectVelocityMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float velocity) {
+void tfx_SetEffectVelocityMultiplier(tfx_stage pm, tfxEffectID effect_index, float velocity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.velocity = velocity;
 }
 
-void tfx_SetEffectSpinMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float spin) {
+void tfx_SetEffectSpinMultiplier(tfx_stage pm, tfxEffectID effect_index, float spin) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.spin = spin;
 }
 
-void tfx_SetEffectIntensityMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float intensity) {
+void tfx_SetEffectIntensityMultiplier(tfx_stage pm, tfxEffectID effect_index, float intensity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.intensity = intensity;
 }
 
-void tfx_SetEffectSplatterMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float splatter) {
+void tfx_SetEffectSplatterMultiplier(tfx_stage pm, tfxEffectID effect_index, float splatter) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.splatter = splatter;
 }
 
-void tfx_SetEffectWeightMultiplier(tfx_effect_manager pm, tfxEffectID effect_index, float weight) {
+void tfx_SetEffectWeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float weight) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].spawn_controls.weight = weight;
 }
 
-void tfx_SetEffectOveralScale(tfx_effect_manager pm, tfxEffectID effect_index, float overal_scale) {
+void tfx_SetEffectOverallScale(tfx_stage pm, tfxEffectID effect_index, float overall_scale) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].overal_scale = overal_scale;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_overal_scale;
+	pm->effects[effect_index].overall_scale = overall_scale;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_overall_scale;
 }
 
-void tfx_SetEffectBaseNoiseOffset(tfx_effect_manager pm, tfxEffectID effect_index, float noise_offset) {
+void tfx_SetEffectBaseNoiseOffset(tfx_stage pm, tfxEffectID effect_index, float noise_offset) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].noise_base_offset = noise_offset;
 }
