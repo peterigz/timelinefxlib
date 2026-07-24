@@ -3291,7 +3291,6 @@ typedef enum {
 	tfxEffectType,
 	tfxEmitterType,
 	tfxRibbonType,
-	tfxStage,
 	tfxFolder,
 	tfxMaxDescriptorTypes
 } tfx_effect_descriptor_type;
@@ -3410,8 +3409,8 @@ typedef enum {
 	tfxEndFolder,
 	tfxStartPreviewCameraSettings,
 	tfxEndPreviewCameraSettings,
-	tfxStartStage,
-	tfxEndStage,
+	tfxStartUnused1,
+	tfxEndUnused1,
 	tfxStartEffectAnimationInfo,
 	tfxEndEffectAnimationInfo,
 	tfxStartFrameMeta,
@@ -7143,7 +7142,7 @@ typedef struct tfx_effect_descriptor_s {
 	//A link to the library that this effect/emitter belongs to
 	tfx_library library;
 
-	//List of children if this is a folder or stage, or list of particle/ribbon emitters
+	//List of children if this is a folder, or list of particle/ribbon emitters
 #ifdef __cplusplus
 	tfx_vector_t<tfx_effect_descriptor> children;
 #else
@@ -8393,7 +8392,6 @@ tfxAPI_EDITOR tfx_effect_descriptor tfx__insert_library_effect(tfx_library libra
 tfxAPI_EDITOR tfx_effect_descriptor tfx__add_library_effect(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__add_new_library_folder(tfx_library library, tfx_str64_t *name);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name);
-tfxAPI_EDITOR tfx_effect_descriptor tfx__add_library_stage(tfx_library library, tfx_str64_t *name);
 tfxAPI_EDITOR void tfx__update_library_effect_paths(tfx_library library);
 tfxAPI_EDITOR bool tfx__rename_library_effect(tfx_library library, tfx_effect_descriptor effect, const char *new_name);
 tfxAPI_EDITOR bool tfx__library_name_exists(tfx_library library, tfx_effect_descriptor effect, const char *name);
@@ -8509,11 +8507,6 @@ tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_
 tfxINTERNAL tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__enable_emitter(tfx_effect_descriptor effect);
 tfxINTERNAL bool tfx__is_ordered_effect_state(tfx_effect_state_t *effect);
-tfxINTERNAL void tfx__assign_stage_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value);
-tfxINTERNAL void tfx__assign_stage_property_float(tfx_effect_descriptor effect, tfx_str256_t *field, float value);
-tfxINTERNAL void tfx__assign_stage_property_bool(tfx_effect_descriptor effect, tfx_str256_t *field, bool value);
-tfxINTERNAL void tfx__assign_stage_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value);
-tfxINTERNAL void tfx__assign_stage_property_str(tfx_effect_descriptor effect, tfx_str256_t *field, tfx_str256_t *value);
 tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU64 value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version);

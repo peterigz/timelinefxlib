@@ -4095,19 +4095,6 @@ tfx_effect_descriptor tfx__add_new_library_effect(tfx_library library, tfx_str64
 	return effect;
 }
 
-tfx_effect_descriptor tfx__add_library_stage(tfx_library library, tfx_str64_t *name) {
-	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	tfx_effect_descriptor stage = tfx_NewEffectDescriptor(tfxStage);
-	stage->library = library;
-	stage->name = *name;
-	stage->type = tfxStage;
-	stage->uid = ++library->uid;
-	library->effects.push_back(stage);
-	tfx__reindex_library(library);
-	tfx__update_library_effect_paths(library);
-	return stage;
-}
-
 tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	return library->effects[index];
@@ -4596,7 +4583,7 @@ tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_des
 tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT_HANDLE(effect);		//Not a valid effect handle
-	TFX_ASSERT(effect->type == tfxEffectType || effect->type == tfxStage);
+	TFX_ASSERT(effect->type == tfxEffectType);
 	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
@@ -5697,25 +5684,6 @@ void tfx__assign_node_data(tfx_attribute_node_t *n, tfx_vector_t<tfx_str256_t> *
 	}
 }
 
-void tfx__assign_stage_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value) {
-}
-
-void tfx__assign_stage_property_float(tfx_effect_descriptor effect, tfx_str256_t *field, float value) {
-}
-
-void tfx__assign_stage_property_bool(tfx_effect_descriptor effect, tfx_str256_t *field, bool value) {
-}
-
-void tfx__assign_stage_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
-}
-
-void tfx__assign_stage_property_str(tfx_effect_descriptor effect, tfx_str256_t *field, tfx_str256_t *value) {
-	if (*field == "name") {
-		TFX_ASSERT(value->Length() <= 64);	//File corrupt? length of name should be less than 64.
-		effect->name.Set(value->c_str());
-	}
-}
-
 void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "total_sprites")
 		metrics->total_sprites = value;
@@ -5738,7 +5706,6 @@ tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
 	case tfxEmitterType: name.Set("Particle Emitter"); break;
 	case tfxRibbonType: name.Set("Ribbon Emitter"); break;
 	case tfxFolder: name.Set("Folder"); break;
-	case tfxStage: name.Set("Stage"); break;
 	default: break;
 	}
 	return name;
@@ -9125,15 +9092,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect->type = tfx_effect_descriptor_type::tfxFolder;
 				effect->uid = uid++;
 				effect_stack.push_back(effect);
-			} else if (context == tfxStartStage) {
-				tfx_effect_descriptor effect = tfx_NewEffectDescriptor(tfxStage);
-				effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
-				effect->library = lib;
-				effect->type = tfx_effect_descriptor_type::tfxStage;
-				tfx__add_library_preview_camera_settings_effect(lib, effect);
-				effect->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
-				effect->uid = uid++;
-				effect_stack.push_back(effect);
 			} else if (context == tfxStartEffect) {
 				tfx_effect_descriptor effect = tfx_NewEffectDescriptor(tfxEffectType);
 				if (current_effect) {
@@ -9235,30 +9193,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 			} else if (context == tfxStartGraphProperties) {
 				tfx__assign_graph_properties(effect_stack.back(), &pair);
-			} else if (context == tfxStartStage) {
-				if (names_and_types.ValidName(pair[0].c_str())) {
-					switch (names_and_types.At(pair[0].c_str())) {
-					case tfxUInt:
-						tfx__assign_stage_property_u32(effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()));
-						break;
-					case tfxFloat:
-						tfx__assign_stage_property_float(effect_stack.back(), &pair[0], (float)atof(pair[1].c_str()));
-						break;
-					case tfxSInt:
-						tfx__assign_stage_property_int(effect_stack.back(), &pair[0], atoi(pair[1].c_str()));
-						break;
-					case tfxBool:
-						tfx__assign_stage_property_bool(effect_stack.back(), &pair[0], (bool)(atoi(pair[1].c_str())));
-						break;
-					case tfxString:
-						tfx__assign_stage_property_str(effect_stack.back(), &pair[0], &pair[1]);
-						break;
-					default:
-						break;
-					}
-				} else {
-					error |= tfxErrorCode_some_data_not_loaded;
-				}
 			}
 
 			if (context == tfxStartShapes) {
@@ -9331,11 +9265,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		if (context == tfxEndEffect) {
 			tfx__reindex_effect(effect_stack.back());
 			if (effect_stack.size() > 1) {
-				//Effects inside a folder or a stage.
-				if (effect_stack.parent()->type == tfxStage && effect_stack.parent()->children.size() == 0) {
-					effect_stack.pop();
-					current_effect = nullptr;
-				} else if (effect_stack.parent()->type == tfxFolder) {
+				//Effects inside a folder.
+				if (effect_stack.parent()->type == tfxFolder) {
 					tfx__initialise_unitialised_graphs(effect_stack.back());
 					effect_stack.parent()->children.push_back(effect_stack.back());
 					effect_stack.pop();
@@ -9351,12 +9282,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 		if (context == tfxEndFolder) {
 			TFX_ASSERT(effect_stack.size() == 1);            //Folders should not be contained within anything
-			lib->effects.push_back(effect_stack.back());
-			effect_stack.pop();
-		}
-
-		if (context == tfxEndStage) {
-			TFX_ASSERT(effect_stack.size() == 1);            //Stages should not be contained within anything
 			lib->effects.push_back(effect_stack.back());
 			effect_stack.pop();
 		}
