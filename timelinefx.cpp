@@ -10926,6 +10926,10 @@ tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) 
 	return tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
 }
 
+bool tfxEffectIDIsValid(tfxEffectID id) {
+	return id != tfxINVALID;
+}
+
 void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect_template, float millisecs) {
 	TFX_ASSERT_HANDLE(effect_template);
 	TFX_ASSERT(millisecs > 0.f);

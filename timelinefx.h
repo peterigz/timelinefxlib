@@ -1168,6 +1168,8 @@ test things out you can add an effect direct from a library using this command.
 */
 tfxAPI tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect);
 
+tfxAPI bool tfxEffectIDIsValid(tfxEffectID id);
+
 /*
 Set the warmup time for an effect template. When the effect template is added to the stage it will be warmed up
 first so that effectively it begins it's simulation from a set point in time. 
