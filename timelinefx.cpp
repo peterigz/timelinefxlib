@@ -10926,7 +10926,7 @@ tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) 
 	return tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
 }
 
-bool tfxEffectIDIsValid(tfxEffectID id) {
+bool tfx_EffectIDIsValid(tfxEffectID id) {
 	return id != tfxINVALID;
 }
 
