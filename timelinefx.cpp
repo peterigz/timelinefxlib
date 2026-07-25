@@ -1,5 +1,5 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
-#include "timelinefx.h"
+#include "timelinefx_internal.h"
 
 // The OS threading/timing layer lives here, not in timelinefx.h, so <Windows.h>
 // (and its macro pollution) never reaches library consumers. See the include
@@ -1257,10 +1257,8 @@ float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b) {
 	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
 }
 
-float tfx__dot_product_vec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
-{
-	return (a->x * b->x + a->y * b->y);
-}
+// tfx__dot_product_vec2 is inline-defined in timelinefx.h (next to tfx__dot_product_vec3);
+// definition removed here to avoid a duplicate.
 
 void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle) {
 	float half_angle = angle / 2.f;
@@ -1533,22 +1531,6 @@ void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x
 }
 
 //Quake 3 inverse square root
-float tfx__quake_sqrt(float number)
-{
-	union {
-		float f;
-		uint32_t i;
-	} conv;
-
-	float x2;
-	const float threehalfs = 1.5F;
-
-	x2 = number * 0.5F;
-	conv.f = number;
-	conv.i = 0x5f3759df - (conv.i >> 1);
-	conv.f = conv.f * (threehalfs - (x2 * conv.f * conv.f));
-	return conv.f;
-}
 
 float tfx__vec2_length_fast(tfx_vec2_t const *v) {
 	return 1.f / tfx__quake_sqrt(tfx__dot_product_vec2(v, v));
@@ -4043,6 +4025,56 @@ tfx_image_data_t *tfx_GetLibraryImage(tfx_library library, tfxU32 index) {
 	return &library->particle_shapes.data[index];
 }
 
+void tfx_SetImagePointer(tfx_image_data_t *image, void *pointer) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	image->ptr = pointer;
+}
+
+void tfx_SetGPUImageTextureInfo(tfx_gpu_image_data_t *image, float x, float y, float z, float w, int array_index) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_gpu_image_data_t
+	image->uv.x = x;
+	image->uv.x = y;
+	image->uv.x = z;
+	image->uv.x = w;
+	image->texture_array_index = array_index;
+	image->uv_packed = tfx__pack16bit4_snorm(x, y, z, w);
+}
+
+int tfx_GetImageFrameCount(tfx_image_data_t *image) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	return (int)image->animation_frames;
+}
+
+int tfx_GetImageWidth(tfx_image_data_t *image) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	return (int)image->image_size.x;
+}
+
+int tfx_GetImageHeight(tfx_image_data_t *image) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	return (int)image->image_size.y;
+}
+
+void *tfx_GetBitmapData(tfx_bitmap_t *bitmap) {
+	TFX_ASSERT(bitmap);	//bitmap pointer is NULL, must point to a valid tfx_bitmap_t
+	return (void*)bitmap->data;
+}
+
+int tfx_GetBitmapWidth(tfx_bitmap_t *bitmap) {
+	TFX_ASSERT(bitmap);	//bitmap pointer is NULL, must point to a valid tfx_bitmap_t
+	return (int)bitmap->width;
+}
+
+int tfx_GetBitmapHeight(tfx_bitmap_t *bitmap) {
+	TFX_ASSERT(bitmap);	//bitmap pointer is NULL, must point to a valid tfx_bitmap_t
+	return (int)bitmap->height;
+}
+
+size_t tfx_GetBitmapSize(tfx_bitmap_t *bitmap) {
+	TFX_ASSERT(bitmap);	//bitmap pointer is NULL, must point to a valid tfx_bitmap_t
+	return (size_t)bitmap->size;
+}
+
 tfx_effect_descriptor tfx__insert_library_effect(tfx_library library, tfx_effect_descriptor effect, tfx_effect_descriptor position) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	effect->library_index = library->effects.current_size;
@@ -5716,18 +5748,6 @@ tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str) {
 	return tfx_vec2_t((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()));
 }
 
-tfx_str32_t tfx__descriptor_type_to_string(tfx_effect_descriptor_type type) {
-	tfx_str32_t name;
-	switch (type) {
-	case tfxEffectType: name.Set("Effect"); break;
-	case tfxEmitterType: name.Set("Particle Emitter"); break;
-	case tfxRibbonType: name.Set("Ribbon Emitter"); break;
-	case tfxFolder: name.Set("Folder"); break;
-	default: break;
-	}
-	return name;
-}
-
 tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	tfx_str32_t name;
 	switch (type) {
@@ -5741,44 +5761,6 @@ tfx_str32_t tfx__graph_sampling_type_to_string(tfx_graph_easing_type type) {
 	default: break;
 	}
 	return name;
-}
-
-void tfx__print_effect(tfx_effect_descriptor effect) {
-	TFX_ASSERT_HANDLE(effect);
-	struct tab_effect {
-		tfx_effect_descriptor effect;
-		int tabs;
-	};
-	tmpStack(tab_effect, effects);
-	tab_effect root_effect{ effect, 0 };
-	effects.push_back(root_effect);
-	tfx_str64_t tab_string;
-	tfxPrint("----==== Output of %s ====----", effect->name.c_str());
-	while (!effects.empty()) {
-		tab_effect current = effects.pop_back();
-		TFX_ASSERT_HANDLE(current.effect);
-		tab_string.Clear();
-		for (int t = 0; t != current.tabs; ++t) {
-			tab_string.Appendf(" ---");
-		}
-		if (current.tabs) {
-			tfxPrint("|");
-		}
-		tfxPrint("%sDescriptor Name: %s", tab_string.c_str(), current.effect->name.c_str());
-		tfxPrint("%sType: %s", tab_string.c_str(), tfx__descriptor_type_to_string(current.effect->type).c_str());
-		tfxPrint("%sGraph index: %i", tab_string.c_str(), current.effect->state_properties.graph_list_index);
-		tfxPrint("%sTransform index: %i", tab_string.c_str(), current.effect->state_properties.transform_index);
-		tfxPrint("%sProperty index: %i", tab_string.c_str(), current.effect->state_properties.property_index);
-		tfxPrint("%sShared index: %i", tab_string.c_str(), current.effect->state_properties.shared_index);
-		tfxPrint("%sSub Effect Count: %i", tab_string.c_str(), current.effect->children.size());
-		for (tfx_effect_descriptor sub : current.effect->children) {
-			effects.push_back({sub, current.tabs + 1});
-		}
-	}
-	tfxPrint("----====****====----");
-	tfxPrint("");
-
-	effects.free();
 }
 
 void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfx_vec3_t value, tfxU32 file_version) {
@@ -5796,7 +5778,7 @@ void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_
 
 void tfx__assign_animation_emitter_property_vec2(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version) {
 	if (*field == "handle") {
-		properties->image_handle = value;
+		properties->image_handle = { value.x, value.y };
 	}
 }
 
@@ -10173,7 +10155,10 @@ void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float upd
 				if (instance.captured_index == tfxINVALID) { instance.position.w = 0; continue; }
 				if (instance.alignment.packed == 0) {
 					if (instance.captured_index < sprite_data->normal.total_sprites) {
-						tfx_vec3_t motion = instance.position.xyz() - sprite_data->real_time_sprites.billboard_instance[instance.captured_index].position.xyz();
+						tfx_instance_t &captured_instance = sprite_data->real_time_sprites.billboard_instance[instance.captured_index];
+						tfx_vec3_t position = {instance.position.x, instance.position.y, instance.position.z };
+						tfx_vec3_t captured_position = {captured_instance.position.x, captured_instance.position.y, captured_instance.position.z };
+						tfx_vec3_t motion = position - captured_position;
 						motion.z += 0.000001f;
 						instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion);
 						motion = tfx__normalize_vec3(&motion);
@@ -10332,15 +10317,16 @@ void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_des
 	}
 }
 
-void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_stage pm, tfx_vec3_t camera_position, tfx_sprite_data_t *external_sprite_data) {
+void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_stage pm, float camera_position[3], tfx_sprite_data_t *external_sprite_data) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
+	tfx_vec3_t camera = { camera_position[0], camera_position[1], camera_position[2] };
 	if (!external_sprite_data && !effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		TFX_ASSERT(pm);        //You must pass an appropriate particle manager if the animation needs recording
 		int progress;
 		tfx_sprite_data_settings_t &settings = effect->library->sprite_data_settings[effect->sprite_data_settings_index];
-		tfx__record_sprite_data(pm, effect, &settings, nullptr, animation_manager->update_frequency, &camera_position.x, &progress);
+		tfx__record_sprite_data(pm, effect, &settings, nullptr, animation_manager->update_frequency, &camera.x, &progress);
 	}
 
 	bool has_animated_shape = false;
@@ -10824,19 +10810,6 @@ void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_i
 	TFX_ASSERT(graph_index < tfxEffectGraphs_max_index);
 	tfx_graph_t &graph = t->effect->library->graphs[t->effect->state_properties.graph_list_index].graphs[graph_index];
 	tfx_graph_t &original_graph = t->original_effect->library->graphs[t->original_effect->state_properties.graph_list_index].graphs[graph_index];
-	tfx__copy_graph(&original_graph, &graph, false);
-	tfx__multiply_all_graph_values(&graph, amount);
-}
-
-void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float amount) {
-	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
-	TFX_ASSERT(graph_index < tfxEmitterGraphs_max_index);	 //Not a valid graph index
-	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
-	tfx_effect_descriptor emitter = t->paths.At(emitter_path);
-	TFX_ASSERT(emitter->type == tfxEmitterType);			 //The path does not point to a emitter type
-	tfx_graph_t &graph = emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[graph_index];
-	tfx_effect_descriptor original_emitter = tfx_GetLibraryEffectPath(t->effect->library, emitter_path);
-	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->state_properties.graph_list_index].graphs[graph_index];
 	tfx__copy_graph(&original_graph, &graph, false);
 	tfx__multiply_all_graph_values(&graph, amount);
 }
@@ -12219,7 +12192,7 @@ void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 
 void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_vec3_t position = static_cast<tfx_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
+	tfx_float32x4_t position = static_cast<tfx_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position;
 	out_position[0] = position.x;
 	out_position[1] = position.y;
 	out_position[2] = position.z;
@@ -12369,21 +12342,6 @@ tfxU32 tfx_AddGPUShape(tfx_gpu_shapes shapes, tfx_gpu_image_data_t image_data) {
 tfx_gpu_image_data_t *tfx_GetGPUShape(tfx_gpu_shapes shapes, tfxU32 index) {
 	TFX_ASSERT(index < shapes->list.current_size);	//Index is out of bounds
 	return &shapes->list[index];
-}
-
-void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]) {
-	tfx_vec3_t lerped;
-	lerped = *world * lerp + *captured * (1.f - lerp);
-	out_lerp[0] = lerped.x;
-	out_lerp[1] = lerped.y;
-	out_lerp[2] = lerped.z;
-}
-
-void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]) {
-	tfx_vec2_t lerped;
-	lerped = *world * lerp + *captured * (1.f - lerp);
-	out_lerp[0] = lerped.x;
-	out_lerp[1] = lerped.y;
 }
 
 void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
@@ -12814,7 +12772,9 @@ TFX_ENABLE_COMPILER_WARNING()
 				sprites[sprite_depth_index].position.x = position_x.a[j];
 				sprites[sprite_depth_index].position.y = position_y.a[j];
 				sprites[sprite_depth_index].position.z = position_z.a[j];
-				tfx_vec3_t sprite_plus_camera_position = sprites[sprite_depth_index].position.xyz() - pm.camera_position;
+				tfx_instance_t &instance = sprites[sprite_depth_index];
+				tfx_vec3_t sprite_position = { instance.position.x, instance.position.y, instance.position.z };
+				tfx_vec3_t sprite_plus_camera_position = sprite_position - pm.camera_position;
 				(*work_entry->depth_indexes)[sprite_depth_index - work_entry->cumulative_index_point - work_entry->effect_instance_offset].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
 				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
@@ -14077,7 +14037,7 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
 		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
 		ribbon_dispatch->ribbon_offset = ribbon_dispatch->last_ribbon_offset;
-		bucket->globals.camera_position = pm->camera_position;
+		bucket->globals.camera_position = { pm->camera_position.x, pm->camera_position.y, pm->camera_position.z, 0.f };
 		bucket->globals.index_offset = ribbon_dispatch->index_offset;
 		bucket->globals.vertex_offset = ribbon_dispatch->vertex_offset;
 		bucket->globals.ribbon_offset = ribbon_dispatch->ribbon_offset;
@@ -14093,6 +14053,10 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 
 void tfx_ResetRibbonDispatchIterator(tfx_stage pm) {
 	pm->ribbon_segment_buckets.iterator_index = 0;
+}
+
+tfx_ribbon_bucket_globals_t *tfx_GetRibbonDispatchGlobals(tfx_ribbon_dispatch_t *ribbon_dispatch) {
+	return &ribbon_dispatch->ribbon_data->globals;
 }
 
 tfx_stage tfx__next_global_stage() {
