@@ -2166,4 +2166,8 @@ tfxAPI tfx_gpu_image_data_t *tfx_GetGPUShape(tfx_gpu_shapes shapes, tfxU32 index
 
 tfxAPI tfx_version_t tfx_GetVersion(void);
 
+// Helper function to get a good default thread count for thread pools
+// Usually hardware threads - 1 to leave a core for the OS/main thread
+tfxAPI unsigned int tfx_GetDefaultThreadCount(void);
+
 #endif

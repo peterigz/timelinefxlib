@@ -5550,9 +5550,6 @@ tfxAPI unsigned int tfx_HardwareConcurrency(void);
 // Safe version that always returns at least 1
 tfxAPI unsigned int tfx_HardwareConcurrencySafe(void);
 
-// Helper function to get a good default thread count for thread pools
-// Usually hardware threads - 1 to leave a core for the OS/main thread
-tfxAPI unsigned int tfx_GetDefaultThreadCount(void);
 //-----------------------------------------------------------
 //Section: Vector_Math
 //-----------------------------------------------------------
