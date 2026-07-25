@@ -565,7 +565,7 @@ tfxAPI void tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size);
 /*
 Cleanup up all threads and memory used by timelinefx
 */
-tfxAPI void tfx_EndTimelineFX();
+tfxAPI void tfx_EndTimelineFX(void);
 
 //--------------------------------
 //Global_variable_access
@@ -588,7 +588,7 @@ already populated from a tfx file; use this only if you want to build a library 
 Free it with tfx_FreeLibrary.
 * @returns tfx_library    A handle to a new, empty library.
 */
-tfxAPI tfx_library tfx_CreateLibrary();
+tfxAPI tfx_library tfx_CreateLibrary(void);
 
 /*
 Count the number of particle shapes stored in a tfx file without loading the whole library. Useful
@@ -801,14 +801,14 @@ particles and ribbons (currently ribbons only). Use with tfx_GetGPUGraphLookupsB
 to your GPU buffer.
 * @returns tfx_gpu_graph_data_t *   A pointer to the shared gpu graph lookup data.
 */
-tfxAPI tfx_gpu_graph_data_t *tfx_GetGPUGraphLookupsBuffer();
+tfxAPI tfx_gpu_graph_data_t *tfx_GetGPUGraphLookupsBuffer(void);
 
 /*
 Get the size in bytes of the global gpu graph lookup data returned by tfx_GetGPUGraphLookupsBuffer. This is the
 single shared buffer in tfxStore, so it takes no library argument.
 * @returns tfxU32                   The size of the shared gpu graph lookup data in bytes.
 */
-tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes();
+tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes(void);
 
 /*
 Get buffer info for ribbons based on the tessellation value. Returns a tfx_ribbon_buffer_info_t object with
@@ -977,7 +977,7 @@ tfx_NextRibbonDispatch. The struct carries the running offsets between buckets, 
 start of each iteration pass (or reset the fields to zero).
 * @returns tfx_ribbon_dispatch_t   A zeroed dispatch struct ready to pass to tfx_NextRibbonDispatch.
 */
-tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch();
+tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch(void);
 
 /*
 Advance to the next ribbon bucket that has ribbons to draw. Call in a while loop until it returns false. On each
@@ -1006,7 +1006,7 @@ single shared set of GPU buffers. Implicitly completes any in-flight stage updat
 you would rather allocate to the exact per-frame need than to the worst case (see tfx_GetTotal*MaxSizeInBytes).
 * @returns tfx_ribbon_buffer_requirements_t   Segment, ribbon and emitter buffer sizes in bytes for this frame.
 */
-tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements();
+tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(void);
 
 /*
 Copy this stage's ribbon segment, ribbon instance and emitter data into your mapped staging buffers, ready to
@@ -1072,15 +1072,15 @@ Get the total worst-case buffer sizes across all registered stages, for creating
 buffers. These iterate every registered stage and sum the individual tfx_Get*MaxSizeInBytes requirements. Use these
 to allocate for the worst case once; use tfx_GetRibbonBufferRequirements instead to size to the exact per-frame need.
 */
-tfxAPI size_t tfx_GetTotalSegmentBufferMaxSizeInBytes();
+tfxAPI size_t tfx_GetTotalSegmentBufferMaxSizeInBytes(void);
 
 tfxAPI size_t tfx_GetTotalSegmentVertexBufferMaxSizeInBytes(tfxU32 vertex_size);
 
-tfxAPI size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes();
+tfxAPI size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes(void);
 
-tfxAPI size_t tfx_GetTotalRibbonBufferMaxSizeInBytes();
+tfxAPI size_t tfx_GetTotalRibbonBufferMaxSizeInBytes(void);
 
-tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes();
+tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes(void);
 
 /*
 When a effect manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
@@ -2112,7 +2112,7 @@ tfxAPI tfx_effect_descriptor tfx_CreateEffectDescriptor(tfx_effect_descriptor_ty
 Create a new list for containing gpu shapes. You can use this list to upload to the GPU so that shaders can have access to particle image data like UV coordinates
 * @returns tfx_gpu_shapes                A handle to the shapes list
 */
-tfxAPI tfx_gpu_shapes tfx_CreateGPUShapesList();
+tfxAPI tfx_gpu_shapes tfx_CreateGPUShapesList(void);
 
 /*
 Delete and free all the memory for a tfx_gpu_shapes list.
@@ -2162,6 +2162,6 @@ Retrieve image data point from a tfx_gpu_shapes handle containing a list of tfx_
 */
 tfxAPI tfx_gpu_image_data_t *tfx_GetGPUShape(tfx_gpu_shapes shapes, tfxU32 index);
 
-tfxAPI tfx_version_t tfx_GetVersion();
+tfxAPI tfx_version_t tfx_GetVersion(void);
 
 #endif
