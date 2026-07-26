@@ -598,6 +598,7 @@ typedef struct tfx_gpu_graph_data_s {
 //------------------------------------------------------------
 typedef void(*tfx_shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data);
 typedef void(*tfx_uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
+typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data);
 
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
@@ -1312,6 +1313,7 @@ test things out you can add an effect direct from a library using this command.
 tfxAPI tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect);
 
 tfxAPI bool tfx_EffectIDIsValid(tfxEffectID id);
+tfxAPI bool tfx_AnimationIDIsValid(tfxAnimationID id);
 
 /*
 Set the warmup time for an effect template. When the effect template is added to the stage it will be warmed up
@@ -2043,6 +2045,13 @@ Get the size in bytes of the render queue of animation instances buffer in an an
 tfxAPI size_t tfx_GetAnimationInstancesSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
+Get the count of of animation instances in an animation manager
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns tfxU32                 Count of the instances buffer
+*/
+tfxAPI tfxU32 tfx_GetAnimationInstancesCount(tfx_animation_manager animation_manager);
+
+/*
 Get the size in bytes of the animation emitter properties list
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the properties bufffer
@@ -2111,6 +2120,23 @@ Returns true or false if the animation manager contains effects with ribbons
 * @returns bool 	              True if the animation manager has ribbons
 */
 tfxAPI bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager);
+
+/*
+Returns true or false if the animation manager contains emitters that use animated shapes
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @returns bool 	              True if the animation manager does contain animated shapes
+*/
+tfxAPI bool tfx_HasAnimatedShapes(tfx_animation_manager animation_manager);
+
+/*
+Set the callback used by the animation manager to determin if an animation should be rendered or not
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the ribbon data from
+* @param callback 	              The function callback
+*/
+tfxAPI void tfx_SetAnimationManagerCullCallback(tfx_animation_manager animation_manager, tfx_maybe_render_instance_callback callback);
+
+tfxAPI size_t tfx_CalculateAnimationInstanceBufferSize(size_t instance_count);
+tfxAPI size_t tfx_CalculateAnimationOffsetsBufferSize(size_t instance_count);
 
 //--------------------------------
 //Effect_templates

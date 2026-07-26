@@ -10884,7 +10884,26 @@ void *tfx_GetAnimationRibbonDataBufferPointer(tfx_animation_manager animation_ma
 }
 
 bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
 	return animation_manager->ribbon_data.current_size > 0;
+}
+
+bool tfx_HasAnimatedShapes(tfx_animation_manager animation_manager) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	return (animation_manager->flags & tfxAnimationManagerFlags_has_animated_shapes) > 0;
+}
+
+void tfx_SetAnimationManagerCullCallback(tfx_animation_manager animation_manager, tfx_maybe_render_instance_callback callback) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	animation_manager->maybe_render_instance_callback = callback;
+}
+
+size_t tfx_CalculateAnimationInstanceBufferSize(size_t instance_count) {
+	return sizeof(tfx_animation_instance_t) * instance_count;
+}
+
+size_t tfx_CalculateAnimationOffsetsBufferSize(size_t instance_count) {
+	return sizeof(tfxU32) * instance_count;
 }
 
 void tfx_ResetTemplate(tfx_effect_template t) {
@@ -10940,6 +10959,10 @@ tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) 
 }
 
 bool tfx_EffectIDIsValid(tfxEffectID id) {
+	return id != tfxINVALID;
+}
+
+bool tfx_AnimationIDIsValid(tfxAnimationID id) {
 	return id != tfxINVALID;
 }
 
@@ -12304,6 +12327,10 @@ size_t tfx_GetRibbonOffsetsSizeInBytes(tfx_animation_manager animation_manager) 
 
 size_t tfx_GetAnimationInstancesSizeInBytes(tfx_animation_manager animation_manager) {
 	return animation_manager->render_queue.size_in_bytes();
+}
+
+tfxU32 tfx_GetAnimationInstancesCount(tfx_animation_manager animation_manager) {
+	return animation_manager->render_queue.size();
 }
 
 size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager animation_manager) {

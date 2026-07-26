@@ -7178,7 +7178,7 @@ typedef struct tfx_animation_manager_s {
 	//Callback which you can assign in order to decide if an animation instance should be added to the render queue
 	//the next frame. This callback is called inside the tfx_UpdateAnimationManager function. Set the callback
 	//with SetAnimationManagerCallback
-	bool (*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data);
+	tfx_maybe_render_instance_callback maybe_render_instance_callback;
 
 	//Ribbon management
 	tfx_vector_t<tfxU32> ribbon_offsets;
