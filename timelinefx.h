@@ -1263,6 +1263,13 @@ Get the current number of emitters that are currently being updated by a effect 
 tfxAPI tfxU32 tfx_GetEmitterCount(tfx_stage pm);
 
 /*
+Get the current number of free effects in the stage that are ready to be re-used
+* @param pm                        A pointer to an tfx_stage_t
+* @returns tfxU32                  The total number of free effects in the stage
+*/
+tfxAPI tfxU32 tfx_GetFreeEffectCount(tfx_stage pm);
+
+/*
 Set the seed for the effect manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the effect manager
 then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
 * @param pm                        A pointer to an initialised tfx_stage_t. 

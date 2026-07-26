@@ -14555,15 +14555,15 @@ tfxU32 tfx_GetRibbonCount(tfx_stage pm) {
 }
 
 tfxU32 tfx_GetEffectCount(tfx_stage pm) {
-	tfxU32 count = 0;
-	count += pm->effects_in_use[pm->current_ebuff].current_size;
-	return count;
+	return pm->effects_in_use[pm->current_ebuff].current_size;
 }
 
 tfxU32 tfx_GetEmitterCount(tfx_stage pm) {
-	tfxU32 count = 0;
-	count += pm->control_emitter_queue.current_size;
-	return count;
+	return pm->control_emitter_queue.current_size;
+}
+
+tfxU32 tfx_GetFreeEffectCount(tfx_stage pm) {
+	return pm->free_effects.current_size;
 }
 
 void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index) {
