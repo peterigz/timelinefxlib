@@ -13759,18 +13759,17 @@ void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *dat
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
 	tfxWideFloat image_frame_rate = tfxWideSetSingle(emitter.state_properties.image_frame_rate);
-	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
 
+	//Do NOT clear tfxParticleFlags_capture_after_transform here: warmup never runs the sprite writes, so
+	//bank.sprite_index is never established and this flag is what makes the first post-warmup write capture-self
+	//instead of lerping. Clearing it makes survivors interpolate from a garbage/stale sprite_index for one frame.
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfx__readbarrier;
 		image_frame = tfxWideAdd(image_frame, image_frame_rate);
 		tfxWideStore(&bank.image_frame[index], image_frame);
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
-		flags = tfxWideAndNoti(capture_after_transform_flag, flags);
-		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
