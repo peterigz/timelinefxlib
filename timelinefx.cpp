@@ -11549,9 +11549,19 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 			pm->effects_in_use[next_buffer].push_back(effect_index);
 		}
 	} else if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
+		//Effect has timed out. Flag it so the emitter loop below tears down and frees its emitters
+		//this frame, but keep it in the in-use list for one more tick so the branch below can recycle
+		//the effect slot. Without this re-add the effect drops out of the rotation immediately and is
+		//never returned to free_effects, slowly exhausting the effect pool.
+		//During warmup the ebuff is held constant so we mustn't push to next_buffer — the flagged
+		//effect stays in current_ebuff and the next normal tick picks it up here and frees it.
 		effect.state_flags |= tfxEmitterStateFlags_remove;
+		if (!warming_up) {
+			pm->effects_in_use[next_buffer].push_back(effect_index);
+		}
 	} else if (!warming_up) {
-		//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
+		//Second tick after time-out: emitters are already freed and the slot is idle, so recycle it.
+		//Deferred during warmup — the entry stays in current_ebuff and the next normal tick frees it.
 		tfx__sync_lock(&pm->add_effect_mutex);
 		pm->free_effects.push_back(effect_index);
 		tfx__sync_unlock(&pm->add_effect_mutex);
