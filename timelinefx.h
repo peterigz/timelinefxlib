@@ -255,6 +255,129 @@ typedef enum {
 	tfxEffectGraphs_max_index,
 } tfx_global_graph_index;
 
+typedef enum {
+	tfxEmitter_property_emission_pitch_index,
+	tfxEmitter_property_emission_yaw_index,
+	tfxEmitter_property_emission_range_index,
+	tfxEmitter_property_splatter_index,
+	tfxEmitter_property_width_index,        //Also used for linear extrusion for paths as well
+	tfxEmitter_property_height_index,
+	tfxEmitter_property_depth_index,
+	tfxEmitter_property_extrusion_index,
+	tfxEmitter_property_arc_size_index,
+	tfxEmitter_property_arc_offset_index,
+
+	tfxEmitter_base_life_index,
+	tfxEmitter_base_amount_index,
+	tfxEmitter_base_velocity_index,
+	tfxEmitter_base_width_index,
+	tfxEmitter_base_height_index,
+	tfxEmitter_base_weight_index,
+	tfxEmitter_base_pitch_spin_index,
+	tfxEmitter_base_yaw_spin_index,
+	tfxEmitter_base_roll_spin_index,
+	tfxEmitter_base_noise_offset_index,
+
+	tfxEmitter_variation_life_index,
+	tfxEmitter_variation_amount_index,
+	tfxEmitter_variation_velocity_index,
+	tfxEmitter_variation_width_index,
+	tfxEmitter_variation_height_index,
+	tfxEmitter_variation_weight_index,
+	tfxEmitter_variation_path_trajectory_scale_index,
+	tfxEmitter_variation_pitch_spin_index,
+	tfxEmitter_variation_yaw_spin_index,
+	tfxEmitter_variation_roll_spin_index,
+	tfxEmitter_variation_noise_offset_index,
+	tfxEmitter_variation_noise_resolution_index,
+	tfxEmitter_variation_motion_randomness_index,
+
+	tfxEmitter_overtime_red_index,
+	tfxEmitter_overtime_green_index,
+	tfxEmitter_overtime_blue_index,
+	tfxEmitter_overtime_blendfactor_index,
+	tfxEmitter_overtime_velocity_adjuster_index,
+	tfxEmitter_overtime_intensity_index,
+	tfxEmitter_overtime_alpha_sharpness_index,
+	tfxEmitter_overtime_curved_alpha_index,
+	tfxEmitter_overtime_heat_response_index,
+	tfxEmitter_overtime_gradient_mapper_index,
+	tfxEmitter_overtime_velocity_index,
+	tfxEmitter_overtime_width_index,
+	tfxEmitter_overtime_height_index,
+	tfxEmitter_overtime_weight_index,
+	tfxEmitter_overtime_pitch_spin_index,
+	tfxEmitter_overtime_yaw_spin_index,
+	tfxEmitter_overtime_roll_spin_index,
+	tfxEmitter_overtime_stretch_index,
+	tfxEmitter_overtime_velocity_turbulance_index,
+	tfxEmitter_overtime_direction_turbulance_index,
+	tfxEmitter_overtime_direction_index,
+	tfxEmitter_overtime_noise_resolution_index,
+	tfxEmitter_overtime_motion_randomness_index,
+
+	tfxEmitter_factor_life_index,
+	tfxEmitter_factor_size_index,
+	tfxEmitter_factor_velocity_index,
+	tfxEmitter_factor_intensity_index,
+
+	tfxEmitterGraphs_max_index,
+} tfx_emitter_graph_index;
+
+typedef enum {
+	tfxRibbon_property_splatter_index,
+	tfxRibbon_property_width_index,        //Also used for linear extrusion for paths as well
+	tfxRibbon_property_height_index,
+	tfxRibbon_property_depth_index,
+	tfxRibbon_property_extrusion_index,
+	tfxRibbon_property_arc_size_index,
+	tfxRibbon_property_arc_offset_index,
+
+	tfxRibbon_base_life_index,
+	tfxRibbon_base_amount_index,
+	tfxRibbon_base_width_index,
+
+	tfxRibbon_variation_life_index,
+	tfxRibbon_variation_amount_index,
+	tfxRibbon_variation_width_index,
+
+	tfxRibbon_overtime_red_index,
+	tfxRibbon_overtime_green_index,
+	tfxRibbon_overtime_blue_index,
+	tfxRibbon_overtime_blendfactor_index,
+	tfxRibbon_overtime_intensity_index,
+	tfxRibbon_overtime_alpha_sharpness_index,
+	tfxRibbon_overtime_curved_alpha_index,
+	tfxRibbon_overtime_gradient_mapper_index,
+	tfxRibbon_overtime_heat_response_index,
+	tfxRibbon_overtime_width_index,
+	tfxRibbon_overtime_overall_scale_index,
+	tfxRibbon_overtime_uv_offset_y_index,
+	tfxRibbon_overtime_uv_scale_y_index,
+	tfxRibbon_overtime_clip_start_index,
+	tfxRibbon_overtime_clip_end_index,
+
+	tfxRibbon_overlength_intensity_index,
+	tfxRibbon_overlength_alpha_sharpness_index,
+	tfxRibbon_overlength_curved_alpha_index,
+	tfxRibbon_overlength_gradient_map_index,
+	tfxRibbon_overlength_width_index,
+	tfxRibbon_overlength_fixed_angle_index,
+
+	tfxRibbonGraphs_max_index,
+
+	tfxRibbon_property_start_index = 0,
+	tfxRibbon_base_start_index = tfxRibbon_base_life_index,
+	tfxRibbon_variation_start_index = tfxRibbon_variation_life_index,
+	tfxRibbon_overtime_start_index = tfxRibbon_overtime_red_index,
+	tfxRibbon_property_end_index = tfxRibbon_property_arc_offset_index + 1,
+	tfxRibbon_base_end_index = tfxRibbon_base_width_index + 1,
+	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
+	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_end_index + 1,
+	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_fixed_angle_index + 1,
+} tfx_ribbon_graph_index;
+
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 typedef enum {
 	tfxEffectType,
@@ -2078,10 +2201,11 @@ tfxAPI void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path);
 
 /*
 Scale all nodes on a global graph graph of the effect
-* @param global_type			  tfx_graph_type of the global graph that you want to scale. Must be a global graph or an assert will be called
+* @param tfx_effect_template	  Handle to a valid effect template
+* @param graph_index			  tfx_global_graph_index enum of the global graph that you want to scale. 
 * @param amount					  A float of the amount that you want to scale the multiplier by.
 */
-tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float amount);
+tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float scale_amount);
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
@@ -2089,6 +2213,15 @@ Set the single spawn amount for an emitter. Only affects emitters that have the 
 * @param amount					 A float of the amount that you want to set the single spawn amount to.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
+
+/*
+Scale all nodes on an emitter graph
+* @param tfx_effect_template	  Handle to a valid effect template
+* @param emitter_path			  const *char of the emitter path
+* @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
+* @param scale amount             A float of the amount that you want to scale the graph by.
+*/
+tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float scale_amount);
 
 //--------------------------------
 //Editing_graphs

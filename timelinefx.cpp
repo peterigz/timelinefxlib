@@ -10822,6 +10822,19 @@ void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter
 	tfx__get_shared_emitter_properties(emitter)->spawn_amount = amount;
 }
 
+void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float amount) {
+	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
+	TFX_ASSERT(graph_index < tfxEmitterGraphs_max_index);	 //Not a valid graph index
+	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
+	tfx_effect_descriptor emitter = t->paths.At(emitter_path);
+	TFX_ASSERT(emitter->type == tfxEmitterType);			 //The path does not point to a emitter type
+	tfx_graph_t &graph = emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[graph_index];
+	tfx_effect_descriptor original_emitter = tfx_GetLibraryEffectPath(t->effect->library, emitter_path);
+	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->state_properties.graph_list_index].graphs[graph_index];
+	tfx__copy_graph(&original_graph, &graph, false);
+	tfx__multiply_all_graph_values(&graph, amount);
+}
+
 void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v) {
 	TFX_ASSERT_HANDLE(emitter); //Not a valid emitter handle
 	TFX_ASSERT(emitter->type == tfxEmitterType || emitter->type == tfxRibbonType);
