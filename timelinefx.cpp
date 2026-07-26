@@ -13759,17 +13759,18 @@ void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *dat
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 
 	tfxWideFloat image_frame_rate = tfxWideSetSingle(emitter.state_properties.image_frame_rate);
+	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
 
-	//Do NOT clear tfxParticleFlags_capture_after_transform here: warmup never runs the sprite writes, so
-	//bank.sprite_index is never established and this flag is what makes the first post-warmup write capture-self
-	//instead of lerping. Clearing it makes survivors interpolate from a garbage/stale sprite_index for one frame.
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
 		tfx__readbarrier;
 		image_frame = tfxWideAdd(image_frame, image_frame_rate);
 		tfxWideStore(&bank.image_frame[index], image_frame);
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
+		flags = tfxWideAndNoti(capture_after_transform_flag, flags);
+		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags);
 	}
 }
 
@@ -15098,11 +15099,18 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
 	const bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
+	//An effect flagged for removal (tfx_HardExpireEffect) has its emitters torn down this frame WITHOUT being
+	//added to the control queue, so the control/write phase never runs for them and nothing is written to the
+	//instance buffer. If we still reserved instance-buffer space and bumped instance_data.instance_count for
+	//their existing particles, that region would be drawn as stale/garbage sprites for one frame - a handful of
+	//wrong-position particles matching the dying effect's particle count. So skip the instance accounting for a
+	//removing effect, exactly as we do during warmup (which also never writes the instance buffer).
+	const bool skip_instance_accounting = warming_up || (parent_effect.state_flags & tfxEmitterStateFlags_remove) > 0;
 	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
 	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
 	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
 	//re-establish instance_buffer state through the normal path.
-	if (!warming_up) {
+	if (!skip_instance_accounting) {
 		if (pm->flags & tfxStageFlags_dynamic_sprite_allocation) {
 			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 				tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
@@ -15142,7 +15150,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	TFX_ASSERT(spawn_work_entry->amount_to_spawn <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - spawn_work_entry->amount_to_spawn;
-	if (!warming_up) {
+	if (!skip_instance_accounting) {
 		instance_buffer.current_size -= spawn_difference;
 		TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
 		effect_instance_index_point -= spawn_difference;
