@@ -572,6 +572,19 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	float ndc_offset_y;
 } tfx_ribbon_bucket_globals_t;
 
+typedef struct tfx_sprite_data_push_s {
+	tfxU32 animation_instances_total;
+	tfxU32 billboards_total;
+	tfxU32 animated_shapes;	
+	tfxU32 offsets_index;
+	tfxU32 animation_instances_index;
+	tfxU32 billboards_index;
+	tfxU32 sprite_data_index;
+	tfxU32 image_data_index;
+	tfxU32 emitter_properties_index;
+	tfxU32 bounding_boxes_index;
+} tfx_sprite_data_push_t;
+
 typedef struct tfx_gpu_graph_data_s {
 	tfx_float32x4_t node_data;
 	tfx_float32x4_t oscillator;

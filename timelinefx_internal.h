@@ -6832,19 +6832,6 @@ typedef struct tfx_sprite_data_s {
 	bool has_ribbons;
 } tfx_sprite_data_t;
 
-typedef struct tfx_sprite_data_push_s {
-	tfxU32 animation_instances_total;
-	tfxU32 billboards_total;
-	tfxU32 animated_shapes;	
-	tfxU32 offsets_index;
-	tfxU32 animation_instances_index;
-	tfxU32 billboards_index;
-	tfxU32 sprite_data_index;
-	tfxU32 image_data_index;
-	tfxU32 emitter_properties_index;
-	tfxU32 bounding_boxes_index;
-} tfx_sprite_data_push_t;
-
 typedef struct tfx_ribbon_data_push_s {
 	tfxU32 animation_instances_total;
 	tfxU32 ribbons_total;
