@@ -11023,14 +11023,16 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
 		return tfxINVALID;
 	}
 	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
     tfx__readbarrier;
-    pm->effects_in_use[buffer].push_back(parent_index);
     if (parent_index.index == tfxINVALID) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
 		return tfxINVALID;
 	}
+    pm->effects_in_use[buffer].push_back(parent_index);
 	tfx_effect_state_t &new_effect = pm->effects[parent_index.index];
 
 	new_effect.source_effect = effect;
