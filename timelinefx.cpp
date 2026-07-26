@@ -14459,7 +14459,19 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
     tfx_effect_index_t parent_index;
 	if (!pm->free_effects.empty()) {
         tfx__readbarrier;
-		return pm->free_effects.pop_back();
+		parent_index = pm->free_effects.pop_back();
+		//Reset the bookkeeping in the instance data here or it can cause a crash and glitches 
+		//further down the road.
+		tfx_effect_instance_data_t *instance_data = &pm->effects[parent_index.index].instance_data;
+		instance_data->instance_start_index = tfxINVALID;
+		instance_data->instance_count = 0;
+		memset(instance_data->depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
+		memset(instance_data->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
+		for (tfxEachLayer) {
+			instance_data->depth_indexes[layer][0].current_size = 0;
+			instance_data->depth_indexes[layer][1].current_size = 0;
+		}
+		return parent_index;
 	}
 	if (pm->effects.current_size == pm->effects.capacity) {
         tfx__readbarrier;
