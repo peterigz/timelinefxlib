@@ -12333,6 +12333,10 @@ tfxU32 tfx_GetAnimationInstancesCount(tfx_animation_manager animation_manager) {
 	return animation_manager->render_queue.size();
 }
 
+void *tfx_GetAnimationInstancesBufferPointer(tfx_animation_manager animation_manager) {
+	return animation_manager->render_queue.data;
+}
+
 size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager animation_manager) {
 	return animation_manager->emitter_properties.size_in_bytes();
 }

@@ -2052,6 +2052,14 @@ Get the count of of animation instances in an animation manager
 tfxAPI tfxU32 tfx_GetAnimationInstancesCount(tfx_animation_manager animation_manager);
 
 /*
+Get the buffer pointer of of animation instances in an animation manager which you'll need to copy
+the data to the GPU
+* @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
+* @returns void*                  Pointer to the instances buffer
+*/
+tfxAPI void *tfx_GetAnimationInstancesBufferPointer(tfx_animation_manager animation_manager);
+
+/*
 Get the size in bytes of the animation emitter properties list
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the properties bufffer
