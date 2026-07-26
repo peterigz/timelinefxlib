@@ -10453,7 +10453,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	}
 }
 
-void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))) {
+void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, tfx_maybe_render_instance_callback maybe_render_instance_callback) {
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->maybe_render_instance_callback = maybe_render_instance_callback;
 }
@@ -10543,8 +10543,11 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 					instance.offset_into_ribbon_data = 0;
 				}
 				animation_manager->instances_in_use[next_buffer].push_back(i);
-				if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[0], animation_manager->user_data)) {
-					continue;
+				if (animation_manager->maybe_render_instance_callback) {
+					tfx_vec3_t position = instance.position + metrics.frame_meta[0].bb_center_point;
+					if (!animation_manager->maybe_render_instance_callback(animation_manager, {position.x, position.y, position.z}, metrics.frame_meta[0].radius, animation_manager->user_data)) {
+						continue;
+					}
 				}
 				//Accumulate per-property ribbon counts into buckets for frame 0
 				if (metrics.ribbon_property_count > 0) {
@@ -10577,8 +10580,11 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 				instance.offset_into_ribbon_data = 0;
 			}
 			animation_manager->instances_in_use[next_buffer].push_back(i);
-			if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[frame], animation_manager->user_data)) {
-				continue;
+			if (animation_manager->maybe_render_instance_callback) {
+				tfx_vec3_t position = instance.position + metrics.frame_meta[frame].bb_center_point;
+				if (!animation_manager->maybe_render_instance_callback(animation_manager, {position.x, position.y, position.z}, metrics.frame_meta[frame].radius, animation_manager->user_data)) {
+					continue;
+				}
 			}
 			//Accumulate per-property ribbon counts into buckets for this frame
 			if (metrics.ribbon_property_count > 0) {

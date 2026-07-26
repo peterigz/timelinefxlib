@@ -598,7 +598,7 @@ typedef struct tfx_gpu_graph_data_s {
 //------------------------------------------------------------
 typedef void(*tfx_shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data);
 typedef void(*tfx_uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
-typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data);
+typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_float32x3_t position, float radius, void *user_data);
 
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
@@ -1808,7 +1808,7 @@ to cull instances that are outside of the view frustum for example
 								the frame meta of the instance, this will contain the bounding box and radius of the instance from the current frame of the instance and a pointer
 								to any user data that you set that might contain the camera frustum that you want to check against.
 */
-tfxAPI void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data)));
+tfxAPI void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, tfx_maybe_render_instance_callback maybe_render_instance_callback);
 
 /*
 Get the sprite data settings for an effect in a library. Sprite data settings are the settings for an effect in the editor relating to setting up pre-baked effects
