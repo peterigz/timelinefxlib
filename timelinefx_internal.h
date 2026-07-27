@@ -210,6 +210,10 @@ void tfx__sync_wait_empty(tfx_sync_t *sync);
 void tfx__sync_wait_full(tfx_sync_t *sync);
 void tfx__sync_signal_empty(tfx_sync_t *sync);
 void tfx__sync_signal_full(tfx_sync_t *sync);
+//Wake ALL waiters on empty_condition, not just one. Needed where several threads can be
+//blocked on the same predicate and every one of them has to re-test it - waking a single
+//waiter would leave the others blocked forever even though the predicate is now false.
+void tfx__sync_broadcast_empty(tfx_sync_t *sync);
 
 //Portable thread identifier helpers. Used to allow re-entrant calls from a
 //thread that already owns a long-running operation (e.g. sprite data recording)
@@ -7256,7 +7260,16 @@ typedef struct tfx_stage_s {
 #else
 	pthread_t update_thread;
 #endif
-	bool update_thread_active;
+	//The update thread is persistent: it is created on the first multithreaded
+	//tfx_UpdateStage and lives until tfx_FreeStage, parked on update_thread_mutex's
+	//full_condition between frames. 
+	bool update_thread_active; 	//  update_thread_active   an update is in flight - the handshake predicate
+	bool update_thread_started; //  update_thread_started  the persistent thread exists
+	bool update_thread_exit; 	//  update_thread_exit     shutdown requested; the thread breaks out of its loop
+	//Stable, unique id for this stage, assigned from a global counter at creation. Used to
+	//give each stage's update thread a distinguishable name in a profiler; there is no
+	//other source of stage identity (the pointer is unstable across runs).
+	tfxU32 stage_index;
 	//Thread id of the thread that currently owns a long-running operation on
 	//this pm (sprite data recording). Only valid while
 	//tfxStageFlags_recording_sprites is set, both written and read
@@ -7528,10 +7541,24 @@ tfxINTERNAL void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool 
 tfxINTERNAL void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__set_stage_timings(tfx_stage stage, double elapsed_time, double max_frame_length);
 tfxINTERNAL void tfx__update_stage(void *data);
+//Signal the persistent update thread to exit and join it. Safe to call on a stage whose
+//thread was never started. Call only after the in-flight update has been drained.
+tfxINTERNAL void tfx__shutdown_update_thread(tfx_stage pm);
+//Block until the in-flight update (if any) has finished. Must be called with
+//update_thread_mutex held.
+//
+//This used to join the update thread, which both waited for the work AND disposed of the
+//thread. Now the thread outlives the update, so waiting means waiting on the condition
+//variable the worker signals when it clears update_thread_active. Every caller that
+//previously relied on "the update is done when this returns" still gets exactly that, so
+//the 16 call sites are unaffected.
+//
+//The wait is a predicate loop, not a single wait: condition variables permit spurious
+//wakeups, and a lost wakeup is possible in the other direction too (the worker can finish
+//before anyone waits). Re-testing update_thread_active covers both.
 tfxINTERNAL inline void tfx__wait_for_stage_update_locked(tfx_stage pm) {
-	if (pm->update_thread_active) {
-		tfx__join_thread(&pm->update_thread);
-		pm->update_thread_active = false;
+	while (pm->update_thread_active) {
+		tfx__sync_wait_empty(&pm->update_thread_mutex);
 	}
 }
 tfxINTERNAL inline void tfx__wait_for_stage_update(tfx_stage pm) {
@@ -7539,7 +7566,7 @@ tfxINTERNAL inline void tfx__wait_for_stage_update(tfx_stage pm) {
 	tfx__wait_for_stage_update_locked(pm);
 	tfx__sync_unlock(&pm->update_thread_mutex);
 }
-//If another thread is currently recording sprite data on this pm, block until
+//If another thread is currently recording sprite data on this stage, block until
 //it finishes. Re-entrant calls from the recording thread itself pass through
 //immediately (tfx__record_sprite_data internally calls tfx_ReconfigureStage
 //and tfx_ClearStage while the recording flag is still set).

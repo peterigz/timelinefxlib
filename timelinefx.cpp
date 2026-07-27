@@ -12197,8 +12197,70 @@ unsigned TFX_THREAD_CALL tfx__update_stage_thread(void *data) {
 void *tfx__update_stage_thread(void *data) {
 #endif
 	tfx_stage pm = (tfx_stage)data;
-	tfx__update_stage(pm);
+
+#ifdef tfxTRACY
+	char thread_name[48];
+	snprintf(thread_name, sizeof(thread_name), "TimelineFX Stage %u Update", pm->stage_index);
+	tracy::SetThreadNameWithHint(thread_name, 2);
+#endif
+
+	tfx__sync_lock(&pm->update_thread_mutex);
+	for (;;) {
+		//Park until there is an update to run or the stage is going away. Predicate loop:
+		//the wakeup for work published before this thread first reached the wait would
+		//otherwise be lost.
+		while (!pm->update_thread_active && !pm->update_thread_exit) {
+			tfx__sync_wait_full(&pm->update_thread_mutex);
+		}
+		if (pm->update_thread_exit) {
+			break;
+		}
+
+		tfx__sync_unlock(&pm->update_thread_mutex);
+		tfx__update_stage(pm);
+		tfx__sync_lock(&pm->update_thread_mutex);
+
+		pm->update_thread_active = false;
+		//Broadcast, not signal: tfx__wait_for_stage_update is reachable from many API
+		//entry points and more than one thread can be blocked here at once (e.g. a sprite
+		//data recording thread and the caller draining buffers). Waking only one would
+		//strand the rest.
+		tfx__sync_broadcast_empty(&pm->update_thread_mutex);
+	}
+	tfx__sync_unlock(&pm->update_thread_mutex);
 	return 0;
+}
+
+//Create the persistent update thread on first use. Called with update_thread_mutex held.
+//Returns false if the thread could not be created, in which case the caller runs the
+//update synchronously, exactly as it did when creation failed before.
+tfxINTERNAL bool tfx__ensure_update_thread_locked(tfx_stage pm) {
+	if (pm->update_thread_started) {
+		return true;
+	}
+	pm->update_thread_exit = false;
+	if (tfx__create_thread(&pm->update_thread, tfx__update_stage_thread, pm)) {
+		pm->update_thread_started = true;
+	}
+	return pm->update_thread_started;
+}
+
+void tfx__shutdown_update_thread(tfx_stage pm) {
+	tfx__sync_lock(&pm->update_thread_mutex);
+	if (!pm->update_thread_started) {
+		tfx__sync_unlock(&pm->update_thread_mutex);
+		return;
+	}
+	//Drain anything still in flight before asking the thread to leave, so an update is
+	//never abandoned half done.
+	tfx__wait_for_stage_update_locked(pm);
+	pm->update_thread_exit = true;
+	tfx__sync_signal_full(&pm->update_thread_mutex);
+	tfx__sync_unlock(&pm->update_thread_mutex);
+
+	//Join outside the lock - the thread needs to reacquire the mutex to exit its loop.
+	tfx__join_thread(&pm->update_thread);
+	pm->update_thread_started = false;
 }
 
 void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
@@ -12228,10 +12290,18 @@ void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 		}
 		pm->manager_work.elapsed_time = elapsed_time;
 		pm->manager_work.pm = pm;
+		//Drain the previous frame's update before publishing this frame's work. Same
+		//timing as before: the join point is the start of the NEXT tfx_UpdateStage (or an
+		//explicit tfx_CompleteStageWork), never the end of this one.
 		tfx__wait_for_stage_update_locked(pm);
-		bool spawned = tfx__create_thread(&pm->update_thread, tfx__update_stage_thread, pm);
+		bool spawned = tfx__ensure_update_thread_locked(pm);
 		if (spawned) {
+			//Publish the work and wake the thread. This does NOT wait for it - the update
+			//runs concurrently with the caller's frame and the sprite/instance buffers are
+			//not safe to read until tfx_CompleteStageWork or the next tfx_UpdateStage,
+			//exactly as documented in timelinefx.h.
 			pm->update_thread_active = true;
+			tfx__sync_signal_full(&pm->update_thread_mutex);
 		}
 		tfx__sync_unlock(&pm->update_thread_mutex);
 		if (!spawned) {
@@ -14389,6 +14459,10 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 void tfx_FreeStage(tfx_stage pm) {
 	tfx__wait_for_external_recording(pm);
 	tfx__wait_for_stage_update(pm);
+	//The update thread outlives individual updates now, so draining the in-flight work is
+	//no longer enough to be rid of it - it has to be told to exit and joined before the
+	//stage memory it holds a pointer to goes away.
+	tfx__shutdown_update_thread(pm);
 	tfx__free_all_particle_lists(pm);
 	tfx__free_all_spawn_location_lists(pm);
 	tfx__free_gpu_groups(pm);
@@ -18751,6 +18825,7 @@ void tfx__sync_wait_empty(tfx_sync_t *sync) { SleepConditionVariableCS(tfx__cv_e
 void tfx__sync_wait_full(tfx_sync_t *sync) { SleepConditionVariableCS(tfx__cv_full(sync), tfx__cs(sync), INFINITE); }
 void tfx__sync_signal_empty(tfx_sync_t *sync) { WakeConditionVariable(tfx__cv_empty(sync)); }
 void tfx__sync_signal_full(tfx_sync_t *sync) { WakeConditionVariable(tfx__cv_full(sync)); }
+void tfx__sync_broadcast_empty(tfx_sync_t *sync) { WakeAllConditionVariable(tfx__cv_empty(sync)); }
 
 tfx_thread_id_t tfx__current_thread_id(void) { return GetCurrentThreadId(); }
 void tfx__thread_sleep_ms(int ms) { Sleep(ms); }
@@ -18807,6 +18882,7 @@ void tfx__sync_wait_empty(tfx_sync_t *sync) { pthread_cond_wait(&sync->empty_con
 void tfx__sync_wait_full(tfx_sync_t *sync) { pthread_cond_wait(&sync->full_condition, &sync->mutex); }
 void tfx__sync_signal_empty(tfx_sync_t *sync) { pthread_cond_signal(&sync->empty_condition); }
 void tfx__sync_signal_full(tfx_sync_t *sync) { pthread_cond_signal(&sync->full_condition); }
+void tfx__sync_broadcast_empty(tfx_sync_t *sync) { pthread_cond_broadcast(&sync->empty_condition); }
 
 tfx_thread_id_t tfx__current_thread_id(void) { return pthread_self(); }
 void tfx__thread_sleep_ms(int ms) {
@@ -19192,6 +19268,12 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	pm->free_particle_lists.init();
 	pm->free_particle_location_lists.init();
 	pm->magic = tfxINIT_MAGIC(tfx_struct_type_stage);
+	//Stable identity for this stage. Assigned from a monotonic counter rather than reusing
+	//a slot index so it stays unique for the life of the process even as stages are freed
+	//and recreated - a profiler lane named after a recycled index would silently merge two
+	//unrelated stages. tfx_AtomicAdd32 returns the pre-add value, so the first stage is 0.
+	static tfxU32 volatile stage_index_counter = 0;
+	pm->stage_index = tfx_AtomicAdd32(&stage_index_counter, 1);
 	pm->info = info;
 	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
