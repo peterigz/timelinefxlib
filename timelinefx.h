@@ -21,8 +21,11 @@
 #define TFX_ENABLE_COMPILER_WARNING()
 #endif
 
-#define tfxENABLE_PROFILING
-#define tfxPROFILER_SAMPLES 60
+//Profiling is done through Tracy (https://github.com/wolfpld/tracy). Define tfxTRACY
+//(along with Tracy's own TRACY_ENABLE) to turn the tfxPROFILE markers scattered through
+//the library into Tracy zones. Without it they compile away to nothing, so a shipping
+//build pays for no instrumentation at all.
+//#define tfxTRACY
 #define TFX_THREAD_SAFE
 //#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement

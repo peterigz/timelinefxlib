@@ -5139,8 +5139,6 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 //Section: Global_Variables
 //-----------------------------------------------------------
 // Platform-specific synchronization wrapper
-extern const tfxU32 tfxPROFILE_COUNT;
-
 extern int tfxNumberOfThreadsInAdditionToMain;
 
 #ifndef tfxMAX_QUEUES
@@ -5836,63 +5834,29 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 //-----------------------------------------------------------
 
 
-typedef struct tfx_profile_stats_s {
-	tfxU64 cycle_high;
-	tfxU64 cycle_low;
-	tfxU64 cycle_average;
-	tfxU64 time_high;
-	tfxU64 time_low;
-	tfxU64 time_average;
-	tfxU32 hit_count;
-} tfx_profile_stats_t;
+//Profiling is delegated entirely to Tracy. The library used to carry its own sampling
+//profiler here (a global array of per-function snapshot rings, indexed by __COUNTER__,
+//accumulated with atomics). It was a bit lackluster so I just decided to use tracy instead
+//
+//tfxPROFILE is scope based: it times from the point of declaration to the end of the
+//enclosing scope. tfxPROFILE_NAMED gives the zone an explicit name instead of taking the
+//enclosing function's.
+//
+//Tracy's zone macros are C++ only. The C path of this header (and any C translation unit
+//that includes it) compiles the markers away, which is fine because every tfxPROFILE site
+//lives in timelinefx.cpp.
+#if defined(tfxTRACY) && defined(__cplusplus)
 
-typedef struct tfx_profile_snapshot_s {
-	tfxU32 hit_count;
-	tfxU64 run_time;
-	tfxU64 cycle_count;
-}tfx_profile_snapshot_t;
+#include <tracy/Tracy.hpp>
 
-typedef struct tfx_profile_s {
-	const char *name;
-	tfx_profile_snapshot_t snapshots[tfxPROFILER_SAMPLES];
-} tfx_profile_t;
-
-extern const tfxU32 tfxPROFILE_COUNT;
-extern tfxU32 tfxCurrentSnapshot;
-extern tfx_profile_t tfxProfileArray[];
-
-#ifdef __cplusplus
-
-struct tfx_profile_tag_t {
-	tfx_profile_t *profile;
-	tfx_profile_snapshot_t *snapshot;
-	tfxU64 start_cycles;
-	tfxU64 start_time;
-
-	tfx_profile_tag_t(tfxU32 id, const char *name);
-
-	~tfx_profile_tag_t() {
-		tfx_AtomicAdd64(&snapshot->run_time, tfx_Microsecs() - start_time);
-		tfx_AtomicAdd64(&snapshot->cycle_count, (tfx__rdtsc() - start_cycles));
-	}
-
-};
+#define tfxPROFILE ZoneScoped
+#define tfxPROFILE_NAMED(name) ZoneScopedN(name)
 
 #else
 
-typedef struct tfx_profile_tag_s {
-	tfx_profile_t *profile;
-	tfx_profile_snapshot_t *snapshot;
-	tfxU64 start_cycles;
-	tfxU64 start_time;
-} tfx_profile_tag_t;
+#define tfxPROFILE ((void)0)
+#define tfxPROFILE_NAMED(name) ((void)0)
 
-#endif
-
-#ifdef tfxENABLE_PROFILING 
-#define tfxPROFILE tfx_profile_tag_t tfx_tag = {(tfxU32)__COUNTER__, __FUNCTION__};
-#else
-#define tfxPROFILE __COUNTER__
 #endif
 
 //-----------------------------------------------------------
@@ -7462,14 +7426,6 @@ tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { tfx_rgba_t color = { 1.f, 1
 tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { tfx_rgba_t color = { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; return color; }
 tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size);
 tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter);
-
-//--------------------------------
-//Profilings
-//--------------------------------
-tfxAPI_EDITOR void tfx__gather_stats(tfx_profile_t *profile, tfx_profile_stats_t *stat);
-tfxAPI_EDITOR void tfx__reset_snap_shot(tfx_profile_snapshot_t *snapshot);
-tfxAPI_EDITOR void tfx__reset_snap_shots();
-tfxAPI_EDITOR void tfx__dump_snapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount);
 
 //--------------------------------
 //Reading/Writing files

@@ -14801,61 +14801,6 @@ tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation) {
 	return info;
 }
 
-void tfx__gather_stats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
-	stat->cycle_high = 0;
-	stat->cycle_low = tfxMAX_64u;
-	stat->time_high = 0;
-	stat->time_low = tfxMAX_64u;
-	stat->hit_count = 0;
-	stat->cycle_average = 0;
-	stat->time_average = 0;
-	for (tfxU32 i = 0; i != tfxPROFILER_SAMPLES; ++i) {
-		tfx_profile_snapshot_t *snap = profile->snapshots + i;
-		stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
-		stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
-		stat->cycle_average += snap->cycle_count;
-		stat->time_high = tfxMax(snap->run_time, stat->time_high);
-		stat->time_low = tfxMin(snap->run_time, stat->time_low);
-		stat->time_average += snap->run_time;
-		stat->hit_count += snap->hit_count;
-	}
-	stat->cycle_average /= tfxPROFILER_SAMPLES;
-	stat->time_average /= tfxPROFILER_SAMPLES;
-	stat->hit_count /= tfxPROFILER_SAMPLES;
-}
-
-void tfx__reset_snap_shot(tfx_profile_snapshot_t *snapshot) {
-	snapshot->cycle_count = 0;
-	snapshot->hit_count = 0;
-	snapshot->run_time = 0;
-}
-
-void tfx__reset_snap_shots() {
-	for (tfxU32 i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfx_profile_t *profile = tfxProfileArray + i;
-		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfx_profile_snapshot_t));
-	}
-}
-
-void tfx__dump_snapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount) {
-	for (tfxU32 i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfx_profile_t *profile = tfxProfileArray + i;
-		if (!profile->name) {
-			tfx__reset_snap_shot(profile->snapshots + i);
-			continue;
-		}
-		if (!profile_snapshots->ValidName(profile->name)) {
-			tfx_vector_t<tfx_profile_snapshot_t> snapshots;
-			profile_snapshots->Insert(profile->name, snapshots);
-		}
-		tfx_vector_t<tfx_profile_snapshot_t> &snapshots = profile_snapshots->At(profile->name);
-		tfxU32 offset = snapshots.current_size;
-		snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
-		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfx_profile_snapshot_t));
-		memset(profile->snapshots, 0, sizeof(tfx_profile_snapshot_t) * tfxPROFILER_SAMPLES);
-	}
-}
-
 void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].user_data = data;
@@ -18706,9 +18651,6 @@ void tfx__transform_effect(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotati
 	*q = tfx__euler_to_quaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
 }
 
-const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
-tfxU32 tfxCurrentSnapshot = 0;
-tfx_profile_t tfxProfileArray[tfxPROFILE_COUNT];
 int tfxNumberOfThreadsInAdditionToMain = 0;
 
 tfx_storage_t *tfxStore = 0;
@@ -18753,6 +18695,20 @@ void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 unsigned TFX_THREAD_CALL tfx__thread_worker(void *arg) {
 #else
 void *tfx__thread_worker(void *arg) {
+#endif
+#ifdef tfxTRACY
+	//Tracy keys threads by OS thread id, so an unnamed worker shows up in the timeline as a
+	//bare number - which defeats the point, since reading the per-thread lanes is the whole
+	//reason for profiling this. Number them off an atomic counter rather than a parameter:
+	//every worker is handed the same argument (&storage->thread_queues), so there is no
+	//per-thread index available here to read. tfx_AtomicAdd32 returns the pre-add value, so
+	//the first worker is 0. The group hint folds the workers into one collapsible group in
+	//the UI instead of leaving a wall of separate lanes. SetThreadNameWithHint copies the
+	//string, so the stack buffer is safe.
+	static tfxU32 volatile tracy_worker_count = 0;
+	char thread_name[32];
+	snprintf(thread_name, sizeof(thread_name), "TimelineFX Worker %u", tfx_AtomicAdd32(&tracy_worker_count, 1));
+	tracy::SetThreadNameWithHint(thread_name, 1);
 #endif
 	tfx_queue_processor_t *queue_processor = (tfx_queue_processor_t *)arg;
 	while (!tfx__do_next_work_queue(queue_processor)) {
@@ -18989,15 +18945,6 @@ tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block) {
 		stats.used_size += tfx__block_size(current_block);
 	}
 	return stats;
-}
-
-tfx_profile_tag_t::tfx_profile_tag_t(tfxU32 id, const char *name) {
-	profile = tfxProfileArray + id;
-	profile->name = name;
-	snapshot = profile->snapshots + tfxCurrentSnapshot;
-	start_time = tfx_Microsecs();
-	start_cycles = tfx__rdtsc();
-	tfx_AtomicAdd32(&snapshot->hit_count, 1);
 }
 
 bool tfx__control_profile_has_noise(tfxEmitterControlProfileFlags flags) {
