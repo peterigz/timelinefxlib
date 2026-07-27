@@ -5524,6 +5524,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("animation_frames", tfxFloat);
 	names_and_types.Insert("handle", tfxFloat2);
 	names_and_types.Insert("start_frame_index", tfxUInt);
+	names_and_types.Insert("color_ramp_index", tfxUInt);
 
 	//Animation settings
 	names_and_types.Insert("playback_speed", tfxFloat);
@@ -5790,6 +5791,7 @@ void tfx__assign_animation_emitter_property_float(tfx_gpu_particle_properties_t 
 void tfx__assign_animation_emitter_property_u32(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "flags") properties->flags = value;
 	if (*field == "start_frame_index") properties->start_frame_index = value;
+	if (*field == "color_ramp_index") properties->color_ramp_indexes = value;
 }
 
 void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
