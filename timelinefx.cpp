@@ -10178,8 +10178,14 @@ void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float upd
 
 tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances) {
 	tfx_animation_manager animation_manager = tfxNEW(tfx_animation_manager);
+	TFX_ASSERT(animation_manager);	//Unable to allocate the animation manager, out of memory?
+	if (!animation_manager) {
+		return nullptr;	//Out of memory. Release builds return null here rather than dereferencing a null animation manager.
+	}
 	memset((void *)animation_manager, 0, sizeof(tfx_animation_manager_t));
 	animation_manager->magic = tfxINIT_MAGIC(tfx_struct_type_animation_manager);
+	//Register the animation manager in the store so that tfx_EndTimelineFX can sweep up any that the user didn't free themselves.
+	tfxStore->animation_managers.Insert((tfxKey)animation_manager, animation_manager);
 	animation_manager->instances.reserve(max_instances);
 	animation_manager->free_instances.reserve(max_instances);
 	animation_manager->render_queue.reserve(max_instances);
@@ -10198,6 +10204,9 @@ tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances) {
 
 tfx_animation_manager tfx_CreateAnimationManager(tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
 	tfx_animation_manager animation_manager = tfx__create_animation_manager(max_instances);
+	if (!animation_manager) {
+		return nullptr;	//Out of memory.
+	}
 	animation_manager->sprite_data.reserve(initial_sprite_data_capacity);
 	animation_manager->flags = tfxAnimationManagerFlags_initialised;
 	return animation_manager;
@@ -10771,6 +10780,13 @@ void tfx_FreeAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->color_ramps.color_ramp_count = 0;
 	animation_manager->buffer_metrics = { 0 };
 	animation_manager->flags = 0;
+	//Deregister from the store so that the sweep in tfx_EndTimelineFX doesn't free the animation manager a second time.
+	if (tfxStore->animation_managers.ValidKey((tfxKey)animation_manager)) {
+		tfxStore->animation_managers.Remove((tfxKey)animation_manager);
+	}
+	//Invalidate the handle so that the TFX_VALID_HANDLE check at the top of this function catches a double free
+	//as long as the memory hasn't been handed out again.
+	animation_manager->magic = 0;
 	tfxFREE(animation_manager);
 }
 
@@ -14452,6 +14468,10 @@ void tfx_FreeStage(tfx_stage pm) {
 	}
 	pm->path_quaternions.free();
 	pm->free_path_quaternions.free();
+	//Deregister from the store so that the sweep in tfx_EndTimelineFX doesn't free the stage a second time.
+	if (tfxStore->stages.ValidKey((tfxKey)pm)) {
+		tfxStore->stages.Remove((tfxKey)pm);
+	}
 	tfxFREE(pm);
 }
 
@@ -18710,6 +18730,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
 	//tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
 	tfxStore->stages.init();
+	tfxStore->animation_managers.init();
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfx__hash_initialise(&tfxStore->hasher, 0);
 }
@@ -18889,11 +18910,16 @@ void tfx_EndTimelineFX() {
 	tfxStore->thread_queues.end_all_threads = true;
 	tfx__writebarrier;
 
-	for (tfx_stage stage : tfxStore->stages.data) {
+	while (tfxStore->stages.Size()) {
+		tfx_stage stage = tfxStore->stages.data.back();
 		tfx_CompleteStageWork(stage);
 		tfx_FreeStage(stage);
 	}
 	tfxStore->stages.FreeAll();
+	while (tfxStore->animation_managers.Size()) {
+		tfx_FreeAnimationManager(tfxStore->animation_managers.data.back());
+	}
+	tfxStore->animation_managers.FreeAll();
 	while (tfxStore->libraries.Size()) {
 		tfx_FreeLibrary(tfxStore->libraries.data.back());
 	}

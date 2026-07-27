@@ -667,10 +667,11 @@ Ownership and teardown ordering
 Everything is allocated from the memory pool created by tfx_BeginTimelineFX, so tfx_EndTimelineFX must be the
 very last TimelineFX call you make — it tears down the worker threads and the pool itself.
 
-tfx_EndTimelineFX sweeps up any stages and libraries you did not free yourself (it completes and frees every
-stage, then frees every library). It does NOT sweep effect templates or animation managers, so you must free
-those explicitly with tfx_FreeEffectTemplate / tfx_FreeAnimationManager before calling tfx_EndTimelineFX or the
-built-in leak check will report leaked blocks.
+tfx_EndTimelineFX sweeps up any stages, animation managers and libraries you did not free yourself (it completes
+and frees every stage, then frees every animation manager, then every library). Freeing any of them yourself
+first is fine — they deregister from the sweep as they go, so there is no double free either way. It does NOT
+sweep effect templates, so you must free those explicitly with tfx_FreeEffectTemplate before calling
+tfx_EndTimelineFX or the built-in leak check will report leaked blocks.
 
 If you free objects yourself rather than leaving them to the sweep, free them in dependency order: free/complete
 a stage before the library whose effects it is simulating (a live stage references the library's effect data);
@@ -1395,7 +1396,9 @@ free all the memory associated with the effect manager.
 tfxAPI void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buffers);
 
 /*
-Free all the memory used in the effect manager.
+Free all the memory used in the effect manager. You don't have to call this - tfx_EndTimelineFX frees any stages
+that are still alive - but you can free them earlier if you want to reclaim the memory. Calling it is safe either
+way, the stage is deregistered from the shutdown sweep so it won't be freed twice.
 * @param pm                        A pointer to an initialised tfx_stage_t.
 */
 tfxAPI void tfx_FreeStage(tfx_stage pm);
@@ -1920,9 +1923,11 @@ from being drawn
 tfxAPI void tfx_ResetAnimationManager(tfx_animation_manager animation_manager);
 
 /*
-Frees all data from the animation manager including sprite data, metrics and instances and also the handle itself
-from being drawn
-* @param animation_manager        A pointer to a tfx_animation_manager_t that you want to reset
+Frees all data from the animation manager including sprite data, metrics and instances and also the handle itself.
+You don't have to call this - tfx_EndTimelineFX frees any animation managers that are still alive - but you can
+free them earlier if you want to reclaim the memory. Calling it is safe either way, the animation manager is
+deregistered from the shutdown sweep so it won't be freed twice.
+* @param animation_manager        A pointer to a tfx_animation_manager_t that you want to free
 */
 tfxAPI void tfx_FreeAnimationManager(tfx_animation_manager animation_manager);
 

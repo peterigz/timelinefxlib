@@ -5200,10 +5200,12 @@ typedef struct tfx_storage_s {
 #ifdef __cplusplus
 	tfx_storage_map_t<tfx_stage> stages;
 	tfx_storage_map_t<tfx_library> libraries;
+	tfx_storage_map_t<tfx_animation_manager> animation_managers;
 	tfx_storage_map_t<tfxU32> graph_indexes;
 #else
 	tfx_storage_map_t stages;
 	tfx_storage_map_t libraries;
+	tfx_storage_map_t animation_managers;
 	tfx_storage_map_t graph_indexes;
 #endif
 	tfx_buffer_t gpu_graph_data;
