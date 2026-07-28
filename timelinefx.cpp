@@ -12104,19 +12104,24 @@ void tfx__update_stage(void *data) {
 
 	tfx__update_ribbon_buffer_requirements(pm);
 
-	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
-		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
-		for (tfxEachLayer) {
-			for (auto &depth : sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer]]) {
-				if (depth.particle_id != tfxINVALID) {
-					tfxU32 bank = tfx__particle_bank(depth.particle_id);
-					tfxU32 index = tfx__particle_index(depth.particle_id);
-					pm->particle_arrays[bank].depth_index[index] = sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer] ^ 1].current_size;
-					sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer] ^ 1].push_back(depth);
+	{
+		//Braces exist only to scope the zone: this walks every depth index of every in-use effect on
+		//every layer, so it scales with total live particle count and deserves its own bar.
+		tfxPROFILE_NAMED("Depth Index Compaction");
+		for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
+			tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
+			for (tfxEachLayer) {
+				for (auto &depth : sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer]]) {
+					if (depth.particle_id != tfxINVALID) {
+						tfxU32 bank = tfx__particle_bank(depth.particle_id);
+						tfxU32 index = tfx__particle_index(depth.particle_id);
+						pm->particle_arrays[bank].depth_index[index] = sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer] ^ 1].current_size;
+						sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer] ^ 1].push_back(depth);
+					}
 				}
+				sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer]].clear();
+				sprites.current_depth_buffer_index[layer] = sprites.current_depth_buffer_index[layer] ^ 1;
 			}
-			sprites.depth_indexes[layer][sprites.current_depth_buffer_index[layer]].clear();
-			sprites.current_depth_buffer_index[layer] = sprites.current_depth_buffer_index[layer] ^ 1;
 		}
 	}
 
@@ -12166,6 +12171,7 @@ void tfx__update_stage(void *data) {
 	pm->current_ebuff = next_buffer;
 
 	if (pm->flags & tfxStageFlags_update_bounding_boxes) {
+		tfxPROFILE_NAMED("Effect Bounding Boxes");
 		for (tfxU32 i = 0; i != pm->effects_in_use[pm->current_ebuff].size(); ++i) {
 			tfx_effect_index_t effect_index = pm->effects_in_use[pm->current_ebuff][i];
 			tfx_effect_state_t &effect = pm->effects[effect_index.index];
@@ -13162,6 +13168,7 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 }
 
 void tfx__control_ribbon_hide(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
 	tfx_control_ribbon_work_entry_t *work_entry = static_cast<tfx_control_ribbon_work_entry_t *>(data);
 	tfxU32 ribbon_index = work_entry->ribbon_index;
 	tfx_stage_t &pm = *work_entry->pm;
@@ -13231,11 +13238,6 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
 		pm.running_ribbon_vertex_count += ribbon_count * ribbon_emitter.segment_count * bucket->buffer_info.vertices_per_segment;
 	}
-}
-
-void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-
 }
 
 void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
@@ -14150,6 +14152,7 @@ tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch() {
 }
 
 void tfx__reset_ribbon_buffer_requirements(tfx_stage pm) {
+	tfxPROFILE;
 	pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes = 0;
 	pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes = 0;
 	pm->ribbon_buffer_requirements.emitter_buffer_size_in_bytes = 0;
@@ -14164,6 +14167,7 @@ void tfx__reset_ribbon_buffer_requirements(tfx_stage pm) {
 }
 
 void tfx__update_ribbon_buffer_requirements(tfx_stage pm) {
+	tfxPROFILE;
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 	while (bucket) {
 		if (bucket->lowest_ribbon_index > bucket->highest_ribbon_index) {
@@ -15395,6 +15399,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 }
 
 tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
+	tfxPROFILE;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 	tfx_library library = ribbon_emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + ribbon_emitter.seed_index);
@@ -17148,6 +17153,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 }
 
 void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 	tfx_stage_t &pm = *entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[ribbon_emitter_index];
@@ -17358,9 +17364,6 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	if (entry->amount_to_spawn > 0 && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
 		ribbon_emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
-}
-
-void tfx__spawn_ribbon_path(tfx_work_queue_t *queue, void *data) {
 }
 
 void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
@@ -18026,6 +18029,7 @@ tfxU32 tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 c
 //Seals this frame's spawn count into the tracking ring, then bumps ring_head past any
 //entries whose particles are guaranteed fully expired (spawn_time + life_ceiling <= now).
 void tfx__tick_gpu_groups(tfx_stage pm, float current_time_ms) {
+	tfxPROFILE;
 	for (tfxU32 i = 0; i < pm->gpu_groups.data.current_size; ++i) {
 		tfx_gpu_particle_group_t &group = pm->gpu_groups.data[i];
 
