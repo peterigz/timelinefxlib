@@ -1096,6 +1096,7 @@ int tfx__sort_depth(void const *left, void const *right) {
 }
 
 void tfx__insertion_sort_depth(tfx_work_queue_t *queue, void *work_entry) {
+	tfxPROFILE;
 	tfx_bucket_array_t<tfx_particle_soa_t> &bank = *static_cast<tfx_sort_work_entry_t *>(work_entry)->bank;
 	tfx_vector_t<tfx_depth_index_t> &depth_indexes = *static_cast<tfx_sort_work_entry_t *>(work_entry)->depth_indexes;
 	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
@@ -11527,6 +11528,7 @@ void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index) {
 }
 
 void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm) {
+	tfxPROFILE;
 	tfxU32 depth_starting_index = sprites->depth_starting_index[layer];
 	tfxU32 current_depth_buffer = sprites->current_depth_buffer_index[layer];
 	tfx_vector_t<tfx_depth_index_t> &current_depth_indexes = sprites->depth_indexes[layer][current_depth_buffer];
@@ -11570,6 +11572,7 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 }
 
 void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count) {
+	tfxPROFILE;
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
 	float &timeout_counter = effect.timeout_counter;
@@ -11679,6 +11682,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 }
 
 void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording) {
+	tfxPROFILE;
 	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 	int particles_to_update = bank.current_size;
 	tfxU32 running_start_index = 0;
@@ -11753,6 +11757,7 @@ void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording
 }
 
 void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index) {
+	tfxPROFILE;
 	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 	//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
 	//by calling tfx_SetStageWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
@@ -11836,6 +11841,9 @@ void tfx__update_stage(void *data) {
 	//next_buffer's lists on tfxStageFlags_warming_up so non-warming effects already in
 	//effects_in_use[current_ebuff] are not disturbed and the normal update below picks up where it left off.
 	if (pm->warmup_effects[0].current_size > 0) {
+		//Named zone: the loop below runs an arbitrary number of full sim ticks inside this single
+		//tfx__update_stage call, so without its own zone a warmup spike is indistinguishable from a slow frame.
+		tfxPROFILE_NAMED("Warmup Ticks");
 		tfxU32 current_warmup_buffer = 0;
 		pm->flags |= tfxStageFlags_warming_up;
 		tfx__set_stage_timings(pm, pm->warmup_delta_time, pm->max_frame_length);
@@ -12135,6 +12143,7 @@ void tfx__update_stage(void *data) {
 				}
 			}
 			else if (effect.sort_passes > 0) {
+				tfxPROFILE_NAMED("Depth Sort Passes");
 				for (tfxEachLayer) {
 					tfx_vector_t<tfx_depth_index_t> &depth_index = effect.instance_data.depth_indexes[layer][effect.instance_data.current_depth_buffer_index[layer]];
 					//Add this to a work queue
@@ -12264,6 +12273,10 @@ void tfx__shutdown_update_thread(tfx_stage pm) {
 }
 
 void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
+	//This zone measures what the CALLER pays, not what the update costs - the drain below plus
+	//tfx__wait_for_stage_update_locked is the only place the caller blocks. If this bar is wide the
+	//update is no longer overlapping the caller's frame.
+	tfxPROFILE;
 	//Wait for the previous frame's update thread to finish
 	tfx__complete_all_work(&pm->work_queue);
 
@@ -14941,6 +14954,7 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 }
 
 void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data) {
+	tfxPROFILE;
 	tfx_ribbon_work_entry_t *ribbon_work_entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 	tfx_stage pm = ribbon_work_entry->pm;
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
@@ -14972,6 +14986,7 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 }
 
 void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *work_queue, void *data) {
+	tfxPROFILE;
 	tfx_ribbon_work_entry_t *ribbon_work_entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 
 	tfx_stage pm = ribbon_work_entry->pm;
@@ -15543,6 +15558,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 }
 
 void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_stage pm = work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
