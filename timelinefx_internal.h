@@ -9192,7 +9192,6 @@ tfxINTERNAL void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__spawn_ribbon_path(tfx_work_queue_t *queue, void *data);
 
 typedef float(*tfx_easing_function)(float);
 typedef float(*tfx_bezier_function)(float, float, float, float, float);
@@ -9286,7 +9285,6 @@ tfxINTERNAL void tfx__control_ribbons_ages(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_hide(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_stage pm);
 tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_stage pm);
