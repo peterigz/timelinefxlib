@@ -7262,7 +7262,10 @@ typedef struct tfx_stage_s {
 #endif
 	//The update thread is persistent: it is created on the first multithreaded
 	//tfx_UpdateStage and lives until tfx_FreeStage, parked on update_thread_mutex's
-	//full_condition between frames. 
+	//full_condition between frames.
+	//All three flags below are written and read ONLY under update_thread_mutex - that is
+	//what makes plain bools safe here rather than atomics. Reading one outside the lock is
+	//a data race even though it looks harmless.
 	bool update_thread_active; 	//  update_thread_active   an update is in flight - the handshake predicate
 	bool update_thread_started; //  update_thread_started  the persistent thread exists
 	bool update_thread_exit; 	//  update_thread_exit     shutdown requested; the thread breaks out of its loop
