@@ -2335,17 +2335,26 @@ bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	for (tfx_effect_descriptor child : effect->children) {
 		if (tfx__is_descriptor_hidden(child)) continue;
-		float qty = tfx__get_graph_last_value(tfx__get_descriptor_graph(child, tfxEmitter_base_amount_index)) + tfx__get_graph_last_value(tfx__get_descriptor_graph(child, tfxEmitter_variation_amount_index));
-		if (child->state_properties.path_attributes != tfxINVALID && tfx__get_shared_emitter_properties(child)->emission_type == tfxPath) {
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
+		bool is_ribbon = child->type == tfxRibbonType;
+		//Ribbon descriptors have their own graph list layout so the emitter amount indexes would read
+		//completely unrelated graphs (variation amount and heat response) from a ribbon's graph list.
+		tfxU32 base_amount_index = is_ribbon ? (tfxU32)tfxRibbon_base_amount_index : (tfxU32)tfxEmitter_base_amount_index;
+		tfxU32 variation_amount_index = is_ribbon ? (tfxU32)tfxRibbon_variation_amount_index : (tfxU32)tfxEmitter_variation_amount_index;
+		float qty = tfx__get_graph_last_value(tfx__get_descriptor_graph(child, base_amount_index)) + tfx__get_graph_last_value(tfx__get_descriptor_graph(child, variation_amount_index));
+		//If the emitter is tfxOtherEmitter or tfxSpawnOnRibbon then how finite it is depends on the source emitter/ribbon.
+		//Its particles can still loop forever though, so the single shot limit check below still applies to it.
+		bool spawns_from_paired_source = shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon;
+		if (child->state_properties.path_attributes != tfxINVALID && shared_properties->emission_type == tfxPath) {
 			tfx_emitter_path_t *path = tfx_GetEmitterPath(child);
 			if (path->settings.rotation_range > 0 && path->settings.maximum_paths > 0) {
 				continue;
 			}
 		}
-		if (!(child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && qty > 0) {
+		if (!(child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && qty > 0 && !spawns_from_paired_source) {
 			return false;
 		}
-		else if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && tfx__get_shared_emitter_properties(child)->single_shot_limit == 0) {
+		else if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit == 0) {
 			return false;
 		}
 	}
@@ -8134,7 +8143,13 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 
 	float effect_lifetime = 0.f;
 
-	for (tfx_effect_descriptor child : effect->children) {
+	//Per child lifetime, kept separately so that emitters which spawn from a paired sibling (tfxOtherEmitter
+	//and tfxSpawnOnRibbon) can be resolved afterwards against the lifetime of the source they spawn from.
+	tmpStack(float, child_lifetimes);
+	child_lifetimes.resize(effect->children.size(), 0.f);
+
+	for (tfxU32 child_index = 0; child_index != effect->children.size(); ++child_index) {
+		tfx_effect_descriptor child = effect->children[child_index];
 		if (!tfx__is_emitter_type(child)) continue;
 		if (tfx__is_descriptor_hidden(child)) continue;
 
@@ -8142,6 +8157,13 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 		tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
 		bool is_ribbon = child->type == tfxRibbonType;
 		bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
+
+		//These emitters have no spawn window of their own, they spawn for as long as the emitter they're
+		//paired with has particles/ribbons alive. Resolved in the second pass below once every sibling
+		//that does have a spawn window of its own has been measured.
+		if (shared_props->emission_type == tfxOtherEmitter || shared_props->emission_type == tfxSpawnOnRibbon) {
+			continue;
+		}
 
 		tfx_graph_t *life_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_base_life_index : (int)tfxEmitter_base_life_index];
 		tfx_graph_t *life_variation_graph = &child_graphs.graphs[is_ribbon ? (int)tfxRibbon_variation_life_index : (int)tfxEmitter_variation_life_index];
@@ -8166,9 +8188,7 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 			float life_at_zero = tfx__get_graph_first_value(life_graph) + tfx__get_graph_first_value(life_variation_graph);
 			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, delay_spawning);
 			float total_life = delay_spawning + life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
-			if (total_life > effect_lifetime) {
-				effect_lifetime = total_life;
-			}
+			child_lifetimes[child_index] = total_life;
 			continue;
 		}
 
@@ -8190,11 +8210,56 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, effect_age);
 			float life = (tfx__get_graph_value_by_age(life_graph, t) + tfx__get_graph_value_by_age(life_variation_graph, t)) * global_life_adjust * life_factor;
 			float death_time = effect_age + life;
-			if (death_time > effect_lifetime) {
-				effect_lifetime = death_time;
+			if (death_time > child_lifetimes[child_index]) {
+				child_lifetimes[child_index] = death_time;
 			}
 		}
 	}
+
+	//Second pass for the emitters that spawn from a paired sibling. The last particle one of these can spawn
+	//is the one spawned just as the source dies, and it then lives for its own max life on top of that. Chains
+	//of these (a spawn source that is itself spawning from another emitter) need the source resolved first, so
+	//keep sweeping until nothing changes - at most once per child since each sweep resolves a link in the chain.
+	bool lifetime_resolved = true;
+	for (tfxU32 sweep = 0; sweep != effect->children.size() && lifetime_resolved; ++sweep) {
+		lifetime_resolved = false;
+		for (tfxU32 child_index = 0; child_index != effect->children.size(); ++child_index) {
+			tfx_effect_descriptor child = effect->children[child_index];
+			if (!tfx__is_emitter_type(child)) continue;
+			if (tfx__is_descriptor_hidden(child)) continue;
+
+			tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
+			if (shared_props->emission_type != tfxOtherEmitter && shared_props->emission_type != tfxSpawnOnRibbon) {
+				continue;
+			}
+			if (shared_props->paired_emitter_hash == 0) continue;
+			tfx_effect_descriptor source = tfx__get_library_effect_by_key(effect->library, shared_props->paired_emitter_hash);
+			if (!source || source->parent != effect) continue;
+
+			float source_lifetime = 0.f;
+			for (tfxU32 source_index = 0; source_index != effect->children.size(); ++source_index) {
+				if (effect->children[source_index] == source) {
+					source_lifetime = child_lifetimes[source_index];
+					break;
+				}
+			}
+			if (source_lifetime <= 0.f) continue;
+
+			float total_life = source_lifetime + tfx__get_max_life(child);
+			if (total_life > child_lifetimes[child_index]) {
+				child_lifetimes[child_index] = total_life;
+				lifetime_resolved = true;
+			}
+		}
+	}
+
+	for (tfxU32 child_index = 0; child_index != child_lifetimes.size(); ++child_index) {
+		if (child_lifetimes[child_index] > effect_lifetime) {
+			effect_lifetime = child_lifetimes[child_index];
+		}
+	}
+
+	child_lifetimes.free();
 
 	return effect_lifetime;
 }
