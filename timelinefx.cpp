@@ -311,87 +311,8 @@ void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, boo
     gi3.a[i] = tfx_perm_mod12[ii.a[i] + 1 + tfx_permutation_table[jj.a[i] + 1 + tfx_permutation_table[kk.a[i] + 1]]];    \
 
 #ifdef tfxX86
-	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfxWideFloat tfx__simd_noise_2d(const tfxWideFloat x4, const tfxWideFloat y4) {
-		tfxPROFILE;
-
-		tfxWideFloat s4 = tfxWideMul(tfxWideAdd(x4, y4), tfxF2_4.m);
-		tfxWideFloat x4_s4 = tfxWideAdd(x4, s4);
-		tfxWideFloat y4_s4 = tfxWideAdd(y4, s4);
-		tfxWideFloat i = tfxWideFloor(x4_s4);
-		tfxWideFloat j = tfxWideFloor(y4_s4);
-		tfxWideFloat t = tfxWideAdd(i, j);
-		t = tfxWideMul(t, tfxG2_4.m);
-
-		tfxWideFloat X0 = tfxWideSub(i, t);
-		tfxWideFloat Y0 = tfxWideSub(j, t);
-		tfxWideFloat x0 = tfxWideSub(x4, X0);
-		tfxWideFloat y0 = tfxWideSub(y4, Y0);
-
-		tfxWideArrayi i1, j1;
-
-		i1.m = tfxWideAndi(tfxONE.m, tfxWideCasti(tfxWideGreater(x0, y0)));
-		j1.m = tfxWideAndi(tfxONE.m, tfxWideCasti(tfxWideGreaterEqual(y0, x0)));
-
-		const tfxWideFloat x1 = tfxWideAdd(tfxWideSub(x0, tfxWideConvert(i1.m)), tfxG2_4.m);
-		const tfxWideFloat y1 = tfxWideAdd(tfxWideSub(y0, tfxWideConvert(j1.m)), tfxG2_4.m);
-		const tfxWideFloat x2 = tfxWideAdd(tfxWideSub(x0, tfxONEF.m), tfxG2_4x2.m);
-		const tfxWideFloat y2 = tfxWideAdd(tfxWideSub(y0, tfxONEF.m), tfxG2_4x2.m);
-
-		tfxWideArrayi ii, jj;
-		ii.m = tfxWideAndi(tfxWideConverti(i), tfxFF.m);
-		jj.m = tfxWideAndi(tfxWideConverti(j), tfxFF.m);
-
-		tfxWideArrayi gi0, gi1, gi2;
-
-		tfxNoise2dPermMOD12LoopUnroll(0);
-		tfxNoise2dPermMOD12LoopUnroll(1);
-		tfxNoise2dPermMOD12LoopUnroll(2);
-		tfxNoise2dPermMOD12LoopUnroll(3);
-#ifdef tfxUSEAVX
-		tfxNoise2dPermMOD12LoopUnroll(4);
-		tfxNoise2dPermMOD12LoopUnroll(5);
-		tfxNoise2dPermMOD12LoopUnroll(6);
-		tfxNoise2dPermMOD12LoopUnroll(7);
-#endif
-
-		tfxWideFloat n0, n1, n2;
-		tfxWideFloat gx0, gy0, gx1, gy1, gx2, gy2;
-#ifndef tfxUSEAVX
-		gx0 = tfxWideSet(gradX[gi0.a[3]], gradX[gi0.a[2]], gradX[gi0.a[1]], gradX[gi0.a[0]]);
-		gy0 = tfxWideSet(gradY[gi0.a[3]], gradY[gi0.a[2]], gradY[gi0.a[1]], gradY[gi0.a[0]]);
-		gx1 = tfxWideSet(gradX[gi1.a[3]], gradX[gi1.a[2]], gradX[gi1.a[1]], gradX[gi1.a[0]]);
-		gy1 = tfxWideSet(gradY[gi1.a[3]], gradY[gi1.a[2]], gradY[gi1.a[1]], gradY[gi1.a[0]]);
-		gx2 = tfxWideSet(gradX[gi2.a[3]], gradX[gi2.a[2]], gradX[gi2.a[1]], gradX[gi2.a[0]]);
-		gy2 = tfxWideSet(gradY[gi2.a[3]], gradY[gi2.a[2]], gradY[gi2.a[1]], gradY[gi2.a[0]]);
-#else
-		gx0 = tfxWideSet(gradX[gi0.a[7]], gradX[gi0.a[6]], gradX[gi0.a[5]], gradX[gi0.a[4]], gradX[gi0.a[3]], gradX[gi0.a[2]], gradX[gi0.a[1]], gradX[gi0.a[0]]);
-		gy0 = tfxWideSet(gradY[gi0.a[7]], gradY[gi0.a[6]], gradY[gi0.a[5]], gradY[gi0.a[4]], gradY[gi0.a[3]], gradY[gi0.a[2]], gradY[gi0.a[1]], gradY[gi0.a[0]]);
-		gx1 = tfxWideSet(gradX[gi1.a[7]], gradX[gi1.a[6]], gradX[gi1.a[5]], gradX[gi1.a[4]], gradX[gi1.a[3]], gradX[gi1.a[2]], gradX[gi1.a[1]], gradX[gi1.a[0]]);
-		gy1 = tfxWideSet(gradY[gi1.a[7]], gradY[gi1.a[6]], gradY[gi1.a[5]], gradY[gi1.a[4]], gradY[gi1.a[3]], gradY[gi1.a[2]], gradY[gi1.a[1]], gradY[gi1.a[0]]);
-		gx2 = tfxWideSet(gradX[gi2.a[7]], gradX[gi2.a[6]], gradX[gi2.a[5]], gradX[gi2.a[4]], gradX[gi2.a[3]], gradX[gi2.a[2]], gradX[gi2.a[1]], gradX[gi2.a[0]]);
-		gy2 = tfxWideSet(gradY[gi2.a[7]], gradY[gi2.a[6]], gradY[gi2.a[5]], gradY[gi2.a[4]], gradY[gi2.a[3]], gradY[gi2.a[2]], gradY[gi2.a[1]], gradY[gi2.a[0]]);
-#endif
-
-		tfxWideFloat t0 = tfxWideSub(tfxWideSub(tfxWIDEHALF.m, tfxWideMul(x0, x0)), tfxWideMul(y0, y0));
-		tfxWideFloat t02 = tfxWideMul(t0, t0);
-		n0 = tfxWideAnd(tfxWideMul(tfxWideMul(t02, t02), tfx__wide_dp_xy(gx0, gy0, x0, y0)), tfxWideGreaterEqual(t0, tfxWideSetZero));
-
-		tfxWideFloat t1 = tfxWideSub(tfxWideSub(tfxWIDEHALF.m, tfxWideMul(x1, x1)), tfxWideMul(y1, y1));
-		tfxWideFloat t12 = tfxWideMul(t1, t1);
-		n1 = tfxWideAnd(tfxWideMul(tfxWideMul(t12, t12), tfx__wide_dp_xy(gx1, gy1, x1, y1)), tfxWideGreaterEqual(t1, tfxWideSetZero));
-
-		tfxWideFloat t2 = tfxWideSub(tfxWideSub(tfxWIDEHALF.m, tfxWideMul(x2, x2)), tfxWideMul(y2, y2));
-		tfxWideFloat t22 = tfxWideMul(t2, t2);
-		n2 = tfxWideAnd(tfxWideMul(tfxWideMul(t22, t22), tfx__wide_dp_xy(gx2, gy2, x2, y2)), tfxWideGreaterEqual(t2, tfxWideSetZero));
-
-		tfxWideFloat result = tfxWideMul(tfxWideSetSingle(45.23065f), tfxWideAdd(n0, tfxWideAdd(n1, n2)));
-		return result;
-	}
-
 	//A 3d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, const tfxWideFloat z4) {
-		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
 		// Skew the input space to determine which simplex cell we're in

@@ -5830,7 +5830,6 @@ static const uint8_t tfx_perm_mod12[] =
 };
 
 // 4 noise samples using simd
-tfxWideFloat tfx__simd_noise_2d(const tfxWideFloat x4, const tfxWideFloat y4);
 tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, const tfxWideFloat z4);
 
 //-----------------------------------------------------------
