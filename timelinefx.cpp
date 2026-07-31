@@ -3781,18 +3781,16 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	tfx_vector_t<tfx_vec4_t> path_nodes;
 	path_nodes.resize(node_count);
 
-	// Build positions from control nodes using cumulative local-space rotations.
-	// Each control node's pitch/yaw/roll are applied relative to the current
-	// heading, and then we step forward by the node's distance.
-	// Forward direction convention: Y axis (matching existing path conventions).
-	tfx_quaternion_t orientation(1.f, 0.f, 0.f, 0.f);
+	// Control nodes are plain positions, so building is just offsetting them into
+	// world-relative space. The w component maps to node_soa.length, which nothing
+	// currently reads, so it stays at 0.
 	int i = 0;
 	for (tfx_vec3_t &node : path->buffers.nodes) {
 		path_nodes[i] = {node.x + path->settings.offset.x, node.y + path->settings.offset.y, node.z + path->settings.offset.z, 0.f};
 		i++;
 	}
 
-	// Post-processing: space nodes evenly along the spline if flagged
+	// Write out to the SOA arrays, back to front when the path direction is reversed
 	if (path->settings.flags & tfxPathFlags_reverse_direction) {
 		int last = (int)node_count - 1;
 		for (int j = 0; j != (int)node_count; ++j) {
