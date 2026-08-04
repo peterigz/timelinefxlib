@@ -12929,8 +12929,7 @@ TFX_ENABLE_COMPILER_WARNING()
 				sprites[sprite_depth_index].position.x = position_x.a[j];
 				sprites[sprite_depth_index].position.y = position_y.a[j];
 				sprites[sprite_depth_index].position.z = position_z.a[j];
-				tfx_instance_t &instance = sprites[sprite_depth_index];
-				tfx_vec3_t sprite_position = { instance.position.x, instance.position.y, instance.position.z };
+				tfx_vec3_t sprite_position = { position_x.a[j], position_y.a[j], position_z.a[j] };
 				tfx_vec3_t sprite_plus_camera_position = sprite_position - pm.camera_position;
 				(*work_entry->depth_indexes)[sprite_depth_index - work_entry->cumulative_index_point - work_entry->effect_instance_offset].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
 				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
