@@ -6645,6 +6645,7 @@ typedef struct tfx_particle_soa_s {
 	tfxU32 *sprite_index;
 	float *age;
 	float *inv_max_age;
+	float *life;						//age * inv_max_age, stored once by the age pass so the other control passes load 4 bytes instead of the age/inv_max_age pair. NOT clamped to 1. Path-life emitters ignore it and derive life from path_position.
 	float *position_x;
 	float *position_y;
 	float *position_z;
@@ -8447,7 +8448,6 @@ struct tfx_position_policy_context {
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
-	tfxWideFloat age;
 	tfxWideFloat life;
 	tfxWideFloat velocity_adjuster;
 	tfxWideFloat overall_scale_wide;
@@ -8535,16 +8535,13 @@ struct tfx_setup_transform_policy {
 //variations based on the control profile of the emitter.
 struct tfx_apply_load_life {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		ctx.age = tfxWideLoad(&bank.age[index]);
-		tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-		ctx.life = tfxWideMul(ctx.age, inv_max_age);
+		ctx.life = tfxWideLoad(&bank.life[index]);
 	}
 };
 
 struct tfx_apply_life_based_on_path {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-		ctx.age = tfxWideLoad(&bank.age[index]);
 		ctx.life = tfxWideDiv(path_position, ctx.node_count);
 	}
 };

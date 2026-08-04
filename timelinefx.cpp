@@ -12833,9 +12833,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-		tfxWideFloat life = tfxWideMul(age, inv_max_age);
+		tfxWideFloat life = tfxWideLoad(&bank.life[index]);
 
 		tfxWideFloat stretch_time = stretch_easing(life);
 		tfxWideFloat lookup_stretch = stretch_is_bezier_graph ?
@@ -12998,9 +12996,7 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-		tfxWideFloat life = tfxWideMul(age, inv_max_age);
+		tfxWideFloat life = tfxWideLoad(&bank.life[index]);
 
 		tfxWideArray position_x;
 		tfxWideArray position_y;
@@ -13256,9 +13252,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfxWideFloat roll_offset = tfxWideLoad(&bank.rotation_offset[index]);
 
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_spin) {
-			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			tfxWideFloat life = tfxWideMul(age, inv_max_age);
+			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
 #ifdef tfxHALFFLOATS
 			tfx128i half_base_roll_spin = tfxWideLoadHalfs(&bank.base_roll_spin[index]);
 			tfxWideFloat base_roll_spin = tfxWideConvertHalfsToFloats(half_base_roll_spin);
@@ -13360,9 +13354,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		roll_offset = tfxWideMul(roll_offset, WideTwoPi);
 
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_spin3d) {
-			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			tfxWideFloat life = tfxWideMul(age, inv_max_age);
+			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
 
 #ifdef tfxHALFFLOATS
 			tfx128i half_base_roll_spin = tfxWideLoadHalfs(&bank.base_roll_spin[index]);
@@ -13571,9 +13563,7 @@ TFX_ENABLE_COMPILER_WARNING()
 			life = tfxWideDiv(path_position, node_count);
 		}
 		else {
-			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			life = tfxWideMin(tfxWideMul(age, inv_max_age), tfxWIDEONE.m);
+			life = tfxWideMin(tfxWideLoad(&bank.life[index]), tfxWIDEONE.m);
 		}
 
 		tfxWideFloat width_time = width_easing(life);
@@ -13713,16 +13703,12 @@ TFX_ENABLE_COMPILER_WARNING()
 		if (sample_based_on_path_position) {
 			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
 			life = tfxWideDiv(path_position, node_count);
-			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			tfxWideFloat lifetime = tfxWideMul(age, inv_max_age);
+			tfxWideFloat lifetime = tfxWideLoad(&bank.life[index]);
 			intensity_time = intensity_easing(lifetime);
 			curved_alpha_time = curved_alpha_easing(lifetime);
 			alpha_sharpness_time = alpha_sharpness_easing(lifetime);
 		} else {
-			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat inv_max_age = tfxWideLoad(&bank.inv_max_age[index]);
-			life = tfxWideMul(age, inv_max_age);
+			life = tfxWideLoad(&bank.life[index]);
 			intensity_time = intensity_easing(life);
 			curved_alpha_time = curved_alpha_easing(life);
 			alpha_sharpness_time = alpha_sharpness_easing(life);
@@ -14726,6 +14712,7 @@ void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	for (tfxU32 i = index; i != buffer->capacity; ++i) {
 		particles->inv_max_age[i] = 1.f;
 		particles->age[i] = 1.f;
+		particles->life[i] = 1.f;
 		particles->flags_single_loop_count[i] = 0;
 	}
 }
@@ -15718,6 +15705,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		}
 
 		entry->particle_data->inv_max_age[index] = 1.f / max_age;
+		entry->particle_data->life[index] = age * entry->particle_data->inv_max_age[index];
 	}
 }
 
@@ -18116,6 +18104,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
 
 		tfxWideStore(&bank.age[index], age);
+		tfxWideStore(&bank.life[index], tfxWideMul(age, inv_max_age));
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags_single_loop_count);
 
 		//Integrate head-bump: while all lanes in this block are past max_life, advance
@@ -18177,6 +18166,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 				bank.flags_single_loop_count[next_index] = bank.flags_single_loop_count[index];
 				bank.age[next_index] = bank.age[index];
 				bank.inv_max_age[next_index] = bank.inv_max_age[index];
+				bank.life[next_index] = bank.life[index];
 				bank.position_x[next_index] = bank.position_x[index];
 				bank.position_y[next_index] = bank.position_y[index];
 				bank.velocity_normal[next_index] = bank.velocity_normal[index];
@@ -19042,6 +19032,7 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, inv_max_age));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, life));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_z));
