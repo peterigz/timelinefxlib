@@ -15894,8 +15894,8 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 
 		entry->particle_data->base_roll_spin[index] = tfx_RandomRangeFromTo(&random, -spin_variation, spin_variation) + roll_spin;
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
-			 entry->particle_data->base_yaw_spin[index] = tfx_RandomRangeFromTo(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
-			 entry->particle_data->base_pitch_spin[index] = tfx_RandomRangeFromTo(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+			 entry->particle_data->base_yaw_spin[index] = tfx_RandomRangeFromTo(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+			 entry->particle_data->base_pitch_spin[index] = tfx_RandomRangeFromTo(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
 		}
 
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
