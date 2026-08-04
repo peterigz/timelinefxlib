@@ -1967,7 +1967,10 @@ tfxAPI tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, t
 //project that includes TimelineFX to add the compiler flag, detect it here and fall back to a scalar
 //implementation when it's not available. Define tfxF16C to declare that the hardware instructions can be used.
 #if defined(tfxX86)
-#if defined(__F16C__) || (defined(_MSC_VER) && !defined(__clang__))
+//MSVC never defines __F16C__ so it can only be inferred: /arch:AVX2 (__AVX2__) guarantees F16C on real
+//hardware. Plain MSVC builds happily COMPILE the F16C intrinsics at any /arch setting, which is exactly
+//why they can't be used as the signal - the instructions would crash at runtime on pre-Ivy-Bridge CPUs.
+#if defined(__F16C__) || (defined(_MSC_VER) && !defined(__clang__) && defined(__AVX2__))
 #define tfxF16C
 #endif
 #endif
@@ -2042,10 +2045,19 @@ tfxINTERNAL inline __m128i tfx__cvtps_ph_scalar(__m128 floats) {
 	return _mm_loadu_si128((const __m128i *)halves);
 }
 
-tfxINTERNAL inline __m128 tfx__cvtph_ps_scalar(__m128i halves) {
-	tfxU16 unpacked[8];
-	_mm_storeu_si128((__m128i *)unpacked, halves);
-	return _mm_set_ps(tfx__half_to_float_scalar(unpacked[3]), tfx__half_to_float_scalar(unpacked[2]), tfx__half_to_float_scalar(unpacked[1]), tfx__half_to_float_scalar(unpacked[0]));
+//Convert the low 4 halfs to floats without F16C: shift the half exponent and mantissa into float
+//position and rebias the exponent by multiplying with 2^112. The multiply is exact for every finite
+//half including subnormals, so this matches _mm_cvtph_ps bit for bit; inf/nan then get the float
+//exponent forced to all ones, which also preserves nan payloads.
+tfxINTERNAL inline __m128 tfx__cvtph_ps_soft(__m128i halves) {
+	const __m128 exponent_rebias = _mm_castsi128_ps(_mm_set1_epi32(0x77800000));	//2^112
+	__m128i half_bits = _mm_unpacklo_epi16(halves, _mm_setzero_si128());
+	__m128i sign_bits = _mm_slli_epi32(_mm_srli_epi32(half_bits, 15), 31);
+	__m128i exponent_and_mantissa = _mm_and_si128(half_bits, _mm_set1_epi32(0x7fff));
+	__m128 magnitude = _mm_mul_ps(_mm_castsi128_ps(_mm_slli_epi32(exponent_and_mantissa, 13)), exponent_rebias);
+	__m128i infinity_or_nan = _mm_cmpgt_epi32(exponent_and_mantissa, _mm_set1_epi32(0x7bff));
+	__m128i magnitude_bits = _mm_or_si128(_mm_castps_si128(magnitude), _mm_and_si128(infinity_or_nan, _mm_set1_epi32(0x7f800000)));
+	return _mm_castsi128_ps(_mm_or_si128(magnitude_bits, sign_bits));
 }
 
 #ifdef tfxUSEAVX
@@ -2059,11 +2071,10 @@ tfxINTERNAL inline __m128i tfx__cvtps_ph256_scalar(__m256 floats) {
 	return _mm_loadu_si128((const __m128i *)halves);
 }
 
-tfxINTERNAL inline __m256 tfx__cvtph_ps256_scalar(__m128i halves) {
-	tfxU16 unpacked[8];
-	_mm_storeu_si128((__m128i *)unpacked, halves);
-	return _mm256_set_ps(tfx__half_to_float_scalar(unpacked[7]), tfx__half_to_float_scalar(unpacked[6]), tfx__half_to_float_scalar(unpacked[5]), tfx__half_to_float_scalar(unpacked[4]),
-		tfx__half_to_float_scalar(unpacked[3]), tfx__half_to_float_scalar(unpacked[2]), tfx__half_to_float_scalar(unpacked[1]), tfx__half_to_float_scalar(unpacked[0]));
+tfxINTERNAL inline __m256 tfx__cvtph_ps256_soft(__m128i halves) {
+	__m128 low_floats = tfx__cvtph_ps_soft(halves);
+	__m128 high_floats = tfx__cvtph_ps_soft(_mm_srli_si128(halves, 8));
+	return _mm256_set_m128(high_floats, low_floats);
 }
 #endif
 #endif
@@ -2138,7 +2149,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideConvertHalfsToFloats _mm256_cvtph_ps
 #define tfxWideConvertFloatsToHalfs(floats) _mm256_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
 #else
-#define tfxWideConvertHalfsToFloats tfx__cvtph_ps256_scalar
+#define tfxWideConvertHalfsToFloats tfx__cvtph_ps256_soft
 #define tfxWideConvertFloatsToHalfs(floats) tfx__cvtps_ph256_scalar(floats)
 #endif
 #define tfxWideMin _mm256_min_ps
@@ -2207,13 +2218,15 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideMulAdd(a, b, c) tfxWideAdd(tfxWideMul(a, b), c)
 #define tfxWideMulSub(a, b, c) tfxWideSub(tfxWideMul(a, b), c)
 #endif
-#define tfxWideLoadHalfs(mem_address) _mm_load_si128((tfx128i*)mem_address)
-#define tfxWideStoreHalfs _mm_store_si128
+//4 halfs are only 8 bytes, and a tfxDataWidth block of a tfxU16 array is only 8 byte aligned, so this
+//must be a 64 bit load - a full 16 byte aligned load would fault on every other block
+#define tfxWideLoadHalfs(mem_address) _mm_loadl_epi64((const tfx128i*)mem_address)
+#define tfxWideStoreHalfs _mm_storel_epi64
 #ifdef tfxF16C
 #define tfxWideConvertHalfsToFloats _mm_cvtph_ps
 #define tfxWideConvertFloatsToHalfs(floats) _mm_cvtps_ph(floats, _MM_FROUND_TO_NEAREST_INT)
 #else
-#define tfxWideConvertHalfsToFloats tfx__cvtph_ps_scalar
+#define tfxWideConvertHalfsToFloats tfx__cvtph_ps_soft
 #define tfxWideConvertFloatsToHalfs(floats) tfx__cvtps_ph_scalar(floats)
 #endif
 #define tfxWideAddi _mm_add_epi32
@@ -2472,7 +2485,7 @@ tfxINTERNAL inline tfx128 tfxHalfToFloat128(const tfx_rgba16f_t half) {
 #ifdef tfxF16C
 	return _mm_cvtph_ps(packed);
 #else
-	return tfx__cvtph_ps_scalar(packed);
+	return tfx__cvtph_ps_soft(packed);
 #endif
 }
 
@@ -6636,8 +6649,9 @@ typedef struct tfx_unique_sprite_id_s {
 	tfxU32 property_index;
 }tfx_unique_sprite_id_t;
 
-//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 108 bytes in total. Or if half-floats are used: 90 bytes
-//Unfortunately in order make the most use of half floats the minimum requirements become AVX + F16C for half float conversion in simd which is around ~95% according to steam survey.
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 112 bytes in total.
+//Half floats for the spawn-time constant fields were tried (Aug 2026, see notes/soa_bandwidth_roadmap.md) and
+//measured no faster than full floats even with a SIMD software converter, so they stay as floats.
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 typedef struct tfx_particle_soa_s {
