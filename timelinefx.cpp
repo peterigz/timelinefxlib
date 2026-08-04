@@ -12794,176 +12794,625 @@ void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *da
 	}
 }
 
-void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+//--------------------------------------------------------------------------------------------------
+//The fused instance pass. transform, spin, size, color, hide and image_frame used to be six separate
+//loops over the particle bank, each writing one field of the 48 byte tfx_instance_t. Past L2 that meant
+//streaming (and paying read-for-ownership on) the same instance cache lines six times, plus five
+//redundant loads of life. They all walked the same blocks with identical running_sprite_index/start_diff
+//accounting, so they fuse into one loop: compute every field wide for a block, then write each instance
+//once, whole.
+//
+//tfx_instance_pass_t holds everything hoisted out of the block loop, tfx_instance_block_t holds one
+//block's worth of results, and each old pass survives as one tfx__block_particle_* helper.
+//--------------------------------------------------------------------------------------------------
+
+//Bundles an overtime graph with everything the wide sampler needs, so the per-emitter lookups hoist out
+//of the block loop and each graph samples in a single call.
+typedef struct tfx_wide_graph_sampler_s {
+	tfx_graph_t *graph;
+	tfx_wide_easing_function easing;
+	bool is_bezier;
+	bool has_oscillator;
+} tfx_wide_graph_sampler_t;
+
+tfxINTERNAL inline tfx_wide_graph_sampler_t tfx__make_wide_graph_sampler(tfx_graph_list_t *graphs, tfxU32 graph_index) {
+	tfx_wide_graph_sampler_t sampler;
+	sampler.graph = &graphs->graphs[graph_index];
+	sampler.easing = tfx__get_wide_easing_function(sampler.graph->easing_type);
+	sampler.is_bezier = tfx__graph_has_bezier_curves(sampler.graph);
+	sampler.has_oscillator = tfx__graph_can_oscillate(sampler.graph);
+	return sampler;
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__sample_wide_graph(const tfx_wide_graph_sampler_t *sampler, tfxWideFloat life) {
+	tfx_graph_t *graph = sampler->graph;
+	tfxWideFloat time = sampler->easing(life);
+	tfxWideFloat lookup = sampler->is_bezier ?
+		tfx__wide_bezier_sampler(time, graph->wide_graph.from, graph->wide_graph.curve1, graph->wide_graph.curve2, graph->wide_graph.to) :
+		tfx__wide_linear_sampler(graph->wide_graph.from, graph->wide_graph.to, time);
+	if (sampler->has_oscillator) {
+		lookup = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(time, tfxWideAdd(graph->wide_oscillator.offset_x, graph->wide_oscillator.frequency), graph->wide_oscillator.amplitude), lookup), graph->wide_oscillator.offset_y);
+	}
+	return lookup;
+}
+
+//Every tfx_instance_t field the fused pass produces for one tfxDataWidth block, computed wide and then
+//scattered one lane at a time. indexes/captured_index are not here: they need per-particle bookkeeping in
+//the bank that differs between the ordered and unordered paths, so the write helpers build them in place.
+typedef struct tfx_instance_block_s {
+	tfxWideArray position_x;
+	tfxWideArray position_y;
+	tfxWideArray position_z;
+	tfxWideArray stretch;
+	tfxWideArrayi packed_quaternion_xy;
+	tfxWideArrayi packed_quaternion_zw;
+	tfxWideArrayi packed_size;
+	tfxWideArrayi packed_alignment;
+	tfxWideArrayi packed_intensity_gradient;
+	tfxWideArrayi packed_curved_alpha_life;
+	tfxWideArrayi image_indexes;
+	tfxWideArrayi capture_flags;
+} tfx_instance_block_t;
+
+//Everything the fused pass hoists out of the block loop: the emitter constants broadcast to wide, the
+//graph samplers, and the flags that were per-emitter branches in the old passes.
+typedef struct tfx_instance_pass_s {
+	tfx_stage_t *pm;
+	tfx_particle_emitter_state_t *emitter;
+	tfx_particle_soa_t *bank;
+	tfx_control_work_entry_t *work_entry;
+	tfx_instance_t *sprites;
+
+	//----Transform
+	tfxWideFloat world_position_x;
+	tfxWideFloat world_position_y;
+	tfxWideFloat world_position_z;
+	tfxWideFloat handle_x;
+	tfxWideFloat handle_y;
+	tfxWideFloat handle_z;
+	tfxWideFloat overall_scale;
+	tfxWideFloat global_stretch;
+	tfx_wide_graph_sampler_t stretch_sampler;
+	tfx_vector_align_type vector_align_type;
+	bool transform_relative;
+	bool transform_relative_path;
+	bool transform_relative_other_emitter;
+	bool align_to_rotated_emission;
+	bool is_spawn_location_source;
+
+	//----Spin. can_spin_pitch_and_yaw picks which of the two mutually exclusive rotation offset arrays the
+	//bank allocated, so it also picks which of the two spin paths may run.
+	tfxWideFloat world_rotations_z;
+	tfxWideFloat emitter_qw;
+	tfxWideFloat emitter_qx;
+	tfxWideFloat emitter_qy;
+	tfxWideFloat emitter_qz;
+	tfxWideFloat two_pi;
+	tfxWideFloat half;
+	tfxWideFloat snorm_scale;
+	tfxWideInt mask_ffff;
+	tfx_wide_graph_sampler_t spin_roll_sampler;
+	tfx_wide_graph_sampler_t spin_pitch_sampler;
+	tfx_wide_graph_sampler_t spin_yaw_sampler;
+	bool spin_pitch_and_yaw;
+	bool has_spin_roll;
+	bool has_spin_3d;
+	bool relative_angle;
+
+	//----Size
+	tfxWideFloat size_node_count;
+	tfxWideFloat size_packed_scale_amount;
+	tfxWideInt remove_flag;
+	tfx_wide_graph_sampler_t width_sampler;
+	tfx_wide_graph_sampler_t height_sampler;
+	bool size_samples_path_position;
+	bool lifetime_uniform_size;
+	bool base_uniform_size;
+	bool do_not_render;
+
+	//----Color
+	tfxWideFloat global_intensity;
+	tfxWideFloat color_node_count;
+	tfxWideFloat color_packed_scale_amount;
+	tfx_wide_graph_sampler_t intensity_sampler;
+	tfx_wide_graph_sampler_t curved_alpha_sampler;
+	tfx_wide_graph_sampler_t alpha_sharpness_sampler;
+	tfx_wide_graph_sampler_t gradient_mapper_sampler;
+	bool color_samples_path_position;
+	bool random_color;
+
+	//----Image frame
+	tfxWideFloat image_frame_rate;
+	tfxWideFloat end_frame;
+	tfxWideFloat frames;
+	tfxWideInt capture_after_transform_flag;
+	tfxWideInt particle_gpu_properties_index;
+	tfxWideInt image_start_index;
+	bool reverse_animation;
+	bool play_once;
+
+	//----Instance write
+	tfxU32 instance_offset;
+	tfxU32 layer;
+	tfxU32 wrap_single_sprite;
+	bool is_ordered;
+	bool update_bounding_boxes;
+} tfx_instance_pass_t;
+
+tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, tfx_instance_pass_t *pass) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
-	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.world_position.x);
-	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.world_position.y);
-	const tfxWideFloat e_world_position_z = tfxWideSetSingle(emitter.world_position.z);
-	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
-	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
-	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
-	const tfxWideFloat global_stretch = tfxWideSetSingle(work_entry->global_stretch);
-	tfxWideArray stretch;
-	tfxU32 start_diff = work_entry->start_diff;
+	tfx_library library = emitter.library;
+	tfx_image_data_t *image = emitter.state_properties.image;
 
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
-	const tfx_vector_align_type vector_align_type = work_entry->properties->vector_align_type;
+	const tfxParticleEmitterFlags property_flags = emitter.state_properties.property_flags;
+	const tfxEmitterControlProfileFlags control_profile = emitter.state_properties.control_profile;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
-	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
 
+	pass->pm = &pm;
+	pass->emitter = &emitter;
+	pass->bank = &pm.particle_arrays[emitter.particles_index];
+	pass->work_entry = work_entry;
+	pass->sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
+
+	//----Transform
+	pass->world_position_x = tfxWideSetSingle(emitter.world_position.x);
+	pass->world_position_y = tfxWideSetSingle(emitter.world_position.y);
+	pass->world_position_z = tfxWideSetSingle(emitter.world_position.z);
+	pass->handle_x = tfxWideSetSingle(emitter.handle.x);
+	pass->handle_y = tfxWideSetSingle(emitter.handle.y);
+	pass->handle_z = tfxWideSetSingle(emitter.handle.z);
+	pass->overall_scale = tfxWideSetSingle(work_entry->overall_scale);
+	pass->global_stretch = tfxWideSetSingle(work_entry->global_stretch);
+	pass->stretch_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_stretch_index);
+	pass->vector_align_type = work_entry->properties->vector_align_type;
+	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
+	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
+	pass->transform_relative_other_emitter = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxOtherEmitter;
+	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
+	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
+
+	//----Spin
+	pass->world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
+	pass->emitter_qw = tfxWideSetSingle(emitter.rotation.w);
+	pass->emitter_qx = tfxWideSetSingle(emitter.rotation.x);
+	pass->emitter_qy = tfxWideSetSingle(emitter.rotation.y);
+	pass->emitter_qz = tfxWideSetSingle(emitter.rotation.z);
+	pass->two_pi = tfxWideSetSingle(tfxPI2);
+	pass->half = tfxWideSetSingle(.5f);
+	pass->snorm_scale = tfxWideSetSingle(32767.f);
+	pass->mask_ffff = tfxWideSetSinglei(0xFFFF);
+	pass->spin_roll_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_roll_spin_index);
+	pass->spin_pitch_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_pitch_spin_index);
+	pass->spin_yaw_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_yaw_spin_index);
+	pass->spin_pitch_and_yaw = (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) != 0;
+	pass->has_spin_roll = (control_profile & tfxEmitterControlProfile_spin) != 0;
+	pass->has_spin_3d = (control_profile & tfxEmitterControlProfile_spin3d) != 0;
+	pass->relative_angle = (property_flags & tfxEmitterPropertyFlags_relative_angle) != 0;
+
+	//----Size
+	pass->size_packed_scale_amount = tfxWideSetSingle(32767.f / 64.f);
+	pass->remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+	pass->size_samples_path_position = (property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling) && emission_type == tfxPath;
+	pass->lifetime_uniform_size = (property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) != 0;
+	pass->base_uniform_size = (property_flags & tfxEmitterPropertyFlags_base_uniform_size) != 0;
+	pass->do_not_render = (shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) != 0;
+	pass->size_node_count = tfxWIDEONE.m;
+	if (pass->size_samples_path_position) {
+		pass->size_node_count = tfxWideSetSingle(library->paths[emitter.state_properties.path_attributes].settings.node_count - 3.f);
+	}
+	pass->width_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_width_index);
+	pass->height_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_height_index);
+
+	//----Color
+	pass->global_intensity = tfxWideSetSingle(work_entry->global_intensity);
+	pass->color_packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
+	pass->color_samples_path_position = (property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling) && emission_type == tfxPath;
+	pass->random_color = (shared_flags & tfxSharedEmitterPropertyFlags_random_color) != 0;
+	pass->color_node_count = tfxWIDEONE.m;
+	if (pass->color_samples_path_position) {
+		pass->color_node_count = tfxWideSetSingle(library->paths[emitter.state_properties.path_attributes].settings.node_count - 3.f);
+	}
+	pass->intensity_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_intensity_index);
+	pass->curved_alpha_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_curved_alpha_index);
+	pass->alpha_sharpness_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_alpha_sharpness_index);
+	pass->gradient_mapper_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_gradient_mapper_index);
+
+	//----Image frame
+	pass->image_frame_rate = tfxWideMul(tfxWideSetSingle(emitter.state_properties.image_frame_rate), pm.update_time_wide);
+	pass->end_frame = tfxWideSetSingle(emitter.state_properties.end_frame);
+	pass->frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
+	pass->capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+	pass->particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.gpu_property_index << 16);
+	pass->image_start_index = tfxWideSetSinglei((pm.flags & tfxStageFlags_recording_sprites) && !(pm.flags & tfxStageFlags_record_with_compute_image_index) && (pm.flags & tfxStageFlags_using_uids) ? 0 : image->compute_shape_index);
+	pass->reverse_animation = (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) != 0;
+	pass->play_once = (shared_flags & tfxSharedEmitterPropertyFlags_play_once) != 0;
+
+	//----Instance write
+	pass->instance_offset = work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+	pass->layer = work_entry->layer << 28;
+	pass->wrap_single_sprite = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
+	pass->is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
 TFX_ENABLE_COMPILER_WARNING()
-	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
+	pass->update_bounding_boxes = (pm.flags & tfxStageFlags_update_bounding_boxes) != 0;
+}
 
-	tfx_graph_t *stretch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index];
-	tfx_wide_easing_function stretch_easing = tfx__get_wide_easing_function(stretch_graph->easing_type);
+//World position, stretch and the packed alignment vector. Also maintains the spawn_locations ring for
+//emitters that other emitters source their spawn points from.
+tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t *pass, tfxU32 index, tfxWideFloat life, tfx_instance_block_t *block) {
+	tfx_particle_soa_t &bank = *pass->bank;
+	tfx_particle_emitter_state_t &emitter = *pass->emitter;
 
-	bool stretch_is_bezier_graph = tfx__graph_has_bezier_curves(stretch_graph);
-	bool stretch_has_oscillator = tfx__graph_can_oscillate(stretch_graph);
+	block->stretch.m = tfxWideMul(tfx__sample_wide_graph(&pass->stretch_sampler, life), pass->global_stretch);
 
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideFloat life = tfxWideLoad(&bank.life[index]);
+	block->position_x.m = tfxWideLoad(&bank.position_x[index]);
+	block->position_y.m = tfxWideLoad(&bank.position_y[index]);
+	block->position_z.m = tfxWideLoad(&bank.position_z[index]);
+	tfx__readbarrier;
 
-		tfxWideFloat stretch_time = stretch_easing(life);
-		tfxWideFloat lookup_stretch = stretch_is_bezier_graph ?
-			tfx__wide_bezier_sampler(stretch_time, stretch_graph->wide_graph.from, stretch_graph->wide_graph.curve1, stretch_graph->wide_graph.curve2, stretch_graph->wide_graph.to) :
-			tfx__wide_linear_sampler(stretch_graph->wide_graph.from, stretch_graph->wide_graph.to, stretch_time);
+	if (pass->transform_relative) {
+		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
+		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
+		block->position_z.m = tfxWideAdd(block->position_z.m, pass->handle_z);
+		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &block->position_x.m, &block->position_y.m, &block->position_z.m);
+		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), pass->world_position_x);
+		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), pass->world_position_y);
+		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), pass->world_position_z);
+	} else if (pass->transform_relative_path) {
+		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &block->position_x.m, &block->position_y.m, &block->position_z.m);
+		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), pass->world_position_x);
+		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), pass->world_position_y);
+		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), pass->world_position_z);
+	} else if (pass->transform_relative_other_emitter) {
+		block->position_x.m = tfxWideMul(block->position_x.m, pass->overall_scale);
+		block->position_y.m = tfxWideMul(block->position_y.m, pass->overall_scale);
+		block->position_z.m = tfxWideMul(block->position_z.m, pass->overall_scale);
+	}
 
-		if (stretch_has_oscillator) {
-			lookup_stretch = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(stretch_time, tfxWideAdd(stretch_graph->wide_oscillator.offset_x, stretch_graph->wide_oscillator.frequency), stretch_graph->wide_oscillator.amplitude), lookup_stretch), stretch_graph->wide_oscillator.offset_y);
-		}
-
-		stretch.m = tfxWideMul(lookup_stretch, global_stretch);
-
-		tfxWideArray position_x;
-		tfxWideArray position_y;
-		tfxWideArray position_z;
-		position_x.m = tfxWideLoad(&bank.position_x[index]);
-		position_y.m = tfxWideLoad(&bank.position_y[index]);
-		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfx__readbarrier;
-
+	block->packed_alignment.m = tfxWideSetZeroi;
+	if (pass->vector_align_type == tfxVectorAlignType_emission) {
+		const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfxWideFloat alignment_vector_x;
 		tfxWideFloat alignment_vector_y;
 		tfxWideFloat alignment_vector_z;
-
-		if (transform_relative) {
-			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
-			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
-			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
-			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
-			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
-			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
-			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
-		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxPath) {
-			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
-			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
-			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
-			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
-		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
-			position_x.m = tfxWideMul(position_x.m, e_scale);
-			position_y.m = tfxWideMul(position_y.m, e_scale);
-			position_z.m = tfxWideMul(position_z.m, e_scale);
-		}
-
-		tfxWideArrayi alignment_packed;
-		alignment_packed.m = tfxWideSetZeroi;
-		if ((vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfxWideFloat velocity_normal_x;
-			tfxWideFloat velocity_normal_y;
-			tfxWideFloat velocity_normal_z;
-			tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
-			alignment_vector_x = velocity_normal_x;
-			alignment_vector_y = velocity_normal_y;
-			alignment_vector_z = velocity_normal_z;
+		tfx__wide_unpack10bit(velocity_normal, alignment_vector_x, alignment_vector_y, alignment_vector_z);
+		if (pass->align_to_rotated_emission) {
 			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		} else if (vector_align_type == tfxVectorAlignType_emission) {
-			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfxWideFloat velocity_normal_x;
-			tfxWideFloat velocity_normal_y;
-			tfxWideFloat velocity_normal_z;
-			tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
-			alignment_vector_x = velocity_normal_x;
-			alignment_vector_y = velocity_normal_y;
-			alignment_vector_z = velocity_normal_z;
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
-		} else if (vector_align_type == tfxVectorAlignType_emitter) {
-			alignment_vector_x = tfxWideSetZero;
-			alignment_vector_y = tfxWideSetSingle(1.f);
-			alignment_vector_z = tfxWideSetZero;
-			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
-			alignment_packed.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 		}
+		block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
+	} else if (pass->vector_align_type == tfxVectorAlignType_emitter) {
+		tfxWideFloat alignment_vector_x = tfxWideSetZero;
+		tfxWideFloat alignment_vector_y = tfxWideSetSingle(1.f);
+		tfxWideFloat alignment_vector_z = tfxWideSetZero;
+		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+		block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
+	}
 
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
-			tfx_spawn_points_soa_t &locations = work_entry->pm->particle_location_arrays[emitter.spawn_locations_index];
-			tfxWideStore(&locations.position_x[index], position_x.m);
-			tfxWideStore(&locations.position_y[index], position_y.m);
-			tfxWideStore(&locations.position_z[index], position_z.m);
-			tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
-			TFX_ASSERT(index + tfxDataWidth <= work_entry->pm->particle_location_buffers[emitter.spawn_locations_index].capacity);
-		}
+	if (pass->is_spawn_location_source) {
+		tfx_spawn_points_soa_t &locations = pass->pm->particle_location_arrays[emitter.spawn_locations_index];
+		tfxWideStore(&locations.position_x[index], block->position_x.m);
+		tfxWideStore(&locations.position_y[index], block->position_y.m);
+		tfxWideStore(&locations.position_z[index], block->position_z.m);
+		tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
+		TFX_ASSERT(index + tfxDataWidth <= pass->pm->particle_location_buffers[emitter.spawn_locations_index].capacity);
+	}
+}
 
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (is_ordered) {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				int index_j = index + j;
-				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				sprites[sprite_depth_index].alignment.packed = alignment_packed.a[j];
-				sprites[sprite_depth_index].position.w = stretch.a[j];
-				sprites[sprite_depth_index].position.x = position_x.a[j];
-				sprites[sprite_depth_index].position.y = position_y.a[j];
-				sprites[sprite_depth_index].position.z = position_z.a[j];
-				tfx_vec3_t sprite_position = { position_x.a[j], position_y.a[j], position_z.a[j] };
-				tfx_vec3_t sprite_plus_camera_position = sprite_position - pm.camera_position;
-				(*work_entry->depth_indexes)[sprite_depth_index - work_entry->cumulative_index_point - work_entry->effect_instance_offset].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
-				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
-					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
-					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
-					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
-					bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
-					bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
-					bounding_box.max_corner.z = tfx__Max(position_z.a[j], bounding_box.max_corner.z);
-				}
-				running_sprite_index++;
-			}
+//The particle orientation, packed as a 16 bit snorm quaternion.
+tfxINTERNAL inline void tfx__block_particle_spin(const tfx_instance_pass_t *pass, tfxU32 index, tfxWideFloat life, tfx_instance_block_t *block) {
+	tfx_particle_soa_t &bank = *pass->bank;
+
+	if (!pass->spin_pitch_and_yaw) {
+		const tfxWideFloat roll_offset = tfxWideLoad(&bank.rotation_offset[index]);
+		tfxWideFloat rotation_roll = tfxWideSetZero;
+		if (pass->has_spin_roll) {
+			//----Spin and angle Changes
+			rotation_roll = tfxWideMul(tfx__sample_wide_graph(&pass->spin_roll_sampler, life), tfxWideLoad(&bank.base_roll_spin[index]));
 		}
-		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites[running_sprite_index].position.w = stretch.a[j];
-				sprites[running_sprite_index].alignment.packed = alignment_packed.a[j];
-				sprites[running_sprite_index].position.x = position_x.a[j];
-				sprites[running_sprite_index].position.y = position_y.a[j];
-				sprites[running_sprite_index].position.z = position_z.a[j];
-				if (pm.flags & tfxStageFlags_update_bounding_boxes) {
-					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
-					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
-					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
-					bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
-					bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
-					bounding_box.max_corner.z = tfx__Max(position_z.a[j], bounding_box.max_corner.z);
-				}
-				running_sprite_index++;
-			}
+		if (pass->relative_angle) {
+			rotation_roll = tfxWideAdd(rotation_roll, pass->world_rotations_z);
+		}
+		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
+		tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll, &block->packed_quaternion_xy.m, &block->packed_quaternion_zw.m);
+		return;
+	}
+
+	const tfxWideInt offsets = tfxWideLoadi((tfxWideIntLoader *)&bank.rotation_offsets[index]);
+	tfxWideFloat pitch_offset, yaw_offset, roll_offset;
+	tfx__wide_unpack10bit(offsets, pitch_offset, yaw_offset, roll_offset);
+	pitch_offset = tfxWideMul(pitch_offset, pass->two_pi);
+	yaw_offset = tfxWideMul(yaw_offset, pass->two_pi);
+	roll_offset = tfxWideMul(roll_offset, pass->two_pi);
+
+	tfxWideFloat rotation_pitch = tfxWideSetZero;
+	tfxWideFloat rotation_yaw = tfxWideSetZero;
+	tfxWideFloat rotation_roll = tfxWideSetZero;
+	if (pass->has_spin_3d) {
+		//----Spin and angle Changes
+		rotation_pitch = tfxWideMul(tfx__sample_wide_graph(&pass->spin_pitch_sampler, life), tfxWideLoad(&bank.base_pitch_spin[index]));
+		rotation_yaw = tfxWideMul(tfx__sample_wide_graph(&pass->spin_yaw_sampler, life), tfxWideLoad(&bank.base_yaw_spin[index]));
+		rotation_roll = tfxWideMul(tfx__sample_wide_graph(&pass->spin_roll_sampler, life), tfxWideLoad(&bank.base_roll_spin[index]));
+	}
+
+	rotation_pitch = tfxWideAdd(rotation_pitch, pitch_offset);
+	rotation_yaw = tfxWideAdd(rotation_yaw, yaw_offset);
+	rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
+
+	// Convert particle euler angles to quaternion
+	tfxWideFloat cp, sp, cy, sy, cr, sr;
+	tfxWideSinCos(tfxWideMul(rotation_pitch, pass->half), &sp, &cp);
+	tfxWideSinCos(tfxWideMul(rotation_yaw, pass->half), &sy, &cy);
+	tfxWideSinCos(tfxWideMul(rotation_roll, pass->half), &sr, &cr);
+
+	tfxWideFloat cpcy = tfxWideMul(cp, cy);
+	tfxWideFloat spsy = tfxWideMul(sp, sy);
+	tfxWideFloat spcy = tfxWideMul(sp, cy);
+	tfxWideFloat cpsy = tfxWideMul(cp, sy);
+
+	tfxWideFloat qw = tfxWideMulAdd(cr, cpcy, tfxWideMul(sr, spsy));
+	tfxWideFloat qz = tfxWideMulSub(sr, cpcy, tfxWideMul(cr, spsy));
+	tfxWideFloat qx = tfxWideMulAdd(cr, spcy, tfxWideMul(sr, cpsy));
+	tfxWideFloat qy = tfxWideMulSub(cr, cpsy, tfxWideMul(sr, spcy));
+
+	// Compose with emitter rotation if relative_angle is set
+	if (pass->relative_angle) {
+		// Multiply conj(q_emitter) * q_particle to properly compose rotations.
+		// Conjugate is needed because the CPU position transform uses a reversed
+		// quaternion rotation convention compared to the shader.
+		const tfxWideFloat e_qw = pass->emitter_qw;
+		const tfxWideFloat e_qx = pass->emitter_qx;
+		const tfxWideFloat e_qy = pass->emitter_qy;
+		const tfxWideFloat e_qz = pass->emitter_qz;
+		tfxWideFloat rw = tfxWideAdd(tfxWideAdd(tfxWideMul(e_qw, qw), tfxWideMul(e_qx, qx)),
+		                             tfxWideAdd(tfxWideMul(e_qy, qy), tfxWideMul(e_qz, qz)));
+		tfxWideFloat rx = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qx), tfxWideMul(e_qx, qw)),
+		                             tfxWideSub(tfxWideMul(e_qz, qy), tfxWideMul(e_qy, qz)));
+		tfxWideFloat ry = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qy), tfxWideMul(e_qy, qw)),
+		                             tfxWideSub(tfxWideMul(e_qx, qz), tfxWideMul(e_qz, qx)));
+		tfxWideFloat rz = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qz), tfxWideMul(e_qz, qw)),
+		                             tfxWideSub(tfxWideMul(e_qy, qx), tfxWideMul(e_qx, qy)));
+		qw = rw; qx = rx; qy = ry; qz = rz;
+	}
+
+	// Pack quaternion to 16-bit
+	tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(qx, pass->snorm_scale)), pass->mask_ffff);
+	tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qy, pass->snorm_scale)), pass->mask_ffff), 16);
+	tfxWideInt p_z = tfxWideAndi(tfxWideConverti(tfxWideMul(qz, pass->snorm_scale)), pass->mask_ffff);
+	tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qw, pass->snorm_scale)), pass->mask_ffff), 16);
+	block->packed_quaternion_xy.m = tfxWideOri(p_x, p_y);
+	block->packed_quaternion_zw.m = tfxWideOri(p_z, p_w);
+}
+
+//Sprite size, packed to a pair of 16 bit scaled ints. Folds in the old hide pass, which was a separate
+//loop that simply overwrote whatever the size pass had just written with zero.
+tfxINTERNAL inline void tfx__block_particle_size(const tfx_instance_pass_t *pass, tfxU32 index, tfxWideFloat life, tfx_instance_block_t *block) {
+	tfx_particle_soa_t &bank = *pass->bank;
+
+	if (pass->do_not_render) {
+		block->packed_size.m = tfxWideSetZeroi;
+		return;
+	}
+
+	tfxWideFloat size_life;
+	if (pass->size_samples_path_position) {
+		size_life = tfxWideDiv(tfxWideLoad(&bank.path_position[index]), pass->size_node_count);
+	} else {
+		size_life = tfxWideMin(life, tfxWIDEONE.m);
+	}
+
+	const tfxWideFloat lookup_width = tfx__sample_wide_graph(&pass->width_sampler, size_life);
+	const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
+	const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
+
+	//----Size Changes
+	tfxWideFloat scale_x = tfxWideMul(base_size_x, lookup_width);
+	tfxWideFloat scale_y;
+	if (pass->lifetime_uniform_size) {
+		scale_y = tfxWideMul(lookup_width, base_size_y);
+		if (pass->base_uniform_size) {
+			scale_y = tfxWideMin(scale_x, scale_y);
+		}
+	} else {
+		scale_y = tfxWideMul(tfx__sample_wide_graph(&pass->height_sampler, size_life), base_size_y);
+	}
+
+	scale_x = tfxWideMul(scale_x, pass->overall_scale);
+	scale_y = tfxWideMul(scale_y, pass->overall_scale);
+
+	//Zero scale for particles flagged as removed so they are invisible while still occupying the ring buffer
+	const tfxWideInt particle_flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
+	const tfxWideInt alive = tfxWideEqualsi(tfxWideAndi(particle_flags, pass->remove_flag), tfxWideSetZeroi);
+	scale_x = tfxWideAnd(scale_x, tfxWideCast(alive));
+	scale_y = tfxWideAnd(scale_y, tfxWideCast(alive));
+
+	block->packed_size.m = tfx__wide_pack16bit_2sscaled(scale_x, scale_y, pass->size_packed_scale_amount);
+}
+
+//Intensity, gradient map position, curved alpha and sharpness. Only the gradient mapper and the packed
+//life value sample on path position, the intensity and alpha graphs always sample on the particle's own
+//lifetime.
+tfxINTERNAL inline void tfx__block_particle_color(const tfx_instance_pass_t *pass, tfxU32 index, tfxWideFloat life, tfx_instance_block_t *block) {
+	tfx_particle_soa_t &bank = *pass->bank;
+
+	const tfxWideFloat intensity_factor = tfxWideLoad(&bank.intensity_factor[index]);
+	tfx__readbarrier;
+
+	tfxWideFloat color_life = life;
+	if (pass->color_samples_path_position) {
+		color_life = tfxWideDiv(tfxWideLoad(&bank.path_position[index]), pass->color_node_count);
+	}
+
+	tfxWideFloat lookup_intensity = tfx__sample_wide_graph(&pass->intensity_sampler, life);
+	const tfxWideFloat lookup_curved_alpha = tfx__sample_wide_graph(&pass->curved_alpha_sampler, life);
+	const tfxWideFloat lookup_alpha_sharpness = tfx__sample_wide_graph(&pass->alpha_sharpness_sampler, life);
+
+	tfxWideFloat lookup_gradient_mapper;
+	if (pass->random_color) {
+		lookup_gradient_mapper = tfxWideLoad(&bank.random_color[index]);
+	} else {
+		lookup_gradient_mapper = tfx__sample_wide_graph(&pass->gradient_mapper_sampler, color_life);
+	}
+
+	//----Color changes
+	lookup_intensity = tfxWideMul(tfxWideMul(pass->global_intensity, lookup_intensity), intensity_factor);
+
+	block->packed_intensity_gradient.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, pass->color_packed_scale_amount);
+	block->packed_curved_alpha_life.m = tfx__wide_pack8bitunorm_xyz(lookup_curved_alpha, lookup_alpha_sharpness, color_life);
+}
+
+//Advances the animation frame in the bank and builds the packed image index. Also snapshots the capture
+//flags, which the write helpers turn into the sprite's capture bit and captured_index.
+tfxINTERNAL inline void tfx__block_particle_image_frame(const tfx_instance_pass_t *pass, tfxU32 index, tfx_instance_block_t *block) {
+	tfx_particle_soa_t &bank = *pass->bank;
+
+	tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
+	//We only want to capture if single loop count is not 0.
+	block->capture_flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
+	block->capture_flags.m = tfxWideXOri(tfxWideAndi(block->capture_flags.m, pass->capture_after_transform_flag), pass->capture_after_transform_flag);
+
+	tfx__readbarrier;
+
+	//----Image animation
+	image_frame = tfxWideAdd(image_frame, pass->image_frame_rate);
+	tfxWideStore(&bank.image_frame[index], image_frame);
+	if (pass->reverse_animation && pass->play_once) {
+		image_frame = tfxWideSub(pass->end_frame, image_frame);
+		image_frame = tfxWideMax(image_frame, tfxWideSetZero);
+	} else if (pass->play_once) {
+		image_frame = tfxWideMin(image_frame, pass->end_frame);
+	} else if (pass->reverse_animation) {
+		image_frame = tfxWideMod(image_frame, pass->frames);
+		image_frame = tfxWideSub(pass->end_frame, image_frame);
+	} else {
+		image_frame = tfxWideMod(image_frame, pass->frames);
+	}
+
+	block->image_indexes.m = tfxWideOri(pass->particle_gpu_properties_index, tfxWideAddi(tfxWideConverti(image_frame), pass->image_start_index));
+}
+
+//The 40 bytes of tfx_instance_t that come straight out of the block. indexes/captured_index are built by
+//the two write helpers below, which differ in how they resolve the instance slot and the capture source.
+tfxINTERNAL inline void tfx__write_particle_instance(tfx_instance_t *sprite, const tfx_instance_block_t *block, tfxU32 j) {
+	sprite->position.x = block->position_x.a[j];
+	sprite->position.y = block->position_y.a[j];
+	sprite->position.z = block->position_z.a[j];
+	sprite->position.w = block->stretch.a[j];
+	sprite->quaternion = ((tfxU64)(tfxU32)block->packed_quaternion_zw.a[j] << 32) | (tfxU64)(tfxU32)block->packed_quaternion_xy.a[j];
+	sprite->size.packed = block->packed_size.a[j];
+	sprite->alignment.packed = block->packed_alignment.a[j];
+	sprite->intensity_gradient_map.packed = block->packed_intensity_gradient.a[j];
+	sprite->curved_alpha_life.packed = block->packed_curved_alpha_life.a[j];
+}
+
+tfxINTERNAL inline void tfx__accumulate_bounding_box(tfx_bounding_box_t *bounding_box, const tfx_instance_block_t *block, tfxU32 j) {
+	bounding_box->min_corner.x = tfx__Min(block->position_x.a[j], bounding_box->min_corner.x);
+	bounding_box->min_corner.y = tfx__Min(block->position_y.a[j], bounding_box->min_corner.y);
+	bounding_box->min_corner.z = tfx__Min(block->position_z.a[j], bounding_box->min_corner.z);
+	bounding_box->max_corner.x = tfx__Max(block->position_x.a[j], bounding_box->max_corner.x);
+	bounding_box->max_corner.y = tfx__Max(block->position_y.a[j], bounding_box->max_corner.y);
+	bounding_box->max_corner.z = tfx__Max(block->position_z.a[j], bounding_box->max_corner.z);
+}
+
+//Unordered: instances are written in bank order, so the slot is just the running index.
+tfxINTERNAL inline void tfx__write_instance_block(const tfx_instance_pass_t *pass, const tfx_instance_block_t *block, tfxU32 index, tfxU32 start_diff, tfxU32 end_j, tfxU32 &running_sprite_index) {
+	tfx_particle_soa_t &bank = *pass->bank;
+	tfx_instance_t *sprites = pass->sprites;
+
+	for (tfxU32 j = start_diff; j < end_j; ++j) {
+		const tfxU32 index_j = index + j;
+		TFX_ASSERT(running_sprite_index < pass->work_entry->sprite_instances->current_size);
+		tfx_instance_t *sprite = &sprites[running_sprite_index];
+		tfx__write_particle_instance(sprite, block, j);
+
+		tfxU32 &sprites_index = bank.sprite_index[index_j];
+		const tfxU32 capture = (tfxU32)block->capture_flags.a[j] << 7;	//Note that the capture flag is already << 8, so this moves it to bit 15
+		sprite->captured_index = capture == 0 ? (pass->pm->current_sprite_buffer << 30) + running_sprite_index : (!pass->pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprite->captured_index |= pass->wrap_single_sprite;
+		sprites_index = pass->layer + running_sprite_index;
+		sprite->indexes = block->image_indexes.a[j] | capture;
+		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
+
+		if (pass->update_bounding_boxes) {
+			tfx__accumulate_bounding_box(&pass->emitter->bounding_box, block, j);
+		}
+		running_sprite_index++;
+	}
+}
+
+//Ordered: the slot comes from the particle's depth_index, and the depth value for the sort is written
+//alongside it. The capture source also has to account for the single loop count.
+tfxINTERNAL inline void tfx__write_instance_block_ordered(const tfx_instance_pass_t *pass, const tfx_instance_block_t *block, tfxU32 index, tfxU32 start_diff, tfxU32 end_j, tfxU32 &running_sprite_index) {
+	tfx_particle_soa_t &bank = *pass->bank;
+	tfx_instance_t *sprites = pass->sprites;
+	const tfx_vec3_t camera_position = pass->pm->camera_position;
+
+	for (tfxU32 j = start_diff; j < end_j; ++j) {
+		const tfxU32 index_j = index + j;
+		const tfxU32 particle_depth_index = bank.depth_index[index_j];
+		const tfxU32 sprite_depth_index = particle_depth_index + pass->instance_offset;
+		TFX_ASSERT(sprite_depth_index < pass->work_entry->sprite_instances->current_size);
+		tfx_instance_t *sprite = &sprites[sprite_depth_index];
+		tfx__write_particle_instance(sprite, block, j);
+
+		tfxU32 &sprites_index = bank.sprite_index[index_j];
+		const tfxU32 capture = (tfxU32)block->capture_flags.a[j] << 7;
+		sprite->captured_index = capture == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) == 0 ? (pass->pm->current_sprite_buffer << 30) + sprite_depth_index : (!pass->pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprite->captured_index |= pass->wrap_single_sprite;
+		sprites_index = pass->layer + sprite_depth_index;
+		sprite->indexes = block->image_indexes.a[j] | capture;
+		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
+
+		tfx_vec3_t sprite_position = { block->position_x.a[j], block->position_y.a[j], block->position_z.a[j] };
+		tfx_vec3_t sprite_plus_camera_position = sprite_position - camera_position;
+		(*pass->work_entry->depth_indexes)[particle_depth_index].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
+
+		if (pass->update_bounding_boxes) {
+			tfx__accumulate_bounding_box(&pass->emitter->bounding_box, block, j);
+		}
+		running_sprite_index++;
+	}
+}
+
+//Two intra-block orderings below are load-bearing and preserved from the old pass order: size reads
+//flags_single_loop_count before the write helpers clear tfxParticleFlags_capture_after_transform, and the
+//image frame block reads image_frame before storing the advanced frame back. Everything else each block
+//touches is local to that block, so no cross-block hazard exists.
+void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfx_instance_pass_t pass;
+	tfx__setup_instance_pass(work_entry, &pass);
+
+	tfx_particle_soa_t &bank = *pass.bank;
+	tfx_soa_buffer_t *particle_buffer = &pass.pm->particle_array_buffers[pass.emitter->particles_index];
+
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+	tfxU32 start_diff = work_entry->start_diff;
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		const tfxU32 index = tfx__get_circular_index(particle_buffer, i) / tfxDataWidth * tfxDataWidth;
+		const tfxWideFloat life = tfxWideLoad(&bank.life[index]);
+		tfx_instance_block_t block;
+
+		tfx__block_particle_transform(&pass, index, life, &block);
+		tfx__block_particle_spin(&pass, index, life, &block);
+		tfx__block_particle_size(&pass, index, life, &block);
+		tfx__block_particle_color(&pass, index, life, &block);
+		tfx__block_particle_image_frame(&pass, index, &block);
+
+		const tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+		const tfxU32 end_j = tfxMin(limit_index + start_diff, tfxDataWidth);
+		if (pass.is_ordered) {    //Predictable
+			tfx__write_instance_block_ordered(&pass, &block, index, start_diff, end_j, running_sprite_index);
+		} else {
+			tfx__write_instance_block(&pass, &block, index, start_diff, end_j, running_sprite_index);
 		}
 
 		start_diff = 0;
 	}
 }
-
 void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
@@ -13217,626 +13666,6 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
 		pm.running_ribbon_vertex_count += ribbon_count * ribbon_emitter.segment_count * bucket->buffer_info.vertices_per_segment;
 	}
-}
-
-void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage_t &pm = *work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-
-	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-
-	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
-	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
-
-	bool spin_roll_is_bezier_graph = tfx__graph_has_bezier_curves(spin_roll_graph);
-	bool spin_roll_has_oscillator = tfx__graph_can_oscillate(spin_roll_graph);
-
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		tfxWideFloat rotation_roll = tfxWideSetZero;
-		tfxWideFloat roll_offset = tfxWideLoad(&bank.rotation_offset[index]);
-
-		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_spin) {
-			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
-			tfxWideFloat base_roll_spin = tfxWideLoad(&bank.base_roll_spin[index]);
-			tfxWideFloat spin_roll_time = spin_roll_easing(life);
-			tfxWideFloat lookup_roll_spin = spin_roll_is_bezier_graph ?
-				tfx__wide_bezier_sampler(spin_roll_time, spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.curve1, spin_roll_graph->wide_graph.curve2, spin_roll_graph->wide_graph.to) :
-				tfx__wide_linear_sampler(spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.to, spin_roll_time);
-			if (spin_roll_has_oscillator) {
-				lookup_roll_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_roll_time, tfxWideAdd(spin_roll_graph->wide_oscillator.offset_x, spin_roll_graph->wide_oscillator.frequency), spin_roll_graph->wide_oscillator.amplitude), lookup_roll_spin), spin_roll_graph->wide_oscillator.offset_y);
-			}
-
-			//----Spin and angle Changes
-			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
-		}
-
-		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotation_roll = tfxWideAdd(rotation_roll, e_world_rotations_z);
-		}
-
-		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
-
-		tfxWideArrayi packed_quat_xy, packed_quat_zw;
-		tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll, &packed_quat_xy.m, &packed_quat_zw.m);
-
-		tfx__readbarrier;
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (is_ordered) {    //Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
-				running_sprite_index++;
-			}
-		} else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index++].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
-			}
-		}
-		start_diff = 0;
-	}
-}
-
-void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage_t &pm = *work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-
-	const tfxWideFloat e_qw = tfxWideSetSingle(emitter.rotation.w);
-	const tfxWideFloat e_qx = tfxWideSetSingle(emitter.rotation.x);
-	const tfxWideFloat e_qy = tfxWideSetSingle(emitter.rotation.y);
-	const tfxWideFloat e_qz = tfxWideSetSingle(emitter.rotation.z);
-
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-
-	tfx_graph_t *spin_roll_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index];
-	tfx_wide_easing_function spin_roll_easing = tfx__get_wide_easing_function(spin_roll_graph->easing_type);
-	tfx_graph_t *spin_pitch_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_pitch_spin_index];
-	tfx_wide_easing_function spin_pitch_easing = tfx__get_wide_easing_function(spin_pitch_graph->easing_type);
-	tfx_graph_t *spin_yaw_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_yaw_spin_index];
-	tfx_wide_easing_function spin_yaw_easing = tfx__get_wide_easing_function(spin_yaw_graph->easing_type);
-
-	bool spin_roll_is_bezier_graph = tfx__graph_has_bezier_curves(spin_roll_graph);
-	bool spin_roll_has_oscillator = tfx__graph_can_oscillate(spin_roll_graph);
-	bool spin_pitch_is_bezier_graph = tfx__graph_has_bezier_curves(spin_pitch_graph);
-	bool spin_pitch_has_oscillator = tfx__graph_can_oscillate(spin_pitch_graph);
-	bool spin_yaw_is_bezier_graph = tfx__graph_has_bezier_curves(spin_yaw_graph);
-	bool spin_yaw_has_oscillator = tfx__graph_can_oscillate(spin_yaw_graph);
-
-	const tfxWideFloat WideTwoPi = tfxWideSetSingle(tfxPI2);
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		tfxWideFloat rotation_pitch = tfxWideSetZero;
-		tfxWideFloat rotation_yaw = tfxWideSetZero;
-		tfxWideFloat rotation_roll = tfxWideSetZero;
-
-		tfxWideInt offsets = tfxWideLoadi((tfxWideIntLoader*)&bank.rotation_offsets[index]);
-		tfxWideFloat pitch_offset, yaw_offset, roll_offset;
-		tfx__wide_unpack10bit(offsets, pitch_offset, yaw_offset, roll_offset);
-		pitch_offset = tfxWideMul(pitch_offset, WideTwoPi);
-		yaw_offset = tfxWideMul(yaw_offset, WideTwoPi);
-		roll_offset = tfxWideMul(roll_offset, WideTwoPi);
-
-		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_spin3d) {
-			tfxWideFloat life = tfxWideLoad(&bank.life[index]);
-
-			tfxWideFloat base_roll_spin = tfxWideLoad(&bank.base_roll_spin[index]);
-			tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
-			tfxWideFloat base_yaw_spin = tfxWideLoad(&bank.base_yaw_spin[index]);
-
-			tfxWideFloat spin_roll_time = spin_roll_easing(life);
-			tfxWideFloat lookup_roll_spin = spin_roll_is_bezier_graph ?
-				tfx__wide_bezier_sampler(spin_roll_time, spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.curve1, spin_roll_graph->wide_graph.curve2, spin_roll_graph->wide_graph.to) :
-				tfx__wide_linear_sampler(spin_roll_graph->wide_graph.from, spin_roll_graph->wide_graph.to, spin_roll_time);
-
-			if (spin_roll_has_oscillator) {
-				lookup_roll_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_roll_time, tfxWideAdd(spin_roll_graph->wide_oscillator.offset_x, spin_roll_graph->wide_oscillator.frequency), spin_roll_graph->wide_oscillator.amplitude), lookup_roll_spin), spin_roll_graph->wide_oscillator.offset_y);
-			}
-
-			tfxWideFloat spin_pitch_time = spin_pitch_easing(life);
-			tfxWideFloat lookup_pitch_spin = spin_pitch_is_bezier_graph ?
-				tfx__wide_bezier_sampler(spin_pitch_time, spin_pitch_graph->wide_graph.from, spin_pitch_graph->wide_graph.curve1, spin_pitch_graph->wide_graph.curve2, spin_pitch_graph->wide_graph.to) :
-				tfx__wide_linear_sampler(spin_pitch_graph->wide_graph.from, spin_pitch_graph->wide_graph.to, spin_pitch_time);
-
-			if (spin_pitch_has_oscillator) {
-				lookup_pitch_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_pitch_time, tfxWideAdd(spin_pitch_graph->wide_oscillator.offset_x, spin_pitch_graph->wide_oscillator.frequency), spin_pitch_graph->wide_oscillator.amplitude), lookup_pitch_spin), spin_pitch_graph->wide_oscillator.offset_y);
-			}
-
-			tfxWideFloat spin_yaw_time = spin_yaw_easing(life);
-			tfxWideFloat lookup_yaw_spin = spin_yaw_is_bezier_graph ?
-				tfx__wide_bezier_sampler(spin_yaw_time, spin_yaw_graph->wide_graph.from, spin_yaw_graph->wide_graph.curve1, spin_yaw_graph->wide_graph.curve2, spin_yaw_graph->wide_graph.to) :
-				tfx__wide_linear_sampler(spin_yaw_graph->wide_graph.from, spin_yaw_graph->wide_graph.to, spin_yaw_time);
-
-			if (spin_yaw_has_oscillator) {
-				lookup_yaw_spin = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(spin_yaw_time, tfxWideAdd(spin_yaw_graph->wide_oscillator.offset_x, spin_yaw_graph->wide_oscillator.frequency), spin_yaw_graph->wide_oscillator.amplitude), lookup_yaw_spin), spin_yaw_graph->wide_oscillator.offset_y);
-			}
-
-			//----Spin and angle Changes
-			rotation_pitch = tfxWideMul(lookup_pitch_spin, base_pitch_spin);
-			rotation_yaw = tfxWideMul(lookup_yaw_spin, base_yaw_spin);
-			rotation_roll = tfxWideMul(lookup_roll_spin, base_roll_spin);
-		}
-
-		rotation_pitch = tfxWideAdd(rotation_pitch, pitch_offset);
-		rotation_yaw = tfxWideAdd(rotation_yaw, yaw_offset);
-		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
-
-		// Convert particle euler angles to quaternion
-		const tfxWideFloat half = tfxWideSetSingle(.5f);
-		tfxWideFloat cp, sp, cy, sy, cr, sr;
-		tfxWideSinCos(tfxWideMul(rotation_pitch, half), &sp, &cp);
-		tfxWideSinCos(tfxWideMul(rotation_yaw, half), &sy, &cy);
-		tfxWideSinCos(tfxWideMul(rotation_roll, half), &sr, &cr);
-
-		tfxWideFloat cpcy = tfxWideMul(cp, cy);
-		tfxWideFloat spsy = tfxWideMul(sp, sy);
-		tfxWideFloat spcy = tfxWideMul(sp, cy);
-		tfxWideFloat cpsy = tfxWideMul(cp, sy);
-
-		tfxWideFloat qw = tfxWideMulAdd(cr, cpcy, tfxWideMul(sr, spsy));
-		tfxWideFloat qz = tfxWideMulSub(sr, cpcy, tfxWideMul(cr, spsy));
-		tfxWideFloat qx = tfxWideMulAdd(cr, spcy, tfxWideMul(sr, cpsy));
-		tfxWideFloat qy = tfxWideMulSub(cr, cpsy, tfxWideMul(sr, spcy));
-
-		// Compose with emitter rotation if relative_angle is set
-		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			// Multiply conj(q_emitter) * q_particle to properly compose rotations.
-			// Conjugate is needed because the CPU position transform uses a reversed
-			// quaternion rotation convention compared to the shader.
-			tfxWideFloat rw = tfxWideAdd(tfxWideAdd(tfxWideMul(e_qw, qw), tfxWideMul(e_qx, qx)),
-			                             tfxWideAdd(tfxWideMul(e_qy, qy), tfxWideMul(e_qz, qz)));
-			tfxWideFloat rx = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qx), tfxWideMul(e_qx, qw)),
-			                             tfxWideSub(tfxWideMul(e_qz, qy), tfxWideMul(e_qy, qz)));
-			tfxWideFloat ry = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qy), tfxWideMul(e_qy, qw)),
-			                             tfxWideSub(tfxWideMul(e_qx, qz), tfxWideMul(e_qz, qx)));
-			tfxWideFloat rz = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qz), tfxWideMul(e_qz, qw)),
-			                             tfxWideSub(tfxWideMul(e_qy, qx), tfxWideMul(e_qx, qy)));
-			qw = rw; qx = rx; qy = ry; qz = rz;
-		}
-
-		// Pack quaternion to 16-bit
-		const tfxWideFloat w32767 = tfxWideSetSingle(32767.f);
-		const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
-		tfxWideArrayi packed_quat_xy, packed_quat_zw;
-		tfxWideInt p_x = tfxWideAndi(tfxWideConverti(tfxWideMul(qx, w32767)), mask_ffff);
-		tfxWideInt p_y = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qy, w32767)), mask_ffff), 16);
-		tfxWideInt p_z = tfxWideAndi(tfxWideConverti(tfxWideMul(qz, w32767)), mask_ffff);
-		tfxWideInt p_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qw, w32767)), mask_ffff), 16);
-		packed_quat_xy.m = tfxWideOri(p_x, p_y);
-		packed_quat_zw.m = tfxWideOri(p_z, p_w);
-
-		tfx__readbarrier;
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (is_ordered) {    //Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
-				running_sprite_index++;
-			}
-		} else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].quaternion = ((tfxU64)(uint32_t)packed_quat_zw.a[j] << 32) | (tfxU64)(uint32_t)packed_quat_xy.a[j];
-				running_sprite_index++;
-			}
-		}
-		start_diff = 0;
-	}
-}
-
-void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage_t &pm = *work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
-
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-	tfxU32 start_diff = work_entry->start_diff;
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-		if (is_ordered) {    //Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].size.packed = 0;
-				running_sprite_index++;
-			}
-		}
-		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].size.packed = 0;
-				running_sprite_index++;
-			}
-		}
-		start_diff = 0;
-	}
-}
-
-void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage_t &pm = *work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_library library = emitter.library;
-	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
-
-	const tfxWideFloat overall_scale = tfxWideSetSingle(work_entry->overall_scale);
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	tfxWideFloat scale_x;
-	tfxWideFloat scale_y;
-
-	tfx_emitter_path_t *path;
-	tfxWideFloat life;
-	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 64.f);
-
-	bool sample_based_on_path_position = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling && work_entry->shared_properties->emission_type == tfxPath;
-
-	tfxWideFloat node_count = tfxWIDEONE.m;
-	if (sample_based_on_path_position) {
-		path = &library->paths[emitter.state_properties.path_attributes];
-		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
-	}
-
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-
-	tfx_graph_t *width_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_width_index];
-	tfx_wide_easing_function width_easing = tfx__get_wide_easing_function(width_graph->easing_type);
-	tfx_graph_t *height_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_height_index];
-	tfx_wide_easing_function height_easing = tfx__get_wide_easing_function(height_graph->easing_type);
-
-	bool width_is_bezier_graph = tfx__graph_has_bezier_curves(width_graph);
-	bool height_is_bezier_graph = tfx__graph_has_bezier_curves(height_graph);
-	bool width_has_oscillator = tfx__graph_can_oscillate(width_graph);
-	bool height_has_oscillator = tfx__graph_can_oscillate(height_graph);
-
-	tfxWideFloat lookup_width, lookup_height;
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		tfx__readbarrier;
-
-		if (sample_based_on_path_position) {
-			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-			life = tfxWideDiv(path_position, node_count);
-		}
-		else {
-			life = tfxWideMin(tfxWideLoad(&bank.life[index]), tfxWIDEONE.m);
-		}
-
-		tfxWideFloat width_time = width_easing(life);
-		lookup_width = width_is_bezier_graph ?		tfx__wide_bezier_sampler(width_time, width_graph->wide_graph.from, width_graph->wide_graph.curve1, width_graph->wide_graph.curve2, width_graph->wide_graph.to) : 
-													tfx__wide_linear_sampler(width_graph->wide_graph.from, width_graph->wide_graph.to, width_time);
-
-		if (width_has_oscillator) {
-			lookup_width = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(width_time, tfxWideAdd(width_graph->wide_oscillator.offset_x, width_graph->wide_oscillator.frequency), width_graph->wide_oscillator.amplitude), lookup_width), width_graph->wide_oscillator.offset_y);
-		}
-
-		tfxWideFloat height_time = height_easing(life);
-		lookup_height = height_is_bezier_graph ?	tfx__wide_bezier_sampler(height_time, height_graph->wide_graph.from, height_graph->wide_graph.curve1, height_graph->wide_graph.curve2, height_graph->wide_graph.to) : 
-													tfx__wide_linear_sampler(height_graph->wide_graph.from, height_graph->wide_graph.to, height_time);
-
-		if (height_has_oscillator) {
-			lookup_height = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(height_time, tfxWideAdd(height_graph->wide_oscillator.offset_x, height_graph->wide_oscillator.frequency), height_graph->wide_oscillator.amplitude), lookup_height), height_graph->wide_oscillator.offset_y);
-		}
-
-		tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
-		tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
-
-		tfx__readbarrier;
-
-		//----Size Changes
-		scale_x = tfxWideMul(base_size_x, lookup_width);
-
-		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-			scale_y = tfxWideMul(lookup_width, base_size_y);
-			if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_base_uniform_size) {
-				scale_y = tfxWideMin(scale_x, scale_y);
-			}
-		}
-		else {
-			scale_y = tfxWideMul(lookup_height, base_size_y);
-		}
-
-		scale_x = tfxWideMul(scale_x, overall_scale);
-		scale_y = tfxWideMul(scale_y, overall_scale);
-
-		//Zero scale for particles flagged as removed so they are invisible while still occupying the ring buffer
-		{
-			tfxWideInt pflags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags_single_loop_count[index]);
-			tfxWideInt alive = tfxWideEqualsi(tfxWideAndi(pflags, tfxWideSetSinglei(tfxParticleFlags_remove)), tfxWideSetZeroi);
-			//alive = tfxWideOri(alive, tfxWideConverti(tfxWideGreaterEqual(life, tfxWIDEONE.m)));
-			scale_x = tfxWideAnd(scale_x, tfxWideCast(alive));
-			scale_y = tfxWideAnd(scale_y, tfxWideCast(alive));
-		}
-
-		tfxWideArrayi packed_scale;
-		packed_scale.m = tfx__wide_pack16bit_2sscaled(scale_x, scale_y, packed_scale_amount);
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-		if (is_ordered) {    //Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
-				TFX_ASSERT(sprite_depth_index < work_entry->sprite_instances->current_size);
-				sprites[sprite_depth_index].size.packed = packed_scale.a[j];
-				running_sprite_index++;
-			}
-		}
-		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				TFX_ASSERT(running_sprite_index < work_entry->sprite_instances->current_size);
-				sprites[running_sprite_index].size.packed = packed_scale.a[j];
-				running_sprite_index++;
-			}
-		}
-		start_diff = 0;
-	}
-}
-
-void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage pm = work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
-	tfx_library library = emitter.library;
-	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
-
-	const tfxWideFloat global_intensity = tfxWideSetSingle(work_entry->global_intensity);
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	tfxWideFloat life;
-
-	bool sample_based_on_path_position = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling && work_entry->shared_properties->emission_type == tfxPath;
-
-	tfx_emitter_path_t *path;
-	tfxWideFloat node_count = tfxWIDEONE.m;
-	if (sample_based_on_path_position) {
-		path = &library->paths[emitter.state_properties.path_attributes];
-		node_count = tfxWideSetSingle(path->settings.node_count - 3.f);
-	}
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-	tfxWideArrayi curved_alpha;
-	const tfxWideFloat packed_scale_amount = tfxWideSetSingle(32767.f / 128.f);
-
-	tfx_graph_t *intensity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_intensity_index];
-	tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
-	tfx_graph_t *curved_alpha_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_curved_alpha_index];
-	tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->easing_type);
-	tfx_graph_t *alpha_sharpness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_alpha_sharpness_index];
-	tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->easing_type);
-	tfx_graph_t *gradient_mapper_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_gradient_mapper_index];
-	tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->easing_type);
-
-	bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
-	bool intensity_has_oscillator = tfx__graph_can_oscillate(intensity_graph);
-	bool curved_alpha_is_bezier_graph = tfx__graph_has_bezier_curves(curved_alpha_graph);
-	bool curved_alpha_has_oscillator = tfx__graph_can_oscillate(curved_alpha_graph);
-	bool alpha_sharpness_is_bezier_graph = tfx__graph_has_bezier_curves(alpha_sharpness_graph);
-	bool alpha_sharpness_has_oscillator = tfx__graph_can_oscillate(alpha_sharpness_graph);
-	bool gradient_mapper_is_bezier_graph = tfx__graph_has_bezier_curves(gradient_mapper_graph);
-	bool gradient_mapper_has_oscillator = tfx__graph_can_oscillate(gradient_mapper_graph);
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		const tfxWideFloat intensity_factor = tfxWideLoad(&bank.intensity_factor[index]);
-		tfx__readbarrier;
-
-		tfxWideFloat intensity_time;
-		tfxWideFloat curved_alpha_time;
-		tfxWideFloat alpha_sharpness_time;
-		if (sample_based_on_path_position) {
-			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-			life = tfxWideDiv(path_position, node_count);
-			tfxWideFloat lifetime = tfxWideLoad(&bank.life[index]);
-			intensity_time = intensity_easing(lifetime);
-			curved_alpha_time = curved_alpha_easing(lifetime);
-			alpha_sharpness_time = alpha_sharpness_easing(lifetime);
-		} else {
-			life = tfxWideLoad(&bank.life[index]);
-			intensity_time = intensity_easing(life);
-			curved_alpha_time = curved_alpha_easing(life);
-			alpha_sharpness_time = alpha_sharpness_easing(life);
-		}
-
-		tfxWideFloat lookup_intensity = intensity_is_bezier_graph ?
-			tfx__wide_bezier_sampler(intensity_time, intensity_graph->wide_graph.from, intensity_graph->wide_graph.curve1, intensity_graph->wide_graph.curve2, intensity_graph->wide_graph.to) : 
-			tfx__wide_linear_sampler(intensity_graph->wide_graph.from, intensity_graph->wide_graph.to, intensity_time);
-
-		if (intensity_has_oscillator) {
-			lookup_intensity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(intensity_time, tfxWideAdd(intensity_graph->wide_oscillator.offset_x, intensity_graph->wide_oscillator.frequency), intensity_graph->wide_oscillator.amplitude), lookup_intensity), intensity_graph->wide_oscillator.offset_y);
-		}
-
-		tfxWideFloat lookup_curved_alpha = curved_alpha_is_bezier_graph ?	
-			tfx__wide_bezier_sampler(curved_alpha_time, curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.curve1, curved_alpha_graph->wide_graph.curve2, curved_alpha_graph->wide_graph.to) : 
-			tfx__wide_linear_sampler(curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.to, curved_alpha_time);
-
-		if (curved_alpha_has_oscillator) {
-			lookup_curved_alpha = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(curved_alpha_time, tfxWideAdd(curved_alpha_graph->wide_oscillator.offset_x, curved_alpha_graph->wide_oscillator.frequency), curved_alpha_graph->wide_oscillator.amplitude), lookup_curved_alpha), curved_alpha_graph->wide_oscillator.offset_y);
-		}
-
-		tfxWideFloat lookup_alpha_sharpness = alpha_sharpness_is_bezier_graph ?	
-			tfx__wide_bezier_sampler(alpha_sharpness_time, alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.curve1, alpha_sharpness_graph->wide_graph.curve2, alpha_sharpness_graph->wide_graph.to) : 
-			tfx__wide_linear_sampler(alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.to, alpha_sharpness_time);
-
-		if (alpha_sharpness_has_oscillator) {
-			lookup_alpha_sharpness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(alpha_sharpness_time, tfxWideAdd(alpha_sharpness_graph->wide_oscillator.offset_x, alpha_sharpness_graph->wide_oscillator.frequency), alpha_sharpness_graph->wide_oscillator.amplitude), lookup_alpha_sharpness), alpha_sharpness_graph->wide_oscillator.offset_y);
-		}
-
-		tfxWideFloat lookup_gradient_mapper;
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color) {
-			lookup_gradient_mapper = tfxWideLoad(&bank.random_color[index]);
-		} else {
-			tfxWideFloat gradient_mapper_time = gradient_mapper_easing(life);
-			lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?
-				tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) :
-				tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
-
-			if (gradient_mapper_has_oscillator) {
-				lookup_gradient_mapper = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(gradient_mapper_time, tfxWideAdd(gradient_mapper_graph->wide_oscillator.offset_x, gradient_mapper_graph->wide_oscillator.frequency), gradient_mapper_graph->wide_oscillator.amplitude), lookup_gradient_mapper), gradient_mapper_graph->wide_oscillator.offset_y);
-			}
-		}
-
-		//----Color changes
-		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
-
-		tfxWideArrayi packed_intensity_life;
-		packed_intensity_life.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, lookup_gradient_mapper, packed_scale_amount);
-        curved_alpha.m = tfx__wide_pack8bitunorm_xyz(lookup_curved_alpha, lookup_alpha_sharpness, life);
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-		if (is_ordered) {
-			tfx__write_particle_color_sprite_data_ordered(sprites, work_entry->layer, start_diff, limit_index, bank.depth_index, index, packed_intensity_life, curved_alpha, running_sprite_index, work_entry->effect_instance_offset + work_entry->cumulative_index_point);
-		}
-		else {
-			tfx__write_particle_color_sprite_data(sprites, start_diff, limit_index, bank.depth_index, index, packed_intensity_life, curved_alpha, running_sprite_index);
-		}
-		start_diff = 0;
-	}
-
-}
-
-void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
-	tfx_stage pm = work_entry->pm;
-	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
-	tfx_image_data_t *image = emitter.state_properties.image;
-	tfxU32 layer = work_entry->layer << 28;
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	tfxWideFloat image_frame_rate = tfxWideSetSingle(emitter.state_properties.image_frame_rate);
-	image_frame_rate = tfxWideMul(image_frame_rate, pm->update_time_wide);
-	tfxWideFloat end_frame = tfxWideSetSingle(emitter.state_properties.end_frame);
-	tfxWideFloat frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
-	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-
-	tfxWideInt particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.gpu_property_index << 16);
-	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxStageFlags_recording_sprites) && !(pm->flags & tfxStageFlags_record_with_compute_image_index) && (pm->flags & tfxStageFlags_using_uids) ? 0 : image->compute_shape_index);
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	bool is_ordered = tfx__is_ordered_effect_state(&pm->effects[emitter.parent_index]);
-TFX_ENABLE_COMPILER_WARNING()
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
-		tfxWideArrayi flags;
-		//We only want to capture if single loop count is not 0.
-		flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
-		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
-
-		tfx__readbarrier;
-
-		//----Image animation
-		image_frame = tfxWideAdd(image_frame, image_frame_rate);
-		tfxWideStore(&bank.image_frame[index], image_frame);
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame = tfxWideSub(end_frame, image_frame);
-			image_frame = tfxWideMax(image_frame, tfxWideSetZero);
-		}
-		else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame = tfxWideMin(image_frame, end_frame);
-		}
-		else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) {
-			image_frame = tfxWideMod(image_frame, frames);
-			image_frame = tfxWideSub(end_frame, image_frame);
-		}
-		else {
-			image_frame = tfxWideMod(image_frame, frames);
-		}
-
-		tfxWideArrayi image_indexes;
-		image_indexes.m = tfxWideOri(particle_gpu_properties_index, tfxWideAddi(tfxWideConverti(image_frame), image_start_index));
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		tfx_instance_t *sprites = tfxCastBuffer(tfx_instance_t, work_entry->sprite_instances);
-		if (is_ordered) {
-			tfx__write_particle_image_sprite_data_ordered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, index, running_sprite_index, work_entry->effect_instance_offset + work_entry->cumulative_index_point);
-		} else {
-			tfx__write_particle_image_sprite_data(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter.state_flags, index, running_sprite_index);
-		}
-
-		//We can't alter the flags here, there was a bug where storing a block of 4 here would unflag a particle when it shouldn't but I'm not entirely sure why.
-		//Something to do with limit_index being less then 4 and so a particle in the bank (which in theory shouldn't exist yet) gets unflagged. limit_index is
-		//only ever less than 4 on the final loop so maybe something carries over to the next frame. 
-		//It generally only happened when the spawn rate is increased in the editor which may have been throwing things off. For now the flagging is done inside the sprite writing
-		//so we know we're only marking the flag for each particle that is definitely in play. The alternative that also works is a separate loop below, need to 
-		//test which is faster but it would be nice to know exactly why this happens in the first place.
-		//flags.m = tfxWideAndi(flags.m, xor_capture_after_transform_flag);
-		//tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags.m);
-
-		start_diff = 0;
-	}
-
-	/*
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
-		flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
-		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-	}
-	*/
-
 }
 
 void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data) {
@@ -18611,19 +18440,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		}
 		if (!(pm->flags & tfxStageFlags_warming_up)) {
 			//There's no need to call controll functions in warm up if they don't write back to the particle bank.
-			tfx__control_particle_transform(&pm->work_queue, work_entry);
-			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
-				tfx__control_particle_spin_3d(&pm->work_queue, work_entry);
-			}
-			else {
-				tfx__control_particle_spin_roll(&pm->work_queue, work_entry);
-			}
-			tfx__control_particle_size(&pm->work_queue, work_entry);
-			tfx__control_particle_color(&pm->work_queue, work_entry);
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
-				tfx__control_particle_hide(&pm->work_queue, work_entry);
-			}
-			tfx__control_particle_image_frame(&pm->work_queue, work_entry);
+			//Transform, spin, size, color, hide and image frame are all fused into this one pass so that each
+			//tfx_instance_t is written once, whole, rather than streamed over six times.
+			tfx__control_particle_instances(&pm->work_queue, work_entry);
 		} else {
 			tfx__control_particle_transform_warmup(&pm->work_queue, work_entry);
 			tfx__control_particle_image_frame_warmup(&pm->work_queue, work_entry);

@@ -9071,58 +9071,6 @@ void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_po
 //effect manager internal functions
 //--------------------------------
 template<typename T>
-tfxINTERNAL inline void tfx__write_particle_color_sprite_data(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha_life, tfxU32 &running_sprite_index) {
-	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		sprites[running_sprite_index].intensity_gradient_map.packed = packed_intensity_life.a[j];
-		sprites[running_sprite_index].curved_alpha_life.packed = curved_alpha_life.a[j];
-		running_sprite_index++;
-	}
-}
-
-template<typename T>
-tfxINTERNAL inline void tfx__write_particle_color_sprite_data_ordered(T *sprites, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha_life, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
-	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		tfxU32 sprite_depth_index = depth_index[index + j] + instance_offset;
-		sprites[sprite_depth_index].intensity_gradient_map.packed = packed_intensity_life.a[j];
-		sprites[sprite_depth_index].curved_alpha_life.packed = curved_alpha_life.a[j];
-		running_sprite_index++;
-	}
-}
-
-template<typename T>
-tfxINTERNAL inline void tfx__write_particle_image_sprite_data(T *sprites, tfx_stage pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, tfxU32 index, tfxU32 &running_sprite_index) {
-	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		int index_j = index + j;
-		tfxU32 &sprites_index = bank.sprite_index[index_j];
-		tfxU32 capture = flags.a[j] << 7;	//Note that the capture flag is already << 8, so this moves it to bit 15
-		sprites[running_sprite_index].captured_index = capture == 0 ? (pm->current_sprite_buffer << 30) + running_sprite_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + running_sprite_index;
-		sprites[running_sprite_index].indexes = image_indexes.a[j];
-		sprites[running_sprite_index].indexes |= capture;
-		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
-		running_sprite_index++;
-	}
-}
-
-template<typename T>
-tfxINTERNAL inline void tfx__write_particle_image_sprite_data_ordered(T *sprites, tfx_stage pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, tfxU32 index, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
-	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		int index_j = index + j;
-		tfxU32 sprite_depth_index = bank.depth_index[index_j] + instance_offset;
-		tfxU32 &sprites_index = bank.sprite_index[index_j];
-		tfxU32 capture = flags.a[j] << 7;
-		sprites[sprite_depth_index].captured_index = capture == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) == 0 ? (pm->current_sprite_buffer << 30) + sprite_depth_index : (!pm->current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-		sprites[sprite_depth_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + sprite_depth_index;
-		sprites[sprite_depth_index].indexes = image_indexes.a[j];
-		sprites[sprite_depth_index].indexes |= capture;
-		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
-		running_sprite_index++;
-	}
-}
-
-template<typename T>
 tfxINTERNAL inline void tfx__wrap_single_particle_instances(T *instance, tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	for (tfxEachLayer) {
@@ -9272,13 +9220,9 @@ tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data);
+//The fused transform/spin/size/color/hide/image_frame pass: one loop over the bank, one whole write per instance.
+tfxINTERNAL void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_color(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_size(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_hide(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_spin_roll(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data);
@@ -9286,7 +9230,6 @@ tfxINTERNAL void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t 
 tfxINTERNAL void tfx__control_particle_line_behaviour_kill(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_line_behaviour_loop(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void tfx__control_particle_transform(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
 
