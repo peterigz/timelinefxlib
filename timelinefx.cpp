@@ -1572,6 +1572,15 @@ tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
 	return result.pack;
 }
 
+tfx_vec3_t tfx__unpack10bit_unsigned(tfxU32 in) {
+	const float one_div_511 = 1.f / 511.f;
+	tfx_vec3_t result;
+	result.x = (float)((in >> 20) & 0x3FF) * one_div_511 - 1.f;
+	result.y = (float)((in >> 10) & 0x3FF) * one_div_511 - 1.f;
+	result.z = (float)(in & 0x3FF) * one_div_511 - 1.f;
+	return result;
+}
+
 tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	int16_t x_scaled = (int16_t)(x * 32767.f / max_value);
 	int16_t y_scaled = (int16_t)(y * 32767.f / max_value);
@@ -12616,6 +12625,12 @@ void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entr
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_has_oscillator : 0;
+	//Drag is hardcoded off until the drag_half_life property exists. This will become
+	//alpha = 1 - exp2(-update_time / drag_half_life) with a branch to 1 when the half life is 0. One
+	//scalar exp2 per emitter per frame, never per particle. Note that ctx is zero initialised, so these
+	//two must be set explicitly or every particle would freeze in place.
+	ctx.drag_alpha = tfxWIDEONE.m;
+	ctx.one_minus_drag_alpha = tfxWIDEZERO.m;
 }
 
 void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -17349,7 +17364,6 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 			base_velocity *= velocity_factor;
 		}
 		entry->particle_data->base_velocity[index] = base_velocity;
-
 	}
 
 }
@@ -17448,6 +17462,10 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 		float &local_position_x = entry->particle_data->position_x[index];
 		float &local_position_y = entry->particle_data->position_y[index];
 		float &local_position_z = entry->particle_data->position_z[index];
+		float &velocity_x = entry->particle_data->velocity_x[index];
+		float &velocity_y = entry->particle_data->velocity_y[index];
+		float &velocity_z = entry->particle_data->velocity_z[index];
+		float &base_velocity = entry->particle_data->base_velocity[index];
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 
 		tfx_vec3_t world_position;
@@ -17492,7 +17510,13 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 				velocity_normal = tfx__normalize_vec3_fast(&velocity_normal);
 			}
 			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
+		} else {
+			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 		}
+
+		velocity_x = base_velocity * velocity_normal.x;
+		velocity_y = base_velocity * velocity_normal.y;
+		velocity_z = base_velocity * velocity_normal.z;
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
 			entry->particle_data->noise_offset[index] = 0;
 		}
@@ -17928,6 +17952,9 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 				bank.velocity_normal[next_index] = bank.velocity_normal[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
 				bank.base_velocity[next_index] = bank.base_velocity[index];
+				bank.velocity_x[next_index] = bank.velocity_x[index];
+				bank.velocity_y[next_index] = bank.velocity_y[index];
+				bank.velocity_z[next_index] = bank.velocity_z[index];
 				bank.base_roll_spin[next_index] = bank.base_roll_spin[index];
 				bank.intensity_factor[next_index] = bank.intensity_factor[index];
 				bank.position_z[next_index] = bank.position_z[index];
@@ -18782,6 +18809,9 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, position_z));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, velocity_x));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, velocity_y));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, velocity_z));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, velocity_normal));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, depth_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, intensity_factor));

@@ -5,6 +5,8 @@
 
 #define tfxAPI_EDITOR
 
+#define tfxTMP_GLOBAL_DRAG 1.f
+
 //Override this if you'd prefer a different way to allocate the pools for sub allocation in host memory.
 #ifndef tfxALLOCATE_POOL
 #define tfxALLOCATE_POOL malloc
@@ -6649,8 +6651,9 @@ typedef struct tfx_unique_sprite_id_s {
 	tfxU32 property_index;
 }tfx_unique_sprite_id_t;
 
-//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Max Current Bandwidth: 112 bytes in total.
-//Half floats for the spawn-time constant fields were tried (Aug 2026, see notes/soa_bandwidth_roadmap.md) and
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. 
+//Max Current Bandwidth: 128 bytes in total.
+//Half floats for the spawn-time constant fields were tried and
 //measured no faster than full floats even with a SIMD software converter, so they stay as floats.
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
@@ -6663,6 +6666,9 @@ typedef struct tfx_particle_soa_s {
 	float *position_x;
 	float *position_y;
 	float *position_z;
+	float *velocity_x;
+	float *velocity_y;
+	float *velocity_z;
 	union {
 		tfxU32 *rotation_offsets;		//Packed into 10bit ints for each axis
 		float *rotation_offset;			//Just use a float if the particle always faces the camera
@@ -7920,6 +7926,7 @@ tfxINTERNAL tfx_mat4_t tfx__matrix4_rotate_z(float angle);
 tfxINTERNAL tfx_mat4_t tfx__transform_matrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
 tfxINTERNAL tfx_vec4_t tfx__transform_matrix4_vec4(const tfx_mat4_t *mat, const tfx_vec4_t vec);
 tfxINTERNAL tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v);
+tfxINTERNAL tfx_vec3_t tfx__unpack10bit_unsigned(tfxU32 in);
 tfxINTERNAL tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in);
 tfxINTERNAL float tfx__gamma_correct(float color, float gamma = tfxGAMMA);
 tfxINTERNAL inline tfx_vec2_t tfx__normalise_vec2(tfx_vec2_t v) { return v * tfx__quake_sqrt(tfx__dot_product_vec2(&v, &v)); }
@@ -8462,6 +8469,12 @@ struct tfx_position_policy_context {
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
+	//Drag: the particle velocity tracks the target velocity exponentially, drag_alpha is how much of the
+	//gap it closes this frame. Set once per emitter per frame in tfx_setup_vecolity_lookup_policy, never
+	//per particle. drag_alpha of 1 (and one_minus_drag_alpha of 0) means no drag at all, which is the
+	//default and reproduces the old kinematic behaviour exactly.
+	tfxWideFloat drag_alpha;
+	tfxWideFloat one_minus_drag_alpha;
 	tfxWideFloat life;
 	tfxWideFloat velocity_adjuster;
 	tfxWideFloat overall_scale_wide;
@@ -8830,13 +8843,43 @@ struct tfx_apply_motion_randomness {
 	}
 };
 
+//Accumulating velocity with drag. The velocity overtime graph no longer sets the particle velocity
+//directly, it sets the velocity the particle is aiming for: the emission direction scaled by the
+//current speed. The stored velocity then chases that target exponentially, closing ctx.drag_alpha of
+//the remaining gap every frame, which is what drag is. With no drag ctx.drag_alpha is 1 and the
+//particle simply is the target, exactly as it was before this channel existed.
 struct tfx_apply_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-		tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
-		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
-		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
-		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
+		tfxWideFloat target_velocity_x, target_velocity_y, target_velocity_z;
+		tfx__wide_unpack10bit(velocity_normal, target_velocity_x, target_velocity_y, target_velocity_z);
+		target_velocity_x = tfxWideMul(target_velocity_x, ctx.velocity);
+		target_velocity_y = tfxWideMul(target_velocity_y, ctx.velocity);
+		target_velocity_z = tfxWideMul(target_velocity_z, ctx.velocity);
+
+		tfxWideFloat previous_velocity_x = tfxWideLoad(&bank.velocity_x[index]);
+		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
+		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
+
+		//Written as (1 - alpha) * previous + alpha * target and NOT as the cheaper
+		//previous + alpha * (target - previous). The two are the same in real arithmetic but not in
+		//floating point: at alpha of 1 this form gives 0 * previous + 1 * target, which is exactly the
+		//target, while the fused form leaves a rounding residue that accumulates every frame. Every
+		//effect in the library relies on the no drag case being bit identical to the old behaviour, so
+		//the extra multiply is not optional. It also relies on the stored velocity being finite, which
+		//the spawn seed and the zeroed allocation guarantee, since 0 * infinity would be a NaN.
+		ctx.velocity_x = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_x), tfxWideMul(ctx.drag_alpha, target_velocity_x));
+		ctx.velocity_y = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_y), tfxWideMul(ctx.drag_alpha, target_velocity_y));
+		ctx.velocity_z = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_z), tfxWideMul(ctx.drag_alpha, target_velocity_z));
+
+		//Store before anything downstream touches it. The noise policies and tfx_apply_position both run
+		//after this one and both modify ctx.velocity_x/y/z in place: noise deflects it, and
+		//tfx_apply_position subtracts weight and scales by the frame time. None of that belongs in the
+		//accumulated channel, or drag would eat the noise and turn a bounded wobble into a random walk,
+		//and gravity would compound instead of being a constant bias.
+		tfxWideStore(&bank.velocity_x[index], ctx.velocity_x);
+		tfxWideStore(&bank.velocity_y[index], ctx.velocity_y);
+		tfxWideStore(&bank.velocity_z[index], ctx.velocity_z);
 	}
 };
 
