@@ -5223,6 +5223,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("billboard_option", tfxUInt);
 	names_and_types.Insert("vector_align_type", tfxUInt);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
+	names_and_types.Insert("drag_half_life", tfxFloat);
 	names_and_types.Insert("sort_passes", tfxUInt);
 	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
 
@@ -6015,6 +6016,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "grid_columns") value.Setf("%f", shared_properties->grid_points.y);
 	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
 	else if (property_name == "loop_length") value.Setf("%f", effect->state_properties.loop_length);
+	else if (property_name == "drag_half_life") value.Setf("%f", emitter_properties->drag_half_life);
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
@@ -6356,11 +6358,13 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
 	if (effect->type == tfxEmitterType) {
 		tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(effect);
+		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
 		if (*field == "image_handle_x") gpu_properties->image_handle.x = value;
 		else if (*field == "image_handle_y") gpu_properties->image_handle.y = value;
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
+		else if (*field == "drag_half_life") emitter_properties->drag_half_life = value;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -6461,6 +6465,7 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 
 void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared_properties, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file) {
 	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
+	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
 	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
 	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
@@ -6493,6 +6498,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("grid_depth=%f", shared_properties->grid_points.z);
 	file->AddLine("delay_spawning=%f", emitter->state_properties.delay_spawning);
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
+	file->AddLine("drag_half_life=%f", emitter_properties->drag_half_life);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
@@ -12212,6 +12218,10 @@ void *tfx__update_stage_thread(void *data) {
 	tracy::SetThreadNameWithHint(thread_name, 2);
 #endif
 
+	//This thread drives tfx__complete_all_work, so it runs particle work itself and needs the same
+	//FTZ/DAZ treatment as the pool workers. Ours for its whole life, so set once and keep.
+	tfx__begin_flush_denormals();
+
 	tfx__sync_lock(&pm->update_thread_mutex);
 	for (;;) {
 		//Park until there is an update to run or the stage is going away. Predicate loop:
@@ -12625,12 +12635,17 @@ void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entr
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_has_oscillator : 0;
-	//Drag is hardcoded off until the drag_half_life property exists. This will become
-	//alpha = 1 - exp2(-update_time / drag_half_life) with a branch to 1 when the half life is 0. One
-	//scalar exp2 per emitter per frame, never per particle. Note that ctx is zero initialised, so these
-	//two must be set explicitly or every particle would freeze in place.
 	ctx.drag_alpha = tfxWIDEONE.m;
-	ctx.one_minus_drag_alpha = tfxWIDEZERO.m;
+	ctx.drag_alpha_age_scale = tfxWIDEZERO.m;
+	float drag_half_life = work_entry->properties->drag_half_life;   
+	if (drag_half_life > 0.f) {
+		float delta_time_seconds = (float)work_entry->pm->frame_length * 0.001f;	
+		ctx.drag_alpha = tfxWideSetSingle(1.f - exp2f(-delta_time_seconds / drag_half_life));
+		ctx.drag_alpha_age_scale = tfxWIDEONE.m;
+	} else {
+		ctx.drag_alpha = tfxWIDEONE.m;
+		ctx.drag_alpha_age_scale = tfxWIDEZERO.m;
+	}
 }
 
 void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -18550,6 +18565,8 @@ void *tfx__thread_worker(void *arg) {
 	snprintf(thread_name, sizeof(thread_name), "TimelineFX Worker %u", tfx_AtomicAdd32(&tracy_worker_count, 1));
 	tracy::SetThreadNameWithHint(thread_name, 1);
 #endif
+	tfx__begin_flush_denormals();
+
 	tfx_queue_processor_t *queue_processor = (tfx_queue_processor_t *)arg;
 	while (!tfx__do_next_work_queue(queue_processor)) {
 		// Continue processing

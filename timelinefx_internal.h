@@ -5,8 +5,6 @@
 
 #define tfxAPI_EDITOR
 
-#define tfxTMP_GLOBAL_DRAG 1.f
-
 //Override this if you'd prefer a different way to allocate the pools for sub allocation in host memory.
 #ifndef tfxALLOCATE_POOL
 #define tfxALLOCATE_POOL malloc
@@ -3184,6 +3182,7 @@ typedef enum {
 	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_motion_randomness,
 	tfxEmitterControlProfile_has_rotated_path_or_line			= tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_rotated_line,
 	tfxEmitterControlProfile_any_line							= tfxEmitterControlProfile_line | tfxEmitterControlProfile_rotated_line,
+	tfxEmitterControlProfile_drag_is_noop 						= tfxEmitterControlProfile_orbital | tfxEmitterControlProfile_path | tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_other_ribbon_emitter_path | tfxEmitterControlProfile_motion_randomness,
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -5318,6 +5317,36 @@ tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_proce
 	tfx__sync_unlock(&thread_processor->sync);
 }
 
+//-----------------------------------------------------------
+//Denormal (subnormal) handling for particle work.
+//Flushing denormals is an optimisation controlling how SSE/AVX handles subnormals to avoid extra cpu cycles
+//-----------------------------------------------------------
+#define tfxDENORMAL_FLUSH_BITS 0x8040
+
+tfxINTERNAL inline tfxU32 tfx__begin_flush_denormals() {
+#ifdef tfxX86
+	tfxU32 previous_control_state = _mm_getcsr();
+	if ((previous_control_state & tfxDENORMAL_FLUSH_BITS) != tfxDENORMAL_FLUSH_BITS) {
+		_mm_setcsr(previous_control_state | tfxDENORMAL_FLUSH_BITS);
+	}
+	return previous_control_state;
+#else
+	//AArch64 has an equivalent FPCR.FZ bit, but its implementations handle subnormals in hardware
+	//without the x86 penalty, so there is nothing here to buy.
+	return 0;
+#endif
+}
+
+tfxINTERNAL inline void tfx__end_flush_denormals(tfxU32 previous_control_state) {
+#ifdef tfxX86
+	if ((previous_control_state & tfxDENORMAL_FLUSH_BITS) != tfxDENORMAL_FLUSH_BITS) {
+		_mm_setcsr(previous_control_state);
+	}
+#else
+	(void)previous_control_state;
+#endif
+}
+
 tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
 	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
 
@@ -5343,7 +5372,9 @@ tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 	if (original_read_entry != (tfxU32)queue->next_write_entry) {
 		if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
 			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
+			tfxU32 previous_control_state = tfx__begin_flush_denormals();
 			entry.call_back(queue, entry.data);
+			tfx__end_flush_denormals(previous_control_state);
 			tfx__atomic_increment(&queue->entry_completion_count);
 		}
 	}
@@ -5351,7 +5382,9 @@ tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 
 tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void *data, tfx_work_queue_callback call_back) {
 	if (!tfxStore->thread_count) {
+		tfxU32 previous_control_state = tfx__begin_flush_denormals();
 		call_back(queue, data);
+		tfx__end_flush_denormals(previous_control_state);
 		return;
 	}
 
@@ -6238,6 +6271,8 @@ typedef struct tfx_particle_emitter_properties_s {
 	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 animation_property_index;
+	//The amount of drag that particles have. 0 is the default which is no drag and standard legacy tfx kinetic behaviour
+	float drag_half_life;
 } tfx_particle_emitter_properties_t;
 
 typedef struct tfx_shared_emitter_properties_s {
@@ -8469,12 +8504,8 @@ struct tfx_position_policy_context {
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
-	//Drag: the particle velocity tracks the target velocity exponentially, drag_alpha is how much of the
-	//gap it closes this frame. Set once per emitter per frame in tfx_setup_vecolity_lookup_policy, never
-	//per particle. drag_alpha of 1 (and one_minus_drag_alpha of 0) means no drag at all, which is the
-	//default and reproduces the old kinematic behaviour exactly.
 	tfxWideFloat drag_alpha;
-	tfxWideFloat one_minus_drag_alpha;
+	tfxWideFloat drag_alpha_age_scale;
 	tfxWideFloat life;
 	tfxWideFloat velocity_adjuster;
 	tfxWideFloat overall_scale_wide;
@@ -8861,22 +8892,17 @@ struct tfx_apply_velocity {
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
 		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
 
-		//Written as (1 - alpha) * previous + alpha * target and NOT as the cheaper
-		//previous + alpha * (target - previous). The two are the same in real arithmetic but not in
-		//floating point: at alpha of 1 this form gives 0 * previous + 1 * target, which is exactly the
-		//target, while the fused form leaves a rounding residue that accumulates every frame. Every
-		//effect in the library relies on the no drag case being bit identical to the old behaviour, so
-		//the extra multiply is not optional. It also relies on the stored velocity being finite, which
-		//the spawn seed and the zeroed allocation guarantee, since 0 * infinity would be a NaN.
-		ctx.velocity_x = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_x), tfxWideMul(ctx.drag_alpha, target_velocity_x));
-		ctx.velocity_y = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_y), tfxWideMul(ctx.drag_alpha, target_velocity_y));
-		ctx.velocity_z = tfxWideAdd(tfxWideMul(ctx.one_minus_drag_alpha, previous_velocity_z), tfxWideMul(ctx.drag_alpha, target_velocity_z));
+		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
 
-		//Store before anything downstream touches it. The noise policies and tfx_apply_position both run
-		//after this one and both modify ctx.velocity_x/y/z in place: noise deflects it, and
-		//tfx_apply_position subtracts weight and scales by the frame time. None of that belongs in the
-		//accumulated channel, or drag would eat the noise and turn a bounded wobble into a random walk,
-		//and gravity would compound instead of being a constant bias.
+		tfxWideFloat frame_fraction = tfxWideMulAdd(ctx.drag_alpha_age_scale, tfxWideSub(age_fraction, tfxWIDEONE.m), tfxWIDEONE.m);
+		tfxWideFloat drag_alpha = tfxWideMul(ctx.drag_alpha, frame_fraction);
+		tfxWideFloat one_minus_drag_alpha = tfxWideSub(tfxWIDEONE.m, drag_alpha);
+
+		ctx.velocity_x = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_x), tfxWideMul(drag_alpha, target_velocity_x));
+		ctx.velocity_y = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_y), tfxWideMul(drag_alpha, target_velocity_y));
+		ctx.velocity_z = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_z), tfxWideMul(drag_alpha, target_velocity_z));
+
 		tfxWideStore(&bank.velocity_x[index], ctx.velocity_x);
 		tfxWideStore(&bank.velocity_y[index], ctx.velocity_y);
 		tfxWideStore(&bank.velocity_z[index], ctx.velocity_z);
@@ -9039,7 +9065,6 @@ struct tfx_apply_position {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
-		//tfxWideFloat age_fraction = tfxWIDEONE.m;
 		ctx.velocity_y = tfxWideSub(ctx.velocity_y, ctx.weight);
 		ctx.velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_x, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
 		ctx.velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(ctx.velocity_y, pm->update_time_wide), ctx.velocity_adjuster), age_fraction);
@@ -9050,31 +9075,6 @@ struct tfx_apply_position {
 		tfxWideStore(&bank.position_x[index], ctx.position_x.m);
 		tfxWideStore(&bank.position_y[index], ctx.position_y.m);
 		tfxWideStore(&bank.position_z[index], ctx.position_z.m);
-		/*	
-		Was testing out stretch if interpolation in shader is not possible
-		tfxWideFloat alignment_z = tfxWideAdd(ctx.velocity_z, tfxWideSetSingle(0.000001f));
-		tfxWideFloat l = tfxWideMulAdd(ctx.velocity_x, ctx.velocity_x, tfxWideMulAdd(ctx.velocity_y, ctx.velocity_y, tfxWideMul(alignment_z, alignment_z)));
-		l = tfxWideRSqrt(l);
-		tfxWideFloat alignment_x = tfxWideMul(l, ctx.velocity_x);
-		tfxWideFloat alignment_y = tfxWideMul(l, ctx.velocity_y);
-		alignment_z 			 = tfxWideMul(l, alignment_z);
-		tfxWideInt packed_alignment = tfx__wide_pack8bit_xyz(alignment_x, alignment_y, alignment_z);
-		tfxWideStorei((tfxWideIntLoader*)&bank.alignment[index], packed_alignment);
-		*/
-	}
-};
-
-struct tfx_apply_pack_velocity {
-	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		tfxWideFloat length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
-		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
-		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
-		length = tfxWideMul(tfxWideRSqrt(length), length);
-		ctx.velocity_x = tfxWideDiv(ctx.velocity_x, length);
-		ctx.velocity_y = tfxWideDiv(ctx.velocity_y, length);
-		ctx.velocity_z = tfxWideDiv(ctx.velocity_z, length);
-		tfxWideInt packed_normal = tfx__wide_pack10bit_unsigned(ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
-		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], packed_normal);
 	}
 };
 
