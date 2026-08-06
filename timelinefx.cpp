@@ -12725,6 +12725,10 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 	ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], ctx.emitter->age, ctx.emitter->oscillator_time));
 	ctx.time_step = tfxWideConverti(tfxWideSetSingle(ctx.emitter->age / 250.f)); // seeds the random speed walk
 
+	//Make sure that the speed walk is the same regardless of the update rate.
+	const float reference_frame_length = 1000.f / 60.f;
+	ctx.motion_randomness_dt_scale = tfxWideSetSingle((float)pm.frame_length / reference_frame_length);
+
 	ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
 	ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;

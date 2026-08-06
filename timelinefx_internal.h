@@ -8533,6 +8533,9 @@ struct tfx_position_policy_context {
 	tfxU32 start_diff;
 	tfxWideInt capture_after_transform_flag;
 	tfxWideInt time_step;
+	//Frame length relative to a 60fps frame, used to make the motion randomness speed walk
+	//accumulate per unit of time rather than per frame. 1.0 at 60fps.
+	tfxWideFloat motion_randomness_dt_scale;
 	tfx_particle_emitter_state_t *emitter;
 	tfx_emitter_path_t *path;
 	tfx_graph_t *velocity_graph;
@@ -8809,9 +8812,10 @@ struct tfx_apply_motion_randomness {
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
 
-		// Random speed walk (scalar only, no bearing on alignment).
+		// Random speed walk (scalar only, no bearing on alignment). 
 		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
 		tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));
+		random_speed = tfxWideMul(random_speed, ctx.motion_randomness_dt_scale);
 		speed = tfxWideAdd(speed, random_speed);
 		ctx.velocity = tfxWideAdd(ctx.velocity, tfxWideMul(speed, ctx.global_noise));
 
