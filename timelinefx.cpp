@@ -11391,6 +11391,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	switch (tfx__get_emitter_noise_type(emitter)) {
 	case tfxSimplexNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_simplex_noise; break;
 	case tfxCurlNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_curl_noise; break;
+	case tfxValueNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_value_noise; break;
 	default: break;
 	}
 	if (shared_properties->emission_type == tfxPath) {
@@ -12723,11 +12724,6 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count);
 
 	ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], ctx.emitter->age, ctx.emitter->oscillator_time));
-	ctx.time_step = tfxWideConverti(tfxWideSetSingle(ctx.emitter->age / 250.f)); // seeds the random speed walk
-
-	//Make sure that the speed walk is the same regardless of the update rate.
-	const float reference_frame_length = 1000.f / 60.f;
-	ctx.motion_randomness_dt_scale = tfxWideSetSingle((float)pm.frame_length / reference_frame_length);
 
 	ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
 	ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
@@ -15705,10 +15701,24 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time);
 	const float parent_noise_base_offset = pm.effects[emitter.parent_index].noise_base_offset;
 
+	//The part of the offset that every particle in the effect shares: the emitter's base offset graph
+	//sampled at the emitter age, plus this effect instance's noise_base_offset. It is applied equally to
+	//all three axes on purpose. It is a translation common to the whole effect, so its direction has no
+	//bearing on how particles decorrelate from each other, and keeping it uniform leaves "two instances
+	//of the same effect sample different regions of the field" working exactly as it did.
+	const float shared_noise_offset = emitter_noise_offset + parent_noise_base_offset;
+
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		entry->particle_data->noise_offset[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
+		//The per-particle spread needs an independent draw per axis. Drawing once and adding the same
+		//scalar to x, y and z (what this used to do) confines every particle's offset to the (1,1,1)
+		//diagonal of the field: a one parameter family rather than a 3D one, so particles with nearby
+		//offsets sample correlated positions and the correlation is anisotropic. Two extra hashes here
+		//buy a volume, and cost nothing at control time.
+		entry->particle_data->noise_offset_x[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
+		entry->particle_data->noise_offset_y[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
+		entry->particle_data->noise_offset_z[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
 		entry->particle_data->noise_resolution[index] = emitter_noise_resolution + 0.01f;
 	}
 }
@@ -15721,14 +15731,19 @@ void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data) 
 	tfx_particle_emitter_state_t &emitter = entry->pm->emitters[emitter_index];
 	tfx_library library = emitter.library;
 
-	// "Motion Randomness Resolution" - how rapidly the heading picks a new random direction. Sampled
-	// once at spawn from the emitter age and stored per particle, then used at control time to set the
-	// value-noise bucket rate (see tfx_apply_motion_randomness).
+	// "Motion Randomness Resolution" - the size of the features in the noise field, the same meaning
+	// noise_resolution carries on the simplex and curl chains. Sampled once at spawn from the emitter
+	// age and stored per particle, then used at control time to scale the sample position (see
+	// tfx_apply_white_noise).
 	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time);
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&entry->pm->particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		entry->particle_data->noise_offset[index] = 0.f;
+		//White noise reads neither of these as a field offset, but they are zeroed so that switching the
+		//emitter to a field algorithm mid flight hands those policies a zero rather than garbage.
+		entry->particle_data->noise_offset_x[index] = 0.f;
+		entry->particle_data->noise_offset_y[index] = 0.f;
+		entry->particle_data->noise_offset_z[index] = 0.f;
 		entry->particle_data->noise_resolution[index] = emitter_noise_resolution;
 	}
 }
@@ -17536,9 +17551,9 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 		velocity_x = base_velocity * velocity_normal.x;
 		velocity_y = base_velocity * velocity_normal.y;
 		velocity_z = base_velocity * velocity_normal.z;
-		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
-			entry->particle_data->noise_offset[index] = 0;
-		}
+		//The motion randomness zeroing of noise_offset that used to sit here was redundant even before
+		//the speed walk was deleted: tfx__spawn_particle_motion_randomness runs after this and zeroes
+		//it anyway. noise_offset is no longer read at all on the motion randomness chain.
 		if (entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = tfx__make_particle_id(emitter.particles_index, index);
@@ -17985,7 +18000,9 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 					bank.rotation_offset[next_index] = bank.rotation_offset[index];
 				}
 				if (has_random_movement) {
-					bank.noise_offset[next_index] = bank.noise_offset[index];
+					bank.noise_offset_x[next_index] = bank.noise_offset_x[index];
+					bank.noise_offset_y[next_index] = bank.noise_offset_y[index];
+					bank.noise_offset_z[next_index] = bank.noise_offset_z[index];
 					bank.noise_resolution[next_index] = bank.noise_resolution[index];
 				}
 				if (emitter.state_flags & tfxEmitterStateFlags_has_path) {
@@ -18396,6 +18413,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_orbital_velocity_normal,
 					tfx_apply_orbital_scale_velocity,
 					tfx_apply_simplex_noise,
+					tfx_apply_add_medium_to_velocity,
 					tfx_apply_position
 				>(work_entry, ctx);
 			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_curl_noise) {
@@ -18408,6 +18426,20 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_orbital_velocity_normal,
 					tfx_apply_orbital_scale_velocity,
 					tfx_apply_curl_noise,
+					tfx_apply_add_medium_to_velocity,
+					tfx_apply_position
+				>(work_entry, ctx);
+			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_value_noise) {
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
+				tfx__update_particles_position<
+					tfx_apply_load_life,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position,
+					tfx_apply_orbital_velocity_normal,
+					tfx_apply_orbital_scale_velocity,
+					tfx_apply_value_noise,
+					tfx_apply_add_medium_to_velocity,
 					tfx_apply_position
 				>(work_entry, ctx);
 			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
@@ -18418,7 +18450,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_lookup_weight,
 					tfx_apply_load_position,
 					tfx_apply_orbital_velocity_normal,
-					tfx_apply_motion_randomness,
+					tfx_apply_orbital_scale_velocity,
+					tfx_apply_white_noise,
+					tfx_apply_add_medium_to_velocity,
 					tfx_apply_position
 				>(work_entry, ctx);
 			} else {
@@ -18440,7 +18474,8 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_lookup_velocity,
 				tfx_apply_lookup_weight,
 				tfx_apply_load_position,
-				tfx_apply_motion_randomness,
+				tfx_apply_white_noise,
+				tfx_apply_velocity,
 				tfx_apply_position
 			>(work_entry, ctx);
 		} else	if (emitter.state_properties.control_profile & tfxEmitterControlProfile_simplex_noise) {
@@ -18449,9 +18484,9 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_load_life,
 				tfx_apply_lookup_velocity,
 				tfx_apply_lookup_weight,
-				tfx_apply_velocity,
 				tfx_apply_load_position,
 				tfx_apply_simplex_noise,
+				tfx_apply_velocity,
 				tfx_apply_position
 			>(work_entry, ctx);
 		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_curl_noise) {
@@ -18460,9 +18495,20 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_load_life,
 				tfx_apply_lookup_velocity,
 				tfx_apply_lookup_weight,
-				tfx_apply_velocity,
 				tfx_apply_load_position,
 				tfx_apply_curl_noise,
+				tfx_apply_velocity,
+				tfx_apply_position
+			>(work_entry, ctx);
+		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_value_noise) {
+			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
+			tfx__update_particles_position<
+				tfx_apply_load_life,
+				tfx_apply_lookup_velocity,
+				tfx_apply_lookup_weight,
+				tfx_apply_load_position,
+				tfx_apply_value_noise,
+				tfx_apply_velocity,
 				tfx_apply_position
 			>(work_entry, ctx);
 		} else {
@@ -18836,7 +18882,9 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, velocity_normal));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, depth_index));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, intensity_factor));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset_x));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset_y));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset_z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
 	if (control_profile & tfxEmitterControlProfile_spin3d) {
 		tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, rotation_offsets));

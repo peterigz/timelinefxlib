@@ -2991,12 +2991,13 @@ typedef enum {
 	tfxExtrusionLinear
 } tfx_path_extrusion_type;
 
-//These must not change, values are used in the save file.
+//These must not change, values are used in the save file. Append only.
 typedef enum {
 	tfxNoNoise,
 	tfxWhiteNoise,
 	tfxSimplexNoise,
 	tfxCurlNoise,
+	tfxValueNoise,
 } tfx_noise_type;
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
@@ -3178,11 +3179,21 @@ typedef enum {
 	tfxEmitterControlProfile_trajectory                         = 1 << 13,
 	tfxEmitterControlProfile_line		                        = 1 << 14,
 	tfxEmitterControlProfile_rotated_line                       = 1 << 15,
-	tfxEmitterControlProfile_has_simplex_noise_type				= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise,
-	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_motion_randomness,
+	tfxEmitterControlProfile_value_noise                        = 1 << 16,
+	//Emitters that sample a spatial noise FIELD, and so share the velocity turbulance and noise
+	//resolution graphs, the per-particle noise_offset seeded by tfx__spawn_particle_noise, and the
+	//tfx_setup_simplex_lookup_policy setup. The name predates curl and value noise joining it - read
+	//it as "has a noise field type" rather than as anything specific to simplex.
+	tfxEmitterControlProfile_has_simplex_noise_type				= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_value_noise,
+	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_value_noise | tfxEmitterControlProfile_motion_randomness,
 	tfxEmitterControlProfile_has_rotated_path_or_line			= tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_rotated_line,
 	tfxEmitterControlProfile_any_line							= tfxEmitterControlProfile_line | tfxEmitterControlProfile_rotated_line,
-	tfxEmitterControlProfile_drag_is_noop 						= tfxEmitterControlProfile_orbital | tfxEmitterControlProfile_path | tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_other_ribbon_emitter_path | tfxEmitterControlProfile_motion_randomness,
+	//Profiles where drag_half_life does nothing, because they never run tfx_apply_velocity: they either
+	//derive position directly (path, rotated_path, trajectory, other_ribbon_emitter_path) or recompute
+	//and overwrite velocity from position every frame (orbital). Motion randomness used to be here and
+	//is not any more - it now produces a medium velocity and runs the ordinary integrator, so drag is
+	//live on it. Note an orbital+motion-randomness emitter is still covered, via the orbital bit.
+	tfxEmitterControlProfile_drag_is_noop 						= tfxEmitterControlProfile_orbital | tfxEmitterControlProfile_path | tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_other_ribbon_emitter_path,
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -6721,7 +6732,9 @@ typedef struct tfx_particle_soa_s {
 	float *base_weight;
 	float *base_size_x;
 	float *base_size_y;
-	float *noise_offset;
+	float *noise_offset_x;				//Per particle translation of the noise field sample position. One
+	float *noise_offset_y;				//independent draw per axis - a single scalar shared by all three
+	float *noise_offset_z;				//axes confines the spread to the (1,1,1) diagonal of the field.
 	float *noise_resolution;
 	float *base_roll_spin;
 	float *base_pitch_spin;
@@ -8023,6 +8036,71 @@ tfxINTERNAL inline void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tf
 	z = tfxWideMulAdd(z, one_div_511_wide.m, tfxWIDEMINUSONE.m);
 }
 
+#define tfx__wide_lerp(a, b, t) tfxWideMulAdd(t, tfxWideSub(b, a), a)
+
+//One corner of the value noise lattice. A single hash of the corner's coordinate is unpacked into all
+//three vector components, which is what makes this cheap: eight hashes cover the whole 3D vector
+//rather than one field having to be sampled three times over.
+tfxINTERNAL inline void tfx__wide_value_noise_corner(tfxWideInt lattice_x, tfxWideInt lattice_y, tfxWideInt lattice_z, tfxWideFloat &out_x, tfxWideFloat &out_y, tfxWideFloat &out_z) {
+	tfx__wide_unpack10bit(tfx__wide_seedgen_base(tfxWideAddi(lattice_x, lattice_y), lattice_z), out_x, out_y, out_z);
+}
+
+tfxINTERNAL inline void tfx__wide_value_noise_3d(tfxWideFloat x, tfxWideFloat y, tfxWideFloat z, tfxWideFloat &out_x, tfxWideFloat &out_y, tfxWideFloat &out_z) {
+	const tfxWideFloat floor_x = tfxWideFloor(x);
+	const tfxWideFloat floor_y = tfxWideFloor(y);
+	const tfxWideFloat floor_z = tfxWideFloor(z);
+
+	const tfxWideFloat three = tfxWideSetSingle(3.f);
+	const tfxWideFloat two = tfxWideSetSingle(2.f);
+	tfxWideFloat fade_x = tfxWideSub(x, floor_x);
+	tfxWideFloat fade_y = tfxWideSub(y, floor_y);
+	tfxWideFloat fade_z = tfxWideSub(z, floor_z);
+	fade_x = tfxWideMul(tfxWideMul(fade_x, fade_x), tfxWideSub(three, tfxWideMul(two, fade_x)));
+	fade_y = tfxWideMul(tfxWideMul(fade_y, fade_y), tfxWideSub(three, tfxWideMul(two, fade_y)));
+	fade_z = tfxWideMul(tfxWideMul(fade_z, fade_z), tfxWideSub(three, tfxWideMul(two, fade_z)));
+
+	//Lattice coordinates are premultiplied by large odd constants so that stepping to the far corner
+	//of the cell is a single add rather than another multiply. floor_* is already integral, so the
+	//truncating convert is exact even for negative positions.
+	const tfxWideInt prime_x = tfxWideSetSinglei(1619);
+	const tfxWideInt prime_y = tfxWideSetSinglei(31337);
+	const tfxWideInt prime_z = tfxWideSetSinglei(6971);
+	const tfxWideInt lattice_x0 = tfxWideMuli(tfxWideConverti(floor_x), prime_x);
+	const tfxWideInt lattice_y0 = tfxWideMuli(tfxWideConverti(floor_y), prime_y);
+	const tfxWideInt lattice_z0 = tfxWideMuli(tfxWideConverti(floor_z), prime_z);
+	const tfxWideInt lattice_x1 = tfxWideAddi(lattice_x0, prime_x);
+	const tfxWideInt lattice_y1 = tfxWideAddi(lattice_y0, prime_y);
+	const tfxWideInt lattice_z1 = tfxWideAddi(lattice_z0, prime_z);
+
+	tfxWideFloat near_x, near_y, near_z, far_x, far_y, far_z;
+	tfxWideFloat edge_x, edge_y, edge_z;
+	tfxWideFloat slice_x, slice_y, slice_z;
+
+	//z = 0 slice
+	tfx__wide_value_noise_corner(lattice_x0, lattice_y0, lattice_z0, near_x, near_y, near_z);
+	tfx__wide_value_noise_corner(lattice_x1, lattice_y0, lattice_z0, far_x, far_y, far_z);
+	edge_x = tfx__wide_lerp(near_x, far_x, fade_x);
+	edge_y = tfx__wide_lerp(near_y, far_y, fade_x);
+	edge_z = tfx__wide_lerp(near_z, far_z, fade_x);
+	tfx__wide_value_noise_corner(lattice_x0, lattice_y1, lattice_z0, near_x, near_y, near_z);
+	tfx__wide_value_noise_corner(lattice_x1, lattice_y1, lattice_z0, far_x, far_y, far_z);
+	slice_x = tfx__wide_lerp(edge_x, tfx__wide_lerp(near_x, far_x, fade_x), fade_y);
+	slice_y = tfx__wide_lerp(edge_y, tfx__wide_lerp(near_y, far_y, fade_x), fade_y);
+	slice_z = tfx__wide_lerp(edge_z, tfx__wide_lerp(near_z, far_z, fade_x), fade_y);
+
+	//z = 1 slice, blended straight into the output
+	tfx__wide_value_noise_corner(lattice_x0, lattice_y0, lattice_z1, near_x, near_y, near_z);
+	tfx__wide_value_noise_corner(lattice_x1, lattice_y0, lattice_z1, far_x, far_y, far_z);
+	edge_x = tfx__wide_lerp(near_x, far_x, fade_x);
+	edge_y = tfx__wide_lerp(near_y, far_y, fade_x);
+	edge_z = tfx__wide_lerp(near_z, far_z, fade_x);
+	tfx__wide_value_noise_corner(lattice_x0, lattice_y1, lattice_z1, near_x, near_y, near_z);
+	tfx__wide_value_noise_corner(lattice_x1, lattice_y1, lattice_z1, far_x, far_y, far_z);
+	out_x = tfx__wide_lerp(slice_x, tfx__wide_lerp(edge_x, tfx__wide_lerp(near_x, far_x, fade_x), fade_y), fade_z);
+	out_y = tfx__wide_lerp(slice_y, tfx__wide_lerp(edge_y, tfx__wide_lerp(near_y, far_y, fade_x), fade_y), fade_z);
+	out_z = tfx__wide_lerp(slice_z, tfx__wide_lerp(edge_z, tfx__wide_lerp(near_z, far_z, fade_x), fade_y), fade_z);
+}
+
 tfxINTERNAL inline void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
 	const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
 	const tfxWideInt sign_bit = tfxWideSetSinglei(0x8000);
@@ -8502,6 +8580,14 @@ of course.
 struct tfx_position_policy_context {
 	tfxWideArray position_x, position_y, position_z;
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
+	//The velocity of the medium the particle is suspended in - the "air". Noise, motion randomness
+	//and (later) the force list all sum into this one accumulator, and the particle is pulled toward
+	//velocity_normal * velocity + medium_velocity rather than toward the emission heading alone.
+	//NOTE ON LIFETIME: ctx is created once per emitter per frame but the policies run once per wide
+	//batch of particles, so this field outlives the batch that produced it. A producer must therefore
+	//assign, never accumulate - accumulating would carry one batch's noise into the next. Once there
+	//is more than one producer the zeroing becomes the accumulating policy's first job.
+	tfxWideFloat medium_velocity_x, medium_velocity_y, medium_velocity_z;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
 	tfxWideFloat drag_alpha;
@@ -8524,6 +8610,8 @@ struct tfx_position_policy_context {
 	tfxWideFloat path_scale_variation;
 	tfxWideFloat motion_randomness_base;
 	tfxWideFloat emitter_scale;
+	//Frame length relative to a 60fps frame, used to make the motion randomness speed walk
+	//accumulate per unit of time rather than per frame. 1.0 at 60fps.
 	tfxWideInt capture_after_transform;
 	tfx_vector_align_type vector_align_type;
 	tfx_emission_type emission_type;
@@ -8532,10 +8620,6 @@ struct tfx_position_policy_context {
 	tfxU32 running_sprite_index;
 	tfxU32 start_diff;
 	tfxWideInt capture_after_transform_flag;
-	tfxWideInt time_step;
-	//Frame length relative to a 60fps frame, used to make the motion randomness speed walk
-	//accumulate per unit of time rather than per frame. 1.0 at 60fps.
-	tfxWideFloat motion_randomness_dt_scale;
 	tfx_particle_emitter_state_t *emitter;
 	tfx_emitter_path_t *path;
 	tfx_graph_t *velocity_graph;
@@ -8654,16 +8738,24 @@ struct tfx_apply_simplex_noise {
 		}
 
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
-		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+		const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+		const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+		const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
 
-		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overall_scale_wide);
+		//The offset is a 3D translation of the sample position, one independent draw per axis at spawn.
+		//It used to be a single scalar added to all three axes, which put every particle's offset on the
+		//(1,1,1) diagonal - a one parameter family, so particles with nearby offsets sampled correlated
+		//positions and the correlation was anisotropic. Same for value and curl noise.
+		tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
 
 		tfx__readbarrier;
 
 		ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
-		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset);
-		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
-		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
 
 		tfxWideFloat y_offset = tfxWideAdd(y, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
 		tfxWideFloat z_offset = tfxWideAdd(z, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
@@ -8685,9 +8777,83 @@ struct tfx_apply_simplex_noise {
 		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
 		noise_z = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z));
 
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x);
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y);
-		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z);
+		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x.
+		ctx.medium_velocity_x = noise_x;
+		ctx.medium_velocity_y = noise_y;
+		ctx.medium_velocity_z = noise_z;
+	}
+};
+
+//Value noise: the cheap member of the noise field family. Structurally a copy of
+//tfx_apply_simplex_noise - same velocity turbulance and noise resolution graphs, same per-particle
+//noise_offset and noise_resolution, same normalise-then-scale tail - with tfx__wide_value_noise_3d
+//swapped in for tfx__simd_noise_3d. It therefore uses tfx_setup_simplex_lookup_policy unchanged and
+//needs no setup of its own.
+//
+//Two structural reasons it is cheaper, neither of which is the raw op count: it needs ONE field
+//evaluation where simplex needs three (the lattice hash fills all three vector components at once,
+//so the y_offset/z_offset decorrelation trick simplex uses is unnecessary), and it has no gradient
+//table - tfx__simd_noise_3d looks its gradients up with per-lane scalar indexing, which falls out of
+//SIMD entirely.
+//
+//Deliberately NO age or life term in the sample position. Particle life runs 0..1 for every particle,
+//so using it would have every particle trace the same path through the field and sample much the same
+//values. The temporal spread comes from bank.noise_offset_x/y/z instead, which tfx__spawn_particle_noise
+//seeds from the EMITTER age, so each new particle starts in a different region of the field.
+struct tfx_apply_value_noise {
+	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+		ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
+			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
+			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+		}
+
+		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+		ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
+			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
+			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+		}
+
+		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+		const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+		const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+		const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
+
+		tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
+
+		tfx__readbarrier;
+
+		ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
+		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
+
+		tfxWideFloat noise_x, noise_y, noise_z;
+		tfx__wide_value_noise_3d(x, y, z, noise_x, noise_y, noise_z);
+
+		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
+		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
+		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+		l = tfxWideAdd(l, tfxWideSetSingle(1e-12f));
+		l = tfxWideRSqrt(l);
+		noise_x = tfxWideMul(noise_x, l);
+		noise_y = tfxWideMul(noise_y, l);
+		noise_z = tfxWideMul(noise_z, l);
+
+		noise_x = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_x));
+		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
+		noise_z = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z));
+
+		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x.
+		ctx.medium_velocity_x = noise_x;
+		ctx.medium_velocity_y = noise_y;
+		ctx.medium_velocity_z = noise_z;
 	}
 };
 
@@ -8710,16 +8876,20 @@ struct tfx_apply_curl_noise {
 		}
 
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
-		const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+		const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+		const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+		const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
 
-		tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+		tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
 
 		tfx__readbarrier;
 
 		ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
-		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset);
-		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset);
-		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset);
+		tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+		tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+		tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
 
 		// Bridson curl noise: v = curl(psi) with three independent scalar potentials psi1, psi2, psi3.
 		// The three potentials come from one simplex field sampled at widely-separated offsets
@@ -8780,28 +8950,16 @@ struct tfx_apply_curl_noise {
 		noise_y = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_y));
 		noise_z = tfxWideMul(ctx.global_noise, tfxWideMul(ctx.lookup_velocity_turbulance, noise_z));
 
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, noise_x);
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, noise_y);
-		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, noise_z);
+		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x.
+		ctx.medium_velocity_x = noise_x;
+		ctx.medium_velocity_y = noise_y;
+		ctx.medium_velocity_z = noise_z;
 	}
 };
 
-struct tfx_apply_motion_randomness {
+struct tfx_apply_white_noise {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		const bool is_orbital = (ctx.emitter->state_properties.control_profile & tfxEmitterControlProfile_orbital) != 0;
-
-		// Continuous, stateless motion randomness. Non-orbital: the base heading is the particle's
-		// (constant) emission direction, loaded from velocity_normal. Orbital: ctx.velocity_x/y/z already
-		// holds the orbital velocity from the previous policy, so we perturb that in place. Either way
-		// velocity_normal is never written - the heading is recomputed from scratch every frame, so there
-		// is no per-frame state and "Vector is Emission Direction" alignment stays rock steady.
-		if (!is_orbital) {
-			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-			tfx__wide_unpack10bit(velocity_normal, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z);
-		}
-
 		tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
-		tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);
 
 		tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
 		tfxWideFloat lookup_motion_randomness = (ctx.flags & tfx_ctx_policy_flag_motion_randomness_is_bezier_graph) ?
@@ -8812,14 +8970,21 @@ struct tfx_apply_motion_randomness {
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
 
-		// Random speed walk (scalar only, no bearing on alignment). 
-		tfxWideInt seed = tfx__wide_seedgen_base(ctx.time_step, uid);
-		tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));
-		random_speed = tfxWideMul(random_speed, ctx.motion_randomness_dt_scale);
-		speed = tfxWideAdd(speed, random_speed);
-		ctx.velocity = tfxWideAdd(ctx.velocity, tfxWideMul(speed, ctx.global_noise));
+		// The per-particle random SPEED walk that used to live here is deleted, not disabled. It
+		// accumulated into the per particle noise offset channel and fed ctx.velocity, and under the medium model
+		// tfx_apply_velocity runs after this policy, so writing ctx.velocity would push the walk into
+		// the integrator's target and recreate exactly the speed inflation this phase just removed.
+		//
+		// Deleting it rather than dt-correcting it also settles the framerate question outright. The
+		// walk was a per-frame Riemann sum, which is why it needed ctx.motion_randomness_dt_scale; what
+		// remains below is a pure function of (uid, particle age), so it is stateless and
+		// frame-rate independent by construction. There is nothing left to correct, and both
+		// ctx.time_step and ctx.motion_randomness_dt_scale go with it.
+		//
+		// Speed variation is not lost: it comes out of the component of the noise vector along the
+		// particle's heading, the same way it does for the value noise version.
 
-		// Smooth random direction from interpolated WHITE noise (value noise) - no simplex, no acosf.
+		// Smooth random direction from interpolated WHITE noise - no simplex, no acosf.
 		// The heading hashes a random target per "bucket" and smoothsteps between this bucket and the
 		// next, so it is C1 continuous across boundaries. The bucket rate (how rapidly a new direction is
 		// chosen) is the per-particle Motion Randomness Resolution (stored at spawn in noise_resolution):
@@ -8830,7 +8995,9 @@ struct tfx_apply_motion_randomness {
 		//    at once; particle age is monotonic so there is no loop spike.
 		//  - Each particle gets a phase_offset so a cohort spawned together (e.g. on a loop burst) doesn't
 		//    all turn at the same moment.
-		const tfxWideFloat motion_randomness_gain = tfxWideSetSingle(1.5f);                 // cone width per unit of influence
+		// motion_randomness_gain (1.5f) is gone: it scaled a deflection that was added to a unit
+		// heading before renormalising, and the amplitude is now set by the saturating strength term
+		// below instead. Cone width comes from strength, not from a separate gain.
 		const tfxWideFloat inv_period_scale = tfxWideSetSingle(1.f / (250.f * 300.f));      // resolution 300 -> 250ms bucket
 
 		const tfxWideInt axis_x = tfxWideSetSinglei(0x1b56c4f9);
@@ -8855,42 +9022,64 @@ struct tfx_apply_motion_randomness {
 		tfxWideFloat noise_y = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_y), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_y), frac));
 		tfxWideFloat noise_z = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_z), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_z), frac));
 
-		// Deflect the base direction by the noise vector and renormalise. influence scales the cone
-		// width: 0 -> travels straight along the base direction, larger -> wider wander.
-		const tfxWideFloat deflect = tfxWideMul(influence, motion_randomness_gain);
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, tfxWideMul(deflect, noise_x));
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, tfxWideMul(deflect, noise_y));
-		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, tfxWideMul(deflect, noise_z));
+		// Perturbation size as a multiple of the particle's own speed. Saturating, so a large authored
+		// value cannot launch particles - the original renormalise gave that ceiling for free and this
+		// stands in for it. The two constants are the tuning knobs and are meant to be adjusted by eye:
+		//
+		//   max_strength           the ceiling. 1 lets the particle be deflected by at most 90 degrees,
+		//                          because the perturbation can never be longer than the base velocity
+		//                          it is added to. Above 1 the particle can be turned right around,
+		//                          which is what "turbulent" needs, at the cost of a wider speed swing:
+		//                          the target ranges over |1 - strength| .. 1 + strength times speed.
+		//   half_strength_influence  how much influence reaches half the ceiling. Raising it spreads the
+		//                          graph's useful range over a wider span of authored values.
+		//
+		// These were 1 and 1, which capped deflection at 90 degrees and put almost all of the response
+		// below influence 1 - going from 1 to 10 moved strength only from 0.50 to 0.91, so the graph
+		// looked like it had stopped doing anything. At 2.5 and 3 the response stays live out to about
+		// influence 20 and passes 1.0 (so, past 90 degrees) at influence 2.
+		const tfxWideFloat max_strength = tfxWideSetSingle(2.5f);
+		const tfxWideFloat half_strength_influence = tfxWideSetSingle(3.f);
+		const tfxWideFloat strength = tfxWideMul(max_strength, tfxWideDiv(influence, tfxWideAdd(half_strength_influence, influence)));
 
-		tfxWideFloat length = tfxWideMul(ctx.velocity_x, ctx.velocity_x);
-		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_y, ctx.velocity_y));
-		length = tfxWideAdd(length, tfxWideMul(ctx.velocity_z, ctx.velocity_z));
-		tfxWideFloat inv_length = tfxWideRSqrt(length);
-		ctx.velocity_x = tfxWideMul(ctx.velocity_x, inv_length);
-		ctx.velocity_y = tfxWideMul(ctx.velocity_y, inv_length);
-		ctx.velocity_z = tfxWideMul(ctx.velocity_z, inv_length);
+		tfxWideFloat length_squared = tfxWideMul(noise_x, noise_x);
+		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_y, noise_y));
+		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_z, noise_z));
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-12f)));
+		const tfxWideFloat amplitude = tfxWideMul(tfxWideMul(strength, ctx.velocity), inverse_length);
 
-		tfxWideStore(&bank.noise_offset[index], speed);
-
-		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
-		ctx.velocity_y = tfxWideMul(ctx.velocity_y, ctx.velocity);
-		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
+		//Assign, never accumulate; 
+		ctx.medium_velocity_x = tfxWideMul(amplitude, noise_x);
+		ctx.medium_velocity_y = tfxWideMul(amplitude, noise_y);
+		ctx.medium_velocity_z = tfxWideMul(amplitude, noise_z);
 	}
 };
 
-//Accumulating velocity with drag. The velocity overtime graph no longer sets the particle velocity
-//directly, it sets the velocity the particle is aiming for: the emission direction scaled by the
-//current speed. The stored velocity then chases that target exponentially, closing ctx.drag_alpha of
-//the remaining gap every frame, which is what drag is. With no drag ctx.drag_alpha is 1 and the
-//particle simply is the target, exactly as it was before this channel existed.
+//Adds the accumulated medium velocity onto the per-frame velocity, outside the stored channel, so it
+//biases this frame's movement and is gone the next. 
+struct tfx_apply_add_medium_to_velocity {
+	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, ctx.medium_velocity_x);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, ctx.medium_velocity_y);
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, ctx.medium_velocity_z);
+	}
+};
+
 struct tfx_apply_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfxWideFloat target_velocity_x, target_velocity_y, target_velocity_z;
 		tfx__wide_unpack10bit(velocity_normal, target_velocity_x, target_velocity_y, target_velocity_z);
+		//Keep the multiply and the medium add as separate operations: the pre-medium code computed
+		//(unpack * velocity) and added the noise downstream, so folding these into a multiply-add
+		//would round differently and break the drag_alpha == 1 identity. These are explicit
+		//intrinsics, so the compiler will not contract them into an FMA on its own.
 		target_velocity_x = tfxWideMul(target_velocity_x, ctx.velocity);
 		target_velocity_y = tfxWideMul(target_velocity_y, ctx.velocity);
 		target_velocity_z = tfxWideMul(target_velocity_z, ctx.velocity);
+		target_velocity_x = tfxWideAdd(target_velocity_x, ctx.medium_velocity_x);
+		target_velocity_y = tfxWideAdd(target_velocity_y, ctx.medium_velocity_y);
+		target_velocity_z = tfxWideAdd(target_velocity_z, ctx.medium_velocity_z);
 
 		tfxWideFloat previous_velocity_x = tfxWideLoad(&bank.velocity_x[index]);
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
@@ -9049,17 +9238,6 @@ struct tfx_apply_orbital_velocity_normal {
 
 struct tfx_apply_orbital_scale_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		/*
-		Experimenting with what a falloff based on the distance from emitter would look like.
-		Maybe this would be better implemented with a vector based noise/force function
-		tfxWideFloat dx = tfxWideSub(ctx.position_x.m, ctx.emitter_offset_x);
-		tfxWideFloat dz = tfxWideSub(ctx.position_z.m, ctx.emitter_offset_z);
-		tfxWideFloat distance = tfxWideAdd(tfxWideMul(dx, dx), tfxWideMul(dz, dz));
-		distance = tfxWideMul(tfxWideRSqrt(distance), distance);
-		tfxWideFloat radius = tfxWideSetSingle(8.f);
-		tfxWideFloat scale = tfxWideMax(tfxWideSub(tfxWIDEONE.m, tfxWideDiv(distance, radius)), tfxWIDEHALF.m);
-		ctx.velocity = tfxWideMul(scale, ctx.velocity);
-		*/
 		ctx.velocity_x = tfxWideMul(ctx.velocity_x, ctx.velocity);
 		ctx.velocity_z = tfxWideMul(ctx.velocity_z, ctx.velocity);
 	}
