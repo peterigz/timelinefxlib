@@ -4396,12 +4396,14 @@ void tfx__free_library_properties(tfx_effect_descriptor descriptor) {
 void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT(index < library->emitter_properties.current_size);
+	library->emitter_properties[index] = tfx_particle_emitter_properties_t{};
 	library->free_particle_emitter_properties.push_back(index);
 }
 
 void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT(index < library->ribbon_properties.current_size);
+	library->ribbon_properties[index] = tfx_ribbon_emitter_properties_t{};
 	library->free_ribbon_emitter_properties.push_back(index);
 }
 
@@ -5224,6 +5226,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("vector_align_type", tfxUInt);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("drag_half_life", tfxFloat);
+	names_and_types.Insert("noise_speed_bias", tfxFloat);
 	names_and_types.Insert("sort_passes", tfxUInt);
 	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
 
@@ -6017,6 +6020,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "grid_depth") value.Setf("%f", shared_properties->grid_points.z);
 	else if (property_name == "loop_length") value.Setf("%f", effect->state_properties.loop_length);
 	else if (property_name == "drag_half_life") value.Setf("%f", emitter_properties->drag_half_life);
+	else if (property_name == "noise_speed_bias") value.Setf("%f", emitter_properties->noise_speed_bias);
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
@@ -6365,6 +6369,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
 		else if (*field == "drag_half_life") emitter_properties->drag_half_life = value;
+		else if (*field == "noise_speed_bias") emitter_properties->noise_speed_bias = value < -1.f ? -1.f : (value > 1.f ? 1.f : value);
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -6499,6 +6504,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("delay_spawning=%f", emitter->state_properties.delay_spawning);
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("drag_half_life=%f", emitter_properties->drag_half_life);
+	file->AddLine("noise_speed_bias=%f", emitter_properties->noise_speed_bias);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
@@ -12631,6 +12637,22 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 	}
 }
 
+//	bias -1	 speed_gain 0, swerve_gain 1   the medium steers, never speeds up or slows down
+//	bias  0	 speed_gain 1, swerve_gain 1   isotropic, the way noise has always behaved
+//	bias +1	 speed_gain 1, swerve_gain 0   the medium surges along the heading, never deflects
+tfxINTERNAL void tfx__setup_anisotropic_noise(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	float noise_speed_bias = work_entry->properties->noise_speed_bias;
+	noise_speed_bias = noise_speed_bias < -1.f ? -1.f : (noise_speed_bias > 1.f ? 1.f : noise_speed_bias);
+	if (noise_speed_bias == 0.f) {
+		return;
+	}
+	const float speed_gain = 1.f + (noise_speed_bias < 0.f ? noise_speed_bias : 0.f);
+	const float swerve_gain = 1.f - (noise_speed_bias > 0.f ? noise_speed_bias : 0.f);
+	ctx.noise_swerve_gain_minus_one = tfxWideSetSingle(swerve_gain - 1.f);
+	ctx.noise_speed_gain_minus_swerve_gain = tfxWideSetSingle(speed_gain - swerve_gain);
+	ctx.flags |= tfx_ctx_policy_flag_anisotropic_noise;
+}
+
 void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
@@ -12673,6 +12695,7 @@ void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
 	ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
+	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
 
 void tfx_setup_path_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -12729,6 +12752,7 @@ void tfx_setup_motion_randomness_policy::apply(tfx_control_work_entry_t *work_en
 	ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
+	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
 
 void tfx_setup_transform_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -17944,9 +17968,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		depth_indexes = &effect.instance_data.depth_indexes[layer][effect.instance_data.current_depth_buffer_index[layer]];
 	}
 
-	bool has_random_movement = tfx__control_profile_has_noise(emitter.state_properties.control_profile);
-
 	if (is_single || is_ordered) {
+		bool has_random_movement = tfx__control_profile_has_noise(emitter.state_properties.control_profile);
 		//---- Legacy compaction pass (retained for single and ordered emitters) ----
 		//Ordered emitters need depth_index updates on removal; single emitters reset particle
 		//age to 0 on loop so max_life bumping would never trigger at the head.

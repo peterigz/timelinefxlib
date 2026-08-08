@@ -3214,6 +3214,7 @@ typedef enum {
 	tfx_ctx_policy_flag_transform_relative						= 1 << 13,
 	tfx_ctx_policy_flag_direction_is_bezier_graph            	= 1 << 14,
 	tfx_ctx_policy_flag_direction_has_oscillator             	= 1 << 15,
+	tfx_ctx_policy_flag_anisotropic_noise                    	= 1 << 16,
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -6284,6 +6285,8 @@ typedef struct tfx_particle_emitter_properties_s {
 	tfxU32 animation_property_index;
 	//The amount of drag that particles have. 0 is the default which is no drag and standard legacy tfx kinetic behaviour
 	float drag_half_life;
+	//Splits the accumulated medium velocity (noise, and later the force list) against the particle's direction of travel. 
+	float noise_speed_bias;
 } tfx_particle_emitter_properties_t;
 
 typedef struct tfx_shared_emitter_properties_s {
@@ -8581,13 +8584,11 @@ struct tfx_position_policy_context {
 	tfxWideArray position_x, position_y, position_z;
 	tfxWideFloat velocity_x, velocity_y, velocity_z;
 	//The velocity of the medium the particle is suspended in - the "air". Noise, motion randomness
-	//and (later) the force list all sum into this one accumulator, and the particle is pulled toward
-	//velocity_normal * velocity + medium_velocity rather than toward the emission heading alone.
-	//NOTE ON LIFETIME: ctx is created once per emitter per frame but the policies run once per wide
-	//batch of particles, so this field outlives the batch that produced it. A producer must therefore
-	//assign, never accumulate - accumulating would carry one batch's noise into the next. Once there
-	//is more than one producer the zeroing becomes the accumulating policy's first job.
+	//and the force list all sum into this one accumulator.
 	tfxWideFloat medium_velocity_x, medium_velocity_y, medium_velocity_z;
+	//The anisotropic split of the medium velocity against the direction of travel, pre-baked into the
+	//two coefficients the inner loop actually multiplies by so it never has to subtract.
+	tfxWideFloat noise_swerve_gain_minus_one, noise_speed_gain_minus_swerve_gain;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
 	tfxWideFloat drag_alpha;
@@ -9055,13 +9056,50 @@ struct tfx_apply_white_noise {
 	}
 };
 
+//	travel_direction = particle_velocity / |particle_velocity|
+//	along_travel     = (medium_velocity . travel_direction) * travel_direction   changes speed only
+//	across_travel    = medium_velocity - along_travel                            changes direction only
+//	medium_velocity  = speed_gain * along_travel + swerve_gain * across_travel
+tfxINTERNAL inline void tfx__wide_split_medium_velocity(tfx_position_policy_context &ctx, tfxWideFloat travel_x, tfxWideFloat travel_y, tfxWideFloat travel_z, tfxWideFloat &medium_x, tfxWideFloat &medium_y, tfxWideFloat &medium_z) {
+	const tfxWideFloat epsilon = tfxWideSetSingle(1e-8f);
+	tfxWideFloat length_squared = tfxWideMul(travel_x, travel_x);
+	length_squared = tfxWideMulAdd(travel_y, travel_y, length_squared);
+	length_squared = tfxWideMulAdd(travel_z, travel_z, length_squared);
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, epsilon));
+	travel_x = tfxWideMul(travel_x, inverse_length);
+	travel_y = tfxWideMul(travel_y, inverse_length);
+	travel_z = tfxWideMul(travel_z, inverse_length);
+
+	const tfxWideFloat movement_fade = tfxWideMul(length_squared, tfxWideMul(inverse_length, inverse_length));
+	const tfxWideFloat swerve_gain = tfxWideMulAdd(movement_fade, ctx.noise_swerve_gain_minus_one, tfxWIDEONE.m);
+
+	tfxWideFloat along_travel = tfxWideMul(medium_x, travel_x);
+	along_travel = tfxWideMulAdd(medium_y, travel_y, along_travel);
+	along_travel = tfxWideMulAdd(medium_z, travel_z, along_travel);
+	const tfxWideFloat along_scale = tfxWideMul(along_travel, tfxWideMul(movement_fade, ctx.noise_speed_gain_minus_swerve_gain));
+
+	medium_x = tfxWideMulAdd(along_scale, travel_x, tfxWideMul(swerve_gain, medium_x));
+	medium_y = tfxWideMulAdd(along_scale, travel_y, tfxWideMul(swerve_gain, medium_y));
+	medium_z = tfxWideMulAdd(along_scale, travel_z, tfxWideMul(swerve_gain, medium_z));
+}
+
 //Adds the accumulated medium velocity onto the per-frame velocity, outside the stored channel, so it
-//biases this frame's movement and is gone the next. 
+//biases this frame's movement and is gone the next.
 struct tfx_apply_add_medium_to_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
-		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, ctx.medium_velocity_x);
-		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, ctx.medium_velocity_y);
-		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, ctx.medium_velocity_z);
+		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
+		tfxWideFloat medium_velocity_y = ctx.medium_velocity_y;
+		tfxWideFloat medium_velocity_z = ctx.medium_velocity_z;
+		if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+			//Only the orbital chains reach here, and on those ctx.velocity_* IS the direction of travel:
+			//tfx_apply_orbital_velocity_normal has just recomputed it from position this frame. The stored
+			//channel must NOT be used instead - orbital never writes it, so it still holds the frame zero
+			//spawn seed and would point the split in a direction the particle stopped travelling in long ago.
+			tfx__wide_split_medium_velocity(ctx, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z, medium_velocity_x, medium_velocity_y, medium_velocity_z);
+		}
+		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, medium_velocity_x);
+		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, medium_velocity_y);
+		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, medium_velocity_z);
 	}
 };
 
@@ -9077,13 +9115,25 @@ struct tfx_apply_velocity {
 		target_velocity_x = tfxWideMul(target_velocity_x, ctx.velocity);
 		target_velocity_y = tfxWideMul(target_velocity_y, ctx.velocity);
 		target_velocity_z = tfxWideMul(target_velocity_z, ctx.velocity);
-		target_velocity_x = tfxWideAdd(target_velocity_x, ctx.medium_velocity_x);
-		target_velocity_y = tfxWideAdd(target_velocity_y, ctx.medium_velocity_y);
-		target_velocity_z = tfxWideAdd(target_velocity_z, ctx.medium_velocity_z);
 
 		tfxWideFloat previous_velocity_x = tfxWideLoad(&bank.velocity_x[index]);
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
 		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
+
+		//This is the point after every producer has run and before anything consumes the accumulator, so
+		//it is where the anisotropic split belongs - keep it here rather than as its own chain element and
+		//the force list can insert as many producers as it likes ahead of it without the ordering ever
+		//having to be re-checked. The direction of travel is the stored channel, i.e. where the particle
+		//was actually heading at the end of last frame, not the spawn normal it was aimed along.
+		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
+		tfxWideFloat medium_velocity_y = ctx.medium_velocity_y;
+		tfxWideFloat medium_velocity_z = ctx.medium_velocity_z;
+		if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+			tfx__wide_split_medium_velocity(ctx, previous_velocity_x, previous_velocity_y, previous_velocity_z, medium_velocity_x, medium_velocity_y, medium_velocity_z);
+		}
+		target_velocity_x = tfxWideAdd(target_velocity_x, medium_velocity_x);
+		target_velocity_y = tfxWideAdd(target_velocity_y, medium_velocity_y);
+		target_velocity_z = tfxWideAdd(target_velocity_z, medium_velocity_z);
 
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
