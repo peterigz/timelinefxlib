@@ -8756,7 +8756,11 @@ struct tfx_position_policy_context {
 	tfxWideFloat noise_swerve_gain_minus_one, noise_speed_gain_minus_swerve_gain;
 	tfxWideFloat weight;
 	tfxWideFloat velocity;
+	//Fraction of the current velocity that drag removes this frame, and the number of seconds of
+	//acceleration that survives it. Both come out of the same exact integration of
+	//dv/dt = acceleration - drag_rate * velocity, see tfx_setup_vecolity_lookup_policy.
 	tfxWideFloat drag_alpha;
+	tfxWideFloat acceleration_scale;
 	tfxWideFloat drag_alpha_age_scale;
 	tfxWideFloat life;
 	tfxWideFloat velocity_adjuster;
@@ -9352,15 +9356,13 @@ struct tfx_apply_add_medium_to_velocity {
 struct tfx_apply_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-		tfxWideFloat target_velocity_x, target_velocity_y, target_velocity_z;
-		tfx__wide_unpack10bit(velocity_normal, target_velocity_x, target_velocity_y, target_velocity_z);
-		//Keep the multiply and the medium add as separate operations: the pre-medium code computed
-		//(unpack * velocity) and added the noise downstream, so folding these into a multiply-add
-		//would round differently and break the drag_alpha == 1 identity. These are explicit
-		//intrinsics, so the compiler will not contract them into an FMA on its own.
-		target_velocity_x = tfxWideMul(target_velocity_x, ctx.velocity);
-		target_velocity_y = tfxWideMul(target_velocity_y, ctx.velocity);
-		target_velocity_z = tfxWideMul(target_velocity_z, ctx.velocity);
+		tfxWideFloat acceleration_x, acceleration_y, acceleration_z;
+		tfx__wide_unpack10bit(velocity_normal, acceleration_x, acceleration_y, acceleration_z);
+		//ctx.velocity is the emission direction's acceleration magnitude now (base_velocity * the velocity
+		//graph), not a speed the particle is aiming for.
+		acceleration_x = tfxWideMul(acceleration_x, ctx.velocity);
+		acceleration_y = tfxWideMul(acceleration_y, ctx.velocity);
+		acceleration_z = tfxWideMul(acceleration_z, ctx.velocity);
 
 		tfxWideFloat previous_velocity_x = tfxWideLoad(&bank.velocity_x[index]);
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
@@ -9377,20 +9379,24 @@ struct tfx_apply_velocity {
 		if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
 			tfx__wide_split_medium_velocity(ctx, previous_velocity_x, previous_velocity_y, previous_velocity_z, medium_velocity_x, medium_velocity_y, medium_velocity_z);
 		}
-		target_velocity_x = tfxWideAdd(target_velocity_x, medium_velocity_x);
-		target_velocity_y = tfxWideAdd(target_velocity_y, medium_velocity_y);
-		target_velocity_z = tfxWideAdd(target_velocity_z, medium_velocity_z);
+		acceleration_x = tfxWideAdd(acceleration_x, medium_velocity_x);
+		acceleration_y = tfxWideAdd(acceleration_y, medium_velocity_y);
+		acceleration_z = tfxWideAdd(acceleration_z, medium_velocity_z);
 
 		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
 
+		//A particle spawned part way through the frame gets that fraction of both the push and the drag.
 		tfxWideFloat frame_fraction = tfxWideMulAdd(ctx.drag_alpha_age_scale, tfxWideSub(age_fraction, tfxWIDEONE.m), tfxWIDEONE.m);
 		tfxWideFloat drag_alpha = tfxWideMul(ctx.drag_alpha, frame_fraction);
+		tfxWideFloat acceleration_scale = tfxWideMul(ctx.acceleration_scale, frame_fraction);
 		tfxWideFloat one_minus_drag_alpha = tfxWideSub(tfxWIDEONE.m, drag_alpha);
 
-		ctx.velocity_x = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_x), tfxWideMul(drag_alpha, target_velocity_x));
-		ctx.velocity_y = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_y), tfxWideMul(drag_alpha, target_velocity_y));
-		ctx.velocity_z = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_z), tfxWideMul(drag_alpha, target_velocity_z));
+		//velocity = velocity - drag + acceleration. With a constant acceleration the two terms balance at
+		//acceleration / drag_rate, and with the acceleration gone drag alone decays the particle to a stop.
+		ctx.velocity_x = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_x), tfxWideMul(acceleration_scale, acceleration_x));
+		ctx.velocity_y = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_y), tfxWideMul(acceleration_scale, acceleration_y));
+		ctx.velocity_z = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_z), tfxWideMul(acceleration_scale, acceleration_z));
 
 		tfxWideStore(&bank.velocity_x[index], ctx.velocity_x);
 		tfxWideStore(&bank.velocity_y[index], ctx.velocity_y);

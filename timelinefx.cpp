@@ -12939,17 +12939,25 @@ void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entr
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_has_oscillator : 0;
-	ctx.drag_alpha = tfxWIDEONE.m;
-	ctx.drag_alpha_age_scale = tfxWIDEZERO.m;
-	float drag_half_life = work_entry->properties->drag_half_life;   
-	if (drag_half_life > 0.f) {
-		float delta_time_seconds = (float)work_entry->pm->frame_length * 0.001f;	
-		ctx.drag_alpha = tfxWideSetSingle(1.f - exp2f(-delta_time_seconds / drag_half_life));
-		ctx.drag_alpha_age_scale = tfxWIDEONE.m;
+	//Acceleration model: the velocity graph and the medium are accelerations, and drag is the opposing
+	//force, so dv/dt = acceleration - drag_rate * velocity. Held constant over the frame that integrates
+	//exactly to velocity * exp(-drag_rate * dt) + (acceleration / drag_rate) * (1 - exp(-drag_rate * dt)),
+	//which is stored as the two coefficients below. Terminal velocity is acceleration / drag_rate.
+	//drag_half_life now carries a drag RATE in 1/seconds, not a half life - 0 means frictionless, and
+	//acceleration_scale tends to dt as the rate tends to 0 so that case needs no branch in the loop.
+	float delta_time_seconds = (float)work_entry->pm->frame_length * 0.001f;
+	float drag_rate = work_entry->properties->drag_half_life;
+	if (drag_rate > 0.f) {
+		float drag_alpha = 1.f - expf(-drag_rate * delta_time_seconds);
+		ctx.drag_alpha = tfxWideSetSingle(drag_alpha);
+		ctx.acceleration_scale = tfxWideSetSingle(drag_alpha / drag_rate);
 	} else {
-		ctx.drag_alpha = tfxWIDEONE.m;
-		ctx.drag_alpha_age_scale = tfxWIDEZERO.m;
+		ctx.drag_alpha = tfxWIDEZERO.m;
+		ctx.acceleration_scale = tfxWideSetSingle(delta_time_seconds);
 	}
+	//Always on now. Under the old model this only mattered when drag was active, but a particle that has
+	//existed for a fraction of the frame must take that fraction of the acceleration too.
+	ctx.drag_alpha_age_scale = tfxWIDEONE.m;
 }
 
 void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -17986,7 +17994,6 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 		float &velocity_x = entry->particle_data->velocity_x[index];
 		float &velocity_y = entry->particle_data->velocity_y[index];
 		float &velocity_z = entry->particle_data->velocity_z[index];
-		float &base_velocity = entry->particle_data->base_velocity[index];
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 
 		tfx_vec3_t world_position;
@@ -18035,9 +18042,11 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 		}
 
-		velocity_x = base_velocity * velocity_normal.x;
-		velocity_y = base_velocity * velocity_normal.y;
-		velocity_z = base_velocity * velocity_normal.z;
+		//Start at rest: base_velocity is an acceleration along the emission normal now, so seeding the
+		//stored channel with it would launch the particle at full speed and then accelerate it as well.
+		velocity_x = 0.f;
+		velocity_y = 0.f;
+		velocity_z = 0.f;
 		//The motion randomness zeroing of noise_offset that used to sit here was redundant even before
 		//the speed walk was deleted: tfx__spawn_particle_motion_randomness runs after this and zeroes
 		//it anyway. noise_offset is no longer read at all on the motion randomness chain.
