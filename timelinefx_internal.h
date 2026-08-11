@@ -9201,34 +9201,6 @@ struct tfx_apply_white_noise {
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
 
-		// The per-particle random SPEED walk that used to live here is deleted, not disabled. It
-		// accumulated into the per particle noise offset channel and fed ctx.velocity, and under the medium model
-		// tfx_apply_velocity runs after this policy, so writing ctx.velocity would push the walk into
-		// the integrator's target and recreate exactly the speed inflation this phase just removed.
-		//
-		// Deleting it rather than dt-correcting it also settles the framerate question outright. The
-		// walk was a per-frame Riemann sum, which is why it needed ctx.motion_randomness_dt_scale; what
-		// remains below is a pure function of (uid, particle age), so it is stateless and
-		// frame-rate independent by construction. There is nothing left to correct, and both
-		// ctx.time_step and ctx.motion_randomness_dt_scale go with it.
-		//
-		// Speed variation is not lost: it comes out of the component of the noise vector along the
-		// particle's heading, the same way it does for the value noise version.
-
-		// Smooth random direction from interpolated WHITE noise - no simplex, no acosf.
-		// The heading hashes a random target per "bucket" and smoothsteps between this bucket and the
-		// next, so it is C1 continuous across boundaries. The bucket rate (how rapidly a new direction is
-		// chosen) is the per-particle Motion Randomness Resolution (stored at spawn in noise_resolution):
-		// 300 reproduces the original 250ms period, higher = faster, lower = slower.
-		//
-		// The timeline is driven by PARTICLE age, not emitter age, for two reasons:
-		//  - A looped emitter wraps its age (age -= loop_length), which would snap every particle's phase
-		//    at once; particle age is monotonic so there is no loop spike.
-		//  - Each particle gets a phase_offset so a cohort spawned together (e.g. on a loop burst) doesn't
-		//    all turn at the same moment.
-		// motion_randomness_gain (1.5f) is gone: it scaled a deflection that was added to a unit
-		// heading before renormalising, and the amplitude is now set by the saturating strength term
-		// below instead. Cone width comes from strength, not from a separate gain.
 		const tfxWideFloat inv_period_scale = tfxWideSetSingle(1.f / (250.f * 300.f));      // resolution 300 -> 250ms bucket
 
 		const tfxWideInt axis_x = tfxWideSetSinglei(0x1b56c4f9);
@@ -9253,25 +9225,7 @@ struct tfx_apply_white_noise {
 		tfxWideFloat noise_y = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_y), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_y), frac));
 		tfxWideFloat noise_z = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_z), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_z), frac));
 
-		// Perturbation size as a multiple of the particle's own speed. Saturating, so a large authored
-		// value cannot launch particles - the original renormalise gave that ceiling for free and this
-		// stands in for it. The two constants are the tuning knobs and are meant to be adjusted by eye:
-		//
-		//   max_strength           the ceiling. 1 lets the particle be deflected by at most 90 degrees,
-		//                          because the perturbation can never be longer than the base velocity
-		//                          it is added to. Above 1 the particle can be turned right around,
-		//                          which is what "turbulent" needs, at the cost of a wider speed swing:
-		//                          the target ranges over |1 - strength| .. 1 + strength times speed.
-		//   half_strength_influence  how much influence reaches half the ceiling. Raising it spreads the
-		//                          graph's useful range over a wider span of authored values.
-		//
-		// These were 1 and 1, which capped deflection at 90 degrees and put almost all of the response
-		// below influence 1 - going from 1 to 10 moved strength only from 0.50 to 0.91, so the graph
-		// looked like it had stopped doing anything. At 2.5 and 3 the response stays live out to about
-		// influence 20 and passes 1.0 (so, past 90 degrees) at influence 2.
-		const tfxWideFloat max_strength = tfxWideSetSingle(2.5f);
-		const tfxWideFloat half_strength_influence = tfxWideSetSingle(3.f);
-		const tfxWideFloat strength = tfxWideMul(max_strength, tfxWideDiv(influence, tfxWideAdd(half_strength_influence, influence)));
+		const tfxWideFloat strength = influence;
 
 		tfxWideFloat length_squared = tfxWideMul(noise_x, noise_x);
 		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_y, noise_y));
@@ -9418,8 +9372,6 @@ struct tfx_apply_velocity {
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
 		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
 
-		//Loaded once for both of the hashed draws below rather than once each, since an emitter can author
-		//a spawn impulse and a drag variation at the same time.
 		tfxWideInt particle_uid = tfxWideSetSinglei(0);
 		if (ctx.flags & (tfx_ctx_policy_flag_spawn_impulse_on_loop | tfx_ctx_policy_flag_drag_variation)) {
 			particle_uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
@@ -9435,17 +9387,10 @@ struct tfx_apply_velocity {
 			previous_velocity_z = tfxWideOr(tfxWideAnd(relaunched, tfxWideMul(normal_z, impulse)), tfxWideAndNot(relaunched, previous_velocity_z));
 		}
 
-		//ctx.velocity is the emission direction's acceleration magnitude now (base_velocity * the velocity
-		//graph), not a speed the particle is aiming for.
 		tfxWideFloat acceleration_x = tfxWideMul(normal_x, ctx.velocity);
 		tfxWideFloat acceleration_y = tfxWideMul(normal_y, ctx.velocity);
 		tfxWideFloat acceleration_z = tfxWideMul(normal_z, ctx.velocity);
 
-		//This is the point after every producer has run and before anything consumes the accumulator, so
-		//it is where the anisotropic split belongs - keep it here rather than as its own chain element and
-		//the force list can insert as many producers as it likes ahead of it without the ordering ever
-		//having to be re-checked. The direction of travel is the stored channel, i.e. where the particle
-		//was actually heading at the end of last frame, not the spawn normal it was aimed along.
 		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
 		tfxWideFloat medium_velocity_y = ctx.medium_velocity_y;
 		tfxWideFloat medium_velocity_z = ctx.medium_velocity_z;
@@ -9456,20 +9401,16 @@ struct tfx_apply_velocity {
 		acceleration_y = tfxWideAdd(acceleration_y, medium_velocity_y);
 		acceleration_z = tfxWideAdd(acceleration_z, medium_velocity_z);
 
+		//Weight
+		acceleration_y = tfxWideSub(acceleration_y, ctx.weight);
+		ctx.weight = tfxWideSetZero;
+
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
 
-		//A particle spawned part way through the frame gets that fraction of both the push and the drag.
-		//A relaunched particle sits at age 0, so both coefficients are 0 and the impulse blended in above
-		//is what reaches the store untouched.
 		tfxWideFloat frame_fraction = tfxWideMulAdd(ctx.drag_alpha_age_scale, tfxWideSub(age_fraction, tfxWIDEONE.m), tfxWIDEONE.m);
 		tfxWideFloat particle_drag_alpha = ctx.drag_alpha;
 		tfxWideFloat particle_acceleration_scale = ctx.acceleration_scale;
 		if (ctx.flags & tfx_ctx_policy_flag_drag_variation) {
-			//Both coefficients are lerped on the same draw, so every particle lands on a pair that is exact at
-			//the two ends of the drag range and within a fraction of a percent of exact in between (the
-			//acceleration scale is very nearly linear in the per frame retention factor). Interpolating the
-			//coefficients is what makes a per particle drag rate affordable at all - varying the rate itself
-			//would need an exp per particle per frame.
 			tfxWideFloat draw = tfxWideMulAdd(tfx__wide_white_unit(particle_uid, tfxWideSetSinglei(tfxDRAG_VARIATION_HASH_AXIS)), tfxWIDEHALF.m, tfxWIDEHALF.m);
 			particle_drag_alpha = tfxWideMulAdd(ctx.drag_alpha_variation, draw, particle_drag_alpha);
 			particle_acceleration_scale = tfxWideMulAdd(ctx.acceleration_scale_variation, draw, particle_acceleration_scale);
@@ -9478,8 +9419,6 @@ struct tfx_apply_velocity {
 		tfxWideFloat acceleration_scale = tfxWideMul(particle_acceleration_scale, frame_fraction);
 		tfxWideFloat one_minus_drag_alpha = tfxWideSub(tfxWIDEONE.m, drag_alpha);
 
-		//velocity = velocity - drag + acceleration. With a constant acceleration the two terms balance at
-		//acceleration / drag_rate, and with the acceleration gone drag alone decays the particle to a stop.
 		ctx.velocity_x = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_x), tfxWideMul(acceleration_scale, acceleration_x));
 		ctx.velocity_y = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_y), tfxWideMul(acceleration_scale, acceleration_y));
 		ctx.velocity_z = tfxWideAdd(tfxWideMul(one_minus_drag_alpha, previous_velocity_z), tfxWideMul(acceleration_scale, acceleration_z));
