@@ -387,6 +387,10 @@ typedef enum {
 	tfxEmitterType,
 	tfxRibbonType,
 	tfxFolder,
+	//Not a descriptor type an effect can have - it only ever tags a tfx_graph_list_t so that the list knows
+	//how many graphs it holds and which initialiser rebuilds it. Appended rather than inserted because the
+	//preceding values are saved in the file as ordinals.
+	tfxForceType,
 	tfxMaxDescriptorTypes
 } tfx_effect_descriptor_type;
 

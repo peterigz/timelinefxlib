@@ -18,6 +18,10 @@
 #define tfxMAX_THREADS 64
 #endif
 
+#ifndef tfxMAX_FORCES
+#define tfxMAX_FORCES 8
+#endif
+
 //---------------------------------------
 /*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -1669,6 +1673,10 @@ tfx_allocator *tfxGetAllocator();
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
 #define tfxOSCILLATOR_SIN(t, frequency, amplitude) 0.5f + sinf((t) * (frequency) * 6.28318f) * (amplitude)
 #define tfxOSCILLATOR_WIDE_SIN(t, frequency, amplitude) tfxWideAdd(tfxWIDEHALF.m, tfxWideMul(tfxWideSin(tfxWideMul(tfxWideMul(t, frequency), tfxWIDEPI2.m)), amplitude))
+//Applies a compiled oscillator to a sampled graph value. Composed exactly like the scalar samplers do it, which
+//is also what the editor plots: offset_x shifts the phase, and offset_y lifts the multiplier before it scales the
+//value rather than being added to the result afterwards.
+#define tfxOSCILLATOR_WIDE_APPLY(value, t, oscillator) tfxWideMul(value, tfxWideAdd(tfxOSCILLATOR_WIDE_SIN(tfxWideAdd(t, (oscillator).offset_x), (oscillator).frequency, (oscillator).amplitude), (oscillator).offset_y))
 #define tfxCIRCLENODES 16
 #define tfxMIN_SEGMENT_COUNT 32 
 #define tfxMAX_SEGMENT_COUNT 1024 
@@ -2919,6 +2927,9 @@ typedef enum {
 	tfxTransform_translate_x,
 	tfxTransform_translate_y,
 	tfxTransform_translate_z,
+
+	tfxForce_wave,
+
 	tfxEmitterGraphMaxIndex,
 
 	tfxGraphMaxIndex
@@ -2942,6 +2953,11 @@ typedef enum {
 	tfxPath_rotation_pitch_index,
 	tfxPath_rotation_yaw_index,
 } tfx_path_graph_index;
+
+typedef enum {
+	tfxForce_wave_index,
+	tfxForceGraphs_max_index
+} tfx_force_graph_index;
 
 typedef enum {
 	tfxGlobal_start = tfxGlobal_life,
@@ -2999,6 +3015,24 @@ typedef enum {
 	tfxCurlNoise,
 	tfxValueNoise,
 } tfx_noise_type;
+
+//These must not change, values are used in the save file. Append only.
+//The type decides how the phase coordinate that the wave runs along is derived: for wind it is the
+//distance along wave_axis, for a future attract/repel it would be the radius, for a vortex the distance
+//along the spin axis. The wave itself is shared machinery across every type.
+typedef enum {
+	tfxForceWind,
+} tfx_force_type;
+
+//The space that a force's direction and wave_axis are authored in. Wind is almost always world space:
+//the medium does not rotate with the emitter, and two emitters in the same effect must agree about
+//where the gust currently is.
+//These must not change, values are used in the save file. Append only.
+typedef enum {
+	tfxForceSpaceWorld,
+	tfxForceSpaceEffect,
+	tfxForceSpaceEmitter,
+} tfx_force_space;
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
 //These must not change, values are used in the save file.
@@ -3104,7 +3138,15 @@ typedef enum {
 	tfxStartRibbonFrameMeta,
 	tfxEndRibbonFrameMeta,
 	tfxStartRibbonEmitterCount,
-	tfxEndRibbonEmitterCount
+	tfxEndRibbonEmitterCount,
+	//The forces block must be written before either force graph block: the graph lists do not exist until the
+	//forces that own them have been created.
+	tfxStartForces,
+	tfxEndForces,
+	tfxStartForceGraphs,
+	tfxEndForceGraphs,
+	tfxStartForceGraphProperties,
+	tfxEndForceGraphProperties
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
@@ -3113,6 +3155,7 @@ typedef tfxU32 tfxRibbonEmitterFlags;			//tfx_ribbon_emitter_flag_bits
 typedef tfxU32 tfxSharedEmitterFlags;			//tfx_shared_emitter_flag_bits
 typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
+typedef tfxU32 tfxForceFlags;                   //tfx_force_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
 typedef tfxU32 tfxParticleFlags;                 //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
@@ -3180,6 +3223,7 @@ typedef enum {
 	tfxEmitterControlProfile_line		                        = 1 << 14,
 	tfxEmitterControlProfile_rotated_line                       = 1 << 15,
 	tfxEmitterControlProfile_value_noise                        = 1 << 16,
+	tfxEmitterControlProfile_forces                             = 1 << 17,
 	//Emitters that sample a spatial noise FIELD, and so share the velocity turbulance and noise
 	//resolution graphs, the per-particle noise_offset seeded by tfx__spawn_particle_noise, and the
 	//tfx_setup_simplex_lookup_policy setup. The name predates curl and value noise joining it - read
@@ -3215,6 +3259,9 @@ typedef enum {
 	tfx_ctx_policy_flag_direction_is_bezier_graph            	= 1 << 14,
 	tfx_ctx_policy_flag_direction_has_oscillator             	= 1 << 15,
 	tfx_ctx_policy_flag_anisotropic_noise                    	= 1 << 16,
+	//Raised when at least one resolved force jitters its phase, so tfx_apply_forces only touches the uid
+	//channel when something is going to hash it. Nothing else in the chain reads uid.
+	tfx_ctx_policy_flag_force_phase_jitter                   	= 1 << 17,
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -3365,6 +3412,13 @@ typedef enum {
 	tfxColorRampFlags_none                                      = 0,
 	tfxColorRampFlags_use_sinusoidal_ramp_generation            = 1 << 0,		//Use this flag to toggle between sinusoidal color ramp generation
 } tfx_color_ramp_flag_bits;
+
+typedef enum {
+	tfxForceFlags_none                                          = 0,
+	tfxForceFlags_enabled                                       = 1 << 0,	//Cleared to mute a force without deleting it. A force list with no enabled entries must not raise the control profile bit
+	tfxForceFlags_wave_axis_follows_direction                   = 1 << 1,	//wave_axis is ignored and the wave travels along direction - gust fronts sweeping downwind, the usual case
+	tfxForceFlags_periodic_wave                                 = 1 << 2,	//Locks the wave graph's end value and tangents to its start so there is no seam. Without it a hard edge sweeps through the effect once per cycle
+} tfx_force_flag_bits;
 
 typedef enum {
 	tfxGraphFlags_none                                          = 0,
@@ -6115,7 +6169,6 @@ typedef struct tfx_graph_list_s {
 	tfx_index color_ramp_bitmap_indexes;
 } tfx_graph_list_t;
 
-
 typedef struct tfx_path_nodes_soa_s {
 	float *x;
 	float *y;
@@ -6266,6 +6319,95 @@ typedef struct tfx_image_data_s {
 #endif // tfxCUSTOM_IMAGE_DATA
 } tfx_image_data_t;
 
+typedef struct tfx_force_s {
+	//The kind of field this is. Decides how the wave's phase coordinate is derived from particle position.
+	tfx_force_type type;
+	//The space direction and wave_axis are authored in.
+	tfx_force_space space;
+	tfxForceFlags flags;
+	//Index into library->graphs of this force's own graph list, holding the wave curve. tfxINVALID when
+	//the force has no graphs yet. The force owns the list: freed back to library->free_graph_lists when
+	//the force is deleted, and deep copied (never index copied) when an emitter is duplicated.
+	tfxU32 graph_list_index;
+	//The direction the medium flows in. Normalised once per emitter per frame in the setup policy, so the
+	//authored length is ignored - base_strength and wave_amplitude carry the magnitude.
+	tfx_vec3_t direction;
+	//The axis the wave pattern varies and travels along, which need not be the direction the medium pushes:
+	//aligned with direction gives gust fronts sweeping downwind, perpendicular gives bands sliding sideways
+	//across the flow. Ignored when tfxForceFlags_wave_axis_follows_direction is set.
+	tfx_vec3_t wave_axis;
+	//The distance in world units over which the wave repeats. <= 0 disables the wave entirely and the force
+	//is a constant base_strength flow - decided in the setup policy so there is no per particle branch.
+	float wave_length;
+	//How fast the wave travels along wave_axis in units/sec. Authored rather than a frequency so that
+	//resizing the gust does not silently change how fast it moves; frequency is derived as speed/wave_length.
+	float wave_speed;
+	//How far wave_speed wanders either side of itself, as a fraction of it. 0 is a metronome; 1 is the point
+	//where the wave can momentarily stall without ever travelling backwards. How fast the wander evolves is
+	//not authored separately: it is a fixed fraction of the wave's own frequency, so a run of slow waves
+	//always lasts a few wave cycles whatever wave_length and wave_speed are set to. Resolved as a closed
+	//form function of the effect's age rather than accumulated frame to frame - resim on pause and sprite
+	//data capture both replay from an arbitrary age, and an accumulator would desync them.
+	float wave_speed_variation;
+	//The constant part of the flow in units/sec. Being a DC term it passes the drag lerp at gain 1, so it is
+	//felt at full strength no matter how heavy the particle is.
+	float base_strength;
+	//How far the wave swings either side of base_strength, in units/sec. This part is AC, so drag_half_life
+	//low passes it at 1/sqrt(1 + (omega*tau)^2) exactly as it does white noise - a fast wave on draggy
+	//particles very nearly vanishes, and the knob for that is wave_speed, not amplitude.
+	float wave_amplitude;
+	//Starting phase, 0..1. Offsets stacked forces so their waves do not all peak at the same place.
+	float phase_offset;
+	//How much the gust inside each cycle varies in length and position, 0..1. Every cycle draws its own width
+	//and its own offset within the cycle, so both the duration of a gust and the gap to the next one change
+	//from one to the next. The wave is squeezed into that window and holds at its end value for the rest of
+	//the cycle, which only joins up because a periodic wave starts and ends at the same value.
+	float wave_length_variation;
+	//How far each particle's phase is offset from its neighbours', in wavelengths, which softens the crest
+	//from a hard front into a ragged one. Drawn per particle from its uid so it costs no storage and holds
+	//still for the particle's whole life - a per frame draw would be noise, not a position in the wave. At 1
+	//the spread is a whole wavelength and the crest is gone entirely.
+	float wave_phase_jitter;
+} tfx_force_t;
+
+typedef enum {
+	tfx_force_resolved_flag_none                                = 0,
+	tfx_force_resolved_flag_has_wave                            = 1 << 0,	//Clear when the wave cannot contribute, so the inner loop skips the dot product and the sample entirely
+	tfx_force_resolved_flag_wave_is_bezier                      = 1 << 1,
+	tfx_force_resolved_flag_has_phase_jitter                    = 1 << 2,	//Never set without has_wave: there is no crest to soften on a constant flow
+	tfx_force_resolved_flag_has_length_variation                = 1 << 3,	//Also never set without has_wave
+	tfx_force_resolved_flag_wave_has_oscillator                 = 1 << 4,	//Also never set without has_wave
+} tfx_force_resolved_flag_bits;
+
+//One authored force reduced to exactly what the particle loop needs, once per emitter per frame. Everything
+//awkward - normalising, resolving the space, the emitter transform, the time term, overall scale - happens in
+//tfx_setup_forces_policy so that the inner loop is a dot product, a fract, one graph sample and three FMAs.
+//Deliberately scalar rather than tfxWideFloat: the loop broadcasts each value with a single instruction, and
+//keeping the array narrow keeps it in cache and keeps tfx_position_policy_context down to a pointer and a count.
+typedef struct tfx_force_resolved_s {
+	//Unit direction the medium flows in, already rotated into whichever space the particle positions are in.
+	float direction_x, direction_y, direction_z;
+	//The wave axis divided by the wave length, so a dot product with position yields phase directly.
+	float phase_axis_x, phase_axis_y, phase_axis_z;
+	//Time term, authored phase offset and, for relative position emitters, the emitter's own world position
+	//along the axis - pre-summed so the gust stays put in the world while the emitter moves through it.
+	float phase_bias;
+	float base_strength;
+	float wave_amplitude;
+	//Half the authored jitter, because the per particle draw it scales spans -1 to 1: an authored 1 is then
+	//a full wavelength of spread, which is the point the crest stops existing.
+	float phase_jitter;
+	//How much of each cycle the per cycle draw is allowed to take away from the gust inside it.
+	float length_variation;
+	//Added to the cycle index the loop derives from the phase, turning it back into a count that keeps rising
+	//for the life of the effect. Without it the index would come from a phase already wrapped to 0..1 in the
+	//setup, so it would repeat every cycle and hand every gust the same draw - which is the periodicity the
+	//variation exists to remove, moved up one level.
+	int phase_cycle_offset;
+	tfx_graph_t *wave_graph;
+	tfxU32 flags;
+} tfx_force_resolved_t;
+
 typedef struct tfx_particle_emitter_properties_s {
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
 	tfx_vector_align_type vector_align_type;
@@ -6287,6 +6429,11 @@ typedef struct tfx_particle_emitter_properties_s {
 	float drag_half_life;
 	//Splits the accumulated medium velocity (noise, and later the force list) against the particle's direction of travel. 
 	float noise_speed_bias;
+	//Maximum of 8 forces per emitter. The list is an unordered set - every force is a velocity field summed
+	//into one accumulator, so entry order cannot change the result and there is no reordering to author.
+	tfx_force_t forces[tfxMAX_FORCES];
+	//How many entries of forces[] are populated. Slots at or past this index are ignored, not inspected.
+	tfxU32 force_count;
 } tfx_particle_emitter_properties_t;
 
 typedef struct tfx_shared_emitter_properties_s {
@@ -7046,6 +7193,12 @@ typedef struct tfx_control_work_entry_s {
 	float global_stretch;
 	float global_intensity;
 	float global_noise;
+	//Resolved once per emitter per frame by tfx_setup_forces_policy. Lives here rather than in the policy
+	//context so the context stays small enough to keep living in registers across the chain, which is the
+	//cost the force list was always most likely to pay. Only the entries that can contribute are written,
+	//so resolved_force_count is not properties->force_count.
+	tfx_force_resolved_t resolved_forces[tfxMAX_FORCES];
+	tfxU32 resolved_force_count;
 }tfx_control_work_entry_t;
 
 typedef struct tfx_stage_work_entry_s {
@@ -7714,6 +7867,18 @@ tfxAPI_EDITOR float tfx__get_graph_max_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
+tfxAPI_EDITOR void tfx__init_emitter_force(tfx_force_t *force);
+tfxAPI_EDITOR tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type);
+tfxAPI_EDITOR tfx_force_t *tfx__clone_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
+tfxAPI_EDITOR void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
+tfxAPI_EDITOR void tfx__reset_force_graphs(tfx_library library, tfxU32 graph_list_index, bool add_node = true);
+tfxAPI_EDITOR void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_emitter_force_graphs(tfx_effect_descriptor emitter, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_emitter_force_graph_properties(tfx_effect_descriptor emitter, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR void tfx__assign_force_graph_node_data(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR void tfx__assign_force_graph_properties(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
+tfxINTERNAL void tfx__assign_graph_property_values(tfx_graph_t *graph, tfx_vector_t<tfx_str256_t> *values);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxINTERNAL float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *seed);
@@ -8635,6 +8800,9 @@ struct tfx_position_policy_context {
 	tfx_wide_easing_function velocity_turbulance_easing;
 	tfx_wide_easing_function noise_resolution_easing;
 	tfx_wide_easing_function motion_randomness_easing;
+	//Points at work_entry->resolved_forces. Null with a zero count on every chain that has no force list.
+	const tfx_force_resolved_t *forces;
+	tfxU32 force_count;
 	tfxContextPolicyFlags flags;
 };
 
@@ -8653,6 +8821,10 @@ struct tfx_setup_direction_lookup_policy {
 };
 
 struct tfx_setup_simplex_lookup_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
+struct tfx_setup_forces_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
@@ -8700,7 +8872,7 @@ struct tfx_apply_lookup_velocity {
 			tfx__wide_bezier_sampler(velocity_time, ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.curve1, ctx.velocity_graph->wide_graph.curve2, ctx.velocity_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_graph->wide_graph.from, ctx.velocity_graph->wide_graph.to, velocity_time);
 		if (ctx.flags & tfx_ctx_policy_flag_velocity_has_oscillator) {
-			ctx.lookup_velocity = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_time, tfxWideAdd(ctx.velocity_graph->wide_oscillator.offset_x, ctx.velocity_graph->wide_oscillator.frequency), ctx.velocity_graph->wide_oscillator.amplitude), ctx.lookup_velocity), ctx.velocity_graph->wide_oscillator.offset_y);
+			ctx.lookup_velocity = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity, velocity_time, ctx.velocity_graph->wide_oscillator);
 		}
 		ctx.velocity = tfxWideMul(ctx.lookup_velocity, base_velocity);
 	}
@@ -8714,7 +8886,7 @@ struct tfx_apply_lookup_weight {
 			tfx__wide_bezier_sampler(weight_time, ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.curve1, ctx.weight_graph->wide_graph.curve2, ctx.weight_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.weight_graph->wide_graph.from, ctx.weight_graph->wide_graph.to, weight_time);
 		if (ctx.flags & tfx_ctx_policy_flag_weight_has_oscillator) {
-			ctx.lookup_weight = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(weight_time, tfxWideAdd(ctx.weight_graph->wide_oscillator.offset_x, ctx.weight_graph->wide_oscillator.frequency), ctx.weight_graph->wide_oscillator.amplitude), ctx.lookup_weight), ctx.weight_graph->wide_oscillator.offset_y);
+			ctx.lookup_weight = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_weight, weight_time, ctx.weight_graph->wide_oscillator);
 		}
 		ctx.weight = tfxWideMul(ctx.lookup_weight, base_weight);
 	}
@@ -8727,7 +8899,7 @@ struct tfx_apply_simplex_noise {
 			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
 		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
-			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+			ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
 		}
 
 		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
@@ -8735,7 +8907,7 @@ struct tfx_apply_simplex_noise {
 			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
 		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
-			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+			ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
 		}
 
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
@@ -8808,7 +8980,7 @@ struct tfx_apply_value_noise {
 			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
 		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
-			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+			ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
 		}
 
 		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
@@ -8816,7 +8988,7 @@ struct tfx_apply_value_noise {
 			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
 		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
-			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+			ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
 		}
 
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
@@ -8865,7 +9037,7 @@ struct tfx_apply_curl_noise {
 			tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
 		if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
-			ctx.lookup_velocity_turbulance = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(velocity_turbulance_time, tfxWideAdd(ctx.velocity_turbulance_graph->wide_oscillator.offset_x, ctx.velocity_turbulance_graph->wide_oscillator.frequency), ctx.velocity_turbulance_graph->wide_oscillator.amplitude), ctx.lookup_velocity_turbulance), ctx.velocity_turbulance_graph->wide_oscillator.offset_y);
+			ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
 		}
 
 		tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
@@ -8873,7 +9045,7 @@ struct tfx_apply_curl_noise {
 			tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
 		if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
-			ctx.lookup_noise_resolution = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(noise_resolution_time, tfxWideAdd(ctx.noise_resolution_graph->wide_oscillator.offset_x, ctx.noise_resolution_graph->wide_oscillator.frequency), ctx.noise_resolution_graph->wide_oscillator.amplitude), ctx.lookup_noise_resolution), ctx.noise_resolution_graph->wide_oscillator.offset_y);
+			ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
 		}
 
 		const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
@@ -8967,7 +9139,7 @@ struct tfx_apply_white_noise {
 			tfx__wide_bezier_sampler(motion_randomness_time, ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.curve1, ctx.motion_randomness_graph->wide_graph.curve2, ctx.motion_randomness_graph->wide_graph.to) :
 			tfx__wide_linear_sampler(ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.to, motion_randomness_time);
 		if (ctx.flags & tfx_ctx_policy_flag_motion_randomness_has_oscillator) {
-			lookup_motion_randomness = tfxWideAdd(tfxWideMul(tfxOSCILLATOR_WIDE_SIN(motion_randomness_time, tfxWideAdd(ctx.motion_randomness_graph->wide_oscillator.offset_x, ctx.motion_randomness_graph->wide_oscillator.frequency), ctx.motion_randomness_graph->wide_oscillator.amplitude), lookup_motion_randomness), ctx.motion_randomness_graph->wide_oscillator.offset_y);
+			lookup_motion_randomness = tfxOSCILLATOR_WIDE_APPLY(lookup_motion_randomness, motion_randomness_time, ctx.motion_randomness_graph->wide_oscillator);
 		}
 		const tfxWideFloat influence = tfxWideMul(tfxWideMul(ctx.motion_randomness_base, ctx.global_noise), lookup_motion_randomness);
 
@@ -9085,6 +9257,80 @@ tfxINTERNAL inline void tfx__wide_split_medium_velocity(tfx_position_policy_cont
 
 //Adds the accumulated medium velocity onto the per-frame velocity, outside the stored channel, so it
 //biases this frame's movement and is gone the next.
+//Producer for the force list. Every entry is a velocity field (phase 6 D1), so this only ever sums into the
+//medium accumulator - it never integrates, never touches the stored velocity channel and never writes position.
+//tfx_apply_velocity consumes what it leaves behind, and the anisotropic split runs there, so this policy does
+//not need to know whether a bias is authored.
+struct tfx_apply_forces {
+	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		//Accumulated into locals and ASSIGNED at the end, never read back from ctx. ctx is created once per
+		//emitter per frame but this fold runs once per wide batch, so a running += on ctx would carry batch N's
+		//medium into batch N + 1 and grow without limit on any emitter big enough to need a second batch.
+		tfxWideFloat medium_x = tfxWideSetZero;
+		tfxWideFloat medium_y = tfxWideSetZero;
+		tfxWideFloat medium_z = tfxWideSetZero;
+		//Loaded once for the whole list, and only when a force asked for it - this is the only policy in the
+		//chain that reads uid, so the load is a cache line no other pass would have touched.
+		tfxWideInt particle_uid = tfxWideSetZeroi;
+		if (ctx.flags & tfx_ctx_policy_flag_force_phase_jitter) {
+			particle_uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
+		}
+		for (tfxU32 force_index = 0; force_index != ctx.force_count; ++force_index) {
+			const tfx_force_resolved_t *force = &ctx.forces[force_index];
+			tfxWideFloat strength = tfxWideSetSingle(force->base_strength);
+			if (force->flags & tfx_force_resolved_flag_has_wave) {
+				//phase = fract(dot(position, axis / wave_length) + bias). The axis is pre-divided and the bias
+				//pre-summed, so a travelling wave costs one dot product and a floor.
+				tfxWideFloat phase = tfxWideMul(ctx.position_x.m, tfxWideSetSingle(force->phase_axis_x));
+				phase = tfxWideAdd(phase, tfxWideMul(ctx.position_y.m, tfxWideSetSingle(force->phase_axis_y)));
+				phase = tfxWideAdd(phase, tfxWideMul(ctx.position_z.m, tfxWideSetSingle(force->phase_axis_z)));
+				phase = tfxWideAdd(phase, tfxWideSetSingle(force->phase_bias));
+				if (force->flags & tfx_force_resolved_flag_has_phase_jitter) {
+					//Hashed with the force's own index so stacked forces draw independently: one shared draw
+					//would slide a particle the same way through every wave and leave the crests correlated.
+					//Before the fract, so a jitter that carries the phase past a cycle boundary wraps.
+					tfxWideFloat jitter = tfx__wide_white_unit(particle_uid, tfxWideSetSinglei((int)force_index));
+					phase = tfxWideAdd(phase, tfxWideMul(jitter, tfxWideSetSingle(force->phase_jitter)));
+				}
+				tfxWideFloat cycle_floor = tfxWideFloor(phase);
+				phase = tfxWideSub(phase, cycle_floor);
+				if (force->flags & tfx_force_resolved_flag_has_length_variation) {
+					//Each whole cycle draws a window for its gust to live in: a width and where in the cycle it
+					//starts. Squeezing the wave into that window is what makes one gust longer than the next and
+					//the gap to the one after it different again. Outside the window the phase is pinned to an
+					//end of the curve - the same value at either end on a periodic wave, so it reads as a lull
+					//rather than a step.
+					tfxWideInt cycle_index = tfxWideAddi(tfxWideConverti(cycle_floor), tfxWideSetSinglei(force->phase_cycle_offset));
+					tfxWideFloat width_draw = tfxWideMulAdd(tfx__wide_white_unit(cycle_index, tfxWideSetSinglei(0x9e3779b9)), tfxWIDEHALF.m, tfxWIDEHALF.m);
+					tfxWideFloat start_draw = tfxWideMulAdd(tfx__wide_white_unit(cycle_index, tfxWideSetSinglei(0x7f4a7c15)), tfxWIDEHALF.m, tfxWIDEHALF.m);
+					tfxWideFloat width = tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideSetSingle(force->length_variation), width_draw));
+					tfxWideFloat start = tfxWideMul(tfxWideSub(tfxWIDEONE.m, width), start_draw);
+					phase = tfxWideDiv(tfxWideSub(phase, start), width);
+					phase = tfxWideMin(tfxWideMax(phase, tfxWideSetZero), tfxWIDEONE.m);
+				}
+				const tfx_graph_t *wave_graph = force->wave_graph;
+				tfxWideFloat wave = (force->flags & tfx_force_resolved_flag_wave_is_bezier) ?
+					tfx__wide_bezier_sampler(phase, wave_graph->wide_graph.from, wave_graph->wide_graph.curve1, wave_graph->wide_graph.curve2, wave_graph->wide_graph.to) :
+					tfx__wide_linear_sampler(wave_graph->wide_graph.from, wave_graph->wide_graph.to, phase);
+				if (force->flags & tfx_force_resolved_flag_wave_has_oscillator) {
+					//Driven by the phase, which is what every other oscillator does with the t it sampled the curve
+					//at. That keeps the ripple locked to the gust it rides on rather than to the clock, so it still
+					//travels with the wave and stays a closed form of total_age. A frequency that is not a whole
+					//number leaves the ripple mid-swing at the seam and puts a step back into the wave.
+					wave = tfxOSCILLATOR_WIDE_APPLY(wave, phase, wave_graph->wide_oscillator);
+				}
+				strength = tfxWideAdd(strength, tfxWideMul(tfxWideSetSingle(force->wave_amplitude), wave));
+			}
+			medium_x = tfxWideAdd(medium_x, tfxWideMul(strength, tfxWideSetSingle(force->direction_x)));
+			medium_y = tfxWideAdd(medium_y, tfxWideMul(strength, tfxWideSetSingle(force->direction_y)));
+			medium_z = tfxWideAdd(medium_z, tfxWideMul(strength, tfxWideSetSingle(force->direction_z)));
+		}
+		ctx.medium_velocity_x = medium_x;
+		ctx.medium_velocity_y = medium_y;
+		ctx.medium_velocity_z = medium_z;
+	}
+};
+
 struct tfx_apply_add_medium_to_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
@@ -9554,6 +9800,10 @@ tfxINTERNAL inline bool tfx__is_graph_emission(tfx_graph_type type) {
 	return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
 }
 
+tfxINTERNAL inline bool tfx__is_graph_force(tfx_graph_type type) {
+	return type == tfxForce_wave;
+}
+
 tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
 	return    type == tfxBase_width || type == tfxBase_height ||
 		type == tfxVariation_width || type == tfxVariation_height ||
@@ -9563,6 +9813,7 @@ tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
 tfxINTERNAL void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_ribbon_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
+tfxINTERNAL void tfx__initialise_force_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 2);
 tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data = nullptr);
 tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, tfx_uv_lookup uv_lookup);
 
