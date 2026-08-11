@@ -2797,6 +2797,10 @@ typedef enum {
 	tfxPathTranslationOvertimePreset,
 	tfxUVOvertimePreset,
 	tfxPathPositionPreset,
+	//Overtime x axis but absolute units on y, for the acceleration graph that replaced base velocity
+	//multiplied by an overtime scale. Appended rather than slotted next to the other overtime presets
+	//because graphs store their preset by value.
+	tfxAccelerationOvertimePreset,
 } tfx_graph_preset;
 
 typedef enum {
@@ -9225,13 +9229,13 @@ struct tfx_apply_white_noise {
 		tfxWideFloat noise_y = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_y), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_y), frac));
 		tfxWideFloat noise_z = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_z), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_z), frac));
 
-		const tfxWideFloat strength = influence;
-
 		tfxWideFloat length_squared = tfxWideMul(noise_x, noise_x);
 		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_y, noise_y));
 		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_z, noise_z));
 		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-12f)));
-		const tfxWideFloat amplitude = tfxWideMul(tfxWideMul(strength, ctx.velocity), inverse_length);
+		//Absolute units/sec/sec like every other acceleration. Scaling this by ctx.velocity left an emitter
+		//driven by a spawn impulse and forces with no motion randomness at all.
+		const tfxWideFloat amplitude = tfxWideMul(influence, inverse_length);
 
 		//Assign, never accumulate; 
 		ctx.medium_velocity_x = tfxWideMul(amplitude, noise_x);

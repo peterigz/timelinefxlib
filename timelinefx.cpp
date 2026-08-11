@@ -2382,12 +2382,6 @@ bool tfx__has_emission_range(tfx_effect_descriptor emitter) {
 	for (tfxBucketLoop(graph_list.graphs[tfxEmitter_overtime_velocity_index].nodes, i)) {
 		emission += graph_list.graphs[tfxEmitter_overtime_velocity_index].nodes[i].value != 0 ? 1.f : 0.f;
 	}
-	for (tfxBucketLoop(graph_list.graphs[tfxEmitter_base_velocity_index].nodes, i)) {
-		emission += graph_list.graphs[tfxEmitter_base_velocity_index].nodes[i].value != 0 ? 1.f : 0.f;
-	}
-	for (tfxBucketLoop(graph_list.graphs[tfxEmitter_variation_velocity_index].nodes, i)) {
-		emission += graph_list.graphs[tfxEmitter_variation_velocity_index].nodes[i].value != 0 ? 1.f : 0.f;
-	}
 	return emission > 0 ? true : false;
 }
 
@@ -2902,7 +2896,7 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], 0.f, tfxNoiseOffsetVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index].type = tfxVariation_noise_offset;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], 300.f, tfxNoiseResolutionPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index].type = tfxVariation_noise_resolution;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], 1.f, tfxNoiseResolutionPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index].type = tfxVariation_motion_randomness;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index], 1.f, tfxVelocityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index].type = tfxOvertime_velocity;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index], 0.f, tfxAccelerationOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index].type = tfxOvertime_velocity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index].type = tfxOvertime_velocity_adjuster;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_width_index].type = tfxOvertime_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_height_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_height_index].type = tfxOvertime_height;
@@ -3089,7 +3083,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], 300.f, tfxNoiseResolutionPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], 1.f, tfxNoiseResolutionPreset);
 
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index], 1.f, tfxVelocityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index], 0.f, tfxAccelerationOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_width_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_height_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_height_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_weight_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_weight_index], 1.f, tfxWeightOvertimePreset);
@@ -7721,6 +7715,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, -20.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
 		return { 0.f, -20.f };
+	case tfx_graph_preset::tfxAccelerationOvertimePreset:
+		return { 0.f, -100.f };
 	case tfx_graph_preset::tfxPercentOvertime:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxFrameratePreset:
@@ -7796,6 +7792,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
 		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxAccelerationOvertimePreset:
+		return { 1.f, 100.f };
 	case tfx_graph_preset::tfxPercentOvertime:
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxFrameratePreset:
@@ -7867,6 +7865,10 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
 		*frame = 0.001f;
 		*value = 0.01f;
+		break;
+	case tfx_graph_preset::tfxAccelerationOvertimePreset:
+		*frame = 0.001f;
+		*value = 0.05f;
 		break;
 	case tfx_graph_preset::tfxColorPreset:
 		*frame = 0.001f;
@@ -17871,19 +17873,16 @@ void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data) {
 void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
-	tfx_random_t random = entry->random;
 	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
-	tfx_AlterRandomSeedU32(&random, 21 + emitter.seed_index);
 
 	tfx_graph_list_t &graph_list = library->graphs[emitter.state_properties.graph_list_index];
 
-	tfx_graph_t *base_velocity_graph = &graph_list.graphs[tfxEmitter_base_velocity_index];
-	tfx_graph_t *variation_velocity_graph = &graph_list.graphs[tfxEmitter_variation_velocity_index];
-
-	float velocity = tfx__sample_multi_node_graph(base_velocity_graph, emitter.age, emitter.oscillator_time) * entry->parent_spawn_controls->velocity;
-	float velocity_variation = tfx__sample_multi_node_graph(variation_velocity_graph, emitter.age, emitter.oscillator_time) * entry->parent_spawn_controls->velocity;
+	//base_velocity is a unitless per particle factor now, not a magnitude. The acceleration itself comes
+	//from the overtime graph in absolute units, so all that is left to capture at spawn is the effect's
+	//global velocity multiplier and, for the two parented emission types, the factor graph below.
+	float velocity = entry->parent_spawn_controls->velocity;
 	tfx_ribbon_bucket_t *ribbon_bucket = nullptr;
 
 	if (entry->emission_type == tfxOtherEmitter) {
@@ -17902,10 +17901,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		float base_velocity = 0.f;
-
-		//----Velocity
-		base_velocity = velocity + tfx_RandomRangeFromTo(&random, -velocity_variation, velocity_variation);
+		float base_velocity = velocity;
 
 		if (entry->emission_type == tfxOtherEmitter) {
 			int spawn_index = (int)emitter.grid_coords.x;
@@ -18095,8 +18091,8 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 		}
 
-		//base_velocity is an acceleration along the emission normal now, so the particle starts at rest
-		//unless it was given a launch speed. Unpacked from velocity_normal_packed rather than the local
+		//base_velocity is an acceleration along the emission normal, so the particle starts at rest
+		//unless it was given a launch speed (via spawn impulse). Unpacked from velocity_normal_packed rather than the local
 		//velocity_normal because two of the branches above leave that local unwritten - the packed value
 		//is the one tfx_apply_velocity reads every frame, so it is set on every path.
 		if (spawn_impulse != 0.f || spawn_impulse_variation != 0.f) {
