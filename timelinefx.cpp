@@ -5318,6 +5318,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("drag_half_life", tfxFloat);
 	names_and_types.Insert("noise_speed_bias", tfxFloat);
+	names_and_types.Insert("spawn_impulse", tfxFloat);
+	names_and_types.Insert("spawn_impulse_variation", tfxFloat);
+	names_and_types.Insert("drag_variation", tfxFloat);
 	names_and_types.Insert("sort_passes", tfxUInt);
 	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
 
@@ -6221,6 +6224,9 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "loop_length") value.Setf("%f", effect->state_properties.loop_length);
 	else if (property_name == "drag_half_life") value.Setf("%f", emitter_properties->drag_half_life);
 	else if (property_name == "noise_speed_bias") value.Setf("%f", emitter_properties->noise_speed_bias);
+	else if (property_name == "spawn_impulse") value.Setf("%f", emitter_properties->spawn_impulse);
+	else if (property_name == "spawn_impulse_variation") value.Setf("%f", emitter_properties->spawn_impulse_variation);
+	else if (property_name == "drag_variation") value.Setf("%f", emitter_properties->drag_variation);
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
@@ -6570,6 +6576,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
 		else if (*field == "drag_half_life") emitter_properties->drag_half_life = value;
 		else if (*field == "noise_speed_bias") emitter_properties->noise_speed_bias = value < -1.f ? -1.f : (value > 1.f ? 1.f : value);
+		else if (*field == "spawn_impulse") emitter_properties->spawn_impulse = value;
+		else if (*field == "spawn_impulse_variation") emitter_properties->spawn_impulse_variation = value;
+		else if (*field == "drag_variation") emitter_properties->drag_variation = value;
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -6705,6 +6714,9 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("drag_half_life=%f", emitter_properties->drag_half_life);
 	file->AddLine("noise_speed_bias=%f", emitter_properties->noise_speed_bias);
+	file->AddLine("spawn_impulse=%f", emitter_properties->spawn_impulse);
+	file->AddLine("spawn_impulse_variation=%f", emitter_properties->spawn_impulse_variation);
+	file->AddLine("drag_variation=%f", emitter_properties->drag_variation);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
@@ -11426,6 +11438,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 				emitter.emitter_size = 0.f;
 				emitter.world_rotations = 0.f;
 				emitter.seed_index = seed_index++;
+				emitter.spawn_counter = 0;
 				emitter.spawn_locations_index = tfxINVALID;
 				emitter.other_emitter_index = tfxINVALID;
 				emitter.path_state.path_quaternions = nullptr;
@@ -11922,7 +11935,6 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		spawn_work_entry->amount_to_spawn = 0;
 		spawn_work_entry->pm = pm;
 		spawn_work_entry->depth_indexes = nullptr;
-		spawn_work_entry->particle_uid = emitter_index * 100000;
 
 		TFX_ASSERT(emitter.particles_index != tfxINVALID);
 
@@ -12934,30 +12946,61 @@ tfxINTERNAL void tfx__setup_anisotropic_noise(tfx_control_work_entry_t *work_ent
 	ctx.flags |= tfx_ctx_policy_flag_anisotropic_noise;
 }
 
+//Exact zero order hold integration of dv/dt = acceleration - drag_rate * velocity over one frame:
+//velocity * exp(-drag_rate * dt) + (acceleration / drag_rate) * (1 - exp(-drag_rate * dt)). Terminal
+//velocity is acceleration / drag_rate. A rate of 0 is frictionless and the acceleration scale tends to dt
+//there, so the two cases join up continuously and nothing downstream needs to know which one it got.
+tfxINTERNAL void tfx__drag_frame_coefficients(float drag_rate, float delta_time_seconds, float *drag_alpha, float *acceleration_scale) {
+	if (drag_rate > 0.f) {
+		*drag_alpha = 1.f - expf(-drag_rate * delta_time_seconds);
+		*acceleration_scale = *drag_alpha / drag_rate;
+	} else {
+		*drag_alpha = 0.f;
+		*acceleration_scale = delta_time_seconds;
+	}
+}
+
 void tfx_setup_vecolity_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	ctx.velocity_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index];
 	ctx.velocity_easing = tfx__get_wide_easing_function(ctx.velocity_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_graph) ? tfx_ctx_policy_flag_velocity_has_oscillator : 0;
 	//Acceleration model: the velocity graph and the medium are accelerations, and drag is the opposing
-	//force, so dv/dt = acceleration - drag_rate * velocity. Held constant over the frame that integrates
-	//exactly to velocity * exp(-drag_rate * dt) + (acceleration / drag_rate) * (1 - exp(-drag_rate * dt)),
-	//which is stored as the two coefficients below. Terminal velocity is acceleration / drag_rate.
-	//drag_half_life now carries a drag RATE in 1/seconds, not a half life - 0 means frictionless, and
-	//acceleration_scale tends to dt as the rate tends to 0 so that case needs no branch in the loop.
+	//force. drag_half_life now carries a drag RATE in 1/seconds, not a half life - 0 means frictionless.
 	float delta_time_seconds = (float)work_entry->pm->frame_length * 0.001f;
 	float drag_rate = work_entry->properties->drag_half_life;
-	if (drag_rate > 0.f) {
-		float drag_alpha = 1.f - expf(-drag_rate * delta_time_seconds);
-		ctx.drag_alpha = tfxWideSetSingle(drag_alpha);
-		ctx.acceleration_scale = tfxWideSetSingle(drag_alpha / drag_rate);
-	} else {
-		ctx.drag_alpha = tfxWIDEZERO.m;
-		ctx.acceleration_scale = tfxWideSetSingle(delta_time_seconds);
+	float drag_alpha, acceleration_scale;
+	tfx__drag_frame_coefficients(drag_rate, delta_time_seconds, &drag_alpha, &acceleration_scale);
+	ctx.drag_alpha = tfxWideSetSingle(drag_alpha);
+	ctx.acceleration_scale = tfxWideSetSingle(acceleration_scale);
+
+	//Per particle drag rides on the difference between the two ends of the range rather than on a stored
+	//rate: the coefficients are non-linear in the rate, so a stored rate would still cost an exp per
+	//particle per frame, whereas both endpoints integrate exactly here once and the loop only has to lerp.
+	float drag_variation = work_entry->properties->drag_variation;
+	if (drag_variation > 0.f) {
+		float max_drag_alpha, max_acceleration_scale;
+		tfx__drag_frame_coefficients(drag_rate + drag_variation, delta_time_seconds, &max_drag_alpha, &max_acceleration_scale);
+		ctx.drag_alpha_variation = tfxWideSetSingle(max_drag_alpha - drag_alpha);
+		ctx.acceleration_scale_variation = tfxWideSetSingle(max_acceleration_scale - acceleration_scale);
+		ctx.flags |= tfx_ctx_policy_flag_drag_variation;
 	}
 	//Always on now. Under the old model this only mattered when drag was active, but a particle that has
 	//existed for a fraction of the frame must take that fraction of the acceleration too.
 	ctx.drag_alpha_age_scale = tfxWIDEONE.m;
+
+	//Only single emitters reset a particle's age, so only they can ever need relaunching. Gating here
+	//keeps the uid load and the blend out of every other emitter in the library.
+	const tfx_particle_emitter_state_t &emitter = work_entry->pm->emitters[work_entry->emitter_index];
+	if (emitter.state_flags & tfxEmitterStateFlags_is_single) {
+		const float spawn_impulse = work_entry->properties->spawn_impulse;
+		const float spawn_impulse_variation = work_entry->properties->spawn_impulse_variation;
+		if (spawn_impulse != 0.f || spawn_impulse_variation != 0.f) {
+			ctx.spawn_impulse = tfxWideSetSingle(spawn_impulse);
+			ctx.spawn_impulse_variation = tfxWideSetSingle(spawn_impulse_variation);
+			ctx.flags |= tfx_ctx_policy_flag_spawn_impulse_on_loop;
+		}
+	}
 }
 
 void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -14242,7 +14285,7 @@ TFX_ENABLE_COMPILER_WARNING()
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
 				bool new_id = bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped ? true : false;
-				sprite_uids[sprite_depth_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
+				sprite_uids[sprite_depth_index].uid = new_id ? tfx__seedgen_u32(bank.uid[index_j] ^ (bank.flags_single_loop_count[index_j] & 0xFF)) : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				sprite_uids[sprite_depth_index].property_index = emitter.state_properties.property_index;
@@ -14253,7 +14296,7 @@ TFX_ENABLE_COMPILER_WARNING()
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				bool new_id = bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped ? true : false;
-				sprite_uids[running_sprite_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
+				sprite_uids[running_sprite_index].uid = new_id ? tfx__seedgen_u32(bank.uid[index_j] ^ (bank.flags_single_loop_count[index_j] & 0xFF)) : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[running_sprite_index].uid;
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				sprite_uids[running_sprite_index].property_index = emitter.state_properties.property_index;
@@ -14284,7 +14327,7 @@ void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data) {
 		for (tfxU32 j = start_diff; j < tfxDataWidth; ++j) {
 			int index_j = index + j;
 			if (bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped) {
-				bank.uid[index_j] = (tfxU32)tfx__rdtsc();
+				bank.uid[index_j] = tfx__seedgen_u32(bank.uid[index_j] ^ (bank.flags_single_loop_count[index_j] & 0xFF));
 			}
 		}
 		start_diff = 0;
@@ -15843,6 +15886,12 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
 
+	//Seed this frame's run of particle uids. spawn_counter is unique for the life of the emitter and
+	//emitter_index separates emitters that are alive at the same time, including two instances of the same
+	//effect. Set here rather than at the call site because this is where amount_to_spawn is final.
+	work_entry->particle_uid = emitter.spawn_counter + work_entry->emitter_index * 0x9E3779B9;
+	emitter.spawn_counter += work_entry->amount_to_spawn;
+
 	if (work_entry->amount_to_spawn > 0) {
 		if (work_entry->root_effect_flags & tfxEffectPropertyFlags_is_ordered) {
 			TFX_ASSERT(work_entry->depth_indexes);	//This must have been set if the effect is ordered!
@@ -15976,12 +16025,14 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
-		//I don't have any better idea than this for a unique id generation. Because of the way the simple random movement works it uses the uid of the particle
-		//as a random seed to so that we don't have to store any extra values related to the random movement. This means that the uid needs to be staggered enough
-		//so that particles don't share seeds. This might sound strange because they are UIDs but there's a few random numbers generated for each particle and we offset from the uid
-		//to get different numbers. When the UID is incrementle then future particles will just get the same seed unless the UID can be staggered enough. Hence I
-		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
-		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc() + entry->particle_uid++;
+		//The uid doubles as the random seed for everything that is drawn per particle without being stored:
+		//the motion randomness heading, force phase jitter, spawn impulse and drag variation all offset from
+		//it. Those consumers xor small numbers (a bucket index, an axis constant) into it before hashing, so
+		//the uid has to be spread across all 32 bits or neighbouring particles land on overlapping seeds and
+		//visibly move together. A plain incrementing counter would do exactly that, which is why this used to
+		//be seeded from the cycle counter. Hashing the counter gives the same spread deterministically: the
+		//finalizer avalanches consecutive inputs and is a bijection, so uids stay unique as well.
+		entry->particle_data->uid[index] = tfx__seedgen_u32(entry->particle_uid++);
 		age_accumulator += frame_fraction;
 		if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_animation_loops) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
@@ -17984,6 +18035,8 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	const tfx_emission_type emission_type = shared_properties.emission_type;
 	const bool line = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal && (emission_type == tfxLine || emission_type == tfxPath);
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.state_properties.property_index].emission_direction;
+	const float spawn_impulse = library->emitter_properties[emitter.state_properties.property_index].spawn_impulse;
+	const float spawn_impulse_variation = library->emitter_properties[emitter.state_properties.property_index].spawn_impulse_variation;
 
 	//Micro Update
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
@@ -18042,11 +18095,24 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 		}
 
-		//Start at rest: base_velocity is an acceleration along the emission normal now, so seeding the
-		//stored channel with it would launch the particle at full speed and then accelerate it as well.
-		velocity_x = 0.f;
-		velocity_y = 0.f;
-		velocity_z = 0.f;
+		//base_velocity is an acceleration along the emission normal now, so the particle starts at rest
+		//unless it was given a launch speed. Unpacked from velocity_normal_packed rather than the local
+		//velocity_normal because two of the branches above leave that local unwritten - the packed value
+		//is the one tfx_apply_velocity reads every frame, so it is set on every path.
+		if (spawn_impulse != 0.f || spawn_impulse_variation != 0.f) {
+			//Drawn from the uid rather than from the spawn random stream so that a single particle can be
+			//relaunched at the exact same speed when it loops, without storing a magnitude per particle.
+			const float draw = tfx__white_unit(entry->particle_data->uid[index], tfxSPAWN_IMPULSE_HASH_AXIS) * 0.5f + 0.5f;
+			const float impulse = spawn_impulse + draw * spawn_impulse_variation;
+			tfx_vec3_t launch_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
+			velocity_x = impulse * launch_normal.x;
+			velocity_y = impulse * launch_normal.y;
+			velocity_z = impulse * launch_normal.z;
+		} else {
+			velocity_x = 0.f;
+			velocity_y = 0.f;
+			velocity_z = 0.f;
+		}
 		//The motion randomness zeroing of noise_offset that used to sit here was redundant even before
 		//the speed walk was deleted: tfx__spawn_particle_motion_randomness runs after this and zeroes
 		//it anyway. noise_offset is no longer read at all on the motion randomness chain.

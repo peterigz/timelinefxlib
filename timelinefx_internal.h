@@ -3262,6 +3262,12 @@ typedef enum {
 	//Raised when at least one resolved force jitters its phase, so tfx_apply_forces only touches the uid
 	//channel when something is going to hash it. Nothing else in the chain reads uid.
 	tfx_ctx_policy_flag_force_phase_jitter                   	= 1 << 17,
+	//Raised only for single emitters that author a spawn impulse, so every other emitter pays one
+	//never taken branch per wide batch and never touches the uid cache line.
+	tfx_ctx_policy_flag_spawn_impulse_on_loop                	= 1 << 18,
+	//Raised only when drag_variation is authored, so an emitter with uniform drag keeps the two frame
+	//coefficients as plain emitter wide scalars and never hashes anything.
+	tfx_ctx_policy_flag_drag_variation                       	= 1 << 19,
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -6427,8 +6433,19 @@ typedef struct tfx_particle_emitter_properties_s {
 	tfxU32 animation_property_index;
 	//The amount of drag that particles have. 0 is the default which is no drag and standard legacy tfx kinetic behaviour
 	float drag_half_life;
-	//Splits the accumulated medium velocity (noise, and later the force list) against the particle's direction of travel. 
+	//Added to the drag rate per particle, drawn from [0, variation] by hashing the particle uid. Stored as a
+	//rate rather than as the frame coefficients because those are non-linear in the rate - see
+	//tfx__drag_frame_coefficients.
+	float drag_variation;
+	//Splits the accumulated medium velocity (noise, and later the force list) against the particle's direction of travel.
 	float noise_speed_bias;
+	//Speed the particle is launched at along its emission normal, applied once at spawn. Under the
+	//acceleration model the velocity graph can only build speed up over time, so this is the only way to
+	//start a particle at full speed and let drag take it away again.
+	float spawn_impulse;
+	//Added to spawn_impulse per particle, drawn from [0, variation] by hashing the particle uid rather
+	//than by storing a per particle magnitude - see tfxSPAWN_IMPULSE_HASH_AXIS.
+	float spawn_impulse_variation;
 	//Maximum of 8 forces per emitter. The list is an unordered set - every force is a velocity field summed
 	//into one accumulator, so entry order cannot change the result and there is no reordering to author.
 	tfx_force_t forces[tfxMAX_FORCES];
@@ -6563,6 +6580,9 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_vec3_t grid_direction;
 	tfx_vec3_t emitter_size;
 	float emission_alternator;
+	//Total particles this emitter has spawned since it started. Feeds the particle uid, so it must keep
+	//counting across frames rather than restarting each one.
+	tfxU32 spawn_counter;
 	tfxEmitterStateFlags state_flags;
 	tfx_path_state_t path_state;
 } tfx_particle_emitter_state_t;
@@ -7143,7 +7163,9 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
 	float overall_scale;
-    tfxU32 particle_uid;
+	//Running hash input for this frame's batch of particle uids, seeded in tfx__update_emitter and
+	//consumed one particle at a time by tfx__spawn_particle_age.
+	tfxU32 particle_uid;
 }tfx_spawn_work_entry_t;
 
 typedef struct tfx_ribbon_work_entry_s {
@@ -8186,6 +8208,32 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_white_unit(tfxWideInt seed, tfxWideInt
 	return tfxWideMul(tfxWideDiv(tfx__wide_seedgen(tfxWideXOri(seed, axis)), tfxMAXUINTf.m), tfxWideSetSingle(2.f));
 }
 
+//Scalar twin of tfx__wide_seedgen's integer half. A murmur3 finalizer, so it is a bijection on 32 bits
+//(distinct inputs can never collide) and it avalanches: feed it 0, 1, 2, 3 and the outputs are spread
+//across the whole range with no correlation left between them.
+tfxINTERNAL inline tfxU32 tfx__seedgen_u32(tfxU32 h) {
+	h ^= h >> 15;
+	h *= 0x85ebca6b;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35;
+	h ^= h >> 16;
+	return h;
+}
+
+//Scalar twin of tfx__wide_white_unit, bit for bit: logical shifts, low 32 bits of the multiply and a
+//SIGNED convert, matching srli/mullo/cvtepi32_ps. Both must agree exactly or a value drawn at spawn
+//cannot be redrawn later in the control loop.
+tfxINTERNAL inline float tfx__white_unit(tfxU32 seed, tfxU32 axis) {
+	return ((float)(int)tfx__seedgen_u32(seed ^ axis) / (float)UINT32_MAX) * 2.f;
+}
+
+//Hash axis the spawn impulse variation is drawn on. Shared by the spawn and by the re-launch in
+//tfx_apply_velocity so both land on the same magnitude for a given particle.
+#define tfxSPAWN_IMPULSE_HASH_AXIS 0x2545f491
+//Hash axis the per particle drag rate is drawn on. Must differ from every other axis or a particle's drag
+//would correlate with its launch speed and the two variations would visibly move together.
+#define tfxDRAG_VARIATION_HASH_AXIS 0x9e3779b9
+
 //--------------------------------
 //Control particle inline functions and policies
 //--------------------------------
@@ -8761,7 +8809,13 @@ struct tfx_position_policy_context {
 	//dv/dt = acceleration - drag_rate * velocity, see tfx_setup_vecolity_lookup_policy.
 	tfxWideFloat drag_alpha;
 	tfxWideFloat acceleration_scale;
+	//How much each coefficient moves between the emitter's drag rate and that rate plus drag_variation.
+	//Both endpoints are integrated exactly at setup and the per particle draw lerps between them.
+	tfxWideFloat drag_alpha_variation;
+	tfxWideFloat acceleration_scale_variation;
 	tfxWideFloat drag_alpha_age_scale;
+	tfxWideFloat spawn_impulse;
+	tfxWideFloat spawn_impulse_variation;
 	tfxWideFloat life;
 	tfxWideFloat velocity_adjuster;
 	tfxWideFloat overall_scale_wide;
@@ -9356,17 +9410,36 @@ struct tfx_apply_add_medium_to_velocity {
 struct tfx_apply_velocity {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
-		tfxWideFloat acceleration_x, acceleration_y, acceleration_z;
-		tfx__wide_unpack10bit(velocity_normal, acceleration_x, acceleration_y, acceleration_z);
-		//ctx.velocity is the emission direction's acceleration magnitude now (base_velocity * the velocity
-		//graph), not a speed the particle is aiming for.
-		acceleration_x = tfxWideMul(acceleration_x, ctx.velocity);
-		acceleration_y = tfxWideMul(acceleration_y, ctx.velocity);
-		acceleration_z = tfxWideMul(acceleration_z, ctx.velocity);
+		tfxWideFloat normal_x, normal_y, normal_z;
+		tfx__wide_unpack10bit(velocity_normal, normal_x, normal_y, normal_z);
 
+		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat previous_velocity_x = tfxWideLoad(&bank.velocity_x[index]);
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
 		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
+
+		//Loaded once for both of the hashed draws below rather than once each, since an emitter can author
+		//a spawn impulse and a drag variation at the same time.
+		tfxWideInt particle_uid = tfxWideSetSinglei(0);
+		if (ctx.flags & (tfx_ctx_policy_flag_spawn_impulse_on_loop | tfx_ctx_policy_flag_drag_variation)) {
+			particle_uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
+		}
+
+		if (ctx.flags & tfx_ctx_policy_flag_spawn_impulse_on_loop) {
+			//Handle the impulse adding back to velocity after the age loops back to 0
+			tfxWideFloat draw = tfxWideMulAdd(tfx__wide_white_unit(particle_uid, tfxWideSetSinglei(tfxSPAWN_IMPULSE_HASH_AXIS)), tfxWIDEHALF.m, tfxWIDEHALF.m);
+			tfxWideFloat impulse = tfxWideAdd(ctx.spawn_impulse, tfxWideMul(draw, ctx.spawn_impulse_variation));
+			tfxWideFloat relaunched = tfxWideEquals(age, tfxWideSetZero);
+			previous_velocity_x = tfxWideOr(tfxWideAnd(relaunched, tfxWideMul(normal_x, impulse)), tfxWideAndNot(relaunched, previous_velocity_x));
+			previous_velocity_y = tfxWideOr(tfxWideAnd(relaunched, tfxWideMul(normal_y, impulse)), tfxWideAndNot(relaunched, previous_velocity_y));
+			previous_velocity_z = tfxWideOr(tfxWideAnd(relaunched, tfxWideMul(normal_z, impulse)), tfxWideAndNot(relaunched, previous_velocity_z));
+		}
+
+		//ctx.velocity is the emission direction's acceleration magnitude now (base_velocity * the velocity
+		//graph), not a speed the particle is aiming for.
+		tfxWideFloat acceleration_x = tfxWideMul(normal_x, ctx.velocity);
+		tfxWideFloat acceleration_y = tfxWideMul(normal_y, ctx.velocity);
+		tfxWideFloat acceleration_z = tfxWideMul(normal_z, ctx.velocity);
 
 		//This is the point after every producer has run and before anything consumes the accumulator, so
 		//it is where the anisotropic split belongs - keep it here rather than as its own chain element and
@@ -9383,13 +9456,26 @@ struct tfx_apply_velocity {
 		acceleration_y = tfxWideAdd(acceleration_y, medium_velocity_y);
 		acceleration_z = tfxWideAdd(acceleration_z, medium_velocity_z);
 
-		tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
 
 		//A particle spawned part way through the frame gets that fraction of both the push and the drag.
+		//A relaunched particle sits at age 0, so both coefficients are 0 and the impulse blended in above
+		//is what reaches the store untouched.
 		tfxWideFloat frame_fraction = tfxWideMulAdd(ctx.drag_alpha_age_scale, tfxWideSub(age_fraction, tfxWIDEONE.m), tfxWIDEONE.m);
-		tfxWideFloat drag_alpha = tfxWideMul(ctx.drag_alpha, frame_fraction);
-		tfxWideFloat acceleration_scale = tfxWideMul(ctx.acceleration_scale, frame_fraction);
+		tfxWideFloat particle_drag_alpha = ctx.drag_alpha;
+		tfxWideFloat particle_acceleration_scale = ctx.acceleration_scale;
+		if (ctx.flags & tfx_ctx_policy_flag_drag_variation) {
+			//Both coefficients are lerped on the same draw, so every particle lands on a pair that is exact at
+			//the two ends of the drag range and within a fraction of a percent of exact in between (the
+			//acceleration scale is very nearly linear in the per frame retention factor). Interpolating the
+			//coefficients is what makes a per particle drag rate affordable at all - varying the rate itself
+			//would need an exp per particle per frame.
+			tfxWideFloat draw = tfxWideMulAdd(tfx__wide_white_unit(particle_uid, tfxWideSetSinglei(tfxDRAG_VARIATION_HASH_AXIS)), tfxWIDEHALF.m, tfxWIDEHALF.m);
+			particle_drag_alpha = tfxWideMulAdd(ctx.drag_alpha_variation, draw, particle_drag_alpha);
+			particle_acceleration_scale = tfxWideMulAdd(ctx.acceleration_scale_variation, draw, particle_acceleration_scale);
+		}
+		tfxWideFloat drag_alpha = tfxWideMul(particle_drag_alpha, frame_fraction);
+		tfxWideFloat acceleration_scale = tfxWideMul(particle_acceleration_scale, frame_fraction);
 		tfxWideFloat one_minus_drag_alpha = tfxWideSub(tfxWIDEONE.m, drag_alpha);
 
 		//velocity = velocity - drag + acceleration. With a constant acceleration the two terms balance at
