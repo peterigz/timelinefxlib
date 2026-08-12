@@ -5673,48 +5673,60 @@ tfxINTERNAL tfx_graph_t *tfx__get_force_graph_from_saved_name(tfx_effect_descrip
 	return &graph_list->graphs[graph_index];
 }
 
-//Rebuilds one force from the line tfx__stream_emitter_forces wrote. The slot is read rather than assumed so the
-//list survives a file whose forces were written out of order.
-void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values) {
-	if (emitter->type != tfxEmitterType || values->size() < 16) return;
-	tfx_particle_emitter_properties_t *properties = tfx__get_particle_emitter_properties(emitter);
-	if (!properties) return;
-	tfxU32 force_slot = (tfxU32)atoi((*values)[1].c_str());
-	if (force_slot >= tfxMAX_FORCES) return;
-	//Forces are appended in file order, so a slot beyond the current count means an earlier line was missing.
-	//Fill the gap rather than writing past the end of the list.
+//Resolves the slot a force line names, growing the list to reach it. Forces are appended in file order, so a
+//slot beyond the current count means an earlier line was missing - fill the gap rather than writing past the
+//end of the list. Returns null if the slot is unreachable.
+tfxINTERNAL tfx_force_t *tfx__resolve_force_slot(tfx_effect_descriptor emitter, tfx_particle_emitter_properties_t *properties, tfxU32 force_slot) {
+	if (force_slot >= tfxMAX_FORCES) return nullptr;
 	while (properties->force_count <= force_slot) {
 		tfx_force_t *added = tfx__add_emitter_force(emitter, tfxForceWind);
-		if (!added) return;
-		//tfx__add_emitter_force seeds the wave with a default node, which the file's own nodes would be appended
-		//to. Reset without one, the same way tfx__reset_emitter_graphs is called with add_node false on load.
+		if (!added) return nullptr;
+		//tfx__add_emitter_force seeds the graph list with a default node, which the file's own nodes would be
+		//appended to. Reset without one, the same way tfx__reset_emitter_graphs is called with add_node false.
 		tfx__reset_force_graphs(emitter->library, added->graph_list_index, false);
 	}
-	tfx_force_t *force = &properties->forces[force_slot];
+	return &properties->forces[force_slot];
+}
+
+//Load in a force from a value string
+void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values) {
+	if (emitter->type != tfxEmitterType || values->size() < 2) return;
+	tfx_particle_emitter_properties_t *properties = tfx__get_particle_emitter_properties(emitter);
+	if (!properties) return;
+	bool is_legacy_line = (*values)[0] == "force";
+
+	if (is_legacy_line) {
+		if (values->size() < 16) return;
+		tfx_force_t *force = tfx__resolve_force_slot(emitter, properties, (tfxU32)atoi((*values)[1].c_str()));
+		if (!force) return;
+		force->type = (tfx_force_type)atoi((*values)[2].c_str());
+		force->space = (tfx_force_space)atoi((*values)[3].c_str());
+		//The two wave flags the old format wrote are gone, so mask down to the bits that still exist rather
+		//than storing a value with dead bits set.
+		force->flags = (tfxForceFlags)(atoi((*values)[4].c_str()) & tfxForceFlags_enabled);
+		force->direction.x = (float)atof((*values)[5].c_str());
+		force->direction.y = (float)atof((*values)[6].c_str());
+		force->direction.z = (float)atof((*values)[7].c_str());
+		//base_strength, which the wave swung either side of. The wave's own amplitude is dropped with it, so a
+		//force authored as mostly wave loads quieter than it was saved.
+		force->strength = (float)atof((*values)[13].c_str());
+		return;
+	}
+
+	if (values->size() < 6) return;
+	tfx_force_t *force = tfx__resolve_force_slot(emitter, properties, (tfxU32)atoi((*values)[1].c_str()));
+	if (!force) return;
 	force->type = (tfx_force_type)atoi((*values)[2].c_str());
 	force->space = (tfx_force_space)atoi((*values)[3].c_str());
 	force->flags = (tfxForceFlags)atoi((*values)[4].c_str());
-	force->direction.x = (float)atof((*values)[5].c_str());
-	force->direction.y = (float)atof((*values)[6].c_str());
-	force->direction.z = (float)atof((*values)[7].c_str());
-	force->wave_axis.x = (float)atof((*values)[8].c_str());
-	force->wave_axis.y = (float)atof((*values)[9].c_str());
-	force->wave_axis.z = (float)atof((*values)[10].c_str());
-	force->wave_length = (float)atof((*values)[11].c_str());
-	force->wave_speed = (float)atof((*values)[12].c_str());
-	force->base_strength = (float)atof((*values)[13].c_str());
-	force->wave_amplitude = (float)atof((*values)[14].c_str());
-	force->phase_offset = (float)atof((*values)[15].c_str());
-	//Appended after the format shipped, so a file without it keeps the zero tfx__init_emitter_force set. Any
-	//further field is ignored, which is how a line written by a newer build reads here.
-	if (values->size() >= 17) {
-		force->wave_speed_variation = (float)atof((*values)[16].c_str());
-	}
-	if (values->size() >= 18) {
-		force->wave_phase_jitter = (float)atof((*values)[17].c_str());
-	}
-	if (values->size() >= 19) {
-		force->wave_length_variation = (float)atof((*values)[18].c_str());
+	force->strength = (float)atof((*values)[5].c_str());
+	switch (force->type) {
+	case tfxForceWind:
+		if (values->size() < 9) return;
+		force->direction.x = (float)atof((*values)[6].c_str());
+		force->direction.y = (float)atof((*values)[7].c_str());
+		force->direction.z = (float)atof((*values)[8].c_str());
+		break;
 	}
 }
 
@@ -6821,22 +6833,18 @@ void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *fil
 	}
 }
 
-//One line per populated force slot. Positional rather than key=value because the list is indexed - a key based
-//scheme would need tfxMAX_FORCES copies of every field name registered in names_and_types. The reader keys off
-//the field count, so a new field is appended here and read only when it is present.
 void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *file) {
 	tfx_particle_emitter_properties_t *properties = tfx__get_particle_emitter_properties(emitter);
 	if (!properties) return;
 	for (tfxU32 i = 0; i != properties->force_count; ++i) {
 		tfx_force_t *force = &properties->forces[i];
-		file->AddLine("force,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f",
-			(int)i, (int)force->type, (int)force->space, (int)force->flags,
-			force->direction.x, force->direction.y, force->direction.z,
-			force->wave_axis.x, force->wave_axis.y, force->wave_axis.z,
-			force->wave_length, force->wave_speed,
-			force->base_strength, force->wave_amplitude, force->phase_offset,
-			force->wave_speed_variation, force->wave_phase_jitter,
-			force->wave_length_variation);
+		switch (force->type) {
+		case tfxForceWind:
+			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+				force->direction.x, force->direction.y, force->direction.z);
+			break;
+		}
 	}
 }
 
@@ -13032,185 +13040,61 @@ void tfx_setup_simplex_lookup_policy::apply(tfx_control_work_entry_t *work_entry
 	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
 
-//How fast the speed wander evolves, as a fraction of the wave's own frequency. Derived rather than authored:
-//an absolute rate means something different on every wave, since a 0.1Hz wander is a fresh gust every few
-//cycles of a slow wave but a barely perceptible drift over hundreds of cycles of a fast one. At this fraction
-//the wander turns over about every five wave cycles, and the fastest of the three octaves below lands just
-//under the wave frequency itself, which is what gives the swing between runs of slow and quick waves.
-#define tfxFORCE_SPEED_WANDER_RATE 0.2f
-
-//The distance in seconds that a wandering wave has slipped by at this age, to be multiplied by wave_speed. The
-//speed is treated as speed * (1 + variation * sum(amplitude * sin(omega * t))) and this returns the integral of
-//the varying part: integrating rather than sampling is what keeps the wave's position continuous, since a wave
-//placed at speed(t) * t would jump backwards and forwards every time the speed changed. Three sine octaves at
-//ratios that share no common multiple, so the wander has no repeat of its own, with amplitudes summing to one
-//so a variation of 1 is exactly where the wave stalls without reversing.
-tfxINTERNAL float tfx__force_speed_wander(float age_seconds, float rate, float seed_phase) {
-	const float octave_ratios[3] = { 1.f, 2.31f, 4.77f };
-	const float octave_amplitudes[3] = { 4.f / 7.f, 2.f / 7.f, 1.f / 7.f };
-	float wander = 0.f;
-	for (int octave = 0; octave != 3; ++octave) {
-		float octave_period = 1.f / (rate * octave_ratios[octave]);
-		float angular_rate = tfxPI2 / octave_period;
-		float phase = seed_phase * (float)(octave + 1);
-		//Reduced to one period before the cosine: age grows for the life of the effect and a large angle loses
-		//the precision that decides where in the cycle the wave actually is. Exact, because a whole period of
-		//the cosine is being removed.
-		float reduced_age = fmodf(age_seconds, octave_period);
-		wander += octave_amplitudes[octave] * (cosf(phase) - cosf(angular_rate * reduced_age + phase)) / angular_rate;
-	}
-	return wander;
-}
-
 void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t *emitter = &pm.emitters[work_entry->emitter_index];
 	tfx_particle_emitter_properties_t *properties = work_entry->properties;
 	ctx.emitter = emitter;
-	ctx.forces = work_entry->resolved_forces;
 
-	//total_age, not age: age restarts on an effect loop and the wave phase would jump with it. The whole effect
-	//shares this clock so every emitter under it agrees on where the gust currently is - an emitter's own age
-	//would have each one gusting on its own timeline once delays and single shots are involved.
-	float phase_time = pm.effects[emitter->parent_index].total_age * 0.001f;
 	float global_force_scalar = pm.effects[emitter->parent_index].noise;
 
-	//Particle positions are emitter local on a relative position emitter and world otherwise. A force is authored
-	//in world space by default because the medium does not rotate or travel with the emitter, so on the relative
-	//path the vectors are rotated into local space and the emitter's world position is folded into the phase.
-	//Doing it here costs one transform per emitter per frame instead of one per particle.
+	//The frame the authored direction is resolved against. World is the default because the medium does not
+	//rotate with anything - two emitters in one effect must agree on which way the wind blows - while effect and
+	//emitter space let a force be carried around by whatever it is attached to.
 	bool to_local_space = (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
+	tfx_quaternion_t effect_rotation = pm.effects[emitter->parent_index].rotation;
 	tfx_quaternion_t inverse_emitter_rotation = emitter->rotation;
 	inverse_emitter_rotation.x = -inverse_emitter_rotation.x;
 	inverse_emitter_rotation.y = -inverse_emitter_rotation.y;
 	inverse_emitter_rotation.z = -inverse_emitter_rotation.z;
 
-	tfxU32 resolved_count = 0;
-	bool any_force_jitters_phase = false;
+	//Wind is position independent, so the whole list collapses to one vector 
+	tfx_vec3_t summed_medium = { 0.f, 0.f, 0.f };
 	for (tfxU32 i = 0; i != properties->force_count; ++i) {
 		const tfx_force_t *force = &properties->forces[i];
 		if (!(force->flags & tfxForceFlags_enabled)) continue;
-		if (force->graph_list_index == tfxINVALID) continue;
 
 		tfx_vec3_t direction = force->direction;
 		float direction_length = tfx__length_vec3(&direction);
 		if (direction_length <= 0.f) continue;		//No direction means no flow, whatever the strength says
-		direction.x /= direction_length;
-		direction.y /= direction_length;
-		direction.z /= direction_length;
+		float strength = force->strength * global_force_scalar / direction_length;
 
-		tfx_vec3_t wave_axis = (force->flags & tfxForceFlags_wave_axis_follows_direction) ? direction : force->wave_axis;
-		float wave_axis_length = tfx__length_vec3(&wave_axis);
-
-		tfx_graph_t *wave_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_wave_index];
-		//A wave needs a length to repeat over, an axis to travel along and an amplitude to swing by. Missing any
-		//of them leaves a plain constant flow, and clearing the flag is what keeps the dot product out of the loop.
-		bool has_wave = force->wave_length > 0.f && wave_axis_length > 0.f && force->wave_amplitude != 0.f;
-
-		tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count++];
-		resolved->flags = tfx_force_resolved_flag_none;
-		resolved->base_strength = force->base_strength * global_force_scalar;
-		resolved->wave_amplitude = force->wave_amplitude * global_force_scalar;
-		resolved->wave_graph = wave_graph;
-		resolved->phase_axis_x = resolved->phase_axis_y = resolved->phase_axis_z = 0.f;
-		resolved->phase_bias = 0.f;
-		resolved->phase_jitter = 0.f;
-		resolved->length_variation = 0.f;
-		resolved->phase_cycle_offset = 0;
-
-		if (has_wave) {
-			//overall_scale is applied to the wave length so an effect scaled up gets a proportionally larger gust
-			//rather than a much finer one. Particle displacement is scaled by it downstream in tfx_apply_position.
-			float wave_length = force->wave_length * (work_entry->overall_scale != 0.f ? work_entry->overall_scale : 1.f);
-			tfx_vec3_t phase_axis = wave_axis;
-			float inverse_wave_length = 1.f / (wave_axis_length * wave_length);
-			phase_axis.x *= inverse_wave_length;
-			phase_axis.y *= inverse_wave_length;
-			phase_axis.z *= inverse_wave_length;
-			//A wave travelling at wave_speed along an axis that repeats every wave_length advances one whole cycle
-			//every wave_length / wave_speed seconds. The elapsed time is reduced modulo that period before being
-			//turned into a phase: phase_time grows for the life of the effect, and scaling it first would leave a
-			//number too large for a float to still resolve the fractional part, quantising the gust into visible
-			//steps after a few minutes of playback. A zero speed is a legitimate standing wave, not a divide.
-			float phase = force->phase_offset;
-			int travelled_cycles = 0;
-			if (force->wave_speed != 0.f) {
-				float wave_period = wave_length / force->wave_speed;
-				float travelled_fraction = fmodf(phase_time, wave_period) / wave_period;
-				phase -= travelled_fraction;
-				//The whole cycles the wave has travelled, recovered by taking the fraction back off the full
-				//quotient instead of flooring it. The quotient is the very number the line above avoids forming
-				//for the fraction, but losing precision in a cycle count only means two gusts a year apart draw
-				//the same width, where losing it in the fraction would quantise every gust; and subtracting the
-				//fraction rather than flooring keeps it right for a negative period, where fmodf truncates
-				//towards zero and floorf does not.
-				travelled_cycles = (int)floorf((phase_time / wave_period) - travelled_fraction + 0.5f);
-				if (force->wave_speed_variation != 0.f) {
-					//Off the scaled wave length, not the authored one, so scaling an effect up slows the
-					//wander in step with the wave it belongs to. fabsf because a negative speed is a wave
-					//travelling the other way, not a negative frequency.
-					float wander_rate = fabsf(force->wave_speed) / wave_length * tfxFORCE_SPEED_WANDER_RATE;
-					//Seeded off the graph list index so two forces stacked on one emitter do not wander in
-					//lockstep, and so deleting a different force does not shift this one's wander. Emitters
-					//sharing an effect deliberately do share it: they are standing in the same medium, and
-					//phase_time is the effect's clock for the same reason.
-					float seed_phase = (float)force->graph_list_index * 4.7431f;
-					float wander = tfx__force_speed_wander(phase_time, wander_rate, seed_phase);
-					phase -= force->wave_speed * force->wave_speed_variation * wander / wave_length;
-				}
-			}
-			if (to_local_space) {
-				phase += tfx__dot_product_vec3(&emitter->world_position, &phase_axis);
-				phase_axis = tfx__rotate_vector_quaternion(&inverse_emitter_rotation, phase_axis);
-			}
-			//Wrapped here rather than in the loop: phase_time grows without bound and a large float added to a
-			//small dot product loses the dot product's precision long before the fract sees it.
-			float wrapped_away_cycles = floorf(phase);
-			phase = phase - wrapped_away_cycles;
-			resolved->phase_axis_x = phase_axis.x;
-			resolved->phase_axis_y = phase_axis.y;
-			resolved->phase_axis_z = phase_axis.z;
-			resolved->phase_bias = phase;
-			resolved->flags |= tfx_force_resolved_flag_has_wave;
-			if (wave_graph->flags & tfxGraphFlags_use_bezier_sampling) {
-				resolved->flags |= tfx_force_resolved_flag_wave_is_bezier;
-			}
-			if (wave_graph->flags & tfxGraphFlags_enable_oscillator) {
-				resolved->flags |= tfx_force_resolved_flag_wave_has_oscillator;
-			}
-			if (force->wave_length_variation != 0.f) {
-				resolved->length_variation = force->wave_length_variation;
-				//The loop's cycle index comes from a phase the two lines above just wrapped into 0..1, so it
-				//has to be put back on the unwrapped count: add the cycles the wrap removed and take off the
-				//cycles the wave has travelled. Both are integers, so the fractional part the loop works with
-				//is untouched and only the index the draw is hashed from moves.
-				resolved->phase_cycle_offset = (int)wrapped_away_cycles - travelled_cycles;
-				resolved->flags |= tfx_force_resolved_flag_has_length_variation;
-			}
-			if (force->wave_phase_jitter != 0.f) {
-				//Halved here rather than in the loop: the draw it scales spans -1 to 1, so an authored 1 has
-				//to become half a wavelength either side to add up to one wavelength of spread.
-				resolved->phase_jitter = force->wave_phase_jitter * 0.5f;
-				resolved->flags |= tfx_force_resolved_flag_has_phase_jitter;
-				any_force_jitters_phase = true;
-			}
+		//Two steps, and both are needed: the authored space says what the direction means, and the emitter says
+		//what space the particles are in. Taking it to world first is what lets the two be chosen independently.
+		switch (force->space) {
+		case tfxForceSpaceEffect:
+			direction = tfx__rotate_vector_quaternion(&effect_rotation, direction);
+			break;
+		case tfxForceSpaceEmitter:
+			direction = tfx__rotate_vector_quaternion(&emitter->rotation, direction);
+			break;
+		case tfxForceSpaceWorld:
+			break;
 		}
 
 		if (to_local_space) {
 			direction = tfx__rotate_vector_quaternion(&inverse_emitter_rotation, direction);
 		}
-		resolved->direction_x = direction.x;
-		resolved->direction_y = direction.y;
-		resolved->direction_z = direction.z;
+
+		summed_medium.x += direction.x * strength;
+		summed_medium.y += direction.y * strength;
+		summed_medium.z += direction.z * strength;
 	}
 
-	work_entry->resolved_force_count = resolved_count;
-	ctx.force_count = resolved_count;
-	if (any_force_jitters_phase) {
-		ctx.flags |= tfx_ctx_policy_flag_force_phase_jitter;
-	}
-	//Currently raised only by the noise setup policies, so without this the authored noise_speed_bias would
-	//silently do nothing to a force-only emitter.
+	ctx.force_medium_x = tfxWideSetSingle(summed_medium.x);
+	ctx.force_medium_y = tfxWideSetSingle(summed_medium.y);
+	ctx.force_medium_z = tfxWideSetSingle(summed_medium.z);
+
 	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
 
@@ -18098,7 +17982,8 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 		if (spawn_impulse != 0.f || spawn_impulse_variation != 0.f) {
 			//Drawn from the uid rather than from the spawn random stream so that a single particle can be
 			//relaunched at the exact same speed when it loops, without storing a magnitude per particle.
-			const float draw = tfx__white_unit(entry->particle_data->uid[index], tfxSPAWN_IMPULSE_HASH_AXIS) * 0.5f + 0.5f;
+			//draw is -1 to 1 so the variation is applied either side of the spawn impulse
+			const float draw = tfx__white_unit(entry->particle_data->uid[index], tfxSPAWN_IMPULSE_HASH_AXIS);
 			const float impulse = spawn_impulse + draw * spawn_impulse_variation;
 			tfx_vec3_t launch_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 			velocity_x = impulse * launch_normal.x;
@@ -19545,13 +19430,10 @@ void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties)
 void tfx__init_emitter_force(tfx_force_t *force) {
 	*force = tfx_force_t{};
 	force->graph_list_index = tfxINVALID;
-	force->flags = tfxForceFlags_enabled | tfxForceFlags_wave_axis_follows_direction | tfxForceFlags_periodic_wave;
+	force->flags = tfxForceFlags_enabled;
 	//A unit direction rather than a zero vector, which has no normalise and would leave the setup policy
-	//dividing by zero. The strengths stay at zero so a freshly added force is inert until it is authored.
+	//dividing by zero. The strength stays at zero so a freshly added force is inert until it is authored.
 	force->direction = { 1.f, 0.f, 0.f };
-	force->wave_axis = { 1.f, 0.f, 0.f };
-	force->wave_length = 100.f;
-	force->wave_speed = 50.f;
 }
 
 tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type) {
@@ -19565,11 +19447,8 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 	force->graph_list_index = tfx__add_library_graphs(emitter->library, tfxForceType);
 	tfx__reset_force_graphs(emitter->library, force->graph_list_index, true);
 	force->type = type;
-	force->wave_axis = { 1.f, 0.f, 0.f };
 	force->direction = { 1.f, 0.f, 0.f };
-	force->wave_length = 1.f;
-	force->base_strength = 1.f;
-	force->wave_amplitude = 0.5f;
+	force->strength = 1.f;
 	return force;
 }
 
@@ -19605,6 +19484,48 @@ void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index
 	tfx__init_emitter_force(&emitter_properties->forces[emitter_properties->force_count]);
 }
 
+void tfx__clear_emitter_forces(tfx_effect_descriptor emitter) {
+	if (emitter->type != tfxEmitterType) return;
+	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
+	if (!emitter_properties) return;
+	for (tfxU32 i = 0; i != emitter_properties->force_count; ++i) {
+		if (emitter_properties->forces[i].graph_list_index != tfxINVALID) {
+			tfx__free_library_graph_list(emitter->library, emitter_properties->forces[i].graph_list_index);
+		}
+	}
+	for (tfxU32 i = 0; i != tfxMAX_FORCES; ++i) {
+		tfx__init_emitter_force(&emitter_properties->forces[i]);
+	}
+	emitter_properties->force_count = 0;
+}
+
+void tfx__copy_emitter_forces(tfx_library library, tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties) {
+	//Before the count is overwritten, while the surplus slots are still reachable.
+	for (tfxU32 i = from_properties->force_count; i < to_properties->force_count; ++i) {
+		if (to_properties->forces[i].graph_list_index != tfxINVALID) {
+			tfx__free_library_graph_list(library, to_properties->forces[i].graph_list_index);
+		}
+		tfx__init_emitter_force(&to_properties->forces[i]);
+	}
+	for (tfxU32 i = 0; i != from_properties->force_count; ++i) {
+		tfxU32 destination_graph_list_index = i < to_properties->force_count ? to_properties->forces[i].graph_list_index : tfxINVALID;
+		to_properties->forces[i] = from_properties->forces[i];
+		if (from_properties->forces[i].graph_list_index == tfxINVALID) {
+			if (destination_graph_list_index != tfxINVALID) {
+				tfx__free_library_graph_list(library, destination_graph_list_index);
+			}
+			to_properties->forces[i].graph_list_index = tfxINVALID;
+			continue;
+		}
+		if (destination_graph_list_index == tfxINVALID) {
+			destination_graph_list_index = tfx__add_library_graphs(library, tfxForceType);
+		}
+		to_properties->forces[i].graph_list_index = destination_graph_list_index;
+		tfx__copy_graph_list(&library->graphs[from_properties->forces[i].graph_list_index], &library->graphs[destination_graph_list_index]);
+	}
+	to_properties->force_count = from_properties->force_count;
+}
+
 void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->spawn_amount = 1;
 	shared_properties->single_shot_limit = 0;
@@ -19617,8 +19538,16 @@ void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->paired_emitter_hash = 0;
 }
 
-void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties) {
+//Note: The force list is handed over separately so the destination keeps its own graph lists
+//See tfx__copy_emitter_forces 
+void tfx__copy_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties) {
+	tfx__copy_emitter_forces(library, from_properties, to_properties);
+	tfx_force_t owned_forces[tfxMAX_FORCES];
+	memcpy(owned_forces, to_properties->forces, sizeof(owned_forces));
+	tfxU32 owned_force_count = to_properties->force_count;
 	*to_properties = *from_properties;
+	memcpy(to_properties->forces, owned_forces, sizeof(owned_forces));
+	to_properties->force_count = owned_force_count;
 }
 
 void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties) {
