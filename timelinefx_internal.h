@@ -3254,11 +3254,8 @@ typedef enum {
 	tfx_ctx_policy_flag_direction_is_bezier_graph            	= 1 << 14,
 	tfx_ctx_policy_flag_direction_has_oscillator             	= 1 << 15,
 	tfx_ctx_policy_flag_anisotropic_noise                    	= 1 << 16,
-	//Raised only for single emitters that author a spawn impulse, so every other emitter pays one
-	//never taken branch per wide batch and never touches the uid cache line.
+	tfx_ctx_policy_flag_forces                               	= 1 << 17,
 	tfx_ctx_policy_flag_spawn_impulse_on_loop                	= 1 << 18,
-	//Raised only when drag_variation is authored, so an emitter with uniform drag keeps the two frame
-	//coefficients as plain emitter wide scalars and never hashes anything.
 	tfx_ctx_policy_flag_drag_variation                       	= 1 << 19,
 } tfx_context_policy_flag_bits;
 
@@ -9210,6 +9207,10 @@ tfxINTERNAL inline void tfx__wide_split_medium_velocity(tfx_position_policy_cont
 
 struct tfx_apply_forces {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
+			return;
+		}
+		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x.
 		ctx.medium_velocity_x = ctx.force_medium_x;
 		ctx.medium_velocity_y = ctx.force_medium_y;
 		ctx.medium_velocity_z = ctx.force_medium_z;

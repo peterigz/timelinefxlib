@@ -13046,6 +13046,11 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 	tfx_particle_emitter_properties_t *properties = work_entry->properties;
 	ctx.emitter = emitter;
 
+	//Every chain carries this policy now, so a force free emitter has to leave the accumulator and the anisotropic split alone.
+	if (!(emitter->state_properties.control_profile & tfxEmitterControlProfile_forces)) {
+		return;
+	}
+
 	float global_force_scalar = pm.effects[emitter->parent_index].noise;
 
 	//The frame the authored direction is resolved against. World is the default because the medium does not
@@ -13094,6 +13099,7 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 	ctx.force_medium_x = tfxWideSetSingle(summed_medium.x);
 	ctx.force_medium_y = tfxWideSetSingle(summed_medium.y);
 	ctx.force_medium_z = tfxWideSetSingle(summed_medium.z);
+	ctx.flags |= tfx_ctx_policy_flag_forces;
 
 	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
@@ -18844,6 +18850,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_store_position
 			>(work_entry, ctx);
 		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_orbital) {
+			//Orbital will become vortex so this is temporary.
 			if (emitter.state_properties.control_profile & tfxEmitterControlProfile_simplex_noise) {
 				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
 				tfx__update_particles_position<
@@ -18897,7 +18904,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_position
 				>(work_entry, ctx);
 			} else {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy>(work_entry, ctx);
+				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_forces_policy>(work_entry, ctx);
 				tfx__update_particles_position<
 					tfx_apply_load_life,
 					tfx_apply_load_position,
@@ -18905,10 +18912,13 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					tfx_apply_lookup_weight,
 					tfx_apply_orbital_velocity_normal,
 					tfx_apply_orbital_scale_velocity,
+					tfx_apply_forces,
+					tfx_apply_add_medium_to_velocity,
 					tfx_apply_position
 				>(work_entry, ctx);
 			}
 		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
+			//Noise will become forces, so this is temporary
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy>(work_entry, ctx);
 			tfx__update_particles_position<
 				tfx_apply_load_life,
@@ -18952,12 +18962,8 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_velocity,
 				tfx_apply_position
 			>(work_entry, ctx);
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_forces) {
-			//Sits after every noise arm deliberately: an emitter with both a noise algorithm and a force list
-			//takes the noise arm and its forces are ignored for now. Stacking the two is what collapsing all of
-			//these into one has-forces arm buys, and that is the part still blocked on D5.
-			//Position is loaded before the producer and the integrator runs after it - the same reorder the noise
-			//chains needed, and for the same reason: accumulate, then integrate once.
+		} else {
+			//Basic position control. 
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy>(work_entry, ctx);
 			tfx__update_particles_position<
 				tfx_apply_load_life,
@@ -18966,17 +18972,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx_apply_load_position,
 				tfx_apply_forces,
 				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
-		} else {
-			//Basic position control
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_velocity,
-				tfx_apply_load_position,
 				tfx_apply_position
 			>(work_entry, ctx);
 		}
