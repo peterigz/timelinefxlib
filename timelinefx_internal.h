@@ -5952,6 +5952,12 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 //enclosing scope. tfxPROFILE_NAMED gives the zone an explicit name instead of taking the
 //enclosing function's.
 //
+//tfxPROFILE_VALUE and tfxPROFILE_TEXT attach the amount of work a zone did to the zone, which is
+//what makes a zone time divisible into a per unit cost. Both need a tfxPROFILE in the same scope.
+//They are not interchangeable in the profiler: the value shows in the zone info panel, but only the
+//text reaches the Find Zone "Filter user text" box and its group by, which is where a histogram gets
+//narrowed to one batch size.
+//
 //Tracy's zone macros are C++ only. The C path of this header (and any C translation unit
 //that includes it) compiles the markers away, which is fine because every tfxPROFILE site
 //lives in timelinefx.cpp.
@@ -5961,11 +5967,15 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 
 #define tfxPROFILE ZoneScoped
 #define tfxPROFILE_NAMED(name) ZoneScopedN(name)
+#define tfxPROFILE_VALUE(value) ZoneValue(value)
+#define tfxPROFILE_TEXT(format, ...) ZoneTextF(format, ##__VA_ARGS__)
 
 #else
 
 #define tfxPROFILE ((void)0)
 #define tfxPROFILE_NAMED(name) ((void)0)
+#define tfxPROFILE_VALUE(value) ((void)0)
+#define tfxPROFILE_TEXT(format, ...) ((void)0)
 
 #endif
 

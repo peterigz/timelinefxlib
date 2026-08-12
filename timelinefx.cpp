@@ -13187,6 +13187,10 @@ void tfx__setup_particles_position(tfx_control_work_entry_t *work_entry, tfx_pos
 template <typename... Policies>
 void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfxPROFILE;
+	//The slots the loop below actually iterates, padding lanes included - the divisor that turns this zone's
+	//time into a per particle cost, and the filter that keeps partial batches out of the histogram.
+	tfxPROFILE_VALUE(work_entry->wide_end_index - work_entry->start_index);
+	tfxPROFILE_TEXT("slots %u", work_entry->wide_end_index - work_entry->start_index);
 
 	ctx.work_entry = work_entry;
 	tfxU32 emitter_index = work_entry->emitter_index;
