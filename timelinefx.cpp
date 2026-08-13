@@ -2972,11 +2972,11 @@ void tfx__reset_force_graphs(tfx_library library, tfxU32 graph_list_index, bool 
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT(graph_list_index < library->graphs.current_size);
 	tfx_graph_list_t *graph_list = &library->graphs[graph_list_index];
-	tfx_graph_t *wave = &graph_list->graphs[tfxForce_wave_index];
+	tfx_graph_t *wave = &graph_list->graphs[tfxForce_profile_index];
 	//Type first, unlike the other reset functions which assign it afterwards. tfx__reset_graph ends by calling
 	//tfx__update_lerp_graph, which only recognises the graph as a two node curve once the type is set - assigning
 	//it after would leave a freshly created wave sitting at one node until something else recompiled it.
-	wave->type = tfxForce_wave;
+	wave->type = tfxForce_profile;
 	//The wave is a signed multiplier over a 0..1 phase, which is the shape tfxVelocityOvertimePreset already
 	//describes (x 0..1, y -20..20). Nodes are added here rather than by tfx__reset_graph because the default is
 	//a curve, not a single value.
@@ -3018,7 +3018,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 			for (tfxU32 i = 0; i != emitter_properties->force_count; ++i) {
 				tfxU32 force_graph_list_index = emitter_properties->forces[i].graph_list_index;
 				if (force_graph_list_index == tfxINVALID) continue;
-				if (library->graphs[force_graph_list_index].graphs[tfxForce_wave_index].nodes.size() == 0) {
+				if (library->graphs[force_graph_list_index].graphs[tfxForce_profile_index].nodes.size() == 0) {
 					tfx__reset_force_graphs(library, force_graph_list_index, true);
 				}
 			}
@@ -5268,7 +5268,7 @@ void tfx__initialise_graph_indexes() {
 	//Indexes into a force's own graph list, not the emitter's. The saved name carries the force slot as a
 	//suffix (force_wave_3), which tfx__force_graph_name_to_slot strips before this lookup, so adding a second
 	//force graph later means one more entry here and no change to the reader or the writer.
-	tfxStore->graph_indexes.Insert("force_wave", tfxForce_wave_index);
+	tfxStore->graph_indexes.Insert("force_wave", tfxForce_profile_index);
 }
 
 void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
@@ -5699,7 +5699,7 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 		if (values->size() < 16) return;
 		tfx_force_t *force = tfx__resolve_force_slot(emitter, properties, (tfxU32)atoi((*values)[1].c_str()));
 		if (!force) return;
-		force->type = (tfx_force_type)atoi((*values)[2].c_str());
+		tfx__set_emitter_force_type(force, (tfx_force_type)atoi((*values)[2].c_str()));
 		force->space = (tfx_force_space)atoi((*values)[3].c_str());
 		//The two wave flags the old format wrote are gone, so mask down to the bits that still exist rather
 		//than storing a value with dead bits set.
@@ -5716,16 +5716,50 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 	if (values->size() < 6) return;
 	tfx_force_t *force = tfx__resolve_force_slot(emitter, properties, (tfxU32)atoi((*values)[1].c_str()));
 	if (!force) return;
-	force->type = (tfx_force_type)atoi((*values)[2].c_str());
+	tfx__set_emitter_force_type(force, (tfx_force_type)atoi((*values)[2].c_str()));
 	force->space = (tfx_force_space)atoi((*values)[3].c_str());
 	force->flags = (tfxForceFlags)atoi((*values)[4].c_str());
 	force->strength = (float)atof((*values)[5].c_str());
+	//Tail layouts, one per type, as written by tfx__stream_emitter_forces. Each case counts before it reads, so a
+	//tail can be appended to without breaking older files - the head is what must never move.
 	switch (force->type) {
 	case tfxForceWind:
 		if (values->size() < 9) return;
 		force->direction.x = (float)atof((*values)[6].c_str());
 		force->direction.y = (float)atof((*values)[7].c_str());
 		force->direction.z = (float)atof((*values)[8].c_str());
+		break;
+	case tfxForceAttract:
+		if (values->size() < 10) return;
+		force->origin.x = (float)atof((*values)[6].c_str());
+		force->origin.y = (float)atof((*values)[7].c_str());
+		force->origin.z = (float)atof((*values)[8].c_str());
+		force->radius = (float)atof((*values)[9].c_str());
+		break;
+	case tfxForceVortex:
+		if (values->size() < 15) return;
+		force->origin.x = (float)atof((*values)[6].c_str());
+		force->origin.y = (float)atof((*values)[7].c_str());
+		force->origin.z = (float)atof((*values)[8].c_str());
+		force->radius = (float)atof((*values)[9].c_str());
+		force->axis.x = (float)atof((*values)[10].c_str());
+		force->axis.y = (float)atof((*values)[11].c_str());
+		force->axis.z = (float)atof((*values)[12].c_str());
+		force->vortex.radial_ratio = (float)atof((*values)[13].c_str());
+		force->vortex.axial_ratio = (float)atof((*values)[14].c_str());
+		break;
+	case tfxForceShockwave:
+		if (values->size() < 12) return;
+		force->origin.x = (float)atof((*values)[6].c_str());
+		force->origin.y = (float)atof((*values)[7].c_str());
+		force->origin.z = (float)atof((*values)[8].c_str());
+		force->radius = (float)atof((*values)[9].c_str());
+		force->shockwave.speed = (float)atof((*values)[10].c_str());
+		force->shockwave.thickness = (float)atof((*values)[11].c_str());
+		break;
+	case tfxForceNoise:
+		if (values->size() < 7) return;
+		force->noise.algorithm = (tfx_noise_type)atoi((*values)[6].c_str());
 		break;
 	}
 }
@@ -6079,7 +6113,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxTransform_translate_y: return "transform_translate_y"; break;
 	case tfxTransform_translate_z: return "transform_translate_z"; break;
 
-	case tfxForce_wave: return "force_wave"; break;
+	case tfxForce_profile: return "force_wave"; break;
 	case tfxEmitterGraphMaxIndex: return "emitterGraphMaxIndex"; break;
 
 	default: break;
@@ -6838,11 +6872,37 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 	if (!properties) return;
 	for (tfxU32 i = 0; i != properties->force_count; ++i) {
 		tfx_force_t *force = &properties->forces[i];
+		//origin and radius are shared struct fields but are written into each tail that uses them rather than into
+		//the head: adding to the head shifts every tail and would need a new line key. Only three of the five types
+		//want them, so the duplication is cheaper than force3.
 		switch (force->type) {
 		case tfxForceWind:
 			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f",
 				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
 				force->direction.x, force->direction.y, force->direction.z);
+			break;
+		case tfxForceAttract:
+			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+				force->origin.x, force->origin.y, force->origin.z, force->radius);
+			break;
+		case tfxForceVortex:
+			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+				force->origin.x, force->origin.y, force->origin.z, force->radius,
+				force->axis.x, force->axis.y, force->axis.z,
+				force->vortex.radial_ratio, force->vortex.axial_ratio);
+			break;
+		case tfxForceShockwave:
+			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+				force->origin.x, force->origin.y, force->origin.z, force->radius,
+				force->shockwave.speed, force->shockwave.thickness);
+			break;
+		case tfxForceNoise:
+			file->AddLine("force2,%i,%i,%i,%i,%f,%i",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+				(int)force->noise.algorithm);
 			break;
 		}
 	}
@@ -6954,7 +7014,7 @@ bool tfx__is_lerp_graph(tfx_graph_t *graph) {
 	//A force's wave curve is sampled per particle by the wide sampler like the GPU lookup graphs are, so it needs
 	//the same two node treatment and the same wide_graph fill - it just is not in their contiguous range, since
 	//it is not uploaded to the GPU and adding it to the range would shift every lookup index.
-	return ((int)graph->type >= (int)tfxGPU_lookup_start && (int)graph->type <= (int)tfxGPU_lookup_end) || (int)graph->type == (int)tfxForce_wave;
+	return ((int)graph->type >= (int)tfxGPU_lookup_start && (int)graph->type <= (int)tfxGPU_lookup_end) || (int)graph->type == (int)tfxForce_profile;
 }
 
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
@@ -13051,50 +13111,93 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 		return;
 	}
 
-	float global_force_scalar = pm.effects[emitter->parent_index].noise;
+	tfx_effect_state_t *parent_effect = &pm.effects[emitter->parent_index];
+	float global_force_scalar = parent_effect->noise;
 
 	//The frame the authored direction is resolved against. World is the default because the medium does not
 	//rotate with anything - two emitters in one effect must agree on which way the wind blows - while effect and
 	//emitter space let a force be carried around by whatever it is attached to.
 	bool to_local_space = (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
-	tfx_quaternion_t effect_rotation = pm.effects[emitter->parent_index].rotation;
 	tfx_quaternion_t inverse_emitter_rotation = emitter->rotation;
 	inverse_emitter_rotation.x = -inverse_emitter_rotation.x;
 	inverse_emitter_rotation.y = -inverse_emitter_rotation.y;
 	inverse_emitter_rotation.z = -inverse_emitter_rotation.z;
 
-	//Wind is position independent, so the whole list collapses to one vector 
+	//Authored distances into the units the particle bank is actually in. A relative bank is in unscaled authored
+	//units and gets overall_scale applied downstream by the transform, so scaling here as well would count it twice;
+	//an absolute bank is already world space, so the scale has to be applied now or the field stays the same size
+	//while the effect around it grows.
+	float bank_units_scale = to_local_space ? 1.f : work_entry->overall_scale;
+
+	//Wind is position independent, so the whole wind group collapses to one vector and never reaches resolved_forces
+	//at all - which is why its group always comes out empty. The position dependent types cannot collapse, so they
+	//are packed one type at a time, giving each a contiguous run for its own loop to walk.
 	tfx_vec3_t summed_medium = { 0.f, 0.f, 0.f };
-	for (tfxU32 i = 0; i != properties->force_count; ++i) {
-		const tfx_force_t *force = &properties->forces[i];
-		if (!(force->flags & tfxForceFlags_enabled)) continue;
+	tfxU32 resolved_count = 0;
+	for (tfxU32 group_type = 0; group_type != tfxFORCE_TYPE_COUNT; ++group_type) {
+		work_entry->force_group_start[group_type] = resolved_count;
+		for (tfxU32 i = 0; i != properties->force_count; ++i) {
+			const tfx_force_t *force = &properties->forces[i];
+			if ((tfxU32)force->type != group_type) continue;
+			if (!(force->flags & tfxForceFlags_enabled)) continue;
 
-		tfx_vec3_t direction = force->direction;
-		float direction_length = tfx__length_vec3(&direction);
-		if (direction_length <= 0.f) continue;		//No direction means no flow, whatever the strength says
-		float strength = force->strength * global_force_scalar / direction_length;
+			float strength = force->strength * global_force_scalar;
 
-		//Two steps, and both are needed: the authored space says what the direction means, and the emitter says
-		//what space the particles are in. Taking it to world first is what lets the two be chosen independently.
-		switch (force->space) {
-		case tfxForceSpaceEffect:
-			direction = tfx__rotate_vector_quaternion(&effect_rotation, direction);
-			break;
-		case tfxForceSpaceEmitter:
-			direction = tfx__rotate_vector_quaternion(&emitter->rotation, direction);
-			break;
-		case tfxForceSpaceWorld:
-			break;
+			switch (force->type) {
+			case tfxForceWind: {
+				tfx_vec3_t direction = force->direction;
+				float direction_length = tfx__length_vec3(&direction);
+				if (direction_length <= 0.f) continue;		//No direction means no flow, whatever the strength says
+				//Normalising folded into the strength scalar rather than applied to the vector, since rotation preserves
+				//length; saves two divides per force.
+				strength /= direction_length;
+				direction = tfx__resolve_force_direction(direction, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+				summed_medium.x += direction.x * strength;
+				summed_medium.y += direction.y * strength;
+				summed_medium.z += direction.z * strength;
+				break;
+			}
+			case tfxForceAttract:
+			case tfxForceVortex:
+			case tfxForceShockwave: {
+				//Shockwave's profile runs across the wave front rather than out from the centre, so thickness is its
+				//falloff distance where the other two use the radius.
+				float falloff_distance = (force->type == tfxForceShockwave ? force->shockwave.thickness : force->radius) * bank_units_scale;
+				if (falloff_distance <= 0.f) continue;		//No extent means no field, whatever the strength says
+				//The profile is the shape of the field, so a force whose graph list never got allocated has nothing
+				//to describe. Only reachable on a force built outside tfx__add_emitter_force.
+				if (force->graph_list_index == tfxINVALID) continue;
+				tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
+				tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
+				*resolved = tfx_force_resolved_t{};
+				resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
+				resolved->strength = strength;
+				resolved->falloff_scale = 1.f / falloff_distance;
+				resolved->profile_graph = profile_graph;
+				resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+				if (force->type == tfxForceVortex) {
+					//The axis is normalised as a vector rather than folded into the strength the way wind's is: it feeds a
+					//cross product, so it has to be unit in its own right.
+					tfx_vec3_t axis = force->axis;
+					float axis_length = tfx__length_vec3(&axis);
+					if (axis_length <= 0.f) continue;		//No axis means no spin to describe
+					axis.x /= axis_length;
+					axis.y /= axis_length;
+					axis.z /= axis_length;
+					resolved->axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+					resolved->radial_ratio = force->vortex.radial_ratio;
+					resolved->axial_ratio = force->vortex.axial_ratio;
+				}
+				resolved_count++;
+				break;
+			}
+			case tfxForceNoise:
+				break;		//Stage 5 - noise still runs through its own control profile arms
+			}
 		}
-
-		if (to_local_space) {
-			direction = tfx__rotate_vector_quaternion(&inverse_emitter_rotation, direction);
-		}
-
-		summed_medium.x += direction.x * strength;
-		summed_medium.y += direction.y * strength;
-		summed_medium.z += direction.z * strength;
+		work_entry->force_group_count[group_type] = resolved_count - work_entry->force_group_start[group_type];
 	}
+	work_entry->resolved_force_count = resolved_count;
 
 	ctx.force_medium_x = tfxWideSetSingle(summed_medium.x);
 	ctx.force_medium_y = tfxWideSetSingle(summed_medium.y);
@@ -19435,6 +19538,12 @@ void tfx__init_emitter_force(tfx_force_t *force) {
 	force->direction = { 1.f, 0.f, 0.f };
 }
 
+void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type) {
+	//We could add a static assert to check if the union changed footprint
+	force->vortex = {};
+	force->type = type;
+}
+
 tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type) {
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	if (emitter_properties->force_count >= tfxMAX_FORCES) {
@@ -19445,9 +19554,41 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 	tfx__init_emitter_force(force);
 	force->graph_list_index = tfx__add_library_graphs(emitter->library, tfxForceType);
 	tfx__reset_force_graphs(emitter->library, force->graph_list_index, true);
-	force->type = type;
-	force->direction = { 1.f, 0.f, 0.f };
-	force->strength = 1.f;
+	tfx__set_emitter_force_type(force, type);
+	switch(type) {
+		case tfxForceWind: {
+			force->direction = { 1.f, 0.f, 0.f };
+			force->strength = 1.f;
+			break;
+		}
+		case tfxForceAttract: {
+			force->radius = 5.f;
+			force->strength = 1.f;
+			break;
+		}
+		case tfxForceVortex: {
+			force->axis = { 1.f, 0.f, 0.f };
+			force->radius = 5.f;
+			force->strength = 1.f;
+			force->vortex.radial_ratio = 1.f;
+			force->vortex.axial_ratio = 1.f;
+			break;
+		}
+		case tfxForceShockwave: {
+			force->radius = 5.f;
+			force->strength = 1.f;
+			force->shockwave.speed = 1.f;
+			force->shockwave.thickness = .25f;
+			break;
+		}
+		//Only fields this type's save tail writes may be defaulted here - anything else comes back from a load at
+		//its tfx__init_emitter_force value, and the raw byte hash would see the two states as different.
+		case tfxForceNoise: {
+			force->strength = 1.f;
+			force->noise.algorithm = tfxValueNoise;
+			break;
+		}
+	};
 	return force;
 }
 

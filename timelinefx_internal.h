@@ -22,6 +22,9 @@
 #define tfxMAX_FORCES 8
 #endif
 
+//Kept out of tfx_force_type itself so a sentinel does not have to be answered by every switch over the type
+#define tfxFORCE_TYPE_COUNT 5
+
 //---------------------------------------
 /*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -2932,7 +2935,7 @@ typedef enum {
 	tfxTransform_translate_y,
 	tfxTransform_translate_z,
 
-	tfxForce_wave,
+	tfxForce_profile,
 
 	tfxEmitterGraphMaxIndex,
 
@@ -2959,7 +2962,7 @@ typedef enum {
 } tfx_path_graph_index;
 
 typedef enum {
-	tfxForce_wave_index,
+	tfxForce_profile_index,
 	tfxForceGraphs_max_index
 } tfx_force_graph_index;
 
@@ -3021,11 +3024,12 @@ typedef enum {
 } tfx_noise_type;
 
 //These must not change, values are used in the save file. Append only.
-//The type decides how the phase coordinate that the wave runs along is derived: for wind it is the
-//distance along wave_axis, for a future attract/repel it would be the radius, for a vortex the distance
-//along the spin axis. The wave itself is shared machinery across every type.
 typedef enum {
 	tfxForceWind,
+	tfxForceAttract,	//Also used for repel with negative/positive numbers
+	tfxForceVortex,
+	tfxForceShockwave,
+	tfxForceNoise,
 } tfx_force_type;
 
 //The space that a force's direction and wave_axis are authored in. Wind is almost always world space:
@@ -6332,33 +6336,38 @@ typedef struct tfx_force_s {
 	//the force has no graphs yet. The force owns the list: freed back to library->free_graph_lists when
 	//the force is deleted, and deep copied (never index copied) when an emitter is duplicated.
 	tfxU32 graph_list_index;
-	//The direction the medium flows in. Normalised once per emitter per frame in the setup policy, so the
-	//authored length is ignored - base_strength and wave_amplitude carry the magnitude.
+	//Direction of the wind
 	tfx_vec3_t direction;
-	//The constant part of the flow in units/sec. Being a DC term it passes the drag lerp at gain 1, so it is
-	//felt at full strength no matter how heavy the particle is.
+	//The origin point of the force if applicable
+	tfx_vec3_t origin;
+	//Used for vortex
+	tfx_vec3_t axis;
 	float strength;
+	float radius;
+	union {
+		struct { float radial_ratio, axial_ratio; } vortex;
+		struct { float speed, thickness; } shockwave;
+		struct { tfx_noise_type algorithm; } noise;
+	};
 } tfx_force_t;
 
 typedef enum {
 	tfx_force_resolved_flag_none                                = 0,
-	tfx_force_resolved_flag_has_wave                            = 1 << 0,	//Clear when the wave cannot contribute, so the inner loop skips the dot product and the sample entirely
-	tfx_force_resolved_flag_wave_is_bezier                      = 1 << 1,
-	tfx_force_resolved_flag_has_phase_jitter                    = 1 << 2,	//Never set without has_wave: there is no crest to soften on a constant flow
-	tfx_force_resolved_flag_has_length_variation                = 1 << 3,	//Also never set without has_wave
-	tfx_force_resolved_flag_wave_has_oscillator                 = 1 << 4,	//Also never set without has_wave
+	tfx_force_resolved_flag_profile_is_bezier                   = 1 << 0,
 } tfx_force_resolved_flag_bits;
 
-//One authored force reduced to exactly what the particle loop needs, once per emitter per frame. Everything
-//awkward - normalising, resolving the space, the emitter transform, the time term, overall scale - happens in
-//tfx_setup_forces_policy so that the inner loop is a dot product, a fract, one graph sample and three FMAs.
-//Deliberately scalar rather than tfxWideFloat: the loop broadcasts each value with a single instruction, and
-//keeping the array narrow keeps it in cache and keeps tfx_position_policy_context down to a pointer and a count.
+//Struct that gets written outside of the particle loop that calculates various things based on the
+//force type and space (emitter, effect world)
 typedef struct tfx_force_resolved_s {
-	//Unit direction the medium flows in, already rotated into whichever space the particle positions are in.
-	float direction_x, direction_y, direction_z;
+	tfx_vec3_t axis;
+	//Centre of the force field
+	tfx_vec3_t origin;
 	float strength;
-	tfx_graph_t *wave_graph;
+	//Reciprocal of the distance the profile graph spans
+	float falloff_scale;
+	//Vortex only: the radial and axial components as ratios against the tangential one, which is implicitly 1
+	float radial_ratio, axial_ratio;
+	tfx_graph_t *profile_graph;
 	tfxU32 flags;
 } tfx_force_resolved_t;
 
@@ -7169,6 +7178,11 @@ typedef struct tfx_control_work_entry_s {
 	//so resolved_force_count is not properties->force_count.
 	tfx_force_resolved_t resolved_forces[tfxMAX_FORCES];
 	tfxU32 resolved_force_count;
+	//Where each type's run sits inside resolved_forces. Grouping them at setup is what keeps the type switch out
+	//of the particle loop: each group is walked by its own monomorphic loop, and a type nobody authored is an
+	//empty range.
+	tfxU32 force_group_start[tfxFORCE_TYPE_COUNT];
+	tfxU32 force_group_count[tfxFORCE_TYPE_COUNT];
 }tfx_control_work_entry_t;
 
 typedef struct tfx_stage_work_entry_s {
@@ -7838,6 +7852,7 @@ tfxAPI_EDITOR tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset);
 tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__init_emitter_force(tfx_force_t *force);
+tfxAPI_EDITOR void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type);
 tfxAPI_EDITOR tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type);
 tfxAPI_EDITOR tfx_force_t *tfx__clone_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
 tfxAPI_EDITOR void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
@@ -8708,6 +8723,64 @@ tfxAPI_EDITOR inline void tfx__wide_unpack_octahedral_vec3(tfxWideInt uv, tfxWid
 	u_z = tfxWideMul(l, u_z);
 }
 
+//Takes an authored force vector into whatever space the particle bank is in. Two independent steps: the authored
+//space says what the vector means, and relative_position says what space the particles are in, so taking it to world
+//in between is what lets the two be chosen separately.
+tfxINTERNAL inline tfx_vec3_t tfx__resolve_force_direction(tfx_vec3_t direction, tfx_force_space space, tfx_particle_emitter_state_t *emitter, tfx_effect_state_t *parent_effect, tfx_quaternion_t *inverse_emitter_rotation, bool to_local_space) {
+	switch (space) {
+	case tfxForceSpaceEffect:
+		direction = tfx__rotate_vector_quaternion(&parent_effect->rotation, direction);
+		break;
+	case tfxForceSpaceEmitter:
+		direction = tfx__rotate_vector_quaternion(&emitter->rotation, direction);
+		break;
+	case tfxForceSpaceWorld:
+		break;
+	}
+	if (to_local_space) {
+		direction = tfx__rotate_vector_quaternion(inverse_emitter_rotation, direction);
+	}
+	return direction;
+}
+
+//The affine twin of tfx__resolve_force_direction: a point needs the translation as well as the rotation, which is the
+//whole reason the position dependent types are more work than wind.
+tfxINTERNAL inline tfx_vec3_t tfx__get_force_origin(const tfx_force_t *force, tfx_particle_emitter_state_t *emitter, tfx_effect_state_t *parent_effect, tfx_quaternion_t *inverse_emitter_rotation, bool to_local_space, float overall_scale) {
+	tfx_vec3_t origin = force->origin;
+	//An Effect or Emitter space origin is an offset in authored units, so it scales on the way out the same way a
+	//spawn position does. A World space origin is an absolute point and scales with nothing.
+	switch (force->space) {
+	case tfxForceSpaceEffect:
+		origin = tfx__rotate_vector_quaternion(&parent_effect->rotation, origin);
+		origin.x = origin.x * overall_scale + parent_effect->world_position.x;
+		origin.y = origin.y * overall_scale + parent_effect->world_position.y;
+		origin.z = origin.z * overall_scale + parent_effect->world_position.z;
+		break;
+	case tfxForceSpaceEmitter:
+		origin = tfx__rotate_vector_quaternion(&emitter->rotation, origin);
+		origin.x = origin.x * overall_scale + emitter->world_position.x;
+		origin.y = origin.y * overall_scale + emitter->world_position.y;
+		origin.z = origin.z * overall_scale + emitter->world_position.z;
+		break;
+	case tfxForceSpaceWorld:
+		break;
+	}
+	if (to_local_space) {
+		//Exact inverse of the relative branch of tfx__transform_particle_captured_position:
+		//world = rotation * (bank + handle) * overall_scale + world_position. So the bank is in unscaled authored
+		//units and does not carry the handle - which is why this divides rather than multiplies, and subtracts the
+		//handle rather than adding it.
+		float inverse_scale = overall_scale > 0.f ? 1.f / overall_scale : 0.f;
+		origin.x -= emitter->world_position.x;
+		origin.y -= emitter->world_position.y;
+		origin.z -= emitter->world_position.z;
+		origin = tfx__rotate_vector_quaternion(inverse_emitter_rotation, origin);
+		origin.x = origin.x * inverse_scale - emitter->handle.x;
+		origin.y = origin.y * inverse_scale - emitter->handle.y;
+		origin.z = origin.z * inverse_scale - emitter->handle.z;
+	}
+	return origin;
+}
 
 typedef tfxWideFloat(*tfx_wide_easing_function)(tfxWideFloat);
 typedef tfxWideFloat(*tfx_wide_bezier_function)(tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat, tfxWideFloat);
@@ -9215,15 +9288,111 @@ tfxINTERNAL inline void tfx__wide_split_medium_velocity(tfx_position_policy_cont
 	medium_z = tfxWideMulAdd(along_scale, travel_z, tfxWideMul(swerve_gain, medium_z));
 }
 
+//Samples a force's profile graph at a distance already expressed as a fraction of the field's extent. Values at or
+//past the far edge are killed outright rather than clamped: clamping would leave the graph's end value acting at
+//any distance, which is the opposite of a falloff.
+tfxINTERNAL inline tfxWideFloat tfx__wide_sample_force_profile(const tfx_force_resolved_t *force, tfxWideFloat profile_time) {
+	const tfxWideFloat inside = tfxWideLess(profile_time, tfxWIDEONE.m);
+	profile_time = tfxWideMin(profile_time, tfxWIDEONE.m);
+	const tfx_graph_wide_t &profile = force->profile_graph->wide_graph;
+	tfxWideFloat sample = (force->flags & tfx_force_resolved_flag_profile_is_bezier) ?
+		tfx__wide_bezier_sampler(profile_time, profile.from, profile.curve1, profile.curve2, profile.to) :
+		tfx__wide_linear_sampler(profile.from, profile.to, profile_time);
+	return tfxWideAnd(inside, sample);
+}
+
+//Adds one vortex's flow to the medium. This is the shape every position dependent force follows: offset the particle
+//from the resolved origin, turn a distance into the profile's 0..1 coordinate, then accumulate
+//strength * profile * direction.
+tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+	const tfxWideFloat axis_x = tfxWideSetSingle(force->axis.x);
+	const tfxWideFloat axis_y = tfxWideSetSingle(force->axis.y);
+	const tfxWideFloat axis_z = tfxWideSetSingle(force->axis.z);
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+
+	//Split the offset about the spin axis. What is left after the axial part is removed is the arm the particle
+	//swings on, and its length - not the distance to the origin - is what the profile is sampled at, so the field
+	//is a cylinder around the axis rather than a sphere around a point.
+	tfxWideFloat axial_distance = tfxWideMul(offset_x, axis_x);
+	axial_distance = tfxWideMulAdd(offset_y, axis_y, axial_distance);
+	axial_distance = tfxWideMulAdd(offset_z, axis_z, axial_distance);
+	tfxWideFloat radial_x = tfxWideSub(offset_x, tfxWideMul(axial_distance, axis_x));
+	tfxWideFloat radial_y = tfxWideSub(offset_y, tfxWideMul(axial_distance, axis_y));
+	tfxWideFloat radial_z = tfxWideSub(offset_z, tfxWideMul(axial_distance, axis_z));
+
+	tfxWideFloat radial_length_squared = tfxWideMul(radial_x, radial_x);
+	radial_length_squared = tfxWideMulAdd(radial_y, radial_y, radial_length_squared);
+	radial_length_squared = tfxWideMulAdd(radial_z, radial_z, radial_length_squared);
+	//Floored rather than branched on: a particle sitting exactly on the axis normalises to a zero arm instead of a
+	//NaN, and a zero arm has no tangent to spin along, so it correctly feels nothing.
+	const tfxWideFloat inverse_radial_length = tfxWideRSqrt(tfxWideMax(radial_length_squared, tfxWideSetSingle(1e-12f)));
+	radial_x = tfxWideMul(radial_x, inverse_radial_length);
+	radial_y = tfxWideMul(radial_y, inverse_radial_length);
+	radial_z = tfxWideMul(radial_z, inverse_radial_length);
+	const tfxWideFloat radial_distance = tfxWideMul(radial_length_squared, inverse_radial_length);
+
+	const tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
+		tfx__wide_sample_force_profile(force, tfxWideMul(radial_distance, tfxWideSetSingle(force->falloff_scale))));
+
+	//Spinning is the whole point of a vortex, so the tangential component is implicitly 1 and strength scales it.
+	//The two ratios lean that flow inward or outward along the arm and up or down the axis.
+	tfxWideFloat tangential_x, tangential_y, tangential_z;
+	tfx__wide_cross_product(axis_x, axis_y, axis_z, &radial_x, &radial_y, &radial_z, &tangential_x, &tangential_y, &tangential_z);
+	const tfxWideFloat radial_ratio = tfxWideSetSingle(force->radial_ratio);
+	const tfxWideFloat axial_ratio = tfxWideSetSingle(force->axial_ratio);
+	tfxWideFloat flow_x = tfxWideMulAdd(axis_x, axial_ratio, tfxWideMulAdd(radial_x, radial_ratio, tangential_x));
+	tfxWideFloat flow_y = tfxWideMulAdd(axis_y, axial_ratio, tfxWideMulAdd(radial_y, radial_ratio, tangential_y));
+	tfxWideFloat flow_z = tfxWideMulAdd(axis_z, axial_ratio, tfxWideMulAdd(radial_z, radial_ratio, tangential_z));
+
+	ctx.medium_velocity_x = tfxWideMulAdd(flow_x, scale, ctx.medium_velocity_x);
+	ctx.medium_velocity_y = tfxWideMulAdd(flow_y, scale, ctx.medium_velocity_y);
+	ctx.medium_velocity_z = tfxWideMulAdd(flow_z, scale, ctx.medium_velocity_z);
+}
+
+tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+
+	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+	length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-12f)));
+	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+
+	const tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
+		tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+
+	ctx.medium_velocity_x = tfxWideMulAdd(offset_x, scale, ctx.medium_velocity_x);
+	ctx.medium_velocity_y = tfxWideMulAdd(offset_y, scale, ctx.medium_velocity_y);
+	ctx.medium_velocity_z = tfxWideMulAdd(offset_z, scale, ctx.medium_velocity_z);
+}
+
 struct tfx_apply_forces {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
 			return;
 		}
-		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x.
+		//Produce only - assign, never accumulate. See the lifetime note on medium_velocity_x. The pre-summed wind
+		//vector seeds the accumulator, then each position dependent group adds to it.
 		ctx.medium_velocity_x = ctx.force_medium_x;
 		ctx.medium_velocity_y = ctx.force_medium_y;
 		ctx.medium_velocity_z = ctx.force_medium_z;
+
+		const tfx_control_work_entry_t *work_entry = ctx.work_entry;
+		const tfxU32 vortex_start = work_entry->force_group_start[tfxForceVortex];
+		const tfxU32 vortex_end = vortex_start + work_entry->force_group_count[tfxForceVortex];
+		for (tfxU32 force_index = vortex_start; force_index != vortex_end; ++force_index) {
+			tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+		}
+		const tfxU32 attract_start = work_entry->force_group_start[tfxForceAttract];
+		const tfxU32 attract_end = attract_start + work_entry->force_group_count[tfxForceAttract];
+		for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
+			tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+		}
 	}
 };
 
@@ -9712,7 +9881,7 @@ tfxINTERNAL inline bool tfx__is_graph_emission(tfx_graph_type type) {
 }
 
 tfxINTERNAL inline bool tfx__is_graph_force(tfx_graph_type type) {
-	return type == tfxForce_wave;
+	return type == tfxForce_profile;
 }
 
 tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
