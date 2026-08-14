@@ -5767,6 +5767,13 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 	case tfxForceNoise:
 		if (values->size() < tail + 1) return;
 		force->noise.algorithm = (tfx_noise_type)atoi((*values)[tail + 0].c_str());
+		//Appended after the algorithm, so a file written before the noise field could be bounded stops here and
+		//loads with radius 0 - the unbounded field it was authored as.
+		if (values->size() < tail + 5) return;
+		force->origin.x = (float)atof((*values)[tail + 1].c_str());
+		force->origin.y = (float)atof((*values)[tail + 2].c_str());
+		force->origin.z = (float)atof((*values)[tail + 3].c_str());
+		force->radius = (float)atof((*values)[tail + 4].c_str());
 		break;
 	}
 }
@@ -6908,9 +6915,13 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 				force->shockwave.speed, force->shockwave.thickness);
 			break;
 		case tfxForceNoise:
-			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%i",
+			//origin and radius trail the algorithm rather than leading it the way the other three types have them,
+			//because this tail already exists in the wild with the algorithm alone. Appending is what keeps those
+			//files readable; the shared origin/radius prefix is not worth breaking them for.
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%i,%f,%f,%f,%f",
 				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
-				(int)force->noise.algorithm);
+				(int)force->noise.algorithm,
+				force->origin.x, force->origin.y, force->origin.z, force->radius);
 			break;
 		}
 	}
@@ -11730,6 +11741,13 @@ tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter) {
 	if (emitter->type != tfxEmitterType) {
 		return tfxNoNoise;
 	}
+	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
+	for (int i = 0; i != emitter_properties->force_count; ++i) {
+		tfx_force_t *force = &emitter_properties->forces[i];
+		if (force->type == tfxForceNoise && (force->flags & tfxForceFlags_enabled) && force->noise.algorithm != tfxNoNoise) {
+			return force->noise.algorithm;
+		}
+	}
 	tfx_noise_type noise_type = tfx__get_particle_emitter_properties(emitter)->noise_algorithm;
 	if (tfx__get_particle_emitter_properties(emitter)->noise_algorithm != tfxWhiteNoise) {
 		tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
@@ -13153,61 +13171,91 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 			float strength = force->strength * global_force_scalar;
 
 			switch (force->type) {
-			case tfxForceWind: {
-				tfx_vec3_t direction = force->direction;
-				float direction_length = tfx__length_vec3(&direction);
-				if (direction_length <= 0.f) continue;		//No direction means no flow, whatever the strength says
-				//Normalising folded into the strength scalar rather than applied to the vector, since rotation preserves
-				//length; saves two divides per force.
-				strength /= direction_length;
-				direction = tfx__resolve_force_direction(direction, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
-				summed_medium.x += direction.x * strength;
-				summed_medium.y += direction.y * strength;
-				summed_medium.z += direction.z * strength;
-				break;
-			}
-			case tfxForceAttract:
-			case tfxForceVortex:
-			case tfxForceShockwave: {
-				//Shockwave's profile runs across the wave front rather than out from the centre, so thickness is its
-				//falloff distance where the other two use the radius.
-				float falloff_distance = (force->type == tfxForceShockwave ? force->shockwave.thickness : force->radius) * bank_units_scale;
-				if (falloff_distance <= 0.f) continue;		//No extent means no field, whatever the strength says
-				//The profile is the shape of the field, so a force whose graph list never got allocated has nothing
-				//to describe. Only reachable on a force built outside tfx__add_emitter_force.
-				if (force->graph_list_index == tfxINVALID) continue;
-				tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
-				tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
-				*resolved = tfx_force_resolved_t{};
-				resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
-				resolved->strength = strength;
-				resolved->falloff_scale = 1.f / falloff_distance;
-				resolved->profile_graph = profile_graph;
-				resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
-				if (force->type == tfxForceVortex) {
-					//The axis is normalised as a vector rather than folded into the strength the way wind's is: it feeds a
-					//cross product, so it has to be unit in its own right.
-					tfx_vec3_t axis = force->axis;
-					float axis_length = tfx__length_vec3(&axis);
-					if (axis_length <= 0.f) continue;		//No axis means no spin to describe
-					axis.x /= axis_length;
-					axis.y /= axis_length;
-					axis.z /= axis_length;
-					resolved->axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
-					resolved->vortex.radial_ratio = force->vortex.radial_ratio;
-					resolved->vortex.axial_ratio = force->vortex.axial_ratio;
-				} else if (force->type == tfxForceShockwave) {
-					//Note: emitter age will equal the effect age because they're always created in the effect manager at the same time.
-					float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * bank_units_scale;
-					//Skip if the front is beyond the radius.
-					if (front > force->radius * bank_units_scale) continue;
-					resolved->shockwave.front = front;
+				case tfxForceWind: {
+					tfx_vec3_t direction = force->direction;
+					float direction_length = tfx__length_vec3(&direction);
+					if (direction_length <= 0.f) continue;		//No direction means no flow, whatever the strength says
+					//Normalising folded into the strength scalar rather than applied to the vector, since rotation preserves
+					//length; saves two divides per force.
+					strength /= direction_length;
+					direction = tfx__resolve_force_direction(direction, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+					summed_medium.x += direction.x * strength;
+					summed_medium.y += direction.y * strength;
+					summed_medium.z += direction.z * strength;
+					break;
 				}
-				resolved_count++;
-				break;
-			}
-			case tfxForceNoise:
-				break;		//Stage 5 - noise still runs through its own control profile arms
+				case tfxForceAttract:
+				case tfxForceVortex:
+				case tfxForceShockwave: {
+					//Shockwave's profile runs across the wave front rather than out from the centre, so thickness is its
+					//falloff distance where the other two use the radius.
+					float falloff_distance = (force->type == tfxForceShockwave ? force->shockwave.thickness : force->radius) * bank_units_scale;
+					if (falloff_distance <= 0.f) continue;		//No extent means no field, whatever the strength says
+					//The profile is the shape of the field, so a force whose graph list never got allocated has nothing
+					//to describe. Only reachable on a force built outside tfx__add_emitter_force.
+					if (force->graph_list_index == tfxINVALID) continue;
+					tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
+					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
+					*resolved = tfx_force_resolved_t{};
+					resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
+					resolved->strength = strength;
+					resolved->falloff_scale = 1.f / falloff_distance;
+					resolved->profile_graph = profile_graph;
+					resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+					if (force->type == tfxForceVortex) {
+						//The axis is normalised as a vector rather than folded into the strength the way wind's is: it feeds a
+						//cross product, so it has to be unit in its own right.
+						tfx_vec3_t axis = force->axis;
+						float axis_length = tfx__length_vec3(&axis);
+						if (axis_length <= 0.f) continue;		//No axis means no spin to describe
+						axis.x /= axis_length;
+						axis.y /= axis_length;
+						axis.z /= axis_length;
+						resolved->axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+						resolved->vortex.radial_ratio = force->vortex.radial_ratio;
+						resolved->vortex.axial_ratio = force->vortex.axial_ratio;
+					} else if (force->type == tfxForceShockwave) {
+						//Note: emitter age will equal the effect age because they're always created in the effect manager at the same time.
+						float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * bank_units_scale;
+						//Skip if the front is beyond the radius.
+						if (front > force->radius * bank_units_scale) continue;
+						resolved->shockwave.front = front;
+					}
+					resolved_count++;
+					break;
+				}
+				case tfxForceNoise: {
+					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
+					*resolved = tfx_force_resolved_t{};
+					resolved->noise.algorithm = force->noise.algorithm;
+					resolved->strength = strength;
+					//Unlike the other position dependent types a noise field has a perfectly good unbounded form, so a
+					//radius of zero means "everywhere" rather than "nothing". Only a bounded field needs an origin to
+					//measure from or a profile to fade by, so neither is resolved without one.
+					float falloff_distance = force->radius * bank_units_scale;
+					if (falloff_distance > 0.f && force->graph_list_index != tfxINVALID) {
+						tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
+						resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
+						resolved->falloff_scale = 1.f / falloff_distance;
+						resolved->profile_graph = profile_graph;
+						resolved->flags |= tfx_force_resolved_flag_bounded;
+						resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+					}
+					if (force->noise.algorithm != tfxWhiteNoise) {
+						ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
+						ctx.velocity_turbulance_easing = tfx__get_wide_easing_function(ctx.velocity_turbulance_graph->easing_type);
+						ctx.noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
+						ctx.noise_resolution_easing = tfx__get_wide_easing_function(ctx.noise_resolution_graph->easing_type);
+						ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph : 0;
+						ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_has_oscillator : 0;
+						ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
+						ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
+						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
+						tfx__setup_anisotropic_noise(work_entry, ctx);
+					}
+					resolved_count++;
+					break;
+				}
 			}
 		}
 		work_entry->force_group_count[group_type] = resolved_count - work_entry->force_group_start[group_type];
@@ -13218,8 +13266,6 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 	ctx.force_medium_y = tfxWideSetSingle(summed_medium.y);
 	ctx.force_medium_z = tfxWideSetSingle(summed_medium.z);
 	ctx.flags |= tfx_ctx_policy_flag_forces;
-
-	tfx__setup_anisotropic_noise(work_entry, ctx);
 }
 
 void tfx_setup_path_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
@@ -18962,128 +19008,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					>(work_entry, ctx);
 				}
 			}
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_trajectory && emitter.state_properties.control_profile & tfxEmitterControlProfile_any_line) {
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_line_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_load_position,
-				tfx_apply_position_line_trajectory,
-				tfx_apply_store_position
-			>(work_entry, ctx);
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_orbital) {
-			//Orbital will become vortex so this is temporary.
-			if (emitter.state_properties.control_profile & tfxEmitterControlProfile_simplex_noise) {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-				tfx__update_particles_position<
-					tfx_apply_load_life,
-					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
-					tfx_apply_load_position,
-					tfx_apply_orbital_velocity_normal,
-					tfx_apply_orbital_scale_velocity,
-					tfx_apply_simplex_noise,
-					tfx_apply_add_medium_to_velocity,
-					tfx_apply_position
-				>(work_entry, ctx);
-			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_curl_noise) {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-				tfx__update_particles_position<
-					tfx_apply_load_life,
-					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
-					tfx_apply_load_position,
-					tfx_apply_orbital_velocity_normal,
-					tfx_apply_orbital_scale_velocity,
-					tfx_apply_curl_noise,
-					tfx_apply_add_medium_to_velocity,
-					tfx_apply_position
-				>(work_entry, ctx);
-			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_value_noise) {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-				tfx__update_particles_position<
-					tfx_apply_load_life,
-					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
-					tfx_apply_load_position,
-					tfx_apply_orbital_velocity_normal,
-					tfx_apply_orbital_scale_velocity,
-					tfx_apply_value_noise,
-					tfx_apply_add_medium_to_velocity,
-					tfx_apply_position
-				>(work_entry, ctx);
-			} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy, tfx_setup_orbital_policy>(work_entry, ctx);
-				tfx__update_particles_position<
-					tfx_apply_load_life,
-					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
-					tfx_apply_load_position,
-					tfx_apply_orbital_velocity_normal,
-					tfx_apply_orbital_scale_velocity,
-					tfx_apply_white_noise,
-					tfx_apply_add_medium_to_velocity,
-					tfx_apply_position
-				>(work_entry, ctx);
-			} else {
-				tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_orbital_policy, tfx_setup_forces_policy>(work_entry, ctx);
-				tfx__update_particles_position<
-					tfx_apply_load_life,
-					tfx_apply_load_position,
-					tfx_apply_lookup_velocity,
-					tfx_apply_lookup_weight,
-					tfx_apply_orbital_velocity_normal,
-					tfx_apply_orbital_scale_velocity,
-					tfx_apply_forces,
-					tfx_apply_add_medium_to_velocity,
-					tfx_apply_position
-				>(work_entry, ctx);
-			}
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_motion_randomness) {
-			//Noise will become forces, so this is temporary
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_motion_randomness_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_white_noise,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
-		} else	if (emitter.state_properties.control_profile & tfxEmitterControlProfile_simplex_noise) {
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_simplex_noise,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_curl_noise) {
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_curl_noise,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
-		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_value_noise) {
-			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_simplex_lookup_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_value_noise,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
 		} else {
 			//Basic position control. 
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy>(work_entry, ctx);

@@ -6357,6 +6357,9 @@ typedef struct tfx_force_s {
 typedef enum {
 	tfx_force_resolved_flag_none                                = 0,
 	tfx_force_resolved_flag_profile_is_bezier                   = 1 << 0,
+	//The field is confined to a sphere about the origin. Noise only: the other types have no unbounded form, so
+	//they are dropped at setup when their extent is zero rather than being resolved without one.
+	tfx_force_resolved_flag_bounded                             = 1 << 1,
 } tfx_force_resolved_flag_bits;
 
 //Struct that gets written outside of the particle loop that calculates various things based on the
@@ -6374,6 +6377,7 @@ typedef struct tfx_force_resolved_s {
 		//How far the wave's leading edge has travelled this frame. Resolved from speed and the effect clock at
 		//setup so the inner loop never touches a clock.
 		struct { float front; } shockwave;
+		struct { tfx_noise_type algorithm; } noise;
 	};
 	tfx_graph_t *profile_graph;
 	tfxU32 flags;
@@ -9411,6 +9415,89 @@ tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved
 	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
 }
 
+tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+	if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
+		ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
+	}
+
+	tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+	ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+	if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
+		ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
+	}
+
+	const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+	const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+	const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+	const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
+
+	//The offset is a 3D translation of the sample position, one independent draw per axis at spawn.
+	//It used to be a single scalar added to all three axes, which put every particle's offset on the
+	//(1,1,1) diagonal - a one parameter family, so particles with nearby offsets sampled correlated
+	//positions and the correlation was anisotropic. Same for value and curl noise.
+	tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
+
+	tfx__readbarrier;
+
+	ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
+	tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+	tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+	tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
+
+	tfxWideFloat y_offset = tfxWideAdd(y, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
+	tfxWideFloat z_offset = tfxWideAdd(z, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
+
+	tfxWideFloat noise_x = tfx__simd_noise_3d(x, y, z);
+	tfxWideFloat noise_y = tfx__simd_noise_3d(x, y_offset, z);
+	tfxWideFloat noise_z = tfx__simd_noise_3d(x, y, z_offset);
+
+	tfxWideFloat l = tfxWideMul(noise_x, noise_x);
+	l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
+	l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+	l = tfxWideRSqrt(tfxWideMax(l, tfxWIDEEPSILON.m));
+	noise_x = tfxWideMul(noise_x, l);
+	noise_y = tfxWideMul(noise_y, l);
+	noise_z = tfxWideMul(noise_z, l);
+
+	//strength already carries the effect's global noise scalar, folded in at setup.
+	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+
+	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
+	if (force->flags & tfx_force_resolved_flag_bounded) {
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
+		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+	}
+
+	noise_x = tfxWideMul(amplitude, noise_x);
+	noise_y = tfxWideMul(amplitude, noise_y);
+	noise_z = tfxWideMul(amplitude, noise_z);
+
+	if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+		tfx__wide_split_medium_velocity(ctx, tfxWideLoad(&bank.velocity_x[index]), tfxWideLoad(&bank.velocity_y[index]), tfxWideLoad(&bank.velocity_z[index]), noise_x, noise_y, noise_z);
+	}
+
+	ctx.medium_velocity_x = tfxWideAdd(ctx.medium_velocity_x, noise_x);
+	ctx.medium_velocity_y = tfxWideAdd(ctx.medium_velocity_y, noise_y);
+	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
+}
+
 struct tfx_apply_forces {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
@@ -9438,6 +9525,17 @@ struct tfx_apply_forces {
 		for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
 			tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
 		}
+		//Note:There can only be one noise type in the forces so no need for for loop here
+		if (work_entry->force_group_count[tfxForceNoise]) {
+			const tfxU32 noise_index = work_entry->force_group_start[tfxForceNoise];
+			switch (work_entry->resolved_forces[noise_index].noise.algorithm) {
+				case tfxSimplexNoise:
+					tfx__wide_apply_noise_simplex_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					break;
+				default:
+					break;
+			}
+		}
 	}
 };
 
@@ -9446,9 +9544,6 @@ struct tfx_apply_add_medium_to_velocity {
 		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
 		tfxWideFloat medium_velocity_y = ctx.medium_velocity_y;
 		tfxWideFloat medium_velocity_z = ctx.medium_velocity_z;
-		if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
-			tfx__wide_split_medium_velocity(ctx, ctx.velocity_x, ctx.velocity_y, ctx.velocity_z, medium_velocity_x, medium_velocity_y, medium_velocity_z);
-		}
 		ctx.velocity_x = tfxWideAdd(ctx.velocity_x, medium_velocity_x);
 		ctx.velocity_y = tfxWideAdd(ctx.velocity_y, medium_velocity_y);
 		ctx.velocity_z = tfxWideAdd(ctx.velocity_z, medium_velocity_z);
@@ -9488,9 +9583,7 @@ struct tfx_apply_velocity {
 		tfxWideFloat medium_velocity_x = ctx.medium_velocity_x;
 		tfxWideFloat medium_velocity_y = ctx.medium_velocity_y;
 		tfxWideFloat medium_velocity_z = ctx.medium_velocity_z;
-		if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
-			tfx__wide_split_medium_velocity(ctx, previous_velocity_x, previous_velocity_y, previous_velocity_z, medium_velocity_x, medium_velocity_y, medium_velocity_z);
-		}
+
 		acceleration_x = tfxWideAdd(acceleration_x, medium_velocity_x);
 		acceleration_y = tfxWideAdd(acceleration_y, medium_velocity_y);
 		acceleration_z = tfxWideAdd(acceleration_z, medium_velocity_z);
