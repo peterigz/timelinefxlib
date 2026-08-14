@@ -8911,6 +8911,10 @@ struct tfx_setup_direction_lookup_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 
+struct tfx_setup_path_life_policy {
+	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
+};
+
 struct tfx_setup_forces_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };

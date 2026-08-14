@@ -13121,6 +13121,11 @@ void tfx_setup_direction_lookup_policy::apply(tfx_control_work_entry_t *work_ent
 	ctx.flags |= tfx__graph_can_oscillate(ctx.direction_graph) ? tfx_ctx_policy_flag_direction_has_oscillator : 0;
 }
 
+//Minus three for the same reason the size and colour passes subtract it: path_position runs across segments, not nodes.
+void tfx_setup_path_life_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	ctx.node_count = tfxWideSetSingle(work_entry->node_count - 3.f);
+}
+
 void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t *emitter = &pm.emitters[work_entry->emitter_index];
@@ -18980,8 +18985,29 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 					>(work_entry, ctx);
 				}
 			}
+		} else if (emitter.state_properties.control_profile & tfxEmitterControlProfile_trajectory && emitter.state_properties.control_profile & tfxEmitterControlProfile_any_line) {
+			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_line_policy>(work_entry, ctx);
+			tfx__update_particles_position<
+				tfx_apply_load_life,
+				tfx_apply_lookup_velocity,
+				tfx_apply_load_position,
+				tfx_apply_position_line_trajectory,
+				tfx_apply_store_position
+			>(work_entry, ctx);
+		} else if (work_entry->sample_path_life) {
+			//Spawned on a path but not traversing it, so the velocity graph is sampled from where the particle started.
+			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy, tfx_setup_path_life_policy>(work_entry, ctx);
+			tfx__update_particles_position<
+				tfx_apply_life_based_on_path,
+				tfx_apply_lookup_velocity,
+				tfx_apply_lookup_weight,
+				tfx_apply_load_position,
+				tfx_apply_forces,
+				tfx_apply_velocity,
+				tfx_apply_position
+			>(work_entry, ctx);
 		} else {
-			//Basic position control. 
+			//Basic position control.
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy>(work_entry, ctx);
 			tfx__update_particles_position<
 				tfx_apply_load_life,
