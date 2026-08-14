@@ -11785,9 +11785,17 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	//Keyed on an enabled entry rather than force_count, which is what makes the enabled flag worth having: a list
 	//of muted forces costs an emitter nothing, not even the dispatch arm.
 	for (tfxU32 force_index = 0; force_index != emitter_properties->force_count; ++force_index) {
-		if (emitter_properties->forces[force_index].flags & tfxForceFlags_enabled) {
-			emitter->state_properties.control_profile |= tfxEmitterControlProfile_forces;
-			break;
+		const tfx_force_t *force = &emitter_properties->forces[force_index];
+		if (!(force->flags & tfxForceFlags_enabled)) continue;
+		emitter->state_properties.control_profile |= tfxEmitterControlProfile_forces;
+		if (force->type != tfxForceNoise) continue;
+		//Raises the same bit the legacy noise property does, so the noise spawners write the bank fields the force reads.
+		switch (force->noise.algorithm) {
+		case tfxSimplexNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_simplex_noise; break;
+		case tfxCurlNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_curl_noise; break;
+		case tfxValueNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_value_noise; break;
+		case tfxWhiteNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_motion_randomness; break;
+		default: break;
 		}
 	}
 	if (shared_properties->emission_type == tfxPath) {
@@ -13250,6 +13258,14 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 						ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_has_oscillator : 0;
 						ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
 						ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
+						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
+						tfx__setup_anisotropic_noise(work_entry, ctx);
+					} else if (force->noise.algorithm == tfxWhiteNoise) {
+						ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], ctx.emitter->age, ctx.emitter->oscillator_time));
+						ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
+						ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
+						ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
+						ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
 						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
 						tfx__setup_anisotropic_noise(work_entry, ctx);
 					}
@@ -16341,7 +16357,8 @@ void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data) 
 	// noise_resolution carries on the simplex and curl chains. Sampled once at spawn from the emitter
 	// age and stored per particle, then used at control time to scale the sample position (see
 	// tfx_apply_white_noise).
-	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time);
+	//Floored as tfx__spawn_particle_noise floors it: white noise only scales by this, but a field algorithm divides by it.
+	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time) + 0.01f;
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&entry->pm->particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);

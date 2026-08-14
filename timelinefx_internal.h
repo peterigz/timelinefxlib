@@ -9498,6 +9498,266 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
+tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+	if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
+		ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
+	}
+
+	tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+	ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+	if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
+		ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
+	}
+
+	const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+	const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+	const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+	const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
+
+	tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
+
+	tfx__readbarrier;
+
+	ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
+	tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+	tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+	tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
+
+	// Bridson curl noise
+	const tfxWideFloat dt = tfxWideSetSingle(0.05f);
+	// inv_dt folds in a 1/sqrt(6) (~0.408) magnitude scale so the output vector RMS
+	// matches tfx_apply_simplex_noise's unit-normalized output - swapping between
+	// the two noise modes shouldn't require re-tuning velocity_turbulance.
+	const tfxWideFloat inv_dt = tfxWideSetSingle(0.408f / 0.05f);
+
+	// Push psi2 and psi3 into decorrelated regions. Life drift gives the field a gentle
+	// time evolution per particle in addition to the noise_offset advection already in x/y/z.
+	const tfxWideFloat psi2_shift = tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life);
+	const tfxWideFloat psi3_shift = tfxWideAdd(tfxWideAdd(tfxWIDENOISEOFFSET.m, tfxWIDENOISEOFFSET.m), ctx.life);
+
+	const tfxWideFloat x2 = tfxWideAdd(x, psi2_shift);
+	const tfxWideFloat y2 = tfxWideAdd(y, psi2_shift);
+	const tfxWideFloat z2 = tfxWideAdd(z, psi2_shift);
+
+	const tfxWideFloat x3 = tfxWideAdd(x, psi3_shift);
+	const tfxWideFloat y3 = tfxWideAdd(y, psi3_shift);
+	const tfxWideFloat z3 = tfxWideAdd(z, psi3_shift);
+
+	// psi1: need d/dy (for v_z) and d/dz (for v_y)
+	tfxWideFloat psi1_0  = tfx__simd_noise_3d(x, y, z);
+	tfxWideFloat psi1_py = tfx__simd_noise_3d(x, tfxWideAdd(y, dt), z);
+	tfxWideFloat psi1_pz = tfx__simd_noise_3d(x, y, tfxWideAdd(z, dt));
+
+	// psi2: need d/dx (for v_z) and d/dz (for v_x)
+	tfxWideFloat psi2_0  = tfx__simd_noise_3d(x2, y2, z2);
+	tfxWideFloat psi2_px = tfx__simd_noise_3d(tfxWideAdd(x2, dt), y2, z2);
+	tfxWideFloat psi2_pz = tfx__simd_noise_3d(x2, y2, tfxWideAdd(z2, dt));
+
+	// psi3: need d/dx (for v_y) and d/dy (for v_x)
+	tfxWideFloat psi3_0  = tfx__simd_noise_3d(x3, y3, z3);
+	tfxWideFloat psi3_px = tfx__simd_noise_3d(tfxWideAdd(x3, dt), y3, z3);
+	tfxWideFloat psi3_py = tfx__simd_noise_3d(x3, tfxWideAdd(y3, dt), z3);
+
+	tfxWideFloat dpsi1_dy = tfxWideMul(tfxWideSub(psi1_py, psi1_0), inv_dt);
+	tfxWideFloat dpsi1_dz = tfxWideMul(tfxWideSub(psi1_pz, psi1_0), inv_dt);
+	tfxWideFloat dpsi2_dx = tfxWideMul(tfxWideSub(psi2_px, psi2_0), inv_dt);
+	tfxWideFloat dpsi2_dz = tfxWideMul(tfxWideSub(psi2_pz, psi2_0), inv_dt);
+	tfxWideFloat dpsi3_dx = tfxWideMul(tfxWideSub(psi3_px, psi3_0), inv_dt);
+	tfxWideFloat dpsi3_dy = tfxWideMul(tfxWideSub(psi3_py, psi3_0), inv_dt);
+
+	// v = curl(psi)
+	tfxWideFloat noise_x = tfxWideSub(dpsi3_dy, dpsi2_dz);
+	tfxWideFloat noise_y = tfxWideSub(dpsi1_dz, dpsi3_dx);
+	tfxWideFloat noise_z = tfxWideSub(dpsi2_dx, dpsi1_dy);
+
+	//strength already carries the effect's global noise scalar, folded in at setup.
+	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+
+	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
+	if (force->flags & tfx_force_resolved_flag_bounded) {
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
+		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+	}
+
+	noise_x = tfxWideMul(amplitude, noise_x);
+	noise_y = tfxWideMul(amplitude, noise_y);
+	noise_z = tfxWideMul(amplitude, noise_z);
+
+	if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+		tfx__wide_split_medium_velocity(ctx, tfxWideLoad(&bank.velocity_x[index]), tfxWideLoad(&bank.velocity_y[index]), tfxWideLoad(&bank.velocity_z[index]), noise_x, noise_y, noise_z);
+	}
+
+	ctx.medium_velocity_x = tfxWideAdd(ctx.medium_velocity_x, noise_x);
+	ctx.medium_velocity_y = tfxWideAdd(ctx.medium_velocity_y, noise_y);
+	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
+}
+
+tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
+	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.to, velocity_turbulance_time);
+	if (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_has_oscillator) {
+		ctx.lookup_velocity_turbulance = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_velocity_turbulance, velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_oscillator);
+	}
+
+	tfxWideFloat noise_resolution_time = ctx.noise_resolution_easing(ctx.life);
+	ctx.lookup_noise_resolution = (ctx.flags & tfx_ctx_policy_flag_noise_resolution_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(noise_resolution_time, ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.curve1, ctx.noise_resolution_graph->wide_graph.curve2, ctx.noise_resolution_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.noise_resolution_graph->wide_graph.from, ctx.noise_resolution_graph->wide_graph.to, noise_resolution_time);
+	if (ctx.flags & tfx_ctx_policy_flag_noise_resolution_has_oscillator) {
+		ctx.lookup_noise_resolution = tfxOSCILLATOR_WIDE_APPLY(ctx.lookup_noise_resolution, noise_resolution_time, ctx.noise_resolution_graph->wide_oscillator);
+	}
+
+	const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+	const tfxWideFloat base_noise_offset_x = tfxWideLoad(&bank.noise_offset_x[index]);
+	const tfxWideFloat base_noise_offset_y = tfxWideLoad(&bank.noise_offset_y[index]);
+	const tfxWideFloat base_noise_offset_z = tfxWideLoad(&bank.noise_offset_z[index]);
+
+	tfxWideFloat noise_offset_x = tfxWideMul(base_noise_offset_x, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_y = tfxWideMul(base_noise_offset_y, ctx.overall_scale_wide);
+	tfxWideFloat noise_offset_z = tfxWideMul(base_noise_offset_z, ctx.overall_scale_wide);
+
+	tfx__readbarrier;
+
+	ctx.lookup_noise_resolution = tfxWideMul(tfxWideMul(ctx.lookup_noise_resolution, noise_resolution), ctx.overall_scale_wide);
+	tfxWideFloat x = tfxWideAdd(tfxWideDiv(ctx.position_x.m, ctx.lookup_noise_resolution), noise_offset_x);
+	tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
+	tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
+
+	tfxWideFloat noise_x, noise_y, noise_z;
+	tfx__wide_value_noise_3d(x, y, z, noise_x, noise_y, noise_z);
+
+	tfxWideFloat l = tfxWideMul(noise_x, noise_x);
+	l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
+	l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
+	l = tfxWideRSqrt(tfxWideMax(l, tfxWIDEEPSILON.m));
+	noise_x = tfxWideMul(noise_x, l);
+	noise_y = tfxWideMul(noise_y, l);
+	noise_z = tfxWideMul(noise_z, l);
+
+	//strength already carries the effect's global noise scalar, folded in at setup.
+	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+
+	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
+	if (force->flags & tfx_force_resolved_flag_bounded) {
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
+		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+	}
+
+	noise_x = tfxWideMul(amplitude, noise_x);
+	noise_y = tfxWideMul(amplitude, noise_y);
+	noise_z = tfxWideMul(amplitude, noise_z);
+
+	if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+		tfx__wide_split_medium_velocity(ctx, tfxWideLoad(&bank.velocity_x[index]), tfxWideLoad(&bank.velocity_y[index]), tfxWideLoad(&bank.velocity_z[index]), noise_x, noise_y, noise_z);
+	}
+
+	ctx.medium_velocity_x = tfxWideAdd(ctx.medium_velocity_x, noise_x);
+	ctx.medium_velocity_y = tfxWideAdd(ctx.medium_velocity_y, noise_y);
+	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
+}
+
+tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+	tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
+
+	tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
+	tfxWideFloat lookup_motion_randomness = (ctx.flags & tfx_ctx_policy_flag_motion_randomness_is_bezier_graph) ?
+		tfx__wide_bezier_sampler(motion_randomness_time, ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.curve1, ctx.motion_randomness_graph->wide_graph.curve2, ctx.motion_randomness_graph->wide_graph.to) :
+		tfx__wide_linear_sampler(ctx.motion_randomness_graph->wide_graph.from, ctx.motion_randomness_graph->wide_graph.to, motion_randomness_time);
+	if (ctx.flags & tfx_ctx_policy_flag_motion_randomness_has_oscillator) {
+		lookup_motion_randomness = tfxOSCILLATOR_WIDE_APPLY(lookup_motion_randomness, motion_randomness_time, ctx.motion_randomness_graph->wide_oscillator);
+	}
+	//The effect's global noise scalar is already folded into force->strength at setup.
+	const tfxWideFloat influence = tfxWideMul(ctx.motion_randomness_base, lookup_motion_randomness);
+
+	const tfxWideFloat inv_period_scale = tfxWideSetSingle(1.f / (250.f * 300.f));      // resolution 300 -> 250ms bucket
+
+	const tfxWideInt axis_x = tfxWideSetSinglei(0x1b56c4f9);
+	const tfxWideInt axis_y = tfxWideSetSinglei(0x68e31da4);
+	const tfxWideInt axis_z = tfxWideSetSinglei(0xb5297a4d);
+	const tfxWideInt axis_phase = tfxWideSetSinglei(0x27d4eb2f);
+
+	const tfxWideFloat phase_offset = tfxWideMul(tfxWideAdd(tfxWideMul(tfx__wide_white_unit(uid, axis_phase), tfxWideSetSingle(0.5f)), tfxWideSetSingle(0.5f)), tfxWideSetSingle(256.f)); // [0,256) buckets
+
+	const tfxWideFloat resolution = tfxWideLoad(&bank.noise_resolution[index]);
+	const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+	tfxWideFloat phase = tfxWideAdd(phase_offset, tfxWideMul(age, tfxWideMul(resolution, inv_period_scale)));
+	tfxWideInt bucket = tfxWideConverti(phase);                                          // floor (phase >= 0)
+	tfxWideFloat frac = tfxWideSub(phase, tfxWideConvert(bucket));
+	frac = tfxWideMul(tfxWideMul(frac, frac), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), frac))); // smoothstep
+
+	const tfxWideInt dir_seed      = tfx__wide_seedgen_base(bucket, uid);
+	const tfxWideInt dir_seed_next = tfx__wide_seedgen_base(tfxWideAddi(bucket, tfxWIDEONEi.m), uid);
+
+	const tfxWideFloat one_minus_frac = tfxWideSub(tfxWIDEONE.m, frac);
+	tfxWideFloat noise_x = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_x), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_x), frac));
+	tfxWideFloat noise_y = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_y), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_y), frac));
+	tfxWideFloat noise_z = tfxWideAdd(tfxWideMul(tfx__wide_white_unit(dir_seed, axis_z), one_minus_frac), tfxWideMul(tfx__wide_white_unit(dir_seed_next, axis_z), frac));
+
+	tfxWideFloat length_squared = tfxWideMul(noise_x, noise_x);
+	length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_y, noise_y));
+	length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_z, noise_z));
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+
+	//Absolute units/sec/sec like every other acceleration. Scaling this by ctx.velocity left an emitter
+	//driven by a spawn impulse and forces with no motion randomness at all.
+	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), tfxWideMul(influence, inverse_length));
+
+	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
+	if (force->flags & tfx_force_resolved_flag_bounded) {
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
+		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+	}
+
+	noise_x = tfxWideMul(amplitude, noise_x);
+	noise_y = tfxWideMul(amplitude, noise_y);
+	noise_z = tfxWideMul(amplitude, noise_z);
+
+	if (ctx.flags & tfx_ctx_policy_flag_anisotropic_noise) {
+		tfx__wide_split_medium_velocity(ctx, tfxWideLoad(&bank.velocity_x[index]), tfxWideLoad(&bank.velocity_y[index]), tfxWideLoad(&bank.velocity_z[index]), noise_x, noise_y, noise_z);
+	}
+
+	ctx.medium_velocity_x = tfxWideAdd(ctx.medium_velocity_x, noise_x);
+	ctx.medium_velocity_y = tfxWideAdd(ctx.medium_velocity_y, noise_y);
+	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
+}
+
 struct tfx_apply_forces {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
@@ -9531,6 +9791,15 @@ struct tfx_apply_forces {
 			switch (work_entry->resolved_forces[noise_index].noise.algorithm) {
 				case tfxSimplexNoise:
 					tfx__wide_apply_noise_simplex_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					break;
+				case tfxCurlNoise:
+					tfx__wide_apply_noise_curl_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					break;
+				case tfxValueNoise:
+					tfx__wide_apply_noise_value_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					break;
+				case tfxWhiteNoise:
+					tfx__wide_apply_white_noise_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
 					break;
 				default:
 					break;
