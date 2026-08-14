@@ -19563,7 +19563,9 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 		}
 		case tfxForceAttract: {
 			force->radius = 5.f;
-			force->strength = 1.f;
+			//Negative because the offset from the origin points outward, so a positive strength is the repel half
+			//of this type. A force called Attract has to attract when it is added.
+			force->strength = -1.f;
 			break;
 		}
 		case tfxForceVortex: {

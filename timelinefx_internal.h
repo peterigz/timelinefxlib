@@ -2432,6 +2432,7 @@ const tfxWideArray tfxWIDEQUARTERPI   = tfxWideSetConst(0.7853982f);
 const tfxWideArray tfxWIDEEPS		  = tfxWideSetConst(0.0001f);
 const tfxWideArray tfxWIDEEPS2		  = tfxWideSetConst(0.0002f);
 const tfxWideArray tfxWIDEEPSILON     = tfxWideSetConst(1e-12f);
+const tfxWideArray tfxWIDEEPSILON8    = tfxWideSetConst(1e-8f);
 const tfxWideArray tfxWIDENOISEOFFSET = tfxWideSetConst(100.f);
 
 typedef struct tfx_rgba16f_s {
@@ -9019,7 +9020,7 @@ struct tfx_apply_simplex_noise {
 		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
 		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
-		l = tfxWideAdd(l, tfxWideSetSingle(1e-12f));
+		l = tfxWideAdd(l, tfxWIDEEPSILON.m);
 		l = tfxWideRSqrt(l);
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
@@ -9092,7 +9093,7 @@ struct tfx_apply_value_noise {
 		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
 		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
-		l = tfxWideAdd(l, tfxWideSetSingle(1e-12f));
+		l = tfxWideAdd(l, tfxWIDEEPSILON.m);
 		l = tfxWideRSqrt(l);
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
@@ -9249,7 +9250,7 @@ struct tfx_apply_white_noise {
 		tfxWideFloat length_squared = tfxWideMul(noise_x, noise_x);
 		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_y, noise_y));
 		length_squared = tfxWideAdd(length_squared, tfxWideMul(noise_z, noise_z));
-		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-12f)));
+		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 		//Absolute units/sec/sec like every other acceleration. Scaling this by ctx.velocity left an emitter
 		//driven by a spawn impulse and forces with no motion randomness at all.
 		const tfxWideFloat amplitude = tfxWideMul(influence, inverse_length);
@@ -9266,11 +9267,10 @@ struct tfx_apply_white_noise {
 //	across_travel    = medium_velocity - along_travel                            changes direction only
 //	medium_velocity  = speed_gain * along_travel + swerve_gain * across_travel
 tfxINTERNAL inline void tfx__wide_split_medium_velocity(tfx_position_policy_context &ctx, tfxWideFloat travel_x, tfxWideFloat travel_y, tfxWideFloat travel_z, tfxWideFloat &medium_x, tfxWideFloat &medium_y, tfxWideFloat &medium_z) {
-	const tfxWideFloat epsilon = tfxWideSetSingle(1e-8f);
 	tfxWideFloat length_squared = tfxWideMul(travel_x, travel_x);
 	length_squared = tfxWideMulAdd(travel_y, travel_y, length_squared);
 	length_squared = tfxWideMulAdd(travel_z, travel_z, length_squared);
-	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, epsilon));
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON8.m));
 	travel_x = tfxWideMul(travel_x, inverse_length);
 	travel_y = tfxWideMul(travel_y, inverse_length);
 	travel_z = tfxWideMul(travel_z, inverse_length);
@@ -9327,7 +9327,7 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	radial_length_squared = tfxWideMulAdd(radial_z, radial_z, radial_length_squared);
 	//Floored rather than branched on: a particle sitting exactly on the axis normalises to a zero arm instead of a
 	//NaN, and a zero arm has no tangent to spin along, so it correctly feels nothing.
-	const tfxWideFloat inverse_radial_length = tfxWideRSqrt(tfxWideMax(radial_length_squared, tfxWideSetSingle(1e-12f)));
+	const tfxWideFloat inverse_radial_length = tfxWideRSqrt(tfxWideMax(radial_length_squared, tfxWIDEEPSILON.m));
 	radial_x = tfxWideMul(radial_x, inverse_radial_length);
 	radial_y = tfxWideMul(radial_y, inverse_radial_length);
 	radial_z = tfxWideMul(radial_z, inverse_radial_length);
@@ -9351,6 +9351,8 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	ctx.medium_velocity_z = tfxWideMulAdd(flow_z, scale, ctx.medium_velocity_z);
 }
 
+//Adds one attract or repel force to the medium. The direction is the same sign as vortex's radial ratio, so a
+//positive strength pushes out from the origin and a negative one pulls in.
 tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
 	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
 	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
@@ -9359,16 +9361,20 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
 	length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
-
-	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-12f)));
+	//Floored rather than branched on: a particle sitting exactly on the origin normalises to a zero vector rather
+	//than a NaN, and has no direction to be pulled along anyway.
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
 
-	const tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
+	tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
 		tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
 
-	ctx.medium_velocity_x = tfxWideMulAdd(offset_x, scale, ctx.medium_velocity_x);
-	ctx.medium_velocity_y = tfxWideMulAdd(offset_y, scale, ctx.medium_velocity_y);
-	ctx.medium_velocity_z = tfxWideMulAdd(offset_z, scale, ctx.medium_velocity_z);
+	//So that it accelerates more the closer it is
+	scale = tfxWideMul(scale, distance);
+
+	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);
+	ctx.medium_velocity_y = tfxWideMulAdd(tfxWideMul(offset_y, inverse_length), scale, ctx.medium_velocity_y);
+	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
 }
 
 struct tfx_apply_forces {
