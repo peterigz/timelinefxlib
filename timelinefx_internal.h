@@ -6345,6 +6345,8 @@ typedef struct tfx_force_s {
 	tfx_vec3_t axis;
 	float strength;
 	float radius;
+	//Time in milliseconds before the force activates
+	float delay;
 	union {
 		struct { float radial_ratio, axial_ratio; } vortex;
 		struct { float speed, thickness; } shockwave;
@@ -6366,8 +6368,13 @@ typedef struct tfx_force_resolved_s {
 	float strength;
 	//Reciprocal of the distance the profile graph spans
 	float falloff_scale;
-	//Vortex only: the radial and axial components as ratios against the tangential one, which is implicitly 1
-	float radial_ratio, axial_ratio;
+	//Union for vortex and shockwave forces
+	union {
+		struct { float radial_ratio, axial_ratio; } vortex;
+		//How far the wave's leading edge has travelled this frame. Resolved from speed and the effect clock at
+		//setup so the inner loop never touches a clock.
+		struct { float front; } shockwave;
+	};
 	tfx_graph_t *profile_graph;
 	tfxU32 flags;
 } tfx_force_resolved_t;
@@ -9020,8 +9027,7 @@ struct tfx_apply_simplex_noise {
 		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
 		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
-		l = tfxWideAdd(l, tfxWIDEEPSILON.m);
-		l = tfxWideRSqrt(l);
+		l = tfxWideRSqrt(tfxWideMax(l, tfxWIDEEPSILON.m));
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
 		noise_z = tfxWideMul(noise_z, l);
@@ -9093,8 +9099,7 @@ struct tfx_apply_value_noise {
 		tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 		l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
 		l = tfxWideAdd(l, tfxWideMul(noise_z, noise_z));
-		l = tfxWideAdd(l, tfxWIDEEPSILON.m);
-		l = tfxWideRSqrt(l);
+		l = tfxWideRSqrt(tfxWideMax(l, tfxWIDEEPSILON.m));
 		noise_x = tfxWideMul(noise_x, l);
 		noise_y = tfxWideMul(noise_y, l);
 		noise_z = tfxWideMul(noise_z, l);
@@ -9340,8 +9345,8 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	//The two ratios lean that flow inward or outward along the arm and up or down the axis.
 	tfxWideFloat tangential_x, tangential_y, tangential_z;
 	tfx__wide_cross_product(axis_x, axis_y, axis_z, &radial_x, &radial_y, &radial_z, &tangential_x, &tangential_y, &tangential_z);
-	const tfxWideFloat radial_ratio = tfxWideSetSingle(force->radial_ratio);
-	const tfxWideFloat axial_ratio = tfxWideSetSingle(force->axial_ratio);
+	const tfxWideFloat radial_ratio = tfxWideSetSingle(force->vortex.radial_ratio);
+	const tfxWideFloat axial_ratio = tfxWideSetSingle(force->vortex.axial_ratio);
 	tfxWideFloat flow_x = tfxWideMulAdd(axis_x, axial_ratio, tfxWideMulAdd(radial_x, radial_ratio, tangential_x));
 	tfxWideFloat flow_y = tfxWideMulAdd(axis_y, axial_ratio, tfxWideMulAdd(radial_y, radial_ratio, tangential_y));
 	tfxWideFloat flow_z = tfxWideMulAdd(axis_z, axial_ratio, tfxWideMulAdd(radial_z, radial_ratio, tangential_z));
@@ -9377,6 +9382,35 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
 }
 
+//Adds one shockwave's push to the medium. An expanding shell centred on the origin: the profile is sampled across
+//the shell rather than out from the centre, so a particle feels the wave only while the front is passing it, and
+//the push is radially outward at the profile's magnitude. Sign follows attract and vortex's radial ratio, so a
+//positive strength blows outward and a negative one sucks inward.
+tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+
+	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+	length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+	//Floored rather than branched on: a particle sitting exactly on the origin normalises to a zero vector rather
+	//than a NaN, and has no direction to be pushed along anyway.
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+
+	//Measured backwards from the leading edge: 0 at the front itself, 1 one thickness behind it. That way the
+	//profile reads front to tail and the radius the wave dies at bounds the field in space as well as in time.
+	//The sampler kills the tail side at 1, so only the particles the wave has not reached yet need masking here.
+	const tfxWideFloat profile_time = tfxWideMul(tfxWideSub(tfxWideSetSingle(force->shockwave.front), distance), tfxWideSetSingle(force->falloff_scale));
+	const tfxWideFloat reached = tfxWideGreaterEqual(profile_time, tfxWIDEZERO.m);
+	const tfxWideFloat scale = tfxWideAnd(reached, tfxWideMul(tfxWideSetSingle(force->strength), tfx__wide_sample_force_profile(force, profile_time)));
+
+	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);
+	ctx.medium_velocity_y = tfxWideMulAdd(tfxWideMul(offset_y, inverse_length), scale, ctx.medium_velocity_y);
+	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
+}
+
 struct tfx_apply_forces {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
@@ -9398,6 +9432,11 @@ struct tfx_apply_forces {
 		const tfxU32 attract_end = attract_start + work_entry->force_group_count[tfxForceAttract];
 		for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
 			tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+		}
+		const tfxU32 shockwave_start = work_entry->force_group_start[tfxForceShockwave];
+		const tfxU32 shockwave_end = shockwave_start + work_entry->force_group_count[tfxForceShockwave];
+		for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
+			tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
 		}
 	}
 };

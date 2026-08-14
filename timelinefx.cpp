@@ -5713,53 +5713,60 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 		return;
 	}
 
-	if (values->size() < 6) return;
+	//force3 put delay in the head, which shifts every tail along by one. The tails themselves are identical between
+	//the two keys, so the only thing the key decides is where they start.
+	bool has_delay = (*values)[0] == "force3";
+	tfxU32 tail = has_delay ? 7 : 6;
+	if (values->size() < tail) return;
 	tfx_force_t *force = tfx__resolve_force_slot(emitter, properties, (tfxU32)atoi((*values)[1].c_str()));
 	if (!force) return;
 	tfx__set_emitter_force_type(force, (tfx_force_type)atoi((*values)[2].c_str()));
 	force->space = (tfx_force_space)atoi((*values)[3].c_str());
 	force->flags = (tfxForceFlags)atoi((*values)[4].c_str());
 	force->strength = (float)atof((*values)[5].c_str());
+	if (has_delay) {
+		force->delay = (float)atof((*values)[6].c_str());
+	}
 	//Tail layouts, one per type, as written by tfx__stream_emitter_forces. Each case counts before it reads, so a
 	//tail can be appended to without breaking older files - the head is what must never move.
 	switch (force->type) {
 	case tfxForceWind:
-		if (values->size() < 9) return;
-		force->direction.x = (float)atof((*values)[6].c_str());
-		force->direction.y = (float)atof((*values)[7].c_str());
-		force->direction.z = (float)atof((*values)[8].c_str());
+		if (values->size() < tail + 3) return;
+		force->direction.x = (float)atof((*values)[tail + 0].c_str());
+		force->direction.y = (float)atof((*values)[tail + 1].c_str());
+		force->direction.z = (float)atof((*values)[tail + 2].c_str());
 		break;
 	case tfxForceAttract:
-		if (values->size() < 10) return;
-		force->origin.x = (float)atof((*values)[6].c_str());
-		force->origin.y = (float)atof((*values)[7].c_str());
-		force->origin.z = (float)atof((*values)[8].c_str());
-		force->radius = (float)atof((*values)[9].c_str());
+		if (values->size() < tail + 4) return;
+		force->origin.x = (float)atof((*values)[tail + 0].c_str());
+		force->origin.y = (float)atof((*values)[tail + 1].c_str());
+		force->origin.z = (float)atof((*values)[tail + 2].c_str());
+		force->radius = (float)atof((*values)[tail + 3].c_str());
 		break;
 	case tfxForceVortex:
-		if (values->size() < 15) return;
-		force->origin.x = (float)atof((*values)[6].c_str());
-		force->origin.y = (float)atof((*values)[7].c_str());
-		force->origin.z = (float)atof((*values)[8].c_str());
-		force->radius = (float)atof((*values)[9].c_str());
-		force->axis.x = (float)atof((*values)[10].c_str());
-		force->axis.y = (float)atof((*values)[11].c_str());
-		force->axis.z = (float)atof((*values)[12].c_str());
-		force->vortex.radial_ratio = (float)atof((*values)[13].c_str());
-		force->vortex.axial_ratio = (float)atof((*values)[14].c_str());
+		if (values->size() < tail + 9) return;
+		force->origin.x = (float)atof((*values)[tail + 0].c_str());
+		force->origin.y = (float)atof((*values)[tail + 1].c_str());
+		force->origin.z = (float)atof((*values)[tail + 2].c_str());
+		force->radius = (float)atof((*values)[tail + 3].c_str());
+		force->axis.x = (float)atof((*values)[tail + 4].c_str());
+		force->axis.y = (float)atof((*values)[tail + 5].c_str());
+		force->axis.z = (float)atof((*values)[tail + 6].c_str());
+		force->vortex.radial_ratio = (float)atof((*values)[tail + 7].c_str());
+		force->vortex.axial_ratio = (float)atof((*values)[tail + 8].c_str());
 		break;
 	case tfxForceShockwave:
-		if (values->size() < 12) return;
-		force->origin.x = (float)atof((*values)[6].c_str());
-		force->origin.y = (float)atof((*values)[7].c_str());
-		force->origin.z = (float)atof((*values)[8].c_str());
-		force->radius = (float)atof((*values)[9].c_str());
-		force->shockwave.speed = (float)atof((*values)[10].c_str());
-		force->shockwave.thickness = (float)atof((*values)[11].c_str());
+		if (values->size() < tail + 6) return;
+		force->origin.x = (float)atof((*values)[tail + 0].c_str());
+		force->origin.y = (float)atof((*values)[tail + 1].c_str());
+		force->origin.z = (float)atof((*values)[tail + 2].c_str());
+		force->radius = (float)atof((*values)[tail + 3].c_str());
+		force->shockwave.speed = (float)atof((*values)[tail + 4].c_str());
+		force->shockwave.thickness = (float)atof((*values)[tail + 5].c_str());
 		break;
 	case tfxForceNoise:
-		if (values->size() < 7) return;
-		force->noise.algorithm = (tfx_noise_type)atoi((*values)[6].c_str());
+		if (values->size() < tail + 1) return;
+		force->noise.algorithm = (tfx_noise_type)atoi((*values)[tail + 0].c_str());
 		break;
 	}
 }
@@ -6873,35 +6880,36 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 	for (tfxU32 i = 0; i != properties->force_count; ++i) {
 		tfx_force_t *force = &properties->forces[i];
 		//origin and radius are shared struct fields but are written into each tail that uses them rather than into
-		//the head: adding to the head shifts every tail and would need a new line key. Only three of the five types
-		//want them, so the duplication is cheaper than force3.
+		//the head, because only three of the five types want them. delay is wanted by all five, which is what earned
+		//the force3 key: a field every tail would have to repeat belongs in the head, and the head cannot grow
+		//without shifting every tail along.
 		switch (force->type) {
 		case tfxForceWind:
-			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f",
-				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->direction.x, force->direction.y, force->direction.z);
 			break;
 		case tfxForceAttract:
-			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f",
-				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->origin.x, force->origin.y, force->origin.z, force->radius);
 			break;
 		case tfxForceVortex:
-			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f",
-				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->origin.x, force->origin.y, force->origin.z, force->radius,
 				force->axis.x, force->axis.y, force->axis.z,
 				force->vortex.radial_ratio, force->vortex.axial_ratio);
 			break;
 		case tfxForceShockwave:
-			file->AddLine("force2,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f",
-				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->origin.x, force->origin.y, force->origin.z, force->radius,
 				force->shockwave.speed, force->shockwave.thickness);
 			break;
 		case tfxForceNoise:
-			file->AddLine("force2,%i,%i,%i,%i,%f,%i",
-				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength,
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%i",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				(int)force->noise.algorithm);
 			break;
 		}
@@ -13140,6 +13148,7 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 			const tfx_force_t *force = &properties->forces[i];
 			if ((tfxU32)force->type != group_type) continue;
 			if (!(force->flags & tfxForceFlags_enabled)) continue;
+			if (force->delay > emitter->age) continue;
 
 			float strength = force->strength * global_force_scalar;
 
@@ -13185,8 +13194,14 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 					axis.y /= axis_length;
 					axis.z /= axis_length;
 					resolved->axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
-					resolved->radial_ratio = force->vortex.radial_ratio;
-					resolved->axial_ratio = force->vortex.axial_ratio;
+					resolved->vortex.radial_ratio = force->vortex.radial_ratio;
+					resolved->vortex.axial_ratio = force->vortex.axial_ratio;
+				} else if (force->type == tfxForceShockwave) {
+					//Note: emitter age will equal the effect age because they're always created in the effect manager at the same time.
+					float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * bank_units_scale;
+					//Skip if the front is beyond the radius.
+					if (front > force->radius * bank_units_scale) continue;
+					resolved->shockwave.front = front;
 				}
 				resolved_count++;
 				break;
