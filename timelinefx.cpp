@@ -13194,9 +13194,12 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 					tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
 					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
 					*resolved = tfx_force_resolved_t{};
-					resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
-					resolved->strength = strength;
-					resolved->falloff_scale = 1.f / falloff_distance;
+					tfx_vec3_t origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
+					resolved->origin_x = tfxWideSetSingle(origin.x);
+					resolved->origin_y = tfxWideSetSingle(origin.y);
+					resolved->origin_z = tfxWideSetSingle(origin.z);
+					resolved->strength = tfxWideSetSingle(strength);
+					resolved->falloff_scale = tfxWideSetSingle(1.f / falloff_distance);
 					resolved->profile_graph = profile_graph;
 					resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
 					if (force->type == tfxForceVortex) {
@@ -13208,16 +13211,20 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 						axis.x /= axis_length;
 						axis.y /= axis_length;
 						axis.z /= axis_length;
-						resolved->axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
-						resolved->vortex.radial_ratio = force->vortex.radial_ratio;
-						resolved->vortex.axial_ratio = force->vortex.axial_ratio;
+						axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+						resolved->axis_x = tfxWideSetSingle(axis.x);
+						resolved->axis_y = tfxWideSetSingle(axis.y);
+						resolved->axis_z = tfxWideSetSingle(axis.z);
+						resolved->vortex.radial_ratio = tfxWideSetSingle(force->vortex.radial_ratio);
+						resolved->vortex.axial_ratio = tfxWideSetSingle(force->vortex.axial_ratio);
 					} else if (force->type == tfxForceShockwave) {
 						//Note: emitter age will equal the effect age because they're always created in the effect manager at the same time.
 						float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * bank_units_scale;
 						//Skip if the front is beyond the radius.
 						if (front > force->radius * bank_units_scale) continue;
-						resolved->shockwave.front = front;
+						resolved->shockwave.front = tfxWideSetSingle(front);
 					}
+					ctx.flags |= tfx_ctx_policy_flag_has_position_forces;
 					resolved_count++;
 					break;
 				}
@@ -13225,15 +13232,18 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
 					*resolved = tfx_force_resolved_t{};
 					resolved->noise.algorithm = force->noise.algorithm;
-					resolved->strength = strength;
+					resolved->strength = tfxWideSetSingle(strength);
 					//Unlike the other position dependent types a noise field has a perfectly good unbounded form, so a
 					//radius of zero means "everywhere" rather than "nothing". Only a bounded field needs an origin to
 					//measure from or a profile to fade by, so neither is resolved without one.
 					float falloff_distance = force->radius * bank_units_scale;
 					if (falloff_distance > 0.f && force->graph_list_index != tfxINVALID) {
 						tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
-						resolved->origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
-						resolved->falloff_scale = 1.f / falloff_distance;
+						tfx_vec3_t origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
+						resolved->origin_x = tfxWideSetSingle(origin.x);
+						resolved->origin_y = tfxWideSetSingle(origin.y);
+						resolved->origin_z = tfxWideSetSingle(origin.z);
+						resolved->falloff_scale = tfxWideSetSingle(1.f / falloff_distance);
 						resolved->profile_graph = profile_graph;
 						resolved->flags |= tfx_force_resolved_flag_bounded;
 						resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;

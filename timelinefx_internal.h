@@ -3260,6 +3260,7 @@ typedef enum {
 	tfx_ctx_policy_flag_forces                               	= 1 << 17,
 	tfx_ctx_policy_flag_spawn_impulse_on_loop                	= 1 << 18,
 	tfx_ctx_policy_flag_drag_variation                       	= 1 << 19,
+	tfx_ctx_policy_flag_has_position_forces                    	= 1 << 20,
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -6363,18 +6364,18 @@ typedef enum {
 //Struct that gets written outside of the particle loop that calculates various things based on the
 //force type and space (emitter, effect world)
 typedef struct tfx_force_resolved_s {
-	tfx_vec3_t axis;
+	tfxWideFloat axis_x, axis_y, axis_z;
 	//Centre of the force field
-	tfx_vec3_t origin;
-	float strength;
+	tfxWideFloat origin_x, origin_y, origin_z;
+	tfxWideFloat strength;
 	//Reciprocal of the distance the profile graph spans
-	float falloff_scale;
+	tfxWideFloat falloff_scale;
 	//Union for vortex and shockwave forces
 	union {
-		struct { float radial_ratio, axial_ratio; } vortex;
+		struct { tfxWideFloat radial_ratio, axial_ratio; } vortex;
 		//How far the wave's leading edge has travelled this frame. Resolved from speed and the effect clock at
 		//setup so the inner loop never touches a clock.
-		struct { float front; } shockwave;
+		struct { tfxWideFloat front; } shockwave;
 		struct { tfx_noise_type algorithm; } noise;
 	};
 	tfx_graph_t *profile_graph;
@@ -9016,12 +9017,12 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_sample_force_profile(const tfx_force_r
 //from the resolved origin, turn a distance into the profile's 0..1 coordinate, then accumulate
 //strength * profile * direction.
 tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
-	const tfxWideFloat axis_x = tfxWideSetSingle(force->axis.x);
-	const tfxWideFloat axis_y = tfxWideSetSingle(force->axis.y);
-	const tfxWideFloat axis_z = tfxWideSetSingle(force->axis.z);
-	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+	const tfxWideFloat axis_x = force->axis_x;
+	const tfxWideFloat axis_y = force->axis_y;
+	const tfxWideFloat axis_z = force->axis_z;
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 
 	//Split the offset about the spin axis. What is left after the axial part is removed is the arm the particle
 	//swings on, and its length - not the distance to the origin - is what the profile is sampled at, so the field
@@ -9044,15 +9045,15 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	radial_z = tfxWideMul(radial_z, inverse_radial_length);
 	const tfxWideFloat radial_distance = tfxWideMul(radial_length_squared, inverse_radial_length);
 
-	const tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
-		tfx__wide_sample_force_profile(force, tfxWideMul(radial_distance, tfxWideSetSingle(force->falloff_scale))));
+	const tfxWideFloat scale = tfxWideMul(force->strength,
+		tfx__wide_sample_force_profile(force, tfxWideMul(radial_distance, force->falloff_scale)));
 
 	//Spinning is the whole point of a vortex, so the tangential component is implicitly 1 and strength scales it.
 	//The two ratios lean that flow inward or outward along the arm and up or down the axis.
 	tfxWideFloat tangential_x, tangential_y, tangential_z;
 	tfx__wide_cross_product(axis_x, axis_y, axis_z, &radial_x, &radial_y, &radial_z, &tangential_x, &tangential_y, &tangential_z);
-	const tfxWideFloat radial_ratio = tfxWideSetSingle(force->vortex.radial_ratio);
-	const tfxWideFloat axial_ratio = tfxWideSetSingle(force->vortex.axial_ratio);
+	const tfxWideFloat radial_ratio = force->vortex.radial_ratio;
+	const tfxWideFloat axial_ratio = force->vortex.axial_ratio;
 	tfxWideFloat flow_x = tfxWideMulAdd(axis_x, axial_ratio, tfxWideMulAdd(radial_x, radial_ratio, tangential_x));
 	tfxWideFloat flow_y = tfxWideMulAdd(axis_y, axial_ratio, tfxWideMulAdd(radial_y, radial_ratio, tangential_y));
 	tfxWideFloat flow_z = tfxWideMulAdd(axis_z, axial_ratio, tfxWideMulAdd(radial_z, radial_ratio, tangential_z));
@@ -9065,9 +9066,9 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 //Adds one attract or repel force to the medium. The direction is the same sign as vortex's radial ratio, so a
 //positive strength pushes out from the origin and a negative one pulls in.
 tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
-	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 
 	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
@@ -9077,8 +9078,8 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
 
-	tfxWideFloat scale = tfxWideMul(tfxWideSetSingle(force->strength),
-		tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+	tfxWideFloat scale = tfxWideMul(force->strength,
+		tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 
 	//So that it accelerates more the closer it is
 	scale = tfxWideMul(scale, distance);
@@ -9093,9 +9094,9 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 //the push is radially outward at the profile's magnitude. Sign follows attract and vortex's radial ratio, so a
 //positive strength blows outward and a negative one sucks inward.
 tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
-	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 
 	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
@@ -9108,9 +9109,9 @@ tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved
 	//Measured backwards from the leading edge: 0 at the front itself, 1 one thickness behind it. That way the
 	//profile reads front to tail and the radius the wave dies at bounds the field in space as well as in time.
 	//The sampler kills the tail side at 1, so only the particles the wave has not reached yet need masking here.
-	const tfxWideFloat profile_time = tfxWideMul(tfxWideSub(tfxWideSetSingle(force->shockwave.front), distance), tfxWideSetSingle(force->falloff_scale));
+	const tfxWideFloat profile_time = tfxWideMul(tfxWideSub(force->shockwave.front, distance), force->falloff_scale);
 	const tfxWideFloat reached = tfxWideGreaterEqual(profile_time, tfxWIDEZERO.m);
-	const tfxWideFloat scale = tfxWideAnd(reached, tfxWideMul(tfxWideSetSingle(force->strength), tfx__wide_sample_force_profile(force, profile_time)));
+	const tfxWideFloat scale = tfxWideAnd(reached, tfxWideMul(force->strength, tfx__wide_sample_force_profile(force, profile_time)));
 
 	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);
 	ctx.medium_velocity_y = tfxWideMulAdd(tfxWideMul(offset_y, inverse_length), scale, ctx.medium_velocity_y);
@@ -9170,13 +9171,13 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 	noise_z = tfxWideMul(noise_z, l);
 
 	//strength already carries the effect's global noise scalar, folded in at setup.
-	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+	tfxWideFloat amplitude = tfxWideMul(force->strength, ctx.lookup_velocity_turbulance);
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
 		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
@@ -9184,7 +9185,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
 		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9281,13 +9282,13 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 	tfxWideFloat noise_z = tfxWideSub(dpsi2_dx, dpsi1_dy);
 
 	//strength already carries the effect's global noise scalar, folded in at setup.
-	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+	tfxWideFloat amplitude = tfxWideMul(force->strength, ctx.lookup_velocity_turbulance);
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
 		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
@@ -9295,7 +9296,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
 		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9356,13 +9357,13 @@ tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolv
 	noise_z = tfxWideMul(noise_z, l);
 
 	//strength already carries the effect's global noise scalar, folded in at setup.
-	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), ctx.lookup_velocity_turbulance);
+	tfxWideFloat amplitude = tfxWideMul(force->strength, ctx.lookup_velocity_turbulance);
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
 		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
@@ -9370,7 +9371,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolv
 		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
 		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9430,13 +9431,13 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 
 	//Absolute units/sec/sec like every other acceleration. Scaling this by ctx.velocity left an emitter
 	//driven by a spawn impulse and forces with no motion randomness at all.
-	tfxWideFloat amplitude = tfxWideMul(tfxWideSetSingle(force->strength), tfxWideMul(influence, inverse_length));
+	tfxWideFloat amplitude = tfxWideMul(force->strength, tfxWideMul(influence, inverse_length));
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, tfxWideSetSingle(force->origin.x));
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, tfxWideSetSingle(force->origin.y));
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, tfxWideSetSingle(force->origin.z));
+		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
 		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
 		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
 		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
@@ -9444,7 +9445,7 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
 		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
 		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, tfxWideSetSingle(force->falloff_scale))));
+		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9472,21 +9473,24 @@ struct tfx_apply_forces {
 		ctx.medium_velocity_z = ctx.force_medium_z;
 
 		const tfx_control_work_entry_t *work_entry = ctx.work_entry;
-		const tfxU32 vortex_start = work_entry->force_group_start[tfxForceVortex];
-		const tfxU32 vortex_end = vortex_start + work_entry->force_group_count[tfxForceVortex];
-		for (tfxU32 force_index = vortex_start; force_index != vortex_end; ++force_index) {
-			tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+		if (ctx.flags & tfx_ctx_policy_flag_has_position_forces) {
+			const tfxU32 vortex_start = work_entry->force_group_start[tfxForceVortex];
+			const tfxU32 vortex_end = vortex_start + work_entry->force_group_count[tfxForceVortex];
+			for (tfxU32 force_index = vortex_start; force_index != vortex_end; ++force_index) {
+				tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+			}
+			const tfxU32 attract_start = work_entry->force_group_start[tfxForceAttract];
+			const tfxU32 attract_end = attract_start + work_entry->force_group_count[tfxForceAttract];
+			for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
+				tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+			}
+			const tfxU32 shockwave_start = work_entry->force_group_start[tfxForceShockwave];
+			const tfxU32 shockwave_end = shockwave_start + work_entry->force_group_count[tfxForceShockwave];
+			for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
+				tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
+			}
 		}
-		const tfxU32 attract_start = work_entry->force_group_start[tfxForceAttract];
-		const tfxU32 attract_end = attract_start + work_entry->force_group_count[tfxForceAttract];
-		for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
-			tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
-		}
-		const tfxU32 shockwave_start = work_entry->force_group_start[tfxForceShockwave];
-		const tfxU32 shockwave_end = shockwave_start + work_entry->force_group_count[tfxForceShockwave];
-		for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
-			tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
-		}
+
 		//Note:There can only be one noise type in the forces so no need for for loop here
 		if (work_entry->force_group_count[tfxForceNoise]) {
 			const tfxU32 noise_index = work_entry->force_group_start[tfxForceNoise];
@@ -9532,7 +9536,7 @@ struct tfx_apply_velocity {
 		tfxWideFloat previous_velocity_y = tfxWideLoad(&bank.velocity_y[index]);
 		tfxWideFloat previous_velocity_z = tfxWideLoad(&bank.velocity_z[index]);
 
-		tfxWideInt particle_uid = tfxWideSetSinglei(0);
+		tfxWideInt particle_uid = tfxWideSetZeroi;
 		if (ctx.flags & (tfx_ctx_policy_flag_spawn_impulse_on_loop | tfx_ctx_policy_flag_drag_variation)) {
 			particle_uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
 		}
