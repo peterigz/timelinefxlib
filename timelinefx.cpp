@@ -11773,9 +11773,6 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	if (emitter_properties->noise_algorithm == tfxWhiteNoise && tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index]) > 0.f) {
 		emitter->state_properties.control_profile |= tfxEmitterControlProfile_motion_randomness;
 	}
-	if (emitter_properties->emission_direction == tfxOrbital && shared_properties->emission_type != tfxPoint) {
-		emitter->state_properties.control_profile |= tfxEmitterControlProfile_orbital;
-	}
 	switch (tfx__get_emitter_noise_type(emitter)) {
 	case tfxSimplexNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_simplex_noise; break;
 	case tfxCurlNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_curl_noise; break;
@@ -18098,7 +18095,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		}
-		else if (emission_direction != tfxPathGradient && emission_direction != tfxOrbital) {
+		else if (emission_direction != tfxPathGradient) {
 			if (emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal && emission_type == tfxLine) {
 				velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
 			}
@@ -18107,21 +18104,6 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 				velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 				velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 			}
-		}
-		else if (emission_direction == tfxOrbital) {
-			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-				velocity_normal.z = local_position_x - emitter.world_position.x;
-				velocity_normal.y = 0.f;
-				velocity_normal.x = local_position_z - emitter.world_position.z * -1.f;
-				velocity_normal = tfx__normalize_vec3_fast(&velocity_normal);
-			}
-			else {
-				velocity_normal.z = emitter.handle.x + local_position_x;
-				velocity_normal.y = 0.f;
-				velocity_normal.x = (emitter.handle.z + local_position_z) * -1.f;
-				velocity_normal = tfx__normalize_vec3_fast(&velocity_normal);
-			}
-			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		} else {
 			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
 		}

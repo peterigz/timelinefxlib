@@ -3051,7 +3051,6 @@ typedef enum {
 	tfxBothways,
 	tfxSpecified,
 	tfxSurface,
-	tfxOrbital,
 	tfxPathGradient
 } tfx_emission_direction;
 
@@ -3218,7 +3217,6 @@ typedef enum {
 	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,
 	tfxEmitterControlProfile_curl_noise                         = 1 << 1,
 	tfxEmitterControlProfile_motion_randomness                  = 1 << 2,
-	tfxEmitterControlProfile_orbital                            = 1 << 3,
 	tfxEmitterControlProfile_path                               = 1 << 4,
 	tfxEmitterControlProfile_rotated_path						= 1 << 5,
 	tfxEmitterControlProfile_edge_traversal                     = 1 << 6,
@@ -3237,7 +3235,7 @@ typedef enum {
 	tfxEmitterControlProfile_has_any_noise						= tfxEmitterControlProfile_simplex_noise | tfxEmitterControlProfile_curl_noise | tfxEmitterControlProfile_value_noise | tfxEmitterControlProfile_motion_randomness,
 	tfxEmitterControlProfile_has_rotated_path_or_line			= tfxEmitterControlProfile_rotated_path | tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_rotated_line,
 	tfxEmitterControlProfile_any_line							= tfxEmitterControlProfile_line | tfxEmitterControlProfile_rotated_line,
-	tfxEmitterControlProfile_drag_is_noop 						= tfxEmitterControlProfile_orbital | tfxEmitterControlProfile_trajectory,
+	tfxEmitterControlProfile_drag_is_noop 						= tfxEmitterControlProfile_trajectory,
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
