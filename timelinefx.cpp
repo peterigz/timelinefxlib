@@ -2965,35 +2965,22 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index].type = tfxOvertime_clip_end;
 }
 
-//tfx__initialise_force_graphs only allocates the list - the graph type and preset are set here, as they are for
-//every other list. The type matters beyond the editor: tfx__is_lerp_graph keys off it to decide whether the
-//graph gets its wide_graph compiled, and the saved name comes from it.
+//Reset to a simple constant value
 void tfx__reset_force_graphs(tfx_library library, tfxU32 graph_list_index, bool add_node) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT(graph_list_index < library->graphs.current_size);
 	tfx_graph_list_t *graph_list = &library->graphs[graph_list_index];
 	tfx_graph_t *wave = &graph_list->graphs[tfxForce_profile_index];
-	//Type first, unlike the other reset functions which assign it afterwards. tfx__reset_graph ends by calling
-	//tfx__update_lerp_graph, which only recognises the graph as a two node curve once the type is set - assigning
-	//it after would leave a freshly created wave sitting at one node until something else recompiled it.
 	wave->type = tfxForce_profile;
-	//The wave is a signed multiplier over a 0..1 phase, which is the shape tfxVelocityOvertimePreset already
-	//describes (x 0..1, y -20..20). Nodes are added here rather than by tfx__reset_graph because the default is
-	//a curve, not a single value.
 	tfx__reset_graph(wave, 0.f, tfxVelocityOvertimePreset, false);
 	wave->flags &= ~(tfxGraphFlags_use_bezier_sampling | tfxGraphFlags_enable_oscillator);
+	wave->easing_type = tfxGraphEasingType_constant;
 	if (add_node) {
-		//A single hump rising from zero and returning to zero: equal end values are what make the curve repeat
-		//without a step at the seam, and the control points bulge it into a gust. A flat default would leave
-		//wave_amplitude, wave_length, wave_speed and wave_axis with nothing to act on, since they only ever
-		//scale this shape. The control height is 4/3 because a cubic with both handles at h peaks at 0.75h, so
-		//the hump tops out at exactly 1 and wave_amplitude reads as the peak strength added to base_strength.
 		const float control_height = 4.f / 3.f;
-		tfx_attribute_node_t *start_node = tfx__add_graph_node_values(wave, 0.f, 0.f, tfxAttributeNodeFlags_is_curve, 0.f, 0.f, 1.f / 3.f, control_height);
+		tfx_attribute_node_t *start_node = tfx__add_graph_node_values(wave, 0.f, 1.f, tfxAttributeNodeFlags_none);
 		tfx__set_node_curve_initialised(start_node);
-		tfx_attribute_node_t *end_node = tfx__add_graph_node_values(wave, 1.f, 0.f, tfxAttributeNodeFlags_is_curve, 2.f / 3.f, control_height, 1.f, 0.f);
+		tfx_attribute_node_t *end_node = tfx__add_graph_node_values(wave, 1.f, 1.f, tfxAttributeNodeFlags_none);
 		tfx__set_node_curve_initialised(end_node);
-		wave->flags |= tfxGraphFlags_use_bezier_sampling;
 		tfx__update_lerp_graph(wave);
 	}
 }
@@ -5776,6 +5763,52 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 		force->radius = (float)atof((*values)[tail + 4].c_str());
 		break;
 	}
+}
+
+//Whether the emitter's legacy noise graphs actually amount to anything. Lifted from the runtime fallback the
+//migration below replaces, so an emitter gains a force exactly when it used to render noise.
+tfxINTERNAL bool tfx__legacy_noise_graphs_have_amplitude(tfx_effect_descriptor emitter, tfx_noise_type algorithm) {
+	tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
+	if (algorithm == tfxWhiteNoise) {
+		return tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_overtime_motion_randomness_index]) > 0.f;
+	}
+	tfx_graph_t &velocity_turbulance = graph_list.graphs[tfxEmitter_overtime_velocity_turbulance_index];
+	if (tfx__get_graph_max_value(&velocity_turbulance) > 0.f && tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_overtime_noise_resolution_index]) > 0.f) {
+		return true;
+	}
+	//A curve whose nodes are all zero can still swing above zero on its bezier handles, which the node maximum misses.
+	if (velocity_turbulance.flags & tfxGraphFlags_use_bezier_sampling) {
+		if (velocity_turbulance.nodes[0].right.y != 0.f) return true;
+		if (velocity_turbulance.nodes.size() == 2 && velocity_turbulance.nodes[1].left.y != 0.f) return true;
+	}
+	return false;
+}
+
+//Emitters authored before noise became a force carry the algorithm on the emitter properties instead of in the force
+//list, where nothing reads it any more. Synthesise the force they would be authored as now, in the reader so the file
+//itself never has to be rewritten. Call once the emitter's graphs are in, since whether the noise did anything is a
+//question about them.
+tfxINTERNAL void tfx__migrate_legacy_noise_to_force(tfx_effect_descriptor emitter) {
+	if (emitter->type != tfxEmitterType) return;
+	tfx_particle_emitter_properties_t *properties = tfx__get_particle_emitter_properties(emitter);
+	if (!properties || properties->noise_algorithm == tfxNoNoise) return;
+	//Cleared whether or not a force comes of it: the legacy field is the only thing marking this emitter as
+	//unmigrated, and it is hashed as part of the properties, so leaving it set makes a saved effect and its
+	//reloaded self disagree.
+	tfx_noise_type algorithm = properties->noise_algorithm;
+	properties->noise_algorithm = tfxNoNoise;
+	for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
+		//A file already carrying a noise force was written after the migration, so its legacy field is a leftover.
+		//One noise force per emitter is load bearing, so this can never be a second one.
+		if (properties->forces[force_index].type == tfxForceNoise) return;
+	}
+	if (!tfx__legacy_noise_graphs_have_amplitude(emitter, algorithm)) return;
+	tfx_force_t *force = tfx__add_emitter_force(emitter, tfxForceNoise);
+	if (!force) return;
+	force->noise.algorithm = algorithm;
+	//A strength of 1 over the unbounded radius of 0 is the global_noise x velocity_turbulance field the emitter
+	//already had, because the effect's global scalar is folded into strength at setup.
+	force->strength = 1.f;
 }
 
 void tfx__assign_force_graph_node_data(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values) {
@@ -9625,6 +9658,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			TFX_ASSERT(current_effect);
 			tfx__initialise_unitialised_graphs(effect_stack.back());
 			tfx__update_emitter_max_life(effect_stack.back());
+			tfx__migrate_legacy_noise_to_force(effect_stack.back());
 			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 			TFX_ASSERT(current_effect);
 			TFX_ASSERT_HANDLE(effect_stack.back());
@@ -11736,49 +11770,11 @@ void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect) {
 	}
 }
 
-tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter) {
-	TFX_ASSERT_HANDLE(emitter);
-	if (emitter->type != tfxEmitterType) {
-		return tfxNoNoise;
-	}
-	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
-	for (int i = 0; i != emitter_properties->force_count; ++i) {
-		tfx_force_t *force = &emitter_properties->forces[i];
-		if (force->type == tfxForceNoise && (force->flags & tfxForceFlags_enabled) && force->noise.algorithm != tfxNoNoise) {
-			return force->noise.algorithm;
-		}
-	}
-	tfx_noise_type noise_type = tfx__get_particle_emitter_properties(emitter)->noise_algorithm;
-	if (tfx__get_particle_emitter_properties(emitter)->noise_algorithm != tfxWhiteNoise) {
-		tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
-		tfx_graph_t &vt = graph_list.graphs[tfxEmitter_overtime_velocity_turbulance_index];
-		float max_noise = tfx__get_graph_max_value(&vt);
-		float max_resolution = tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_overtime_noise_resolution_index]);
-		if (max_noise && max_resolution) {
-			return noise_type;
-		}
-		if (vt.flags & tfxGraphFlags_use_bezier_sampling) {
-			if (vt.nodes[0].right.y != 0.f) return noise_type;
-			if (vt.nodes.size() == 2 && vt.nodes[1].left.y != 0.f) return noise_type;
-		}
-	}
-	return tfxNoNoise;
-}
-
 void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
 	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 	emitter->state_properties.control_profile = 0;
-	if (emitter_properties->noise_algorithm == tfxWhiteNoise && tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index]) > 0.f) {
-		emitter->state_properties.control_profile |= tfxEmitterControlProfile_motion_randomness;
-	}
-	switch (tfx__get_emitter_noise_type(emitter)) {
-	case tfxSimplexNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_simplex_noise; break;
-	case tfxCurlNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_curl_noise; break;
-	case tfxValueNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_value_noise; break;
-	default: break;
-	}
 	//Keyed on an enabled entry rather than force_count, which is what makes the enabled flag worth having: a list
 	//of muted forces costs an emitter nothing, not even the dispatch arm.
 	for (tfxU32 force_index = 0; force_index != emitter_properties->force_count; ++force_index) {
@@ -11786,7 +11782,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 		if (!(force->flags & tfxForceFlags_enabled)) continue;
 		emitter->state_properties.control_profile |= tfxEmitterControlProfile_forces;
 		if (force->type != tfxForceNoise) continue;
-		//Raises the same bit the legacy noise property does, so the noise spawners write the bank fields the force reads.
+		//The algorithm bit is what makes the noise spawners write the bank fields the force reads.
 		switch (force->noise.algorithm) {
 		case tfxSimplexNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_simplex_noise; break;
 		case tfxCurlNoise: emitter->state_properties.control_profile |= tfxEmitterControlProfile_curl_noise; break;
@@ -19484,6 +19480,7 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 	force->graph_list_index = tfx__add_library_graphs(emitter->library, tfxForceType);
 	tfx__reset_force_graphs(emitter->library, force->graph_list_index, true);
 	tfx__set_emitter_force_type(force, type);
+	force->space = tfxForceSpaceEmitter;
 	switch(type) {
 		case tfxForceWind: {
 			force->direction = { 1.f, 0.f, 0.f };
@@ -19498,18 +19495,18 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 			break;
 		}
 		case tfxForceVortex: {
-			force->axis = { 1.f, 0.f, 0.f };
+			force->axis = { 0.f, 1.f, 0.f };
 			force->radius = 5.f;
-			force->strength = 1.f;
-			force->vortex.radial_ratio = 1.f;
-			force->vortex.axial_ratio = 1.f;
+			force->strength = 5.f;
+			force->vortex.radial_ratio = 0.f;
+			force->vortex.axial_ratio = 0.f;
 			break;
 		}
 		case tfxForceShockwave: {
 			force->radius = 5.f;
-			force->strength = 1.f;
-			force->shockwave.speed = 1.f;
-			force->shockwave.thickness = .25f;
+			force->strength = 10.f;
+			force->shockwave.speed = 5.f;
+			force->shockwave.thickness = 1.f;
 			break;
 		}
 		//Only fields this type's save tail writes may be defaulted here - anything else comes back from a load at

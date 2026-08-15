@@ -6389,7 +6389,8 @@ typedef struct tfx_particle_emitter_properties_s {
 	tfxAngleSettingFlags angle_settings;
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
 	tfx_emission_direction emission_direction;
-	//The type of noise algorithm to use
+	//Where the noise algorithm lived before it became a force. Read only by tfx__migrate_legacy_noise_to_force, which
+	//turns it into a noise force and clears it, so on any loaded emitter this is tfxNoNoise.
 	tfx_noise_type noise_algorithm;
 	//How particles should behave when they reach the end of the line
 	tfx_line_traversal_end_behaviour end_behaviour;
@@ -7733,7 +7734,6 @@ tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect);
-tfxINTERNAL tfx_noise_type tfx__get_emitter_noise_type(tfx_effect_descriptor emitter);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxAPI_EDITOR tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z);
