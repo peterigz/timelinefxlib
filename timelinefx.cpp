@@ -101,7 +101,7 @@ void tfxAddHostMemoryPool(size_t size) {
 void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 82014832) {
+	if (offset_from_allocator == 13312136) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -115,7 +115,7 @@ void *tfxAllocate(size_t size) {
 void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 82014832) {
+	if (offset_from_allocator == 13312136) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -130,7 +130,7 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 82014832) {
+	if (offset_from_allocator == 13312136) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -251,7 +251,7 @@ void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_heade
 void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, bool output_all) {
 	tfx_pool_stats_t stats{};
     tfx_header *current_block = first_block;
-    tfxPrint("Current used blocks in ZEST memory");
+    tfxPrint("Current used blocks in timelinefx memory");
     while (!tfx__is_last_block_in_pool(current_block)) {
         if (tfx__is_free_block(current_block)) {
             stats.free_blocks++;
