@@ -3051,7 +3051,8 @@ typedef enum {
 	tfxBothways,
 	tfxSpecified,
 	tfxSurface,
-	tfxPathGradient
+	tfxPathGradient,
+	tfxMaxEmissionDirection
 } tfx_emission_direction;
 
 //For line effects where traverse line is switched on

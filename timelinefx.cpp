@@ -6561,7 +6561,9 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	tfx_particle_emitter_properties_t *emitter_properties = effect->type == tfxEmitterType ? tfx__get_particle_emitter_properties(effect) : nullptr;
-	if (*field == "emission_direction" && emitter_properties) emitter_properties->emission_direction = (tfx_emission_direction)value;
+	if (*field == "emission_direction" && emitter_properties) {
+		emitter_properties->emission_direction = (tfx_emission_direction)value >= tfxMaxEmissionDirection ? tfxOutwards : (tfx_emission_direction)value;
+	}
 	else if (*field == "noise_algorithm" && emitter_properties) emitter_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "end_behaviour" && emitter_properties) emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
 	else if (*field == "emission_type" && shared_properties) shared_properties->emission_type = (tfx_emission_type)value;
