@@ -10648,84 +10648,78 @@ void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU3
 	animation_manager->free_instances.push_back(index);
 }
 
-void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfxU32 &ribbon_indexes, bool *has_animated_shape) {
+void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_vector_t<tfxU32> &emitter_property_map, tfx_vector_t<tfxU32> &ribbon_property_map, bool *has_animated_shape) {
 	TFX_ASSERT_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type == tfxEmitterType) {
-		if (effect->library->emitter_properties[effect->state_properties.property_index].animation_property_index != tfxINVALID) {
-			tfx_gpu_particle_properties_t properties{};
-			properties = effect->library->particle_gpu_properties[effect->state_properties.gpu_property_index];
-			properties.flags |= effect->state_properties.property_flags;
-			tfx_image_data_t &image = *effect->state_properties.image;
-			properties.animation_frames = image.animation_frames;
-			if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
-				*has_animated_shape = true;
-			}
-			if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
-				properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
-			} else {
-				properties.start_frame_index = image.compute_shape_index;
-			}
-			tfxU32 index = animation_manager->emitter_properties.current_size;
-			effect->library->emitter_properties[effect->state_properties.property_index].animation_property_index = index;
-			tfx__readbarrier;
-			tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
-			animation_manager->emitter_properties.push_back_copy(properties);
-			tfx__copy_emitter_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
+		tfx_gpu_particle_properties_t properties{};
+		properties = effect->library->particle_gpu_properties[effect->state_properties.gpu_property_index];
+		properties.flags |= effect->state_properties.property_flags;
+		tfx_image_data_t &image = *effect->state_properties.image;
+		properties.animation_frames = image.animation_frames;
+		if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
+			*has_animated_shape = true;
 		}
+		if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
+			properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
+		} else {
+			properties.start_frame_index = image.compute_shape_index;
+		}
+		tfxU32 index = animation_manager->emitter_properties.current_size;
+		emitter_property_map[effect->state_properties.property_index] = index;
+		tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
+		animation_manager->emitter_properties.push_back_copy(properties);
+		tfx__copy_emitter_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[effect->state_properties.property_index];
-		if (ribbon_properties.animation_property_index != tfxINVALID) {
-			tfx_animation_ribbon_properties_t properties{};
-			properties.segment_count = ribbon_properties.bucket_info.segment_count;
-			properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
-			properties.shader_type = ribbon_properties.angle_type;
-			properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
-			properties.flags = effect->state_properties.property_flags;
-			properties.graph_lookup_offset = effect->gpu_lookup_offset;
-			tfx_image_data_t &image = *effect->state_properties.image;
-			properties.animation_frames = image.animation_frames;
-			if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
-				*has_animated_shape = true;
-			}
-			if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
-				properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
-			} else {
-				properties.start_frame_index = image.compute_shape_index;
-			}
-			//Find or create a compatible animation ribbon bucket
-			tfxKey bucket_id = (tfxKey)properties.segment_count;
-			tfxU32 found_bucket_index = tfxINVALID;
-			for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
-				if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
-					found_bucket_index = b;
-					break;
-				}
-			}
-			if (found_bucket_index == tfxINVALID) {
-				tfx_animation_ribbon_bucket_t bucket{};
-				bucket.bucket_id = bucket_id;
-				bucket.segment_count = properties.segment_count;
-				bucket.tessellation = properties.tessellation;
-				bucket.max_ribbon_count = 0;
-				bucket.ribbon_count = 0;
-				bucket.ribbon_offset = 0;
-				bucket.index_offset = 0;
-				bucket.vertex_offset = 0;
-				found_bucket_index = animation_manager->animation_ribbon_buckets.current_size;
-				animation_manager->animation_ribbon_buckets.push_back(bucket);
-			}
-			properties.bucket_index = found_bucket_index;
-
-			tfxU32 index = animation_manager->ribbon_properties.current_size;
-			effect->library->ribbon_properties[effect->state_properties.property_index].animation_property_index = index;
-			tfx__readbarrier;
-			tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
-			animation_manager->ribbon_properties.push_back_copy(properties);
-			tfx__copy_ribbon_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
+		tfx_animation_ribbon_properties_t properties{};
+		properties.segment_count = ribbon_properties.bucket_info.segment_count;
+		properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
+		properties.shader_type = ribbon_properties.angle_type;
+		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
+		properties.flags = effect->state_properties.property_flags;
+		properties.graph_lookup_offset = effect->gpu_lookup_offset;
+		tfx_image_data_t &image = *effect->state_properties.image;
+		properties.animation_frames = image.animation_frames;
+		if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
+			*has_animated_shape = true;
 		}
+		if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
+			properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
+		} else {
+			properties.start_frame_index = image.compute_shape_index;
+		}
+		//Find or create a compatible animation ribbon bucket
+		tfxKey bucket_id = (tfxKey)properties.segment_count;
+		tfxU32 found_bucket_index = tfxINVALID;
+		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
+			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
+				found_bucket_index = b;
+				break;
+			}
+		}
+		if (found_bucket_index == tfxINVALID) {
+			tfx_animation_ribbon_bucket_t bucket{};
+			bucket.bucket_id = bucket_id;
+			bucket.segment_count = properties.segment_count;
+			bucket.tessellation = properties.tessellation;
+			bucket.max_ribbon_count = 0;
+			bucket.ribbon_count = 0;
+			bucket.ribbon_offset = 0;
+			bucket.index_offset = 0;
+			bucket.vertex_offset = 0;
+			found_bucket_index = animation_manager->animation_ribbon_buckets.current_size;
+			animation_manager->animation_ribbon_buckets.push_back(bucket);
+		}
+		properties.bucket_index = found_bucket_index;
+
+		tfxU32 index = animation_manager->ribbon_properties.current_size;
+		ribbon_property_map[effect->state_properties.property_index] = index;
+		tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.graph_list_index];
+		animation_manager->ribbon_properties.push_back_copy(properties);
+		tfx__copy_ribbon_color_ramp_to_animation_manager(animation_manager, index, &graph_list);
 	} else {
 		for (tfx_effect_descriptor sub : effect->children) {
-			tfx__add_effect_emitter_properties(animation_manager, sub, ribbon_indexes, has_animated_shape);
+			tfx__add_effect_emitter_properties(animation_manager, sub, emitter_property_map, ribbon_property_map, has_animated_shape);
 		}
 	}
 }
@@ -10757,9 +10751,15 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	}
 
 	bool has_animated_shape = false;
-	tfxU32 ribbon_indexes = tfxINVALID;
 	tfxU32 ribbon_property_start = animation_manager->ribbon_properties.current_size;
-	tfx__add_effect_emitter_properties(animation_manager, effect, ribbon_indexes, &has_animated_shape);
+	//Library property index -> animation manager property index, built as each emitter is added below. It only has to
+	//survive this call, and keeping it out of the property structs keeps their hash (used for change detection in the
+	//editor) independent of whether the effect has been baked into an animation manager.
+	tfx_vector_t<tfxU32> emitter_property_map;
+	tfx_vector_t<tfxU32> ribbon_property_map;
+	emitter_property_map.resize(effect->library->emitter_properties.current_size, tfxINVALID);
+	ribbon_property_map.resize(effect->library->ribbon_properties.current_size, tfxINVALID);
+	tfx__add_effect_emitter_properties(animation_manager, effect, emitter_property_map, ribbon_property_map, &has_animated_shape);
 
 	tfx_sprite_data_t &sprite_data = !external_sprite_data ? effect->library->pre_recorded_effects.At(effect->path_hash) : *external_sprite_data;
 	animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
@@ -10796,7 +10796,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		tfx_instance_t sprite = sprites.billboard_instance[i];
 		sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 		sprite.curved_alpha_life.w = tfxU32(sprites.lerp_offset[i] * 255.f);
-		tfxU32 animation_property_index = effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index;
+		tfxU32 animation_property_index = emitter_property_map[sprites.uid[i].property_index];
 		sprite.indexes &= 0x0000FFFF;
 		sprite.indexes |= animation_property_index << 16;
 		animation_manager->sprite_data.push_back_copy(sprite);
@@ -10826,8 +10826,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 			ribbon.captured_index += ribbon.captured_index == tfxINVALID ? 0 : metrics.ribbon_start_offset;
 			ribbon.start_index += ribbon.start_index == tfxINVALID ? 0 : metrics.ribbon_segment_start_offset;
 			ribbon.additional = tfxU32(ribbons.lerp_offset[i] * 65535.f);
-			tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[ribbons.uid[i].property_index];
-			tfxU32 animation_property_index = ribbon_properties.animation_property_index;
+			tfxU32 animation_property_index = ribbon_property_map[ribbons.uid[i].property_index];
 			ribbon.additional |= (animation_property_index << 16);
 			ribbon.texture_indexes &= 0x0000FFFF;
 			ribbon.texture_indexes |= (tfxColorRampIndex(animation_manager->ribbon_properties[animation_property_index].color_ramp_index) << 24);
@@ -10853,8 +10852,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 			for (tfxU32 i = 0; i < meta.ribbon_count; ++i) {
 				tfxU32 compressed_index = meta.index_offset + i;
 				tfxU32 library_property_index = ribbons.uid[compressed_index].property_index;
-				tfx_ribbon_emitter_properties_t &ribbon_emitter_properties = effect->library->ribbon_properties[library_property_index];
-				tfxU32 animation_property_index = ribbon_emitter_properties.animation_property_index;
+				tfxU32 animation_property_index = ribbon_property_map[library_property_index];
 				TFX_ASSERT(animation_property_index >= ribbon_property_start && animation_property_index < ribbon_property_start + local_property_count);
 				tfxU32 local_index = animation_property_index - ribbon_property_start;
 				metrics.per_property_ribbon_counts[f * local_property_count + local_index]++;
@@ -10878,6 +10876,9 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 			meta.index_offset += metrics.ribbon_start_offset;
 		}
 	}
+
+	emitter_property_map.free();
+	ribbon_property_map.free();
 }
 
 void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, tfx_maybe_render_instance_callback maybe_render_instance_callback) {
@@ -19447,7 +19448,6 @@ void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties)
 	properties->emission_direction = tfx_emission_direction::tfxOutwards;
 	properties->end_behaviour = tfx_line_traversal_end_behaviour::tfxLoop;
 	properties->angle_settings = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
-	properties->animation_property_index = tfxINVALID;
 	for (int i = 0; i != tfxMAX_FORCES; ++i) {
 		tfx__init_emitter_force(&properties->forces[i]);
 	}

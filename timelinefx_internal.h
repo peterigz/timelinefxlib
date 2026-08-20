@@ -6397,10 +6397,6 @@ typedef struct tfx_particle_emitter_properties_s {
 	tfx_line_traversal_end_behaviour end_behaviour;
 	//Bit field of various boolean state_flags
 	tfxParticleControlFlags compute_flags;
-	//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
-	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
-	//are stored on the GPU for looking up from the sprite data
-	tfxU32 animation_property_index;
 	//The amount of drag that particles have. 0 is the default which is no drag and standard legacy tfx kinetic behaviour
 	float drag_half_life;
 	//Added to the drag rate per particle, drawn from [0, variation] by hashing the particle uid. Stored as a
@@ -6459,7 +6455,6 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
 	tfxRibbonBucketComputeShaderType angle_type;
-	tfxU32 animation_property_index;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -9996,7 +9991,7 @@ tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *parti
 //--------------------------------
 tfxINTERNAL tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager animation_manager);
 tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU32 index);
-tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfxU32 &ribbon_indexes, bool *has_animated_shape);
+tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_vector_t<tfxU32> &emitter_property_map, tfx_vector_t<tfxU32> &ribbon_property_map, bool *has_animated_shape);
 tfxINTERNAL bool tfx__free_pm_effect_capacity(tfx_stage pm);
 tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances);
 
