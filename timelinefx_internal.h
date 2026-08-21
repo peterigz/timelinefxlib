@@ -2780,7 +2780,6 @@ typedef enum {
 	tfxVelocityPreset,
 	tfxWeightPreset,
 	tfxWeightVariationPreset,
-	tfxNoiseOffsetVariationPreset,
 	tfxNoiseResolutionPreset,
 	tfxSpinPreset,
 	tfxSpinVariationPreset,
@@ -2869,7 +2868,6 @@ typedef enum {
 	tfxBase_pitch_spin,
 	tfxBase_yaw_spin,
 	tfxBase_roll_spin,
-	tfxBase_noise_offset,
 
 	tfxVariation_life,
 	tfxVariation_amount,
@@ -2881,7 +2879,6 @@ typedef enum {
 	tfxVariation_pitch_spin,
 	tfxVariation_yaw_spin,
 	tfxVariation_roll_spin,
-	tfxVariation_noise_offset,
 	tfxVariation_noise_resolution,
 	tfxVariation_motion_randomness,
 
@@ -2973,7 +2970,7 @@ typedef enum {
 	tfxProperty_start = tfxProperty_emission_pitch,
 	tfxProperty_end = tfxProperty_arc_offset,
 	tfxBase_start = tfxBase_life,
-	tfxBase_end = tfxBase_noise_offset,
+	tfxBase_end = tfxBase_roll_spin,
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
@@ -6444,6 +6441,11 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxKey paired_emitter_hash;
 	//Layer of the effect manager that the particle is added to
 	tfxU32 layer;
+	//Per axis rate that the emitter's shared noise offset travels through the field, in field units per second.
+	//Derived from the emitter age rather than accumulated so it is frame rate independent and wraps with loop_length.
+	tfx_vec3_t base_noise_step;
+	//The amount to vary the noise offset per particle when they spawn
+	float noise_offset_variation;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {

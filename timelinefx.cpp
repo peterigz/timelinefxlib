@@ -2872,7 +2872,6 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_roll_spin_index], 0.f, tfxSpinPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_base_roll_spin_index].type = tfxBase_roll_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_pitch_spin_index], 0.f, tfxSpinPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_base_pitch_spin_index].type = tfxBase_pitch_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_yaw_spin_index], 0.f, tfxSpinPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_base_yaw_spin_index].type = tfxBase_yaw_spin;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_noise_offset_index], 0.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_base_noise_offset_index].type = tfxBase_noise_offset;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_pitch_index].type = tfxProperty_emission_pitch;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], 0.f, tfxAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_yaw_index].type = tfxProperty_emission_yaw;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_range_index], 0.f, tfxEmissionRangePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_range_index].type = tfxProperty_emission_range;
@@ -2893,7 +2892,6 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index], 0.f, tfxSpinVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index].type = tfxVariation_roll_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index], 0.f, tfxSpinVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index].type = tfxVariation_pitch_spin;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index], 0.f, tfxSpinVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index].type = tfxVariation_yaw_spin;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], 0.f, tfxNoiseOffsetVariationPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index].type = tfxVariation_noise_offset;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], 300.f, tfxNoiseResolutionPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index].type = tfxVariation_noise_resolution;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], 1.f, tfxNoiseResolutionPreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index].type = tfxVariation_motion_randomness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index], 0.f, tfxAccelerationOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_index].type = tfxOvertime_velocity;
@@ -3043,7 +3041,6 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_base_roll_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_roll_spin_index], 0.f, tfxSpinPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_base_pitch_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_pitch_spin_index], 0.f, tfxSpinPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_base_yaw_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_yaw_spin_index], 0.f, tfxSpinPreset);
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_base_noise_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_base_noise_offset_index], 0.f, tfxGlobalPercentPreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_pitch_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], 0.f, tfxAnglePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_yaw_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], 0.f, tfxAnglePreset);
@@ -3066,7 +3063,6 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_roll_spin_index], 0.f, tfxSpinVariationPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index], 0.f, tfxSpinVariationPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index], 0.f, tfxSpinVariationPreset);
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], 0.f, tfxNoiseOffsetVariationPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], 300.f, tfxNoiseResolutionPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], 1.f, tfxNoiseResolutionPreset);
 
@@ -4682,7 +4678,12 @@ tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library) {
 tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	if (library->free_shared_emitter_properties.size()) {
-		return library->free_shared_emitter_properties.pop_back();
+		tfxU32 recycled_index = library->free_shared_emitter_properties.pop_back();
+		//A recycled slot still holds the freed emitter's values, and callers only overwrite the fields they
+		//explicitly assign, so anything they miss leaks into the new emitter.
+		library->shared_properties[recycled_index] = tfx_shared_properties_t{};
+		library->shared_properties[recycled_index].spawn_amount = 1;
+		return recycled_index;
 	}
 	tfx_shared_properties_t properties{};
 	properties.spawn_amount = 1;
@@ -5077,7 +5078,6 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("base_roll_spin", tfxEmitter_base_roll_spin_index);
 	tfxStore->graph_indexes.Insert("base_pitch_spin", tfxEmitter_base_pitch_spin_index);
 	tfxStore->graph_indexes.Insert("base_yaw_spin", tfxEmitter_base_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("base_noise_offset", tfxEmitter_base_noise_offset_index);
 
 	tfxStore->graph_indexes.Insert("variation_life", tfxEmitter_variation_life_index);
 	tfxStore->graph_indexes.Insert("variation_amount", tfxEmitter_variation_amount_index);
@@ -5090,7 +5090,6 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("variation_roll_spin", tfxEmitter_variation_roll_spin_index);
 	tfxStore->graph_indexes.Insert("variation_pitch_spin", tfxEmitter_variation_pitch_spin_index);
 	tfxStore->graph_indexes.Insert("variation_yaw_spin", tfxEmitter_variation_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("variation_noise_offset", tfxEmitter_variation_noise_offset_index);
 	tfxStore->graph_indexes.Insert("variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
 
@@ -5148,7 +5147,6 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_base_roll_spin", tfxEmitter_base_roll_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_base_pitch_spin", tfxEmitter_base_pitch_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_base_yaw_spin", tfxEmitter_base_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("emitter_base_noise_offset", tfxEmitter_base_noise_offset_index);
 
 	tfxStore->graph_indexes.Insert("emitter_variation_life", tfxEmitter_variation_life_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_amount", tfxEmitter_variation_amount_index);
@@ -5161,7 +5159,6 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_variation_roll_spin", tfxEmitter_variation_roll_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_pitch_spin", tfxEmitter_variation_pitch_spin_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_yaw_spin", tfxEmitter_variation_yaw_spin_index);
-	tfxStore->graph_indexes.Insert("emitter_variation_noise_offset", tfxEmitter_variation_noise_offset_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_noise_resolution", tfxEmitter_variation_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("emitter_variation_motion_randomness", tfxEmitter_variation_motion_randomness_index);
 
@@ -5299,6 +5296,10 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("drag_half_life", tfxFloat);
 	names_and_types.Insert("noise_speed_bias", tfxFloat);
+	names_and_types.Insert("base_noise_step_x", tfxFloat);
+	names_and_types.Insert("base_noise_step_y", tfxFloat);
+	names_and_types.Insert("base_noise_step_z", tfxFloat);
+	names_and_types.Insert("noise_offset_variation", tfxFloat);
 	names_and_types.Insert("spawn_impulse", tfxFloat);
 	names_and_types.Insert("spawn_impulse_variation", tfxFloat);
 	names_and_types.Insert("drag_variation", tfxFloat);
@@ -5396,7 +5397,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("base_roll_spin", tfxAttributeGraph);
 	names_and_types.Insert("base_pitch_spin", tfxAttributeGraph);
 	names_and_types.Insert("base_yaw_spin", tfxAttributeGraph);
-	names_and_types.Insert("base_noise_offset", tfxAttributeGraph);
 
 	names_and_types.Insert("variation_life", tfxAttributeGraph);
 	names_and_types.Insert("variation_amount", tfxAttributeGraph);
@@ -5409,7 +5409,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("variation_roll_spin", tfxAttributeGraph);
 	names_and_types.Insert("variation_pitch_spin", tfxAttributeGraph);
 	names_and_types.Insert("variation_yaw_spin", tfxAttributeGraph);
-	names_and_types.Insert("variation_noise_offset", tfxAttributeGraph);
 	names_and_types.Insert("variation_noise_resolution", tfxAttributeGraph);
 	names_and_types.Insert("variation_motion_randomness", tfxAttributeGraph);
 
@@ -5878,9 +5877,17 @@ void tfx__assign_graph_property_values(tfx_graph_t *graph, tfx_vector_t<tfx_str2
 	pair.free();
 }
 
+//Any graphs that are no longer used end up here so the loader can ignore them on load
+tfxINTERNAL bool tfx__is_retired_graph_name(tfx_str256_t *graph_name) {
+	return *graph_name == "base_noise_offset" || *graph_name == "variation_noise_offset";
+}
+
 void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
 	tfx_str256_t graph_name = (*values)[0];
 
+	if (tfx__is_retired_graph_name(&graph_name)) {
+		return;
+	}
 	if (!tfxStore->data_types.names_and_types.ValidName(graph_name.c_str())) {
 		tfxPrint("%s data type was found to be invalid.", graph_name.c_str());
 		return;
@@ -5925,6 +5932,17 @@ void tfx__assign_graph_node_data(tfx_effect_descriptor effect, tfx_vector_t<tfx_
 		tfxU32 graph_list_index = effect->state_properties.graph_list_index;
 		tfxU32 transform_index = effect->state_properties.transform_index;
 		tfx_str256_t property_name = (*values)[0];
+		//Legacy: the noise offset variation graph became a single shared property. Take the peak of the old
+		//graph rather than its first node so an emitter that ramped the variation up keeps its spread.
+		if (property_name == "variation_noise_offset" && effect->type == tfxEmitterType && effect->state_properties.shared_index != tfxINVALID) {
+			tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+			float node_value = (float)atof((*values)[2].c_str());
+			shared_properties->noise_offset_variation = tfxMax(shared_properties->noise_offset_variation, node_value);
+			return;
+		}
+		if (tfx__is_retired_graph_name(&property_name)) {
+			return;
+		}
 		if (!tfxStore->data_types.names_and_types.ValidName(property_name.c_str())) {
 			return;
 		}
@@ -6095,7 +6113,6 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxBase_pitch_spin: return "base_pitch_spin"; break;
 	case tfxBase_yaw_spin: return "base_yaw_spin"; break;
 	case tfxBase_roll_spin: return "base_roll_spin"; break;
-	case tfxBase_noise_offset: return "base_noise_offset"; break;
 
 	case tfxVariation_life: return "variation_life"; break;
 	case tfxVariation_amount: return "variation_amount"; break;
@@ -6107,7 +6124,6 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxVariation_pitch_spin: return "variation_pitch_spin"; break;
 	case tfxVariation_yaw_spin: return "variation_yaw_spin"; break;
 	case tfxVariation_roll_spin: return "variation_roll_spin"; break;
-	case tfxVariation_noise_offset: return "variation_noise_offset"; break;
 	case tfxVariation_noise_resolution: return "variation_noise_resolution"; break;
 	case tfxVariation_motion_randomness: return "variation_motion_randomness"; break;
 
@@ -6311,6 +6327,10 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "loop_length") value.Setf("%f", effect->state_properties.loop_length);
 	else if (property_name == "drag_half_life") value.Setf("%f", emitter_properties->drag_half_life);
 	else if (property_name == "noise_speed_bias") value.Setf("%f", emitter_properties->noise_speed_bias);
+	else if (property_name == "base_noise_step_x") value.Setf("%f", shared_properties->base_noise_step.x);
+	else if (property_name == "base_noise_step_y") value.Setf("%f", shared_properties->base_noise_step.y);
+	else if (property_name == "base_noise_step_z") value.Setf("%f", shared_properties->base_noise_step.z);
+	else if (property_name == "noise_offset_variation") value.Setf("%f", shared_properties->noise_offset_variation);
 	else if (property_name == "spawn_impulse") value.Setf("%f", emitter_properties->spawn_impulse);
 	else if (property_name == "spawn_impulse_variation") value.Setf("%f", emitter_properties->spawn_impulse_variation);
 	else if (property_name == "drag_variation") value.Setf("%f", emitter_properties->drag_variation);
@@ -6625,6 +6645,10 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
 	else if (*field == "grid_depth" && shared_properties) shared_properties->grid_points.z = value;
+	else if (*field == "base_noise_step_x" && shared_properties) shared_properties->base_noise_step.x = value;
+	else if (*field == "base_noise_step_y" && shared_properties) shared_properties->base_noise_step.y = value;
+	else if (*field == "base_noise_step_z" && shared_properties) shared_properties->base_noise_step.z = value;
+	else if (*field == "noise_offset_variation" && shared_properties) shared_properties->noise_offset_variation = value < 0.f ? 0.f : value;
 	else if (*field == "image_start_frame" && shared_properties) shared_properties->start_frame = value;
 	else if (*field == "image_end_frame" && shared_properties) effect->state_properties.end_frame = value;
 	else if (*field == "image_frame_rate" && shared_properties) shared_properties->frame_rate = value;
@@ -6803,6 +6827,10 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("drag_half_life=%f", emitter_properties->drag_half_life);
 	file->AddLine("noise_speed_bias=%f", emitter_properties->noise_speed_bias);
+	file->AddLine("base_noise_step_x=%f", shared_properties->base_noise_step.x);
+	file->AddLine("base_noise_step_y=%f", shared_properties->base_noise_step.y);
+	file->AddLine("base_noise_step_z=%f", shared_properties->base_noise_step.z);
+	file->AddLine("noise_offset_variation=%f", shared_properties->noise_offset_variation);
 	file->AddLine("spawn_impulse=%f", emitter_properties->spawn_impulse);
 	file->AddLine("spawn_impulse_variation=%f", emitter_properties->spawn_impulse_variation);
 	file->AddLine("drag_variation=%f", emitter_properties->drag_variation);
@@ -7857,7 +7885,6 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
 		return { 0.f, -1000.f };
 	case tfx_graph_preset::tfxNoiseResolutionPreset:
-	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxUVOvertimePreset:
 		return { 0.f, -1000.f };
@@ -7902,7 +7929,6 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxDirectionVariationPreset:
 		return { tfxMAX_FRAME, 22.5f };
 	case tfx_graph_preset::tfxNoiseResolutionPreset:
-	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		return { tfxMAX_FRAME, 10000.f };
 	case tfx_graph_preset::tfxWeightOvertimePreset:
 		return { 1.f, 20.f };
@@ -16127,7 +16153,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		}
 
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color) {
-			entry->particle_data->random_color[index] = tfx_RandomRangeZeroToMax(&random, max_age) / max_age;
+			entry->particle_data->random_color[index] = tfx_GenerateRandom(&random);
 		}
 
 		entry->particle_data->inv_max_age[index] = 1.f / max_age;
@@ -16153,7 +16179,6 @@ void tfx__spawn_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 		sprites_index = tfxINVALID;
 
 		//----Image
-		//data.image = tfx__get_shared_emitter_properties(this)->image;
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && emitter.state_properties.image->animation_frames > 1) {
 			image_frame = tfx_RandomRangeZeroToMax(&random, emitter.state_properties.image->animation_frames);
 		}
@@ -16284,29 +16309,21 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 6 + emitter.seed_index);
-	float emitter_noise_offset_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], emitter.age, emitter.oscillator_time);
-	float emitter_noise_offset = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_base_noise_offset_index], emitter.age, emitter.oscillator_time);
+	const float emitter_noise_offset_variation = entry->shared_properties->noise_offset_variation;
 	float emitter_noise_resolution = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.age, emitter.oscillator_time);
-	const float parent_noise_base_offset = pm.effects[emitter.parent_index].noise_base_offset;
+	//Apply the effect noise base offset
+	const float shared_noise_offset = pm.effects[emitter.parent_index].noise_base_offset;
 
-	//The part of the offset that every particle in the effect shares: the emitter's base offset graph
-	//sampled at the emitter age, plus this effect instance's noise_base_offset. It is applied equally to
-	//all three axes on purpose. It is a translation common to the whole effect, so its direction has no
-	//bearing on how particles decorrelate from each other, and keeping it uniform leaves "two instances
-	//of the same effect sample different regions of the field" working exactly as it did.
-	const float shared_noise_offset = emitter_noise_offset + parent_noise_base_offset;
+	//Derive the base noise offset from the emitter age so that it's deterministic and loops properly in 
+	//looped emitters.
+	const tfx_vec3_t base_noise_offset = entry->shared_properties->base_noise_step * (emitter.age * 0.001f);
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		//The per-particle spread needs an independent draw per axis. Drawing once and adding the same
-		//scalar to x, y and z (what this used to do) confines every particle's offset to the (1,1,1)
-		//diagonal of the field: a one parameter family rather than a 3D one, so particles with nearby
-		//offsets sample correlated positions and the correlation is anisotropic. Two extra hashes here
-		//buy a volume, and cost nothing at control time.
-		entry->particle_data->noise_offset_x[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
-		entry->particle_data->noise_offset_y[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
-		entry->particle_data->noise_offset_z[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset;
+		entry->particle_data->noise_offset_x[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset + base_noise_offset.x;
+		entry->particle_data->noise_offset_y[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset + base_noise_offset.y;
+		entry->particle_data->noise_offset_z[index] = tfx_RandomRangeZeroToMax(&random, emitter_noise_offset_variation) + shared_noise_offset + base_noise_offset.z;
 		entry->particle_data->noise_resolution[index] = emitter_noise_resolution + 0.01f;
 	}
 }
@@ -19606,6 +19623,8 @@ void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->start_frame = 0;
 	shared_properties->frame_rate = 30.f;
 	shared_properties->paired_emitter_hash = 0;
+	shared_properties->base_noise_step = { 0.f, 0.f, 0.f };
+	shared_properties->noise_offset_variation = 0.f;
 }
 
 //Note: The force list is handed over separately so the destination keeps its own graph lists

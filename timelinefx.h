@@ -186,7 +186,7 @@ typedef struct tfx_float32x4_s {
 }tfx_float32x4_t;
 
 typedef struct tfx_instance_s {		//48 bytes
-	tfx_float32x4_t position;							//The position of the billboard with stretch in w
+	tfx_float32x4_t position;						//The position of the billboard with stretch in w
 	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
 	tfx_float16x2_t size;							//Size/Scale of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
@@ -279,7 +279,6 @@ typedef enum {
 	tfxEmitter_base_pitch_spin_index,
 	tfxEmitter_base_yaw_spin_index,
 	tfxEmitter_base_roll_spin_index,
-	tfxEmitter_base_noise_offset_index,
 
 	tfxEmitter_variation_life_index,
 	tfxEmitter_variation_amount_index,
@@ -291,7 +290,6 @@ typedef enum {
 	tfxEmitter_variation_pitch_spin_index,
 	tfxEmitter_variation_yaw_spin_index,
 	tfxEmitter_variation_roll_spin_index,
-	tfxEmitter_variation_noise_offset_index,
 	tfxEmitter_variation_noise_resolution_index,
 	tfxEmitter_variation_motion_randomness_index,
 
