@@ -3842,6 +3842,52 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 		}
 	}
 	path_nodes.free();
+
+	tfx__build_path_arc_lengths(path);
+}
+
+/*
+For more accurate overlength sampling of the path we calculate a lookup table that contains subsets of 
+accumulated lengths sampled over the path to more accurately record it's length. 
+*/
+void tfx__build_path_arc_lengths(tfx_emitter_path_t *path) {
+	int span_count = path->settings.node_count - 3;
+	if (span_count < 1) {
+		path->buffers.arc_lengths.clear();
+		path->settings.total_length = 0.f;
+		return;
+	}
+
+	tfxU32 sample_count = (tfxU32)(span_count * tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN) + 1;
+	path->buffers.arc_lengths.resize(sample_count);
+	float *lut = path->buffers.arc_lengths.data;
+	const float *node_x = path->buffers.node_soa.x;
+	const float *node_y = path->buffers.node_soa.y;
+	const float *node_z = path->buffers.node_soa.z;
+
+	tfx_vec3_t previous_point;
+	tfx__catmull_rom_spline_3d_soa(node_x, node_y, node_z, 0, 0.f, &previous_point.x);
+	lut[0] = 0.f;
+
+	for (tfxU32 i = 1; i != sample_count; ++i) {
+		int node;
+		float t;
+		if (i == sample_count - 1) {
+			//Express the end of the curve as the end of the last span so that the spline never reads node[node_count]
+			node = span_count - 1;
+			t = 1.f;
+		} else {
+			node = (int)(i / tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN);
+			t = float(i % tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN) / float(tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN);
+		}
+		tfx_vec3_t point;
+		tfx__catmull_rom_spline_3d_soa(node_x, node_y, node_z, node, t, &point.x);
+		tfx_vec3_t chord = point - previous_point;
+		lut[i] = lut[i - 1] + tfx__length_vec3(&chord);
+		previous_point = point;
+	}
+
+	path->settings.total_length = lut[sample_count - 1];
 }
 
 void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size) {
@@ -4831,6 +4877,7 @@ void tfx_FreeLibrary(tfx_library library) {
 	for (tfxBucketLoop(library->paths, i)) {
 		tfx__free_soa_buffer(&library->paths[i].buffers.node_buffer);
 		library->paths[i].buffers.nodes.free();
+		library->paths[i].buffers.arc_lengths.free();
 	}
 	for (tfx_sprite_data_t &sprite_data : library->pre_recorded_effects.data) {
 		tfx__free_sprite_data(&sprite_data);
@@ -15509,6 +15556,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		ribbon_emitter.age -= ribbon_emitter.source_ribbon->state_properties.loop_length;
 	}
 
+	gpu_emitter.age = ribbon_emitter.age;
+
 	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0) {
 		parent_effect.active_emitters++;
 		return;
@@ -17547,6 +17596,56 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 }
 
+
+/*
+Update the ribbon segment buffer using the arc_length look up table so that they're evenly spaced.
+*/
+void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count) {
+	const int span_count = path->settings.node_count - 3;
+	const float last_segment = float(segment_count - 1);
+	const float scaled_path_nodes = float(span_count) / last_segment;
+	const float *arc_lengths = path->buffers.arc_lengths.data;
+	const tfxU32 lut_sample_count = path->buffers.arc_lengths.current_size;
+	//Fall back to spacing by curve parameter for a path with no length to distribute the segments over
+	const bool space_by_arc_length = lut_sample_count > 1 && path->settings.total_length > 0.f;
+	tfxU32 lut_cursor = 0;
+	for (tfxU32 s = 0; s < segment_count; s += tfxDataWidth) {
+		tfxWideArrayi pi;
+		tfxWideArray t;
+		for (tfxU32 j = 0; j != tfxDataWidth; ++j) {
+			float node;
+			if (space_by_arc_length) {
+				//Invert the lut: walk to the pair of samples bracketing the target distance and interpolate the parameter
+				float target_length = (float(s + j) / last_segment) * path->settings.total_length;
+				while (lut_cursor + 2 < lut_sample_count && arc_lengths[lut_cursor + 1] < target_length) {
+					lut_cursor++;
+				}
+				float lut_span = arc_lengths[lut_cursor + 1] - arc_lengths[lut_cursor];
+				float lut_fraction = lut_span > 0.f ? (target_length - arc_lengths[lut_cursor]) / lut_span : 0.f;
+				node = (float(lut_cursor) + lut_fraction) / float(tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN);
+			} else {
+				node = float(s + j) * scaled_path_nodes;
+			}
+			int node_index = (int)node;
+			float node_t = node - float(node_index);
+			if (node_index >= span_count) {
+				//Express the path end as the end of the last span so that the spline never reads node[node_count]
+				node_index = span_count - 1;
+				node_t = 1.f;
+			}
+			pi.a[j] = node_index;
+			t.a[j] = node_t;
+		}
+		tfxWideArray point_x, point_y, point_z;
+		tfx__wide_catmull_rom_spline_3d(&pi, t.m, path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, &point_x.m, &point_y.m, &point_z.m);
+
+		for (tfxU32 j = 0; j != tfxDataWidth; ++j) {
+			tfxU32 segment_index = s + j;
+			segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j], 0.f };
+		}
+	}
+}
+
 void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
@@ -17566,115 +17665,11 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
-		tfx_graph_t *intensity_graph = &graph_list.graphs[tfxRibbon_overlength_intensity_index];
-		tfx_wide_easing_function intensity_easing = tfx__get_wide_easing_function(intensity_graph->easing_type);
-		tfx_graph_t *curved_alpha_graph = &graph_list.graphs[tfxRibbon_overlength_curved_alpha_index];
-		tfx_wide_easing_function curved_alpha_easing = tfx__get_wide_easing_function(curved_alpha_graph->easing_type);
-		tfx_graph_t *alpha_sharpness_graph = &graph_list.graphs[tfxRibbon_overlength_alpha_sharpness_index];
-		tfx_wide_easing_function alpha_sharpness_easing = tfx__get_wide_easing_function(alpha_sharpness_graph->easing_type);
-		tfx_graph_t *gradient_mapper_graph = &graph_list.graphs[tfxRibbon_overlength_gradient_map_index];
-		tfx_wide_easing_function gradient_mapper_easing = tfx__get_wide_easing_function(gradient_mapper_graph->easing_type);
-
-		bool intensity_is_bezier_graph = tfx__graph_has_bezier_curves(intensity_graph);
-		bool intensity_has_oscillator = tfx__graph_can_oscillate(intensity_graph);
-		bool curved_alpha_is_bezier_graph = tfx__graph_has_bezier_curves(curved_alpha_graph);
-		bool curved_alpha_has_oscillator = tfx__graph_can_oscillate(curved_alpha_graph);
-		bool alpha_sharpness_is_bezier_graph = tfx__graph_has_bezier_curves(alpha_sharpness_graph);
-		bool alpha_sharpness_has_oscillator = tfx__graph_can_oscillate(alpha_sharpness_graph);
-		bool gradient_mapper_is_bezier_graph = tfx__graph_has_bezier_curves(gradient_mapper_graph);
-		bool gradient_mapper_has_oscillator = tfx__graph_can_oscillate(gradient_mapper_graph);
-
 		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket->globals.segment_count * ribbon_bucket->globals.segment_count;
 		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket->globals.segment_count) {
 			ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_bucket->globals.segment_count);
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
-			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
-			tfxWideFloat num_path_nodes = tfxWideSetSingle(float(path->settings.node_count - 3));
-			tfxWideFloat inv_segment_count = tfxWideDiv(tfxWIDEONE.m, segment_count);
-			tfxWideFloat scaled_path_nodes = tfxWideMul(num_path_nodes, inv_segment_count);
-			for (tfxU32 s = 0; s < ribbon_emitter.segment_count; s += tfxDataWidth) {
-				tfxWideArrayi pi;
-				tfxWideInt index = tfxWideSetSinglei(s);
-				pi.m = tfxWideAddi(tfxBASEINDEX.m, index);
-				tfxWideFloat indexf = tfxWideConvert(pi.m);
-				tfxWideFloat node = tfxWideMul(tfxWideConvert(pi.m), scaled_path_nodes);
-				pi.m = tfxWideConverti(node);
-				tfxWideFloat t = tfxWideSub(node, tfxWideFloor(node));
-				tfxWideArray point_x, point_y, point_z;
-				tfx__wide_catmull_rom_spline_3d(&pi, t, path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, &point_x.m, &point_y.m, &point_z.m);
-
-				tfxWideFloat ribbon_lerp = tfxWideDiv(indexf, segment_count);
-				tfxWideFloat intensity_time = intensity_easing(ribbon_lerp);
-				tfxWideFloat lookup_intensity = intensity_is_bezier_graph ?
-					tfx__wide_bezier_sampler(intensity_time, intensity_graph->wide_graph.from, intensity_graph->wide_graph.curve1, intensity_graph->wide_graph.curve2, intensity_graph->wide_graph.to) :
-					tfx__wide_linear_sampler(intensity_graph->wide_graph.from, intensity_graph->wide_graph.to, intensity_time);
-
-				if (intensity_has_oscillator) {
-					lookup_intensity = tfxOSCILLATOR_WIDE_APPLY(lookup_intensity, intensity_time, intensity_graph->wide_oscillator);
-				}
-
-				tfxWideFloat curved_alpha_time = curved_alpha_easing(ribbon_lerp);
-				tfxWideFloat lookup_curved_alpha = curved_alpha_is_bezier_graph ?
-					tfx__wide_bezier_sampler(curved_alpha_time, curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.curve1, curved_alpha_graph->wide_graph.curve2, curved_alpha_graph->wide_graph.to) :
-					tfx__wide_linear_sampler(curved_alpha_graph->wide_graph.from, curved_alpha_graph->wide_graph.to, curved_alpha_time);
-
-				if (curved_alpha_has_oscillator) {
-					lookup_curved_alpha = tfxOSCILLATOR_WIDE_APPLY(lookup_curved_alpha, curved_alpha_time, curved_alpha_graph->wide_oscillator);
-				}
-
-				tfxWideFloat alpha_sharpness_time = alpha_sharpness_easing(ribbon_lerp);
-				tfxWideFloat lookup_alpha_sharpness = alpha_sharpness_is_bezier_graph ?
-					tfx__wide_bezier_sampler(alpha_sharpness_time, alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.curve1, alpha_sharpness_graph->wide_graph.curve2, alpha_sharpness_graph->wide_graph.to) :
-					tfx__wide_linear_sampler(alpha_sharpness_graph->wide_graph.from, alpha_sharpness_graph->wide_graph.to, alpha_sharpness_time);
-
-				if (alpha_sharpness_has_oscillator) {
-					lookup_alpha_sharpness = tfxOSCILLATOR_WIDE_APPLY(lookup_alpha_sharpness, alpha_sharpness_time, alpha_sharpness_graph->wide_oscillator);
-				}
-
-				tfxWideFloat gradient_mapper_time = gradient_mapper_easing(ribbon_lerp);
-				tfxWideFloat lookup_gradient_mapper = gradient_mapper_is_bezier_graph ?
-					tfx__wide_bezier_sampler(gradient_mapper_time, gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.curve1, gradient_mapper_graph->wide_graph.curve2, gradient_mapper_graph->wide_graph.to) :
-					tfx__wide_linear_sampler(gradient_mapper_graph->wide_graph.from, gradient_mapper_graph->wide_graph.to, gradient_mapper_time);
-
-				if (gradient_mapper_has_oscillator) {
-					lookup_gradient_mapper = tfxOSCILLATOR_WIDE_APPLY(lookup_gradient_mapper, gradient_mapper_time, gradient_mapper_graph->wide_oscillator);
-				}
-
-				if (intensity_has_oscillator) {
-					lookup_intensity = tfxOSCILLATOR_WIDE_APPLY(lookup_intensity, intensity_time, intensity_graph->wide_oscillator);
-				}
-
-				if (curved_alpha_has_oscillator) {
-					lookup_curved_alpha = tfxOSCILLATOR_WIDE_APPLY(lookup_curved_alpha, curved_alpha_time, curved_alpha_graph->wide_oscillator);
-				}
-
-				if (alpha_sharpness_has_oscillator) {
-					lookup_alpha_sharpness = tfxOSCILLATOR_WIDE_APPLY(lookup_alpha_sharpness, alpha_sharpness_time, alpha_sharpness_graph->wide_oscillator);
-				}
-
-				if (gradient_mapper_has_oscillator) {
-					lookup_gradient_mapper = tfxOSCILLATOR_WIDE_APPLY(lookup_gradient_mapper, gradient_mapper_time, gradient_mapper_graph->wide_oscillator);
-				}
-
-				
-				for (tfxU32 j = 0; j != tfxDataWidth; ++j) {
-					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
-					float age_lerp = float(s + j) / float(ribbon_emitter.segment_count);
-					segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j]};
-					//segments[segment_index].intensity_gradient_map.packed = packed_intensity_gradient_mapper.a[j];
-					//segments[segment_index].curved_alpha.packed = packed_curved_alpha_sharpness.a[j];
-					segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(
-						tfx__sample_graph(intensity_graph, age_lerp),
-						tfx__sample_graph(gradient_mapper_graph, age_lerp), 128.f
-					);
-					segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(
-						tfx__sample_graph(curved_alpha_graph, age_lerp),
-						tfx__sample_graph(alpha_sharpness_graph, age_lerp)
-					);
-					//segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(1.f, 1.f, 128.f);
-					//segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(1.f, 1.f);
-				}
-			}
+			tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.segment_count);
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
 			ribbon_bucket->cached_static_path_segments.Insert(ribbon_emitter.state_properties.path_attributes, ribbon_emitter.static_segment_start_index);
 		} else {
@@ -17751,6 +17746,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
 			ribbon_bucket->ribbons.grid_index[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.uid[ribbon_index] = pm.unique_ribbon_id++;
+			ribbon.phase_seed = ribbon_bucket->ribbons.uid[ribbon_index];
 			ribbon_emitter.active_ribbons++;
 		}
 		entry->new_ribbons = actual_new_ribbons;

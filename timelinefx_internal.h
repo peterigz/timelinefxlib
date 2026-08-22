@@ -6188,11 +6188,16 @@ typedef struct tfx_path_quaternion_s {
 	tfxU32 cycles;
 } tfx_path_quaternion_t;
 
+//Samples taken per catmull-rom span when building the arc length lookup table
+#define tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN 16
+
 typedef struct tfx_path_buffers_s {
 #ifdef __cplusplus
 	tfx_vector_t<tfx_vec3_t> nodes;
+	tfx_vector_t<float> arc_lengths;
 #else
 	tfx_vector_t nodes;
+	tfx_vector_t arc_lengths;
 #endif
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
@@ -6214,6 +6219,7 @@ typedef struct tfx_path_settings_s {
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
 	tfx_path_extrusion_type extrusion_type;
+	float total_length;						//Derived from the arc length lut, not serialized
 } tfx_path_settings_t;
 
 typedef struct tfx_emitter_path_s {
@@ -6619,7 +6625,8 @@ typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 a
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
-	tfxU32 _padding[2];						//Padding to 64 bytes for std430 alignment with vec4
+	tfxU32 phase_seed;						//Seed for phase offset so different ribbons can be animated at different time offsets
+	tfxU32 _padding;						//Padding to 64 bytes for std430 alignment with vec4
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
@@ -6639,7 +6646,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU32 lookup_offset;
 	tfxU32 angle_type;
 	tfx_vec3_t position;
-	tfxU32 padding1;
+	float age;
 	tfx_vec3_t captured_position;
 	tfxU32 padding2;
 	tfx_vec3_t scale;
@@ -6979,10 +6986,7 @@ typedef struct tfx_sprite_data_metrics_s {
 } tfx_sprite_data_metrics_t;
 
 typedef struct tfx_ribbon_segment_s {
-	tfx_vec3_t position;
-	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
-	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
-	tfxU32 padding[3];
+	tfx_vec4_t position;
 } tfx_ribbon_segment_t;
 
 typedef struct tfx_sprite_data_s {
@@ -7953,6 +7957,8 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor 
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start = -1, int range_end = -1);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__build_path_arc_lengths(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
