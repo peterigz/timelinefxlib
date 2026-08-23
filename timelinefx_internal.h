@@ -6629,7 +6629,7 @@ typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 a
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
 	tfxU32 phase_seed;						//Seed for phase offset so different ribbons can be animated at different time offsets
-	tfxU32 _padding;						//Padding to 64 bytes for std430 alignment with vec4
+	float scale;							//The parent effect's overall_scale for this frame, applied to the path segments
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
@@ -6936,12 +6936,12 @@ typedef struct tfx_ribbon_instance_data_s {	//64 bytes, mirrors tfx_ribbon_t lay
 	tfxU32 flags;
 	tfxU32 captured_index;						//Previous frame ribbon for interpolation (was _padding_pre_quat)
 	tfxU64 quaternion;							//16-bit snorm packed rotation
-	tfxU32 emitter_index;
+	float scale;								//Per frame overall_scale. The emitter index is derived from additional's property index
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;
 	tfxU32 curved_alpha;
 	tfxU32 additional;							//lerp_offset (low 16) + property_index (high 16)
-	tfxU32 padding;
+	tfxU32 phase_seed;							//Ribbon uid, hash it to drive per ribbon phase offsets
 } tfx_ribbon_instance_data_t;
 
 //Animation sprite data that is used on the cpu to bake the data
@@ -7287,6 +7287,7 @@ typedef struct tfx_animation_instance_s {
 
 typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 segment_count;
+	tfxU32 sample_count;			//Path samples stored per ribbon, segment_count * samples_per_segment
 	tfxU32 tessellation;
 	tfxRibbonBucketComputeShaderType shader_type;
 	tfxU32 color_ramp_index;

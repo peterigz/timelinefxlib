@@ -10325,6 +10325,23 @@ TFX_ENABLE_COMPILER_WARNING()
 							tfx_ribbon_t &ribbon = bucket.ribbons.ribbon_instances[ribbon_index];
 							ribbon.captured_index = bucket.ribbons.age[ribbon_index] == 0 ? tfxINVALID : ribbon_write_index;
 							sprite_data->real_time_ribbons.ribbon_instance[ribbon_write_index] = ribbon;
+							if (ribbon.flags & tfxRibbonFlags_relative) {
+								//A relative ribbon leaves its emitter transform to the GPU, applied per frame from the
+								//emitter struct. Baked playback has no per frame emitter struct, so fold this frame's
+								//transform into the record and let it play back as a world space ribbon. Matches the
+								//shader exactly: rotate by the ribbon quaternion, offset, then rotate by the emitter
+								//quaternion and offset - which is one rotation by emitter * ribbon about the moved origin.
+								tfx_ribbon_t &recorded = sprite_data->real_time_ribbons.ribbon_instance[ribbon_write_index];
+								tfx_quaternion_t ribbon_rotation = tfx__unpack16bit_quaternion_from_gpu(ribbon.quaternion);
+								tfx_quaternion_t world_rotation = ribbon_emitter.rotation * ribbon_rotation;
+								tfx_vec3_t local_position = tfx_vec3_t(ribbon.position.x, ribbon.position.y, ribbon.position.z);
+								tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, local_position) + ribbon_emitter.world_position;
+								recorded.position.x = world_position.x;
+								recorded.position.y = world_position.y;
+								recorded.position.z = world_position.z;
+								recorded.quaternion = tfx__pack16bit_quaternion_for_gpu(world_rotation);
+								recorded.flags &= ~tfxRibbonFlags_relative;
+							}
 							tfx_unique_sprite_id_t id;
 							id.uid = bucket.ribbons.uid[ribbon_index];
 							id.property_index = ribbon_emitter.state_properties.property_index;
@@ -10791,6 +10808,13 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[effect->state_properties.property_index];
 		tfx_animation_ribbon_properties_t properties{};
 		properties.segment_count = ribbon_properties.bucket_info.segment_count;
+		//Must mirror the density derived in tfx__add_effect_to_stage: the recorded segments are stored at that
+		//density and ribbons.comp indexes them by sample_count, not segment_count.
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+		properties.sample_count = properties.segment_count;
+		if (shared_properties && shared_properties->emission_type == tfxPath) {
+			properties.sample_count = properties.segment_count * tfx__get_ribbon_samples_per_segment(&effect->library->graphs[effect->state_properties.graph_list_index]);
+		}
 		properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
 		properties.shader_type = ribbon_properties.angle_type;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
@@ -10937,14 +10961,23 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		tfx_ribbon_data_soa_t &ribbons = sprite_data.compressed_ribbons;
 		metrics.ribbon_start_offset = animation_manager->ribbon_data.current_size;
 		metrics.ribbon_segment_start_offset = animation_manager->ribbon_segment_data.current_size;
-		animation_manager->ribbon_segment_data.copy(sprite_data.shared_segments);
+		//Append, don't copy: tfx_vector_t::copy clears first, so every effect after the first would drop the
+		//preceding effects' segments while ribbon_segment_start_offset kept advancing past the end of the array.
+		for (tfxU32 segment_index = 0; segment_index != sprite_data.shared_segments.current_size; ++segment_index) {
+			animation_manager->ribbon_segment_data.push_back_copy(sprite_data.shared_segments[segment_index]);
+		}
 		for (tfxU32 i = 0; i != metrics.total_ribbons; ++i) {
 			tfx_ribbon_instance_data_t ribbon;
 			memcpy((void *)&ribbon, (const void *)&ribbons.ribbon_instance[i], sizeof(tfx_ribbon_t));
 			ribbon.captured_index += ribbon.captured_index == tfxINVALID ? 0 : metrics.ribbon_start_offset;
 			ribbon.start_index += ribbon.start_index == tfxINVALID ? 0 : metrics.ribbon_segment_start_offset;
+			//The memcpy is layout blind and the two structs diverge from the emitter index onwards, so every
+			//field past the quaternion that this struct names differently has to be re-read from the source.
+			ribbon.scale = ribbons.ribbon_instance[i].scale;
+			ribbon.phase_seed = ribbons.ribbon_instance[i].phase_seed;
 			ribbon.additional = tfxU32(ribbons.lerp_offset[i] * 65535.f);
 			tfxU32 animation_property_index = ribbon_property_map[ribbons.uid[i].property_index];
+			TFX_ASSERT(animation_property_index != tfxINVALID);	//A ribbon was recorded for an emitter that never had its properties added
 			ribbon.additional |= (animation_property_index << 16);
 			ribbon.texture_indexes &= 0x0000FFFF;
 			ribbon.texture_indexes |= (tfxColorRampIndex(animation_manager->ribbon_properties[animation_property_index].color_ramp_index) << 24);
@@ -14387,6 +14420,9 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		} else {
 			pm.current_ribbon_count++;
 			bucket->ribbons.ribbon_instances[ribbon_index].position.w = age / max_age;
+			//Per frame so a long lived ribbon tracks the effect's overall_scale, and so the value is already
+			//in the instance when the sprite data recorder snapshots it
+			bucket->ribbons.ribbon_instances[ribbon_index].scale = pm.effects[ribbon_emitter.parent_index].overall_scale;
 			ribbon_emitter.ribbon_indexes[next_buffer].push_back(ribbon_index);
 		}
 		bucket->highest_ribbon_index = tfx__Max(bucket->highest_ribbon_index, ribbon_index);
@@ -17794,6 +17830,9 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			}
 			ribbon.quaternion = tfx__pack16bit_quaternion_for_gpu(q);
 			ribbon.emitter_index = ribbon_emitter.state_properties.gpu_property_index;
+			//Control sets this every frame after this; seed it here so a ribbon spawned after the control pass
+			//is not drawn at scale zero for its first frame
+			ribbon.scale = entry->overall_scale;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
