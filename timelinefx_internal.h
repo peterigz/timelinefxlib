@@ -2910,8 +2910,8 @@ typedef enum {
 	tfxOvertime_motion_randomness,
 	tfxOvertime_uv_offset_y,
 	tfxOvertime_uv_scale_y,
-	tfxOvertime_clip_start,
-	tfxOvertime_clip_end,
+	tfxOvertime_clip_offset,
+	tfxOvertime_clip_size,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
@@ -2974,7 +2974,7 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_clip_end,
+	tfxOvertime_end = tfxOvertime_clip_size,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
@@ -5987,7 +5987,10 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 
 const tfxU32 tfxMAGIC_NUMBER = 559433300;                //'!XFT'
 const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
-const tfxU32 tfxFILE_VERSION = 3;	//Any version before 3 was when 2d effects were still a thing.
+//The clip window can zoom in at most this far before the stored path samples start to be magnified
+#define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
+
+const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size.
 
 typedef struct tfx_package_entry_info_t {
 	tfx_str512_t file_name;                     //The name of the file stored in the package
@@ -6652,7 +6655,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfx_vec3_t scale;
 	tfxU32 padding3;
 	tfx_vec3_t fixed_angle_normal;
-	int padding4;
+	tfxU32 sample_count;
 } tfx_gpu_ribbon_emitter_t;
 
 //---- GPU compute particle buffer management ----
@@ -6765,6 +6768,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//Control Data
 	tfxKey ribbon_bucket_id;
 	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
+	tfxU32 stored_sample_count;						//Path samples stored for this emitter, segment_count * samples_per_segment
+	tfxU32 samples_per_segment;						//Derived from the clip size graph, see tfx__get_ribbon_samples_per_segment
 	tfx_vec3_t emitter_size;
 } tfx_ribbon_emitter_state_t;
 
@@ -7958,6 +7963,8 @@ tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__space_path_nodes_evenly(tfx_emitter_path_t *path, int range_start = -1, int range_end = -1);
 tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_arc_lengths(tfx_emitter_path_t *path);
+tfxINTERNAL void tfx__migrate_ribbon_clip_graphs(tfx_library library);
+tfxINTERNAL tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs);
 tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);

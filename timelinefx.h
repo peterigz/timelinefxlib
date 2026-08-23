@@ -355,8 +355,8 @@ typedef enum {
 	tfxRibbon_overtime_overall_scale_index,
 	tfxRibbon_overtime_uv_offset_y_index,
 	tfxRibbon_overtime_uv_scale_y_index,
-	tfxRibbon_overtime_clip_start_index,
-	tfxRibbon_overtime_clip_end_index,
+	tfxRibbon_overtime_clip_offset_index,
+	tfxRibbon_overtime_clip_size_index,
 
 	tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_alpha_sharpness_index,
@@ -374,7 +374,7 @@ typedef enum {
 	tfxRibbon_property_end_index = tfxRibbon_property_arc_offset_index + 1,
 	tfxRibbon_base_end_index = tfxRibbon_base_width_index + 1,
 	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
-	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_end_index + 1,
+	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_size_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_end = tfxRibbon_overlength_fixed_angle_index + 1,
 } tfx_ribbon_graph_index;

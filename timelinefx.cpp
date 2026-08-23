@@ -2959,8 +2959,8 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].type = tfxOverlength_gradient_map;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_start_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_start_index].type = tfxOvertime_clip_start;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index].type = tfxOvertime_clip_end;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
 }
 
 //Reset to a simple constant value
@@ -3134,8 +3134,8 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_start_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_start_index], 0.f, tfxOpacityOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_end_index], 1.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
 	}
 }
 
@@ -5281,8 +5281,11 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overlength_gradient_map", tfxRibbon_overlength_gradient_map_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_width", tfxRibbon_overlength_width_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_fixed_angle", tfxRibbon_overlength_fixed_angle_index);
-	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_start_index);
-	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_end_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_offset", tfxRibbon_overtime_clip_offset_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_size", tfxRibbon_overtime_clip_size_index);
+	//Pre version 4 names. The values they carry are converted by tfx__migrate_ribbon_clip_graphs
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_offset_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_size_index);
 
 	tfxStore->graph_indexes.Insert("transform_roll", tfxTransform_roll_index);
 	tfxStore->graph_indexes.Insert("transform_pitch", tfxTransform_pitch_index);
@@ -5505,6 +5508,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_gradient_map", tfxAttributeGraph);
 	names_and_types.Insert("overlength_width", tfxAttributeGraph);
 	names_and_types.Insert("overlength_fixed_angle", tfxAttributeGraph);
+	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
+	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_start", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_end", tfxAttributeGraph);
 
@@ -6201,8 +6206,8 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOvertime_motion_randomness: return "overtime_motion_randomness"; break;
 	case tfxOvertime_uv_offset_y: return "overtime_uv_offset_y"; break;
 	case tfxOvertime_uv_scale_y: return "overtime_uv_scale_y"; break;
-	case tfxOvertime_clip_start: return "overtime_clip_start"; break;
-	case tfxOvertime_clip_end: return "overtime_clip_end"; break;
+	case tfxOvertime_clip_offset: return "overtime_clip_offset"; break;
+	case tfxOvertime_clip_size: return "overtime_clip_size"; break;
 
 	case tfxOverlength_intensity: return "overlength_intensity"; break;
 	case tfxOverlength_alpha_sharpness: return "overlength_alpha_sharpness"; break;
@@ -9784,6 +9789,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	if (uid >= 0) {
 		//Effects were loaded so let's compile them
+		if (package->header.file_version < 4) {
+			tfx__migrate_ribbon_clip_graphs(lib);
+		}
 		tfx__update_all_library_graphs(lib);
 		tfx__reindex_library(lib);
 		if (first_shape_hash != 0) {
@@ -9804,6 +9812,43 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	pair.free();
 
 	return error;
+}
+
+/*
+In order to clip the ribbon so that only a portion of the ribbon is sampled the samples per segment
+is calculated. If the clip size is smaller then 1 then the shader will still sample the same amount but
+it will be compressed within the clip space. So the same amount of geometry will come out but it will
+all be squeezed into the clip space.
+*/
+tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs) {
+	float minimum_clip_size = tfx__get_graph_min_value(&graphs->graphs[tfxRibbon_overtime_clip_size_index]);
+	if (minimum_clip_size >= 1.f) {
+		return 1;
+	}
+	if (minimum_clip_size <= 0.f) {
+		return tfxRIBBON_MAX_SAMPLES_PER_SEGMENT;
+	}
+	tfxU32 samples_per_segment = 1;
+	while (samples_per_segment < tfxRIBBON_MAX_SAMPLES_PER_SEGMENT && float(samples_per_segment) * minimum_clip_size < 1.f) {
+		samples_per_segment *= 2;
+	}
+	return samples_per_segment;
+}
+
+/*
+Convert Pre version 4 clip graphs from start/end to size/offset
+*/
+void tfx__migrate_ribbon_clip_graphs(tfx_library library) {
+	for (tfx_graph_list_t &graph_list : library->graphs) {
+		if (graph_list.effect_descriptor_type != tfxRibbonType) {
+			continue;
+		}
+		tfx_graph_t *offset_graph = &graph_list.graphs[tfxRibbon_overtime_clip_offset_index];
+		tfx_graph_t *size_graph = &graph_list.graphs[tfxRibbon_overtime_clip_size_index];
+		for (tfx_attribute_node_t &node : size_graph->nodes) {
+			node.value = tfx__Max(node.value - tfx__sample_graph(offset_graph, node.frame), 0.f);
+		}
+	}
 }
 
 tfx_library tfx_CreateLibrary() {
@@ -11741,8 +11786,14 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 				ribbon_emitter.ribbon_indexes[0].init();
 				ribbon_emitter.ribbon_indexes[1].init();
 				ribbon_emitter.state_flags = 0;
+				ribbon_emitter.samples_per_segment = 1;
+				ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
 				if (shared_properties->emission_type == tfxPath) {
-					tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(ribbon_emitter.state_properties.path_attributes);
+					ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
+					ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
+					//Emitters sharing a path but wanting different sample densities must not share a cached array
+					tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+					tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
 					ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
 				}
 
@@ -14340,7 +14391,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		}
 		bucket->highest_ribbon_index = tfx__Max(bucket->highest_ribbon_index, ribbon_index);
 		bucket->lowest_ribbon_index = tfx__Min(bucket->lowest_ribbon_index, ribbon_index);
-		bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index + ribbon_emitter.segment_count);
+		bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index + ribbon_emitter.stored_sample_count);
 		bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index);
 	}
 
@@ -15511,6 +15562,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.captured_position = tfx_vec3_t();
 	}
 	gpu_emitter.scale = parent_effect.overall_scale;
+	gpu_emitter.sample_count = ribbon_emitter.stored_sample_count;
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
 
 	double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
@@ -17665,13 +17717,15 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
-		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket->globals.segment_count * ribbon_bucket->globals.segment_count;
-		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket->globals.segment_count) {
-			ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_bucket->globals.segment_count);
+		//More samples than segments are stored so that a sliding clip window still has path detail to read.
+		//This is a segment storage budget, not the vertex budget that running_ribbon_vertex_count tracks.
+		if (ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count <= pm.info.max_ribbon_segments) {
+			ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
-			tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.segment_count);
+			tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.stored_sample_count);
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
-			ribbon_bucket->cached_static_path_segments.Insert(ribbon_emitter.state_properties.path_attributes, ribbon_emitter.static_segment_start_index);
+			tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+			ribbon_bucket->cached_static_path_segments.Insert(cache_key, ribbon_emitter.static_segment_start_index);
 		} else {
 			ribbon_emitter.static_segment_start_index = tfxINVALID;
 		}
