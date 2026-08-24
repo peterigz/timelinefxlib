@@ -357,6 +357,7 @@ typedef enum {
 	tfxRibbon_overtime_uv_scale_y_index,
 	tfxRibbon_overtime_clip_offset_index,
 	tfxRibbon_overtime_clip_size_index,
+	tfxRibbon_overtime_morph_amount_index,
 
 	tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_alpha_sharpness_index,
@@ -364,6 +365,7 @@ typedef enum {
 	tfxRibbon_overlength_gradient_map_index,
 	tfxRibbon_overlength_width_index,
 	tfxRibbon_overlength_fixed_angle_index,
+	tfxRibbon_overlength_morph_bias_index,
 
 	tfxRibbonGraphs_max_index,
 
@@ -374,9 +376,9 @@ typedef enum {
 	tfxRibbon_property_end_index = tfxRibbon_property_arc_offset_index + 1,
 	tfxRibbon_base_end_index = tfxRibbon_base_width_index + 1,
 	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
-	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_size_index + 1,
+	tfxRibbon_overtime_end_index = tfxRibbon_overtime_morph_amount_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
-	tfxRibbon_overlength_end = tfxRibbon_overlength_fixed_angle_index + 1,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_morph_bias_index + 1,
 } tfx_ribbon_graph_index;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity

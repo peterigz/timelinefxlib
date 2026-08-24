@@ -2804,6 +2804,9 @@ typedef enum {
 	//multiplied by an overtime scale. Appended rather than slotted next to the other overtime presets
 	//because graphs store their preset by value.
 	tfxAccelerationOvertimePreset,
+	//Signed and wider than 0-1 so the morph boundary can be swept: the amount graph's range is how far
+	//the boundary travels and the bias graph's slope is the width of the blend band.
+	tfxMorphPreset,
 } tfx_graph_preset;
 
 typedef enum {
@@ -2912,6 +2915,7 @@ typedef enum {
 	tfxOvertime_uv_scale_y,
 	tfxOvertime_clip_offset,
 	tfxOvertime_clip_size,
+	tfxOvertime_morph_amount,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
@@ -2919,6 +2923,7 @@ typedef enum {
 	tfxOverlength_gradient_map,
 	tfxOverlength_width,
 	tfxOverlength_ribbon_fixed_angle,
+	tfxOverlength_morph_bias,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2974,11 +2979,11 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_clip_size,
+	tfxOvertime_end = tfxOvertime_morph_amount,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_ribbon_fixed_angle,
+	tfxOverlength_end = tfxOverlength_morph_bias,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -3152,7 +3157,11 @@ typedef enum {
 	tfxStartForceGraphs,
 	tfxEndForceGraphs,
 	tfxStartForceGraphProperties,
-	tfxEndForceGraphProperties
+	tfxEndForceGraphProperties,
+	//Holds the same path_* keys and node block as the primary path. The reader points the emitter's
+	//path_attributes at the morph path for the length of the block rather than carrying duplicate keys.
+	tfxStartMorphPath,
+	tfxEndMorphPath
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
@@ -3403,6 +3412,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_always_face_camera				    = 1 << 2,
 	tfxRibbonPropertyFlags_frenet_serret_frame				    = 1 << 3,
 	tfxRibbonPropertyFlags_fixed_angle						    = 1 << 4,
+	tfxRibbonPropertyFlags_enable_morph    						= 1 << 5,
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
@@ -6502,6 +6512,7 @@ typedef struct tfx_common_state_properties_s {
 	tfxIndex graph_list_index;
 	tfxIndex transform_index;
 	tfxIndex path_attributes;
+	tfxIndex morph_path_attributes;
 	tfxIndex property_index;
 	tfxIndex shared_index;
 	tfxIndex gpu_group_index;
@@ -6651,7 +6662,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfx_vec3_t position;
 	float age;
 	tfx_vec3_t captured_position;
-	tfxU32 padding2;
+	tfxU32 morph_segment_start_index;		//Start of the morph target path's samples in the same bucket as the static block, tfxINVALID when not morphing
 	tfx_vec3_t scale;
 	tfxU32 padding3;
 	tfx_vec3_t fixed_angle_normal;
@@ -6768,6 +6779,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//Control Data
 	tfxKey ribbon_bucket_id;
 	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
+	tfxU32 morph_segment_start_index;				//Second block of samples for the morph target path, stored at the same density as the static block
 	tfxU32 stored_sample_count;						//Path samples stored for this emitter, segment_count * samples_per_segment
 	tfxU32 samples_per_segment;						//Derived from the clip size graph, see tfx__get_ribbon_samples_per_segment
 	tfx_vec3_t emitter_size;
@@ -7661,7 +7673,7 @@ tfxAPI_EDITOR void tfx__initialise_graph_indexes();
 tfxAPI_EDITOR float tfx__sample_graph(tfx_graph_t *graph, float t);
 tfxAPI_EDITOR bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 tfxAPI_EDITOR void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
-tfxAPI_EDITOR tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node);
+tfxAPI_EDITOR tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR bool tfx__is_root_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t * q, tfx_vec3_t v);
 tfxAPI_EDITOR tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
@@ -7702,8 +7714,8 @@ tfxAPI_EDITOR bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, 
 tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_path_nodes(tfx_effect_descriptor effect, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_path_properties(tfx_emitter_path_t *path, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_path_nodes(tfx_emitter_path_t *path, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descriptor, tfx_graph_t *graph, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);

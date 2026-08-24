@@ -2454,6 +2454,7 @@ tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect
 	ribbon->state_properties.property_index = tfx__allocate_library_ribbon_emitter_properties(ribbon->library);
 	ribbon->state_properties.shared_index = tfx__allocate_library_shared_properties(ribbon->library);
 	ribbon->state_properties.path_attributes = tfx__add_emitter_path_attributes(ribbon->library);
+	ribbon->state_properties.path_attributes = tfxINVALID;
 	tfx_emitter_path_t *path = &ribbon->library->paths[ribbon->state_properties.path_attributes];
 	const float *nodes = tfx__path_preset_vline;
 	int node_count = tfx__array_size(tfx__path_preset_vline) / 3;
@@ -2953,14 +2954,16 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].type = tfxOvertime_heat_response;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index], 0.f, tfxMorphPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index].type = tfxOvertime_morph_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].type = tfxOverlength_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].type = tfxOverlength_ribbon_fixed_angle;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].type = tfxOverlength_gradient_map;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index], 0.f, tfxMorphPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index].type = tfxOverlength_morph_bias;
 }
 
 //Reset to a simple constant value
@@ -3127,15 +3130,17 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index], 0.f, tfxMorphPreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index], 0.f, tfxMorphPreset);
 	}
 }
 
@@ -3609,7 +3614,7 @@ bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs) {
 	return graphs->graphs[tfxTransform_translate_x].nodes.current_size + graphs->graphs[tfxTransform_translate_y].nodes.current_size + graphs->graphs[tfxTransform_translate_z].nodes.current_size > 0;
 }
 
-tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter, bool add_node) {
+tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.path_attributes == tfxINVALID) {
 		emitter->state_properties.path_attributes = emitter->library->paths.size();
 		tfx_emitter_path_t new_path = {};
@@ -5281,8 +5286,10 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overlength_gradient_map", tfxRibbon_overlength_gradient_map_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_width", tfxRibbon_overlength_width_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_fixed_angle", tfxRibbon_overlength_fixed_angle_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_morph_bias", tfxRibbon_overlength_morph_bias_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_offset", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_size", tfxRibbon_overtime_clip_size_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_morph_amount", tfxRibbon_overtime_morph_amount_index);
 	//Pre version 4 names. The values they carry are converted by tfx__migrate_ribbon_clip_graphs
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_size_index);
@@ -5400,6 +5407,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_segment_count", tfxUInt);
 	names_and_types.Insert("ribbon_shader_type", tfxUInt);
 	names_and_types.Insert("static_ribbon", tfxBool);
+	names_and_types.Insert("ribbon_path_morph", tfxBool);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
@@ -5508,6 +5516,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_gradient_map", tfxAttributeGraph);
 	names_and_types.Insert("overlength_width", tfxAttributeGraph);
 	names_and_types.Insert("overlength_fixed_angle", tfxAttributeGraph);
+	names_and_types.Insert("overlength_morph_bias", tfxAttributeGraph);
+	names_and_types.Insert("overtime_morph_amount", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_start", tfxAttributeGraph);
@@ -6208,6 +6218,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOvertime_uv_scale_y: return "overtime_uv_scale_y"; break;
 	case tfxOvertime_clip_offset: return "overtime_clip_offset"; break;
 	case tfxOvertime_clip_size: return "overtime_clip_size"; break;
+	case tfxOvertime_morph_amount: return "overtime_morph_amount"; break;
 
 	case tfxOverlength_intensity: return "overlength_intensity"; break;
 	case tfxOverlength_alpha_sharpness: return "overlength_alpha_sharpness"; break;
@@ -6215,6 +6226,7 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOverlength_gradient_map: return "overlength_gradient_map"; break;
 	case tfxOverlength_width: return "overlength_width"; break;
 	case tfxOverlength_ribbon_fixed_angle: return "overlength_fixed_angle"; break;
+	case tfxOverlength_morph_bias: return "overlength_morph_bias"; break;
 
 	case tfxFactor_life: return "factor_life"; break;
 	case tfxFactor_size: return "factor_size"; break;
@@ -6469,6 +6481,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "spawn_location_source") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
 	else if (property_name == "use_color_hint") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
 	else if (property_name == "static_ribbon") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_static);
+	else if (property_name == "ribbon_path_morph") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_morph);
 	if (property_name == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_origin);
 	} else if (property_name == "path_mode_node") {
@@ -6623,11 +6636,11 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "sprite_data_frames") effect->library->sprite_data_settings[effect->sprite_data_settings_index].real_frames = value;
 	else if (*field == "sprite_data_extra_frames_count") effect->library->sprite_data_settings[effect->sprite_data_settings_index].extra_frames_count = value;
 	else if (*field == "maximum_active_paths") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.maximum_active_paths = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.maximum_active_paths = value;
 	} else if (*field == "maximum_path_cycles") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.maximum_paths = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.maximum_paths = value;
 	} else if (*field == "path_node_count") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.node_count = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.node_count = value;
 	}
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
@@ -6646,7 +6659,7 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "preview_camera_view_mode") effect->library->preview_camera_settings[effect->preview_camera_settings].view_mode = (tfx_render_view_mode)value;
 	else if (*field == "animation_view_mode") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].view_mode = (tfx_render_view_mode)value;
 	else if (*field == "path_extrusion_type") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
 	} else if (*field == "color_interpolation_mode") {
 		effect->library->graphs[effect->state_properties.graph_list_index].color_ramps.interpolation_mode = (tfx_color_interpolation_mode)value;
 	}
@@ -6707,28 +6720,28 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "sprite_data_playback_speed") effect->library->sprite_data_settings[effect->sprite_data_settings_index].playback_speed = value;
 	else if (*field == "sprite_data_recording_frame_rate") effect->library->sprite_data_settings[effect->sprite_data_settings_index].recording_frame_rate = value;
 	else if (*field == "path_rotation_range") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.rotation_range = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_range = value;
 	}
 	else if (*field == "path_rotation_pitch") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.rotation_pitch = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_pitch = value;
 	}
 	else if (*field == "path_rotation_yaw") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.rotation_yaw = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_yaw = value;
 	}
 	else if (*field == "path_rotation_stagger") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.rotation_stagger = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_stagger = value;
 	}
 	else if (*field == "path_rotation_lifetime") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.rotation_cycle_length = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_cycle_length = value;
 	}
 	else if (*field == "path_handle_x") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->settings.offset.x = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)];  path->settings.offset.x = value;
 	}
 	else if (*field == "path_handle_y") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.offset.y = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.offset.y = value;
 	}
 	else if (*field == "path_handle_z") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->settings.offset.z = value;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.offset.z = value;
 	}
 	else if (*field == "noise_base_offset_range") effect->noise_base_offset_range = value < 0 ? 0.f : value;
 	if (effect->type == tfxEmitterType) {
@@ -6830,14 +6843,16 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
 	} else if (*field == "static_ribbon") {
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
+	} else if (*field == "ribbon_path_morph") {
+		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_morph; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_morph; }
 	} else if (*field == "path_mode_origin") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_mode_origin; path->settings.flags &= ~tfxPathFlags_mode_node; } else { path->settings.flags &= ~tfxPathFlags_mode_origin; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_mode_origin; path->settings.flags &= ~tfxPathFlags_mode_node; } else { path->settings.flags &= ~tfxPathFlags_mode_origin; }
 	} else if (*field == "path_mode_node") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_mode_node; path->settings.flags &= ~tfxPathFlags_mode_origin; } else { path->settings.flags &= ~tfxPathFlags_mode_node; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_mode_node; path->settings.flags &= ~tfxPathFlags_mode_origin; } else { path->settings.flags &= ~tfxPathFlags_mode_node; }
 	} else if (*field == "path_rotation_range_yaw_only") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_rotation_range_yaw_only; } else { path->settings.flags &= ~tfxPathFlags_rotation_range_yaw_only; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_rotation_range_yaw_only; } else { path->settings.flags &= ~tfxPathFlags_rotation_range_yaw_only; }
 	} else if (*field == "path_reverse_direction") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->settings.flags |= tfxPathFlags_reverse_direction; } else { path->settings.flags &= ~tfxPathFlags_reverse_direction; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_reverse_direction; } else { path->settings.flags &= ~tfxPathFlags_reverse_direction; }
 	}
 
 }
@@ -6954,6 +6969,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("ribbon_fixed_angle_normal_z=%f", ribbon_properties->fixed_angle_normal.z);
 
 	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
+	file->AddLine("ribbon_path_morph=%i", (ribbon_flags & tfxRibbonPropertyFlags_enable_morph));
 	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->state_properties.graph_list_index].color_ramps.interpolation_mode);
 }
 
@@ -6974,26 +6990,23 @@ void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *f
 	file->AddLine("global_uniform_size=%i", (effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size));
 }
 
-void tfx__stream_path_properties(tfx_effect_descriptor effect, tfx_stream_t *file) {
-	if (effect->state_properties.path_attributes != tfxINVALID) {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes];
-		file->AddLine("path_mode_origin=%i", (path->settings.flags & tfxPathFlags_mode_origin));
-		file->AddLine("path_mode_node=%i", (path->settings.flags & tfxPathFlags_mode_node));
-		file->AddLine("path_extrusion_type=%i", (path->settings.extrusion_type));
-		file->AddLine("path_rotation_range=%f", (path->settings.rotation_range));
-		file->AddLine("path_rotation_pitch=%f", (path->settings.rotation_pitch));
-		file->AddLine("path_rotation_yaw=%f", (path->settings.rotation_yaw));
-		file->AddLine("path_rotation_lifetime=%f", (path->settings.rotation_cycle_length));
-		file->AddLine("maximum_active_paths=%i", (path->settings.maximum_active_paths));
-		file->AddLine("maximum_path_cycles=%i", (path->settings.maximum_paths));
-		file->AddLine("path_node_count=%i", (path->settings.node_count));
-		file->AddLine("path_rotation_stagger=%f", (path->settings.rotation_stagger));
-		file->AddLine("path_rotation_range_yaw_only=%i", (path->settings.flags & tfxPathFlags_rotation_range_yaw_only));
-		file->AddLine("path_reverse_direction=%i", (path->settings.flags & tfxPathFlags_reverse_direction));
-		file->AddLine("path_handle_x=%f", (path->settings.offset.x));
-		file->AddLine("path_handle_y=%f", (path->settings.offset.y));
-		file->AddLine("path_handle_z=%f", (path->settings.offset.z));
-	}
+void tfx__stream_path_properties(tfx_emitter_path_t *path, tfx_stream_t *file) {
+	file->AddLine("path_mode_origin=%i", (path->settings.flags & tfxPathFlags_mode_origin));
+	file->AddLine("path_mode_node=%i", (path->settings.flags & tfxPathFlags_mode_node));
+	file->AddLine("path_extrusion_type=%i", (path->settings.extrusion_type));
+	file->AddLine("path_rotation_range=%f", (path->settings.rotation_range));
+	file->AddLine("path_rotation_pitch=%f", (path->settings.rotation_pitch));
+	file->AddLine("path_rotation_yaw=%f", (path->settings.rotation_yaw));
+	file->AddLine("path_rotation_lifetime=%f", (path->settings.rotation_cycle_length));
+	file->AddLine("maximum_active_paths=%i", (path->settings.maximum_active_paths));
+	file->AddLine("maximum_path_cycles=%i", (path->settings.maximum_paths));
+	file->AddLine("path_node_count=%i", (path->settings.node_count));
+	file->AddLine("path_rotation_stagger=%f", (path->settings.rotation_stagger));
+	file->AddLine("path_rotation_range_yaw_only=%i", (path->settings.flags & tfxPathFlags_rotation_range_yaw_only));
+	file->AddLine("path_reverse_direction=%i", (path->settings.flags & tfxPathFlags_reverse_direction));
+	file->AddLine("path_handle_x=%f", (path->settings.offset.x));
+	file->AddLine("path_handle_y=%f", (path->settings.offset.y));
+	file->AddLine("path_handle_z=%f", (path->settings.offset.z));
 }
 
 void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *file) {
@@ -7083,20 +7096,17 @@ static int tfx__format_compact_float(char *buffer, int buffer_size, float value)
 	return length;
 }
 
-void tfx__stream_path_nodes(tfx_effect_descriptor effect, tfx_stream_t *file) {
-	if (effect->state_properties.path_attributes != tfxINVALID) {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes];
-		if (path->buffers.nodes.current_size > 0) {
-			file->AddLine("%i", tfxStartPathNodes);
-			for (tfx_vec3_t &node : path->buffers.nodes) {
-				char fx[32], fy[32], fz[32];
-				tfx__format_compact_float(fx, sizeof(fx), node.x);
-				tfx__format_compact_float(fy, sizeof(fy), node.y);
-				tfx__format_compact_float(fz, sizeof(fz), node.z);
-				file->AddLine("%s,%s,%s", fx, fy, fz);
-			}
-			file->AddLine("%i", tfxEndPathNodes);
+void tfx__stream_path_nodes(tfx_emitter_path_t *path, tfx_stream_t *file) {
+	if (path->buffers.nodes.current_size > 0) {
+		file->AddLine("%i", tfxStartPathNodes);
+		for (tfx_vec3_t &node : path->buffers.nodes) {
+			char fx[32], fy[32], fz[32];
+			tfx__format_compact_float(fx, sizeof(fx), node.x);
+			tfx__format_compact_float(fy, sizeof(fy), node.y);
+			tfx__format_compact_float(fz, sizeof(fz), node.z);
+			file->AddLine("%s,%s,%s", fx, fy, fz);
 		}
+		file->AddLine("%i", tfxEndPathNodes);
 	}
 }
 
@@ -7822,6 +7832,10 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 		tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
 		tfx__set_node_curve_initialised(node);
 	}
+	else if (add_node && preset == tfxMorphPreset) {
+		tfx__add_graph_node_values(graph, 0.f, v, 0);
+		tfx__add_graph_node_values(graph, 1.f, v, 0);
+	}
 	else if (add_node) {
 		if (preset == tfxWeightOvertimePreset) {
 			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
@@ -7849,6 +7863,11 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	} else if (add_node && preset == tfxGradientMapperOvertimePreset) {
 		tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
 		tfx__add_graph_node_values(graph, 1.f, 1.f, 0);
+	} else if (add_node && preset == tfxMorphPreset) {
+		//Seeded with two nodes so tfx__update_lerp_graph never takes its single node path, which latches the
+		//graph to constant easing - under constant the GPU lookup returns node zero and the end node is inert
+		tfx__add_graph_node_values(graph, 0.f, v, 0);
+		tfx__add_graph_node_values(graph, 1.f, v, 0);
 	} else if (add_node) {
 		if (preset == tfxWeightOvertimePreset) {
 			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
@@ -7942,6 +7961,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, -1000.f };
 	case tfx_graph_preset::tfxPathPositionPreset:
 		return { 0.f, 0.f };
+	case tfx_graph_preset::tfxMorphPreset:
+		return { 0.f, -8.f };
 	}
 	return { 0.f, 0.f };
 }
@@ -8016,6 +8037,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { 1.f, 1000.f };
 	case tfx_graph_preset::tfxPathPositionPreset:
 		return { 1.f, 1.f };
+	case tfx_graph_preset::tfxMorphPreset:
+		return { 1.f, 8.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
 }
@@ -8063,6 +8086,7 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 	case tfx_graph_preset::tfxDirectionVariationPreset:
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
+	case tfx_graph_preset::tfxMorphPreset:
 		*frame = 0.001f;
 		*value = 0.01f;
 		break;
@@ -9543,6 +9567,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	int context = 0;
 	int uid = 0;
+	//The morph path block reuses the primary path's property keys, so path_attributes is aimed at the morph
+	//path for the length of that block and this holds the real one until tfxEndMorphPath
+	tfxU32 morph_path_swap = tfxINVALID;
 
 	if (!data)
 		error |= tfxErrorCode_data_could_not_be_loaded;
@@ -9604,6 +9631,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx_effect_descriptor emitter = tfx_CreateEffectDescriptor(tfxEmitterType);
 				emitter->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				emitter->state_properties.path_attributes = tfxINVALID;
+				emitter->state_properties.morph_path_attributes = tfxINVALID;
 				emitter->effect_flags = 0;
 				emitter->state_properties.property_flags = 0;
 				emitter->state_properties.shared_flags = 0;
@@ -9623,6 +9651,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
 				ribbon->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				ribbon->state_properties.path_attributes = tfxINVALID;
+				ribbon->state_properties.morph_path_attributes = tfxINVALID;
 				ribbon->effect_flags = 0;
 				ribbon->state_properties.property_flags = 0;
 				ribbon->state_properties.shared_flags = 0;
@@ -9637,6 +9666,18 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx__reset_transform_graphs(ribbon, false);
 				ribbon->uid = uid++;
 				effect_stack.push_back(ribbon);
+			} else if (context == tfxStartMorphPath && effect_stack.current_size) {
+				tfx_effect_descriptor emitter = effect_stack.back();
+				if (emitter->state_properties.morph_path_attributes == tfxINVALID) {
+					emitter->state_properties.morph_path_attributes = tfx__add_emitter_path_attributes(lib);
+					//Seeded with preset nodes that would sit in front of the ones about to be read
+					lib->paths[emitter->state_properties.morph_path_attributes].buffers.nodes.clear();
+				}
+				morph_path_swap = emitter->state_properties.path_attributes;
+				emitter->state_properties.path_attributes = emitter->state_properties.morph_path_attributes;
+			} else if (context == tfxEndMorphPath && effect_stack.current_size) {
+				effect_stack.back()->state_properties.path_attributes = morph_path_swap;
+				morph_path_swap = tfxINVALID;
 			}
 		}
 
@@ -9655,7 +9696,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 			}
 
-			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartRibbonEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
+			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartRibbonEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings || context == tfxStartMorphPath) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					tfx__assign_property_line(effect_stack.back(), &pair, package->header.file_version);
 				} else {
@@ -9748,6 +9789,15 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 		if (context == tfxEndRibbonEmitter) {
 			TFX_ASSERT(current_effect);
+			//A file written before the morph path was saved carries the flag with nothing behind it, and the UI
+			//only ever creates the path on the toggle, so seed one from the primary to keep the two in step
+			if ((effect_stack.back()->ribbon_flags & tfxRibbonPropertyFlags_enable_morph)
+				&& effect_stack.back()->state_properties.morph_path_attributes == tfxINVALID
+				&& effect_stack.back()->state_properties.path_attributes != tfxINVALID) {
+				tfxU32 morph_path_attributes = tfx__add_emitter_path_attributes(lib);
+				tfx__copy_path(&lib->paths[effect_stack.back()->state_properties.path_attributes], "", &lib->paths[morph_path_attributes]);
+				effect_stack.back()->state_properties.morph_path_attributes = morph_path_attributes;
+			}
 			tfx__initialise_unitialised_graphs(effect_stack.back());
 			tfx__update_emitter_max_life(effect_stack.back());
 			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
@@ -11821,6 +11871,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 				ribbon_emitter.state_flags = 0;
 				ribbon_emitter.samples_per_segment = 1;
 				ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
+				ribbon_emitter.morph_segment_start_index = tfxINVALID;
 				if (shared_properties->emission_type == tfxPath) {
 					ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
 					ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
@@ -11828,6 +11879,11 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 					tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
 					tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
 					ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
+					if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
+						tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
+						tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
+						ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
+					}
 				}
 
 				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
@@ -13102,6 +13158,7 @@ tfxAPI tfx_effect_descriptor tfx_CreateEffectDescriptor(tfx_effect_descriptor_ty
 	new_effect->state_properties.shared_index = tfxINVALID;
 	new_effect->state_properties.graph_list_index = tfxINVALID;
 	new_effect->state_properties.path_attributes = tfxINVALID;
+	new_effect->state_properties.morph_path_attributes = tfxINVALID;
 	new_effect->state_properties.graph_list_index = tfxINVALID;
 	new_effect->state_properties.transform_index = tfxINVALID;
 	new_effect->state_properties.gpu_group_index = tfxINVALID;
@@ -14429,6 +14486,10 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		bucket->lowest_ribbon_index = tfx__Min(bucket->lowest_ribbon_index, ribbon_index);
 		bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index + ribbon_emitter.stored_sample_count);
 		bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index);
+		if (ribbon_emitter.morph_segment_start_index != tfxINVALID) {
+			bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, ribbon_emitter.morph_segment_start_index + ribbon_emitter.stored_sample_count);
+			bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, ribbon_emitter.morph_segment_start_index);
+		}
 	}
 
 	if (bucket->highest_ribbon_index >= bucket->lowest_ribbon_index) {
@@ -15645,6 +15706,9 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	}
 
 	gpu_emitter.age = ribbon_emitter.age;
+	//Written after the spawn above because that is what allocates the block, and written every frame because
+	//tfx__grab_gpu_ribbon_emitter hands back recycled slots without clearing them and 0 is a valid segment index
+	gpu_emitter.morph_segment_start_index = ribbon_emitter.morph_segment_start_index;
 
 	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0) {
 		parent_effect.active_emitters++;
@@ -17749,21 +17813,43 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	const float life_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
 	float base_width = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->size_x;
 
-	if (ribbon_emitter.static_segment_start_index == tfxINVALID) {
+	tfx_emitter_path_t *morph_path = nullptr;
+	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
+		morph_path = &library->paths[ribbon_emitter.state_properties.morph_path_attributes];
+	} else {
+		ribbon_emitter.morph_segment_start_index = tfxINVALID;
+	}
+
+	bool needs_static_block = ribbon_emitter.static_segment_start_index == tfxINVALID;
+	bool needs_morph_block = morph_path && ribbon_emitter.morph_segment_start_index == tfxINVALID;
+	if (needs_static_block || needs_morph_block) {
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
-		ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 
 		//More samples than segments are stored so that a sliding clip window still has path detail to read.
 		//This is a segment storage budget, not the vertex budget that running_ribbon_vertex_count tracks.
-		if (ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count <= pm.info.max_ribbon_segments) {
-			ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
-			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
-			tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.stored_sample_count);
-			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
-			tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
-			ribbon_bucket->cached_static_path_segments.Insert(cache_key, ribbon_emitter.static_segment_start_index);
+		//Both blocks are reserved together or neither is, otherwise the emitter renders un-morphed with no diagnostic.
+		tfxU32 required_samples = (needs_static_block ? ribbon_emitter.stored_sample_count : 0) + (needs_morph_block ? ribbon_emitter.stored_sample_count : 0);
+		if (ribbon_bucket->segments.current_size + required_samples <= pm.info.max_ribbon_segments) {
+			if (needs_static_block) {
+				ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
+				ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
+				tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
+				tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.stored_sample_count);
+				ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
+				tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+				ribbon_bucket->cached_static_path_segments.Insert(cache_key, ribbon_emitter.static_segment_start_index);
+			}
+			if (needs_morph_block) {
+				ribbon_emitter.morph_segment_start_index = ribbon_bucket->segments.current_size;
+				ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
+				tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
+				tfx__sample_path_into_segments(morph_path, &segments[ribbon_emitter.morph_segment_start_index], ribbon_emitter.stored_sample_count);
+				tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
+				ribbon_bucket->cached_static_path_segments.Insert(morph_cache_key, ribbon_emitter.morph_segment_start_index);
+			}
 		} else {
 			ribbon_emitter.static_segment_start_index = tfxINVALID;
+			ribbon_emitter.morph_segment_start_index = tfxINVALID;
 		}
 	}
 
