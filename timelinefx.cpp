@@ -7962,7 +7962,7 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxPathPositionPreset:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxMorphPreset:
-		return { 0.f, -8.f };
+		return { 0.f, -1.f };
 	}
 	return { 0.f, 0.f };
 }
@@ -8038,7 +8038,7 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxPathPositionPreset:
 		return { 1.f, 1.f };
 	case tfx_graph_preset::tfxMorphPreset:
-		return { 1.f, 8.f };
+		return { 1.f, 1.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
 }
@@ -8049,6 +8049,7 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxGlobalPercentPreset:
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
+	case tfx_graph_preset::tfxMorphPreset:
 		*frame = 0.001f;
 		*value = 0.001f;
 		break;
@@ -8086,7 +8087,6 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 	case tfx_graph_preset::tfxDirectionVariationPreset:
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
-	case tfx_graph_preset::tfxMorphPreset:
 		*frame = 0.001f;
 		*value = 0.01f;
 		break;
@@ -10272,6 +10272,10 @@ TFX_ENABLE_COMPILER_WARNING()
 		running_ribbon_count.zero();
 		running_ribbon_count_per_bucket.resize(frames * bucket_count);
 		running_ribbon_count_per_bucket.zero();
+		sprite_data->morph_segment_indexes.resize(effect->library->ribbon_properties.current_size);
+		for (tfxU32 property_index = 0; property_index != sprite_data->morph_segment_indexes.current_size; ++property_index) {
+			sprite_data->morph_segment_indexes[property_index] = tfxINVALID;
+		}
 	}
 	pm->unique_particle_id = 0;
 
@@ -10371,6 +10375,9 @@ TFX_ENABLE_COMPILER_WARNING()
 					//Write fresh ribbons for this bucket
 					for (int emitter_index : bucket.control_ribbon_queue) {
 						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[emitter_index];
+						//Captured here rather than with the segments below because tfx_ClearStage has already
+						//recycled the emitter states by then, and every instance of a property shares the block
+						sprite_data->morph_segment_indexes[ribbon_emitter.state_properties.property_index] = ribbon_emitter.morph_segment_start_index;
 						for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
 							tfx_ribbon_t &ribbon = bucket.ribbons.ribbon_instances[ribbon_index];
 							ribbon.captured_index = bucket.ribbons.age[ribbon_index] == 0 ? tfxINVALID : ribbon_write_index;
@@ -10485,6 +10492,14 @@ TFX_ENABLE_COMPILER_WARNING()
 				tfxU32 shared_offset = bucket_segment_offsets.At(ribbon_properties.ribbon_bucket_id);
 				ribbon.start_index += shared_offset;
 			}
+		}
+		//Rebased once per property rather than once per ribbon like start_index above, and by the same bucket
+		//offset because the morph block is allocated in the bucket the emitter already writes to
+		for (tfxU32 property_index = 0; property_index != sprite_data->morph_segment_indexes.current_size; ++property_index) {
+			if (sprite_data->morph_segment_indexes[property_index] == tfxINVALID) continue;
+			tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[property_index];
+			TFX_ASSERT(bucket_segment_offsets.ValidKey(ribbon_properties.ribbon_bucket_id));
+			sprite_data->morph_segment_indexes[property_index] += bucket_segment_offsets.At(ribbon_properties.ribbon_bucket_id);
 		}
 		bucket_segment_offsets.FreeAll();
 
@@ -10866,6 +10881,9 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.sample_count = properties.segment_count * tfx__get_ribbon_samples_per_segment(&effect->library->graphs[effect->state_properties.graph_list_index]);
 		}
 		properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
+		//Overwritten in tfx_AddSpriteData for emitters that recorded a morph block. Zero is a valid segment
+		//index so the no morph case cannot be left to the value initialisation above.
+		properties.morph_segment_start_index = tfxINVALID;
 		properties.shader_type = ribbon_properties.angle_type;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 		properties.flags = effect->state_properties.property_flags;
@@ -11015,6 +11033,14 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 		//preceding effects' segments while ribbon_segment_start_offset kept advancing past the end of the array.
 		for (tfxU32 segment_index = 0; segment_index != sprite_data.shared_segments.current_size; ++segment_index) {
 			animation_manager->ribbon_segment_data.push_back_copy(sprite_data.shared_segments[segment_index]);
+		}
+		//The same rebase the per ribbon start_index gets below, applied to the per property morph block
+		tfxU32 morph_property_count = tfx__Min(sprite_data.morph_segment_indexes.current_size, ribbon_property_map.current_size);
+		for (tfxU32 library_property_index = 0; library_property_index != morph_property_count; ++library_property_index) {
+			tfxU32 morph_segment_start_index = sprite_data.morph_segment_indexes[library_property_index];
+			tfxU32 animation_property_index = ribbon_property_map[library_property_index];
+			if (morph_segment_start_index == tfxINVALID || animation_property_index == tfxINVALID) continue;
+			animation_manager->ribbon_properties[animation_property_index].morph_segment_start_index = morph_segment_start_index + metrics.ribbon_segment_start_offset;
 		}
 		for (tfxU32 i = 0; i != metrics.total_ribbons; ++i) {
 			tfx_ribbon_instance_data_t ribbon;
@@ -19837,6 +19863,7 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	sprite_data->normal.per_property_ribbon_counts.free();
 	sprite_data->compressed.per_property_ribbon_counts.free();
 	sprite_data->shared_segments.free();
+	sprite_data->morph_segment_indexes.free();
 }
 
 bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id) {

@@ -2804,8 +2804,9 @@ typedef enum {
 	//multiplied by an overtime scale. Appended rather than slotted next to the other overtime presets
 	//because graphs store their preset by value.
 	tfxAccelerationOvertimePreset,
-	//Signed and wider than 0-1 so the morph boundary can be swept: the amount graph's range is how far
-	//the boundary travels and the bias graph's slope is the width of the blend band.
+	//Signed 0-1 for the ribbon morph graphs. The bias is signed so either end of the ribbon can lead the morph,
+	//and capped at 1 because a steeper tilt concentrates the travel between the two paths into too few segments
+	//and the strip stretches straight across the gap instead of blending.
 	tfxMorphPreset,
 } tfx_graph_preset;
 
@@ -7021,8 +7022,12 @@ typedef struct tfx_sprite_data_s {
 	tfx_ribbon_data_soa_t compressed_ribbons;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_ribbon_segment_t> shared_segments;
+	//Indexed by library ribbon property index. The morph block is shared by every ribbon an emitter spawns, so
+	//unlike start_index it has nowhere to live on the 64 byte ribbon record.
+	tfx_vector_t<tfxU32> morph_segment_indexes;
 #else
 	tfx_vector_t shared_segments;
+	tfx_vector_t morph_segment_indexes;
 #endif
 	tfxU32 total_ribbons;
 	bool has_ribbons;
@@ -7309,6 +7314,7 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 flags;
 	tfxU32 graph_lookup_offset;
 	tfxU32 bucket_index;
+	tfxU32 morph_segment_start_index;	//Absolute index into the animation manager segment array, tfxINVALID when the emitter does not morph
 } tfx_animation_ribbon_properties_t;
 
 typedef struct tfx_animation_ribbon_bucket_s {
