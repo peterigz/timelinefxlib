@@ -2808,6 +2808,9 @@ typedef enum {
 	//and capped at 1 because a steeper tilt concentrates the travel between the two paths into too few segments
 	//and the strip stretches straight across the gap instead of blending.
 	tfxMorphPreset,
+	tfxRibbonNoiseEnvelopePreset,
+	tfxRibbonNoiseAmountPreset,
+	tfxRibbonNoiseScrollPreset,
 } tfx_graph_preset;
 
 typedef enum {
@@ -2917,6 +2920,8 @@ typedef enum {
 	tfxOvertime_clip_offset,
 	tfxOvertime_clip_size,
 	tfxOvertime_morph_amount,
+	tfxOvertime_noise_amount,
+	tfxOvertime_noise_scroll,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
@@ -2925,6 +2930,7 @@ typedef enum {
 	tfxOverlength_width,
 	tfxOverlength_ribbon_fixed_angle,
 	tfxOverlength_morph_bias,
+	tfxOverlength_noise_envelope,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2980,11 +2986,11 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_morph_amount,
+	tfxOvertime_end = tfxOvertime_noise_scroll,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_morph_bias,
+	tfxOverlength_end = tfxOverlength_noise_envelope,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -3414,6 +3420,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_frenet_serret_frame				    = 1 << 3,
 	tfxRibbonPropertyFlags_fixed_angle						    = 1 << 4,
 	tfxRibbonPropertyFlags_enable_morph    						= 1 << 5,
+	tfxRibbonPropertyFlags_enable_noise    						= 1 << 6,
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
@@ -6477,6 +6484,12 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
 	tfxRibbonBucketComputeShaderType angle_type;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	tfx_noise_type noise_algorithm;
+	tfxU32 noise_octaves;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6664,10 +6677,14 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	float age;
 	tfx_vec3_t captured_position;
 	tfxU32 morph_segment_start_index;		//Start of the morph target path's samples in the same bucket as the static block, tfxINVALID when not morphing
-	tfx_vec3_t scale;
-	tfxU32 padding3;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
 	tfx_vec3_t fixed_angle_normal;
 	tfxU32 sample_count;
+	tfxU32 noise_packed;
+	tfxU32 padding[3];
 } tfx_gpu_ribbon_emitter_t;
 
 //---- GPU compute particle buffer management ----
@@ -7315,6 +7332,11 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 graph_lookup_offset;
 	tfxU32 bucket_index;
 	tfxU32 morph_segment_start_index;	//Absolute index into the animation manager segment array, tfxINVALID when the emitter does not morph
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	tfxU32 noise_packed;
 } tfx_animation_ribbon_properties_t;
 
 typedef struct tfx_animation_ribbon_bucket_s {

@@ -2964,6 +2964,9 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].type = tfxOverlength_gradient_map;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index], 0.f, tfxMorphPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index].type = tfxOverlength_morph_bias;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_amount_index], 0.f, tfxRibbonNoiseAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_amount_index].type = tfxOvertime_noise_amount;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_noise_envelope_index], 0.f, tfxRibbonNoiseEnvelopePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_noise_envelope_index].type = tfxOverlength_noise_envelope;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index], 0.f, tfxRibbonNoiseScrollPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index].type = tfxOvertime_noise_scroll;
 }
 
 //Reset to a simple constant value
@@ -3141,6 +3144,10 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_fixed_angle_index], 0.f, tfxFixedRibbonAnglePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_morph_bias_index], 0.f, tfxMorphPreset);
+
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_amount_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_amount_index], 0.f, tfxRibbonNoiseAmountPreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_noise_envelope_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_noise_envelope_index], 0.f, tfxRibbonNoiseEnvelopePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index], 0.f, tfxRibbonNoiseScrollPreset);
 	}
 }
 
@@ -4749,6 +4756,12 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	}
 	tfx_ribbon_emitter_properties_t properties{};
 	properties.fixed_angle_normal = { 0.f, 1.f, 0.f };
+	properties.noise_frequency = 4.f;
+	properties.noise_speed = 1.f;
+	properties.noise_phase_range = 8.f;
+	properties.noise_lock_rate = 0.f;
+	properties.noise_algorithm = tfxSimplexNoise;
+	properties.noise_octaves = 1;
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
 }
@@ -5290,6 +5303,9 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_offset", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_size", tfxRibbon_overtime_clip_size_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_morph_amount", tfxRibbon_overtime_morph_amount_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_noise_amount", tfxRibbon_overtime_noise_amount_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_noise_scroll", tfxRibbon_overtime_noise_scroll_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_noise_envelope", tfxRibbon_overlength_noise_envelope_index);
 	//Pre version 4 names. The values they carry are converted by tfx__migrate_ribbon_clip_graphs
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_size_index);
@@ -5408,6 +5424,13 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_shader_type", tfxUInt);
 	names_and_types.Insert("static_ribbon", tfxBool);
 	names_and_types.Insert("ribbon_path_morph", tfxBool);
+	names_and_types.Insert("ribbon_noise", tfxBool);
+	names_and_types.Insert("ribbon_noise_frequency", tfxFloat);
+	names_and_types.Insert("ribbon_noise_speed", tfxFloat);
+	names_and_types.Insert("ribbon_noise_phase_range", tfxFloat);
+	names_and_types.Insert("ribbon_noise_lock_rate", tfxFloat);
+	names_and_types.Insert("ribbon_noise_algorithm", tfxUInt);
+	names_and_types.Insert("ribbon_noise_octaves", tfxUInt);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
@@ -5518,6 +5541,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_fixed_angle", tfxAttributeGraph);
 	names_and_types.Insert("overlength_morph_bias", tfxAttributeGraph);
 	names_and_types.Insert("overtime_morph_amount", tfxAttributeGraph);
+	names_and_types.Insert("overtime_noise_amount", tfxAttributeGraph);
+	names_and_types.Insert("overtime_noise_scroll", tfxAttributeGraph);
+	names_and_types.Insert("overlength_noise_envelope", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_start", tfxAttributeGraph);
@@ -6227,6 +6253,9 @@ tfx_str64_t tfx__graph_type_to_property_string(tfx_graph_type graph_type) {
 	case tfxOverlength_width: return "overlength_width"; break;
 	case tfxOverlength_ribbon_fixed_angle: return "overlength_fixed_angle"; break;
 	case tfxOverlength_morph_bias: return "overlength_morph_bias"; break;
+	case tfxOvertime_noise_amount: return "overtime_noise_amount"; break;
+	case tfxOvertime_noise_scroll: return "overtime_noise_scroll"; break;
+	case tfxOverlength_noise_envelope: return "overlength_noise_envelope"; break;
 
 	case tfxFactor_life: return "factor_life"; break;
 	case tfxFactor_size: return "factor_size"; break;
@@ -6322,6 +6351,12 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "frame_offset")			value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset);
 	else if (property_name == "single_shot_limit")		value.Setf("%u", shared_properties->single_shot_limit);
 	else if (property_name == "ribbon_segment_count")	value.Setf("%u", ribbon_properties->bucket_info.segment_count);
+	else if (property_name == "ribbon_noise_frequency")	value.Setf("%f", ribbon_properties->noise_frequency);
+	else if (property_name == "ribbon_noise_speed")		value.Setf("%f", ribbon_properties->noise_speed);
+	else if (property_name == "ribbon_noise_phase_range")	value.Setf("%f", ribbon_properties->noise_phase_range);
+	else if (property_name == "ribbon_noise_lock_rate")	value.Setf("%f", ribbon_properties->noise_lock_rate);
+	else if (property_name == "ribbon_noise_algorithm")	value.Setf("%u", (tfxU32)ribbon_properties->noise_algorithm);
+	else if (property_name == "ribbon_noise_octaves")	value.Setf("%u", ribbon_properties->noise_octaves);
 	else if (property_name == "ribbon_shader_type")		value.Setf("%u", ribbon_properties->angle_type);
 	else if (property_name == "billboard_option") {		value.Setf("%u", (gpu_properties->flags & 0x3));
 	}
@@ -6482,6 +6517,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "use_color_hint") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
 	else if (property_name == "static_ribbon") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_static);
 	else if (property_name == "ribbon_path_morph") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_morph);
+	else if (property_name == "ribbon_noise") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise);
 	if (property_name == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_origin);
 	} else if (property_name == "path_mode_node") {
@@ -6611,6 +6647,8 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "seed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed = value;
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
+	else if (*field == "ribbon_noise_algorithm" && ribbon_properties) ribbon_properties->noise_algorithm = (tfx_noise_type)value;
+	else if (*field == "ribbon_noise_octaves" && ribbon_properties) ribbon_properties->noise_octaves = value;
 	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
 	else if (*field == "billboard_option" && gpu_particle_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
@@ -6672,6 +6710,13 @@ void tfx__assign_effector_property_str(tfx_effect_descriptor effect, tfx_str256_
 }
 void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *field, float value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
+	tfx_ribbon_emitter_properties_t *ribbon_properties = effect->type == tfxRibbonType ? tfx__get_ribbon_emitter_properties(effect) : nullptr;
+	if (ribbon_properties) {
+		if (*field == "ribbon_noise_frequency") { ribbon_properties->noise_frequency = value; return; }
+		else if (*field == "ribbon_noise_speed") { ribbon_properties->noise_speed = value; return; }
+		else if (*field == "ribbon_noise_phase_range") { ribbon_properties->noise_phase_range = value; return; }
+		else if (*field == "ribbon_noise_lock_rate") { ribbon_properties->noise_lock_rate = value; return; }
+	}
 	if (*field == "position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.x = value;
 	else if (*field == "position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.y = value;
 	else if (*field == "position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.z = value;
@@ -6845,6 +6890,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
 	} else if (*field == "ribbon_path_morph") {
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_morph; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_morph; }
+	} else if (*field == "ribbon_noise") {
+		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_noise; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_noise; }
 	} else if (*field == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_mode_origin; path->settings.flags &= ~tfxPathFlags_mode_node; } else { path->settings.flags &= ~tfxPathFlags_mode_origin; }
 	} else if (*field == "path_mode_node") {
@@ -6970,6 +7017,13 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 
 	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
 	file->AddLine("ribbon_path_morph=%i", (ribbon_flags & tfxRibbonPropertyFlags_enable_morph));
+	file->AddLine("ribbon_noise=%i", (ribbon_flags & tfxRibbonPropertyFlags_enable_noise));
+	file->AddLine("ribbon_noise_frequency=%f", ribbon_properties->noise_frequency);
+	file->AddLine("ribbon_noise_speed=%f", ribbon_properties->noise_speed);
+	file->AddLine("ribbon_noise_phase_range=%f", ribbon_properties->noise_phase_range);
+	file->AddLine("ribbon_noise_lock_rate=%f", ribbon_properties->noise_lock_rate);
+	file->AddLine("ribbon_noise_algorithm=%i", ribbon_properties->noise_algorithm);
+	file->AddLine("ribbon_noise_octaves=%i", ribbon_properties->noise_octaves);
 	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->state_properties.graph_list_index].color_ramps.interpolation_mode);
 }
 
@@ -7832,9 +7886,17 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 		tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
 		tfx__set_node_curve_initialised(node);
 	}
-	else if (add_node && preset == tfxMorphPreset) {
+	else if (add_node && (preset == tfxMorphPreset || preset == tfxRibbonNoiseAmountPreset || preset == tfxRibbonNoiseScrollPreset)) {
 		tfx__add_graph_node_values(graph, 0.f, v, 0);
 		tfx__add_graph_node_values(graph, 1.f, v, 0);
+	}
+	else if (add_node && preset == tfxRibbonNoiseEnvelopePreset) {
+		const float control_height = 4.f / 3.f;
+		tfx_attribute_node_t *start_node = tfx__add_graph_node_values(graph, 0.f, 0.f, tfxAttributeNodeFlags_is_curve, 0.f, 0.f, 1.f / 3.f, control_height);
+		tfx__set_node_curve_initialised(start_node);
+		tfx_attribute_node_t *end_node = tfx__add_graph_node_values(graph, 1.f, 0.f, tfxAttributeNodeFlags_is_curve, 2.f / 3.f, control_height, 1.f, 0.f);
+		tfx__set_node_curve_initialised(end_node);
+		graph->flags |= tfxGraphFlags_use_bezier_sampling;
 	}
 	else if (add_node) {
 		if (preset == tfxWeightOvertimePreset) {
@@ -7863,11 +7925,18 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	} else if (add_node && preset == tfxGradientMapperOvertimePreset) {
 		tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
 		tfx__add_graph_node_values(graph, 1.f, 1.f, 0);
-	} else if (add_node && preset == tfxMorphPreset) {
+	} else if (add_node && (preset == tfxMorphPreset || preset == tfxRibbonNoiseAmountPreset || preset == tfxRibbonNoiseScrollPreset)) {
 		//Seeded with two nodes so tfx__update_lerp_graph never takes its single node path, which latches the
 		//graph to constant easing - under constant the GPU lookup returns node zero and the end node is inert
 		tfx__add_graph_node_values(graph, 0.f, v, 0);
 		tfx__add_graph_node_values(graph, 1.f, v, 0);
+	} else if (add_node && preset == tfxRibbonNoiseEnvelopePreset) {
+		const float control_height = 4.f / 3.f;
+		tfx_attribute_node_t *start_node = tfx__add_graph_node_values(graph, 0.f, 0.f, tfxAttributeNodeFlags_is_curve, 0.f, 0.f, 1.f / 3.f, control_height);
+		tfx__set_node_curve_initialised(start_node);
+		tfx_attribute_node_t *end_node = tfx__add_graph_node_values(graph, 1.f, 0.f, tfxAttributeNodeFlags_is_curve, 2.f / 3.f, control_height, 1.f, 0.f);
+		tfx__set_node_curve_initialised(end_node);
+		graph->flags |= tfxGraphFlags_use_bezier_sampling;
 	} else if (add_node) {
 		if (preset == tfxWeightOvertimePreset) {
 			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
@@ -7963,6 +8032,11 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxMorphPreset:
 		return { 0.f, -1.f };
+	case tfx_graph_preset::tfxRibbonNoiseEnvelopePreset:
+	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
+		return { 0.f, 0.f };
+	case tfx_graph_preset::tfxRibbonNoiseScrollPreset:
+		return { 0.f, -1000.f };
 	}
 	return { 0.f, 0.f };
 }
@@ -8039,6 +8113,12 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { 1.f, 1.f };
 	case tfx_graph_preset::tfxMorphPreset:
 		return { 1.f, 1.f };
+	case tfx_graph_preset::tfxRibbonNoiseEnvelopePreset:
+		return { 1.f, 1.f };
+	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
+		return { 1.f, 20.f };
+	case tfx_graph_preset::tfxRibbonNoiseScrollPreset:
+		return { 1.f, 1000.f };
 	}
 	return { tfxMAX_FRAME, 20.f };
 }
@@ -8050,6 +8130,8 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 	case tfx_graph_preset::tfxGradientMapperOvertimePreset:
 	case tfx_graph_preset::tfxMorphPreset:
+	case tfx_graph_preset::tfxRibbonNoiseEnvelopePreset:
+	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
 		*frame = 0.001f;
 		*value = 0.001f;
 		break;
@@ -10884,6 +10966,12 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		//Overwritten in tfx_AddSpriteData for emitters that recorded a morph block. Zero is a valid segment
 		//index so the no morph case cannot be left to the value initialisation above.
 		properties.morph_segment_start_index = tfxINVALID;
+		properties.noise_frequency = ribbon_properties.noise_frequency;
+		properties.noise_speed = ribbon_properties.noise_speed;
+		properties.noise_phase_range = ribbon_properties.noise_phase_range;
+		properties.noise_lock_rate = ribbon_properties.noise_lock_rate;
+		properties.noise_packed = (effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise)
+			? ((tfxU32)ribbon_properties.noise_algorithm | (ribbon_properties.noise_octaves << 4)) : 0;
 		properties.shader_type = ribbon_properties.angle_type;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 		properties.flags = effect->state_properties.property_flags;
@@ -15684,7 +15772,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.position = tfx_vec3_t();
 		gpu_emitter.captured_position = tfx_vec3_t();
 	}
-	gpu_emitter.scale = parent_effect.overall_scale;
+	tfx_ribbon_emitter_properties_t *noise_properties = &library->ribbon_properties[ribbon_emitter.state_properties.property_index];
+	gpu_emitter.noise_frequency = noise_properties->noise_frequency;
+	gpu_emitter.noise_speed = noise_properties->noise_speed;
+	gpu_emitter.noise_phase_range = noise_properties->noise_phase_range;
+	gpu_emitter.noise_lock_rate = noise_properties->noise_lock_rate;
+	gpu_emitter.noise_packed = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
+		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
 	gpu_emitter.sample_count = ribbon_emitter.stored_sample_count;
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
 
