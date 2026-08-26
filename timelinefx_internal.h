@@ -2811,6 +2811,8 @@ typedef enum {
 	tfxRibbonNoiseEnvelopePreset,
 	tfxRibbonNoiseAmountPreset,
 	tfxRibbonNoiseScrollPreset,
+	tfxRibbonLagAmountPreset,
+	tfxRibbonLagProfilePreset,
 } tfx_graph_preset;
 
 typedef enum {
@@ -2922,6 +2924,7 @@ typedef enum {
 	tfxOvertime_morph_amount,
 	tfxOvertime_noise_amount,
 	tfxOvertime_noise_scroll,
+	tfxOvertime_lag_amount,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
@@ -2931,6 +2934,7 @@ typedef enum {
 	tfxOverlength_ribbon_fixed_angle,
 	tfxOverlength_morph_bias,
 	tfxOverlength_noise_envelope,
+	tfxOverlength_lag_profile,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2986,11 +2990,11 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_noise_scroll,
+	tfxOvertime_end = tfxOvertime_lag_amount,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_noise_envelope,
+	tfxOverlength_end = tfxOverlength_lag_profile,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -3421,6 +3425,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_fixed_angle						    = 1 << 4,
 	tfxRibbonPropertyFlags_enable_morph    						= 1 << 5,
 	tfxRibbonPropertyFlags_enable_noise    						= 1 << 6,
+	tfxRibbonPropertyFlags_enable_lag      						= 1 << 7,
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
@@ -6490,6 +6495,7 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	float noise_lock_rate;
 	tfx_noise_type noise_algorithm;
 	tfxU32 noise_octaves;
+	float lag_time;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6669,6 +6675,10 @@ typedef struct tfx_ribbon_soa_s {
 	tfxU32 *uid;
 } tfx_ribbon_soa_t;
 
+#define tfxRIBBON_LAG_SPINE_SAMPLES 16
+#define tfxRIBBON_LAG_HISTORY_ENTRIES (tfxRIBBON_LAG_SPINE_SAMPLES + 4)
+#define tfxRIBBON_LAG_CLOCK_REBASE 1000000.f
+
 typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU64 quaternion;
 	tfxU32 lookup_offset;
@@ -6684,8 +6694,17 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfx_vec3_t fixed_angle_normal;
 	tfxU32 sample_count;
 	tfxU32 noise_packed;
-	tfxU32 padding[3];
+	float lag_time;
+	float lag_span;
+	tfxU32 padding;
+	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
+	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
+	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
+	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_gpu_ribbon_emitter_t;
+
+//std430 in ribbons.comp and ribbon_3d.vert has to agree with this byte for byte and the compiler cannot check it
+tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
 
 //---- GPU compute particle buffer management ----
 // Uncomment to enable Phase 3 CPU-side shadow buffer that mirrors GPU ring buffer layout for validation.
@@ -6748,10 +6767,11 @@ typedef enum tfx_gpu_particle_field_e {
 	tfx_gpu_field_count
 } tfx_gpu_particle_field_t;
 
-//Index into the shadow_buffer uint32 array.
-//Shadow buffer layout: [field_0: capacity uint32s][field_1: capacity uint32s]...[field_N-1: capacity uint32s]
-#define tfxGPU_SHADOW_OFFSET(field, pos, capacity) ((field) * (capacity) + (pos))
-//---- end GPU Validation Shadow Mode ----
+typedef struct tfx_ribbon_lag_history_s {
+	float time;
+	tfx_vec3_t position;
+	tfx_quaternion_t rotation;
+} tfx_ribbon_lag_history_t;
 
 typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//State data
@@ -6801,6 +6821,16 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU32 stored_sample_count;						//Path samples stored for this emitter, segment_count * samples_per_segment
 	tfxU32 samples_per_segment;						//Derived from the clip size graph, see tfx__get_ribbon_samples_per_segment
 	tfx_vec3_t emitter_size;
+
+	float lag_clock;
+	float lag_span;
+	tfxU32 lag_history_head;
+	tfxU32 lag_history_count;
+	tfx_ribbon_lag_history_t lag_history[tfxRIBBON_LAG_HISTORY_ENTRIES];
+	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
+	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
+	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
+	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_ribbon_emitter_state_t;
 
 //An tfx_effect_descriptor_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters,
@@ -7023,6 +7053,7 @@ typedef struct tfx_sprite_data_metrics_s {
 typedef struct tfx_ribbon_segment_s {
 	tfx_vec4_t position;
 } tfx_ribbon_segment_t;
+
 
 typedef struct tfx_sprite_data_s {
 	float frame_compression;
@@ -7338,6 +7369,9 @@ typedef struct tfx_animation_ribbon_properties_s {
 	float noise_lock_rate;
 	tfxU32 noise_packed;
 } tfx_animation_ribbon_properties_t;
+
+//std430 in ribbon_data_playback.comp and ribbon_data_bounding_box.comp has to agree with this byte for byte
+tfx__static_assert(sizeof(tfx_animation_ribbon_properties_t) == 68);
 
 typedef struct tfx_animation_ribbon_bucket_s {
 	tfxKey bucket_id;
@@ -9858,6 +9892,8 @@ tfxINTERNAL void tfx__transform_effect(tfx_vec3_t *world_rotations, tfx_vec3_t *
 tfxINTERNAL void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
+tfxINTERNAL void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon_emitter, float frame_length);
+tfxINTERNAL void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
