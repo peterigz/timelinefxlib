@@ -2454,7 +2454,6 @@ tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect
 	ribbon->state_properties.property_index = tfx__allocate_library_ribbon_emitter_properties(ribbon->library);
 	ribbon->state_properties.shared_index = tfx__allocate_library_shared_properties(ribbon->library);
 	ribbon->state_properties.path_attributes = tfx__add_emitter_path_attributes(ribbon->library);
-	ribbon->state_properties.path_attributes = tfxINVALID;
 	tfx_emitter_path_t *path = &ribbon->library->paths[ribbon->state_properties.path_attributes];
 	const float *nodes = tfx__path_preset_vline;
 	int node_count = tfx__array_size(tfx__path_preset_vline) / 3;
