@@ -20082,6 +20082,17 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	sprite_data->compressed.per_property_ribbon_counts.free();
 	sprite_data->shared_segments.free();
 	sprite_data->morph_segment_indexes.free();
+
+	sprite_data->normal.total_ribbons = sprite_data->compressed.total_ribbons = 0;
+	sprite_data->normal.total_memory_for_ribbons = sprite_data->compressed.total_memory_for_ribbons = 0;
+	sprite_data->normal.ribbon_start_offset = sprite_data->compressed.ribbon_start_offset = 0;
+	sprite_data->normal.ribbon_segment_start_offset = sprite_data->compressed.ribbon_segment_start_offset = 0;
+	sprite_data->normal.ribbon_property_start = sprite_data->compressed.ribbon_property_start = 0;
+	sprite_data->normal.ribbon_property_count = sprite_data->compressed.ribbon_property_count = 0;
+	sprite_data->real_time_ribbons = tfx_ribbon_data_soa_t{};
+	sprite_data->compressed_ribbons = tfx_ribbon_data_soa_t{};
+	sprite_data->total_ribbons = 0;
+	sprite_data->has_ribbons = false;
 }
 
 bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id) {
