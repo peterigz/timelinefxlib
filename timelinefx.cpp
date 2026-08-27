@@ -2954,7 +2954,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].type = tfxOvertime_heat_response;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].type = tfxOvertime_uv_offset_y;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxUVOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].type = tfxOvertime_uv_scale_y;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxRibbonClipOffsetPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index], 0.f, tfxMorphPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index].type = tfxOvertime_morph_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_width_index].type = tfxOverlength_width;
@@ -3135,7 +3135,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_offset_y_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_uv_scale_y_index], 1.f, tfxPercentOvertime);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxRibbonClipOffsetPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_morph_amount_index], 0.f, tfxMorphPreset);
 
@@ -8063,6 +8063,7 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxRibbonNoiseScrollPreset:
+	case tfx_graph_preset::tfxRibbonClipOffsetPreset:
 		return { 0.f, -1000.f };
 	case tfx_graph_preset::tfxRibbonLagAmountPreset:
 	case tfx_graph_preset::tfxRibbonLagProfilePreset:
@@ -8148,6 +8149,7 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxRibbonNoiseScrollPreset:
+	case tfx_graph_preset::tfxRibbonClipOffsetPreset:
 		return { 1.f, 1000.f };
 	case tfx_graph_preset::tfxRibbonLagAmountPreset:
 	case tfx_graph_preset::tfxRibbonLagProfilePreset:
@@ -8167,6 +8169,7 @@ void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value)
 	case tfx_graph_preset::tfxRibbonNoiseAmountPreset:
 	case tfx_graph_preset::tfxRibbonLagAmountPreset:
 	case tfx_graph_preset::tfxRibbonLagProfilePreset:
+	case tfx_graph_preset::tfxRibbonClipOffsetPreset:
 		*frame = 0.001f;
 		*value = 0.001f;
 		break;

@@ -2813,6 +2813,7 @@ typedef enum {
 	tfxRibbonNoiseScrollPreset,
 	tfxRibbonLagAmountPreset,
 	tfxRibbonLagProfilePreset,
+	tfxRibbonClipOffsetPreset,
 } tfx_graph_preset;
 
 typedef enum {
