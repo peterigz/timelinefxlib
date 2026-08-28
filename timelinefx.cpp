@@ -12582,7 +12582,6 @@ void tfx__update_stage(void *data) {
 
 	pm->gpu_current_time_ms += (float)pm->frame_length;
 	tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
-	pm->current_ribbon_count = 0;
 
 	pm->current_sprite_buffer = pm->flags & tfxStageFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
 	pm->flags &= ~tfxStageFlags_has_ribbons_to_draw;
@@ -12730,6 +12729,7 @@ void tfx__update_stage(void *data) {
 				tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 				work_entry.pm = pm;
 				work_entry.ribbon_bucket = &bucket;
+				work_entry.ribbon_count = 0;
 				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_ribbons_ages);
 			}
 			tfx__complete_all_work(&pm->work_queue);
@@ -12842,6 +12842,7 @@ void tfx__update_stage(void *data) {
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 			work_entry.pm = pm;
 			work_entry.ribbon_bucket = &bucket;
+			work_entry.ribbon_count = 0;
 			tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_ribbons);
 		}
 	}
@@ -12861,12 +12862,19 @@ void tfx__update_stage(void *data) {
 			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
 			work_entry.pm = pm;
 			work_entry.ribbon_bucket = &bucket;
+			work_entry.ribbon_count = 0;
 			tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_ribbons_ages);
 		}
 
 	}
 	tfx__complete_all_work(&pm->work_queue);
 	pm->age_work.clear();
+	//One write after the age phase joins, so tfx_GetRibbonCount never sees a partial tally
+	tfxU32 live_ribbon_count = 0;
+	for (tfx_control_ribbon_work_entry_t &work_entry : pm->ribbon_control_work) {
+		live_ribbon_count += work_entry.ribbon_count;
+	}
+	pm->current_ribbon_count = live_ribbon_count;
 	pm->ribbon_control_work.clear();
 
 	tfx__update_ribbon_buffer_requirements(pm);
@@ -12967,6 +12975,8 @@ void tfx__update_stage(void *data) {
 	}
 
 	tfx__complete_all_work(&pm->work_queue);
+
+	pm->current_particle_count = pm->instance_buffer.current_size;
 
 	pm->flags &= ~tfxStageFlags_update_base_values;
 	pm->flags &= ~tfxStageFlags_updating;
@@ -14631,7 +14641,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 			tfx__free_ribbon(&pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 			ribbon_emitter.active_ribbons--;
 		} else {
-			pm.current_ribbon_count++;
+			work_entry->ribbon_count++;
 			bucket->ribbons.ribbon_instances[ribbon_index].position.w = age / max_age;
 			//Per frame so a long lived ribbon tracks the effect's overall_scale, and so the value is already
 			//in the instance when the sprite data recorder snapshots it
@@ -15235,6 +15245,8 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 		}
 	}
 	pm->running_ribbon_vertex_count = 0;
+	pm->current_ribbon_count = 0;
+	pm->current_particle_count = 0;
 }
 
 void tfx_FreeStage(tfx_stage pm) {
@@ -15483,7 +15495,7 @@ void tfx__free_compute_slot(tfx_stage pm, unsigned int slot_id) {
 }
 
 tfxU32 tfx_GetParticleCount(tfx_stage pm) {
-	return pm->instance_buffer.current_size;
+	return pm->current_particle_count;
 }
 
 tfxU32 tfx_GetRibbonCount(tfx_stage pm) {
@@ -20132,6 +20144,8 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
 	pm->lookup_mode = tfxFast;
 	pm->current_ebuff = 0;
+	pm->current_ribbon_count = 0;
+	pm->current_particle_count = 0;
 	pm->highest_compute_controller_index = 0;
 	pm->new_compute_particle_ptr = nullptr;
 	pm->compute_controller_ptr = nullptr;

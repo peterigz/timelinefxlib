@@ -7281,6 +7281,7 @@ typedef struct tfx_control_ribbon_work_entry_s {
 	tfx_stage pm;
 	tfx_random_t random;
 	tfx_ribbon_bucket_t *ribbon_bucket;
+	tfxU32 ribbon_count;
 } tfx_control_ribbon_work_entry_t;
 
 typedef struct tfx_particle_age_work_entry_s {
@@ -7546,6 +7547,7 @@ typedef struct tfx_stage_s {
 	tfxU32 effect_index_position;
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
 	tfxU32 current_ribbon_count;
+	tfxU32 current_particle_count;
 
 	tfxU32 effects_start_size;
 
