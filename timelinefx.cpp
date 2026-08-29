@@ -3428,6 +3428,14 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 			clone->state_properties.path_attributes = destination_library->paths.size() - 1;
 			tfx__build_path_nodes(&destination_library->paths.back());
 		}
+		if (clone->state_properties.morph_path_attributes != tfxINVALID) {
+			tfx_emitter_path_t new_morph_path = {};
+			tfx_emitter_path_t &morph_path_copy = destination_library->paths.push_back(new_morph_path);
+			tfx__init_soa_buffer(&morph_path_copy.buffers.node_buffer);
+			tfx__copy_path(&library->paths[clone->state_properties.morph_path_attributes], "", &morph_path_copy);
+			clone->state_properties.morph_path_attributes = destination_library->paths.size() - 1;
+			tfx__build_path_nodes(&destination_library->paths.back());
+		}
 	}
 
 	for (tfx_effect_descriptor child : effect_to_clone->children) {
@@ -7409,6 +7417,7 @@ void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribute_node_t *nod
 }
 
 void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value) {
+	float previous_value = is_left_curve ? node->left.y : node->right.y;
 	if (is_left_curve) {
 		node->left.x = *frame;
 		node->left.y = *value;
@@ -7416,6 +7425,7 @@ void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is
 			node->left.x = node->frame;
 		}
 		tfx__set_left_node_curve(graph, &node->left, node);
+		tfx__constrain_curve_handle(graph, node, true, previous_value);
 		*frame = node->left.x;
 		*value = node->left.y;
 	}
@@ -7426,6 +7436,7 @@ void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is
 			node->right.x = node->frame;
 		}
 		tfx__set_right_node_curve(graph, &node->right, node);
+		tfx__constrain_curve_handle(graph, node, false, previous_value);
 		*frame = node->right.x;
 		*value = node->right.y;
 	}
@@ -7461,11 +7472,128 @@ bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame,
 	if (sort) {
 		if (tfx__sort_graph(graph)) {
 			tfx__reindex_graph(graph);
+			tfx__constrain_graph_curves(graph);
 			return true;
 		}
 	}
 
+	tfx__constrain_graph_curves(graph);
 	return false;
+}
+
+//The lowest and highest y a cubic bezier segment reaches, which is not just its end points once a handle sits outside them
+tfxINTERNAL void tfx__bezier_y_extents(float p0, float c1, float c2, float p3, float *lowest, float *highest) {
+	*lowest = p0 < p3 ? p0 : p3;
+	*highest = p0 > p3 ? p0 : p3;
+	float a = 3.f * (-p0 + 3.f * c1 - 3.f * c2 + p3);
+	float b = 6.f * (p0 - 2.f * c1 + c2);
+	float c = 3.f * (c1 - p0);
+	float roots[2];
+	int root_count = 0;
+	if (fabsf(a) < 1e-6f) {
+		if (fabsf(b) > 1e-6f) {
+			roots[root_count++] = -c / b;
+		}
+	} else {
+		float discriminant = b * b - 4.f * a * c;
+		if (discriminant >= 0.f) {
+			float discriminant_root = sqrtf(discriminant);
+			roots[root_count++] = (-b + discriminant_root) / (2.f * a);
+			roots[root_count++] = (-b - discriminant_root) / (2.f * a);
+		}
+	}
+	for (int root_index = 0; root_index != root_count; ++root_index) {
+		float t = roots[root_index];
+		if (t <= 0.f || t >= 1.f) {
+			continue;
+		}
+		float value = tfx__bezier_sampler(t, p0, c1, c2, p3);
+		if (value < *lowest) *lowest = value;
+		if (value > *highest) *highest = value;
+	}
+}
+
+tfxINTERNAL bool tfx__curve_stays_in_graph_range(tfx_graph_t *graph, float p0, float c1, float c2, float p3) {
+	float lowest, highest;
+	tfx__bezier_y_extents(p0, c1, c2, p3, &lowest, &highest);
+	const float tolerance = 0.0001f;
+	return lowest >= tfx__get_min_graph_values(graph->graph_preset).y - tolerance && highest <= tfx__get_max_graph_values(graph->graph_preset).y + tolerance;
+}
+
+//Scales both handles of a segment back toward the straight line between its nodes until the curve is inside the value range again
+void tfx__constrain_curve_segment(tfx_graph_t *graph, tfx_attribute_node_t *left_node, tfx_attribute_node_t *right_node) {
+	if (!tfx__graph_curves_can_overshoot(graph->graph_preset)) {
+		return;
+	}
+	float p0 = left_node->value;
+	float p3 = right_node->value;
+	if (tfx__curve_stays_in_graph_range(graph, p0, left_node->right.y, right_node->left.y, p3)) {
+		return;
+	}
+	float linear_left = p0 + (p3 - p0) * (1.f / 3.f);
+	float linear_right = p0 + (p3 - p0) * (2.f / 3.f);
+	float left_offset = left_node->right.y - linear_left;
+	float right_offset = right_node->left.y - linear_right;
+	//A scale of zero is the straight line, which can never leave the range, so bisecting always lands on something valid
+	float lowest_scale = 0.f;
+	float highest_scale = 1.f;
+	for (int iteration = 0; iteration != 24; ++iteration) {
+		float scale = (lowest_scale + highest_scale) * 0.5f;
+		if (tfx__curve_stays_in_graph_range(graph, p0, linear_left + left_offset * scale, linear_right + right_offset * scale, p3)) {
+			lowest_scale = scale;
+		} else {
+			highest_scale = scale;
+		}
+	}
+	left_node->right.y = linear_left + left_offset * lowest_scale;
+	right_node->left.y = linear_right + right_offset * lowest_scale;
+}
+
+//Bisects a dragged handle back toward the value it last held so the segment it controls never leaves the value range
+void tfx__constrain_curve_handle(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float previous_value) {
+	if (!tfx__graph_curves_can_overshoot(graph->graph_preset)) {
+		return;
+	}
+	tfx_attribute_node_t *left_node = is_left_curve ? tfx__get_graph_prev_node(graph, node) : node;
+	tfx_attribute_node_t *right_node = is_left_curve ? node : tfx__get_graph_next_node(graph, node);
+	if (!left_node || !right_node) {
+		return;
+	}
+	float p0 = left_node->value;
+	float p3 = right_node->value;
+	float fixed_handle = is_left_curve ? left_node->right.y : right_node->left.y;
+	float wanted_value = is_left_curve ? node->left.y : node->right.y;
+	if (tfx__curve_stays_in_graph_range(graph, p0, is_left_curve ? fixed_handle : wanted_value, is_left_curve ? wanted_value : fixed_handle, p3)) {
+		return;
+	}
+	if (!tfx__curve_stays_in_graph_range(graph, p0, is_left_curve ? fixed_handle : previous_value, is_left_curve ? previous_value : fixed_handle, p3)) {
+		tfx__constrain_curve_segment(graph, left_node, right_node);
+		return;
+	}
+	float lowest_value = previous_value;
+	float highest_value = wanted_value;
+	for (int iteration = 0; iteration != 24; ++iteration) {
+		float value = (lowest_value + highest_value) * 0.5f;
+		if (tfx__curve_stays_in_graph_range(graph, p0, is_left_curve ? fixed_handle : value, is_left_curve ? value : fixed_handle, p3)) {
+			lowest_value = value;
+		} else {
+			highest_value = value;
+		}
+	}
+	if (is_left_curve) {
+		node->left.y = lowest_value;
+	} else {
+		node->right.y = lowest_value;
+	}
+}
+
+void tfx__constrain_graph_curves(tfx_graph_t *graph) {
+	if (!tfx__graph_curves_can_overshoot(graph->graph_preset) || graph->nodes.current_size < 2) {
+		return;
+	}
+	for (tfxU32 node_index = 0; node_index != graph->nodes.current_size - 1; ++node_index) {
+		tfx__constrain_curve_segment(graph, &graph->nodes[node_index], &graph->nodes[node_index + 1]);
+	}
 }
 
 void tfx__clamp_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
@@ -7490,12 +7618,13 @@ void tfx__clamp_graph_nodes(tfx_graph_t *graph) {
 			graph->nodes[i].right.y = graph->nodes[i].value;
 		}
 	}
+	tfx__constrain_graph_curves(graph);
 }
 
 void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
-	if (p->y < tfx__get_min_graph_values(graph->graph_preset).y) p->y = tfx__get_min_graph_values(graph->graph_preset).y;
+	if (p->y < tfx__get_min_graph_curve_values(graph->graph_preset).y) p->y = tfx__get_min_graph_curve_values(graph->graph_preset).y;
 	if (p->x < tfx__get_min_graph_values(graph->graph_preset).x) p->x = tfx__get_min_graph_values(graph->graph_preset).x;
-	if (p->y > tfx__get_max_graph_values(graph->graph_preset).y) p->y = tfx__get_max_graph_values(graph->graph_preset).y;
+	if (p->y > tfx__get_max_graph_curve_values(graph->graph_preset).y) p->y = tfx__get_max_graph_curve_values(graph->graph_preset).y;
 	if (p->x > tfx__get_max_graph_values(graph->graph_preset).x) p->x = tfx__get_max_graph_values(graph->graph_preset).x;
 
 	tfx_attribute_node_t *next = tfx__get_graph_next_node(graph, node);
@@ -7517,8 +7646,8 @@ void tfx__set_node_curve_frames(tfx_graph_t *graph) {
 }
 
 void tfx__set_left_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node) {
-	if (curve->y < tfx__get_min_graph_values(graph->graph_preset).y) curve->y = tfx__get_min_graph_values(graph->graph_preset).y;
-	if (curve->y > tfx__get_max_graph_values(graph->graph_preset).y) curve->y = tfx__get_max_graph_values(graph->graph_preset).y;
+	if (curve->y < tfx__get_min_graph_curve_values(graph->graph_preset).y) curve->y = tfx__get_min_graph_curve_values(graph->graph_preset).y;
+	if (curve->y > tfx__get_max_graph_curve_values(graph->graph_preset).y) curve->y = tfx__get_max_graph_curve_values(graph->graph_preset).y;
 	tfx_attribute_node_t *prev = tfx__get_graph_prev_node(graph, node);
 	if (prev) {
 		curve->x = prev->frame + (node->frame - prev->frame) * (2.f / 3.f);
@@ -7526,8 +7655,8 @@ void tfx__set_left_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribu
 }
 
 void tfx__set_right_node_curve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node) {
-	if (curve->y < tfx__get_min_graph_values(graph->graph_preset).y) curve->y = tfx__get_min_graph_values(graph->graph_preset).y;
-	if (curve->y > tfx__get_max_graph_values(graph->graph_preset).y) curve->y = tfx__get_max_graph_values(graph->graph_preset).y;
+	if (curve->y < tfx__get_min_graph_curve_values(graph->graph_preset).y) curve->y = tfx__get_min_graph_curve_values(graph->graph_preset).y;
+	if (curve->y > tfx__get_max_graph_curve_values(graph->graph_preset).y) curve->y = tfx__get_max_graph_curve_values(graph->graph_preset).y;
 	tfx_attribute_node_t *next = tfx__get_graph_next_node(graph, node);
 	if (next) {
 		curve->x = node->frame + (next->frame - node->frame) * (1.f / 3.f);
@@ -8157,6 +8286,34 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	return { tfxMAX_FRAME, 20.f };
 }
 
+tfx_vec2_t tfx__get_min_graph_curve_values(tfx_graph_preset preset) {
+	tfx_vec2_t minimum = tfx__get_min_graph_values(preset);
+	switch (preset) {
+	case tfx_graph_preset::tfxRibbonNoiseEnvelopePreset:
+		minimum.y = -1.5f;
+		break;
+	default:
+		break;
+	}
+	return minimum;
+}
+
+tfx_vec2_t tfx__get_max_graph_curve_values(tfx_graph_preset preset) {
+	tfx_vec2_t maximum = tfx__get_max_graph_values(preset);
+	switch (preset) {
+	case tfx_graph_preset::tfxRibbonNoiseEnvelopePreset:
+		maximum.y = 2.5f;
+		break;
+	default:
+		break;
+	}
+	return maximum;
+}
+
+bool tfx__graph_curves_can_overshoot(tfx_graph_preset preset) {
+	return tfx__get_min_graph_curve_values(preset).y != tfx__get_min_graph_values(preset).y || tfx__get_max_graph_curve_values(preset).y != tfx__get_max_graph_values(preset).y;
+}
+
 void tfx__drag_graph_values(tfx_graph_preset preset, float *frame, float *value) {
 	switch (preset) {
 	case tfx_graph_preset::tfxOpacityOvertimePreset:
@@ -8372,6 +8529,7 @@ void tfx__update_lerp_graph(tfx_graph_t *graph) {
 		}
 		graph->nodes[1].frame = 1.f;
 		graph->nodes[1].index = 1;
+		tfx__constrain_graph_curves(graph);
 		graph->wide_graph.from = tfxWideSetSingle(graph->nodes[0].value);
 		graph->wide_graph.to = tfxWideSetSingle(graph->nodes[1].value);
 		if (!(graph->flags & tfxGraphFlags_use_bezier_sampling)) {
