@@ -6697,7 +6697,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU32 noise_packed;
 	float lag_time;
 	float lag_span;
-	tfxU32 padding;
+	float overall_scale;
 	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
