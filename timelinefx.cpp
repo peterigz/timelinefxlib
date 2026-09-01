@@ -4357,7 +4357,7 @@ void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, 
 			tfx_gpu_image_data_t cs = {};
 			cs.animation_frames = shape.animation_frames;
 			cs.image_size = shape.image_size;
-			if (shape.ptr) {
+			if (shape.ptr && uv_lookup) {
 				//Only call if the user pointer is set, this should be set in the user shape_loader callback
 				uv_lookup(shape.ptr, &cs, 0);
 			}
@@ -4370,7 +4370,7 @@ void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, 
 				tfx_gpu_image_data_t cs = {};
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
-				if (shape.ptr) {
+				if (shape.ptr && uv_lookup) {
 					//Only call if the user pointer is set, this should be set in the user shape_loader callback
 					uv_lookup(shape.ptr, &cs, f);
 				}
@@ -9761,7 +9761,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
-					tfx_image_data_t image_data;
+					tfx_image_data_t image_data = {};
 					image_data.name.Set(pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
 					image_data.animation_frames = (float)atoi(pair[2].c_str());
@@ -12048,6 +12048,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 	new_effect.graph_list_index = effect->state_properties.graph_list_index;
 	new_effect.transform_index = effect->state_properties.transform_index;
 	new_effect.library = effect->library;
+	new_effect.user_data = effect->user_data;
 
 	new_effect.age = -add_delayed_spawning;
 	new_effect.total_age = new_effect.age;
@@ -13324,7 +13325,7 @@ void tfx_HardExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
-	return pm->effects[effect_index].source_effect->user_data;
+	return pm->effects[effect_index].user_data;
 }
 
 void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
@@ -15862,7 +15863,7 @@ tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation) {
 
 void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].source_effect->user_data = data;
+	pm->effects[effect_index].user_data = data;
 }
 
 void tfx_DisableStageSpawning(tfx_stage pm, bool yesno) {
