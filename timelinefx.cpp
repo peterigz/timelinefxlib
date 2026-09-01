@@ -214,6 +214,38 @@ void tfx__scan_memory_and_free_resources() {
     memory_to_free.free();
 }
 
+tfxINTERNAL void tfx__reset_object_callbacks() {
+	tfx_pool **memory_pools = tfxStore->memory_pools;
+	tfxU32 memory_pool_count = tfxStore->memory_pool_count;
+	tfx_allocator *allocator = tfxMemoryAllocator;
+	tfx_header *current_block = 0;
+	for (tfxU32 i = 0; i != memory_pool_count; i++) {
+		if (i == 0) {
+			current_block = tfx__first_block_in_pool(tfx_GetPool(allocator));
+		} else {
+			current_block = tfx__first_block_in_pool((tfx_pool*)memory_pools[i]);
+		}
+		while (!tfx__is_last_block_in_pool(current_block)) {
+			if (!tfx__is_free_block(current_block)) {
+				void *allocation = (void *)((char *)current_block + tfx__BLOCK_POINTER_OFFSET);
+				if (TFX_VALID_IDENTIFIER(allocation)) {
+					tfx_struct_type struct_type = (tfx_struct_type)TFX_STRUCT_TYPE(allocation);
+					switch (struct_type) {
+						case tfx_struct_type_effect_template: {
+							tfx_effect_template effect_template = (tfx_effect_template)allocation;
+							effect_template->effect->update_callback = nullptr;
+							break;
+						}
+						default:
+							break;
+					}
+				}
+			}
+			current_block = tfx__next_physical_block(current_block);
+		}
+	}
+}
+
 tfx_allocator *tfxGetAllocator() {
 	return tfxMemoryAllocator;
 }
@@ -19663,12 +19695,44 @@ static void tfx__default_memory_deallocate(void *user_data, void *memory, size_t
 	free(memory);
 }
 
-tfx_context tfx_GetCurrentContext(void) {
+tfx_context tfx_GetContext(void) {
 	return tfxCurrentContext;
 }
 
-void tfx_SetCurrentContext(tfx_context context) {
+bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks) {
+	if (!context) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot set a null TimelineFX context.\n", TFX_ERROR_NAME);
+		return false;
+	}
+	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
+		return false;
+	}
 	tfxCurrentContext = context;
+	if (allocation_callbacks) context->allocation_callbacks = *allocation_callbacks;
+	tfxMemoryAllocator->get_block_size_callback = tfx__block_size;
+	tfxMemoryAllocator->merge_next_callback = tfx__null_merge_callback;
+	tfxMemoryAllocator->merge_prev_callback = tfx__null_merge_callback;
+	tfxMemoryAllocator->split_block_callback = tfx__null_split_callback;
+	tfxMemoryAllocator->add_pool_callback = tfx__null_add_pool_callback;
+	tfxMemoryAllocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
+	for (tfx_stage stage : tfxStore->stages.data) {
+		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
+		for (tfx_effect_state_t &effect : stage->effects) effect.update_callback = nullptr;
+	}
+	for (tfx_library library : tfxStore->libraries.data) {
+		library->uv_lookup = nullptr;
+		for (tfx_effect_descriptor effect : library->effect_paths.data) {
+			effect->update_callback = nullptr;
+		}
+	}
+	for (tfx_animation_manager animation_manager : tfxStore->animation_managers.data) {
+		animation_manager->maybe_render_instance_callback = nullptr;
+	}
+	tfx__reset_object_callbacks();
+	return true;
 }
 
 tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks) {
@@ -19911,26 +19975,33 @@ tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const 
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
 		return nullptr;
 	}
+	if (allocation_callbacks) {
+		if (!allocation_callbacks->allocate || !allocation_callbacks->deallocate) {
+			TFX_ASSERT(false);
+			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
+			return nullptr;
+		}
+		tfxCurrentContext->allocation_callbacks = *allocation_callbacks;
+	}
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)tfx_HardwareConcurrency() - 1);
-	tfx_ResumeContext(tfxCurrentContext, allocation_callbacks);
+	tfx_ResumeTimelineFX();
 	tfx__initialise_graph_indexes();
 	return tfxCurrentContext;
 }
 
-void tfx_SuspendContext(tfx_context context) {
-	if (!context) {
+void tfx_SuspendTimelineFX(void) {
+	if (!tfxCurrentContext) {
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot suspend a null TimelineFX context.\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot suspend without a current TimelineFX context.\n", TFX_ERROR_NAME);
 		return;
 	}
-	if (context->suspended) {
+	if (tfxCurrentContext->suspended) {
 		TFX_ASSERT(false);
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already suspended.\n", TFX_ERROR_NAME);
 		return;
 	}
-	
+
 	// Wait for stage work to be done, and shutdown update thread associated with the stage
-	tfxCurrentContext = context;
 	for (tfx_stage stage : tfxStore->stages.data) {
 		tfx__wait_for_external_recording(stage);
 		tfx_CompleteStageWork(stage);
@@ -19952,41 +20023,23 @@ void tfx_SuspendContext(tfx_context context) {
 	for (tfxU32 i = 0; i != tfxStore->thread_count; ++i) tfx__cleanup_thread(tfxStore, i);
 	tfxStore->thread_count = 0;
 	tfx__cleanup_thread_queues(&tfxStore->thread_queues);
-	context->suspended = true;
+	tfxCurrentContext->suspended = true;
 }
 
-void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks) {
-	if (!context) {
+void tfx_ResumeTimelineFX(void) {
+	if (!tfxCurrentContext) {
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot resume a null TimelineFX context.\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot resume without a current TimelineFX context.\n", TFX_ERROR_NAME);
 		return;
 	}
-	if (!context->suspended) {
+	if (!tfxCurrentContext->suspended) {
 		TFX_ASSERT(false);
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
 		return;
 	}
-	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
-		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
-		return;
-	}
-	
-	// Copy over all data from the passed in context
-	tfxCurrentContext = context;
-	if (allocation_callbacks) context->allocation_callbacks = *allocation_callbacks; // We do this because maybe the DLL calling us owned the callbacks and it reset so now the callbacks are stale!
-	tfxMemoryAllocator->get_block_size_callback = tfx__block_size;
-	tfxMemoryAllocator->merge_next_callback = tfx__null_merge_callback;
-	tfxMemoryAllocator->merge_prev_callback = tfx__null_merge_callback;
-	tfxMemoryAllocator->split_block_callback = tfx__null_split_callback;
-	tfxMemoryAllocator->add_pool_callback = tfx__null_add_pool_callback;
-	tfxMemoryAllocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
-	for (tfx_stage stage : tfxStore->stages.data) {
-		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
-	}
 	tfx__initialise_thread_queues(&tfxStore->thread_queues);
 	tfx_InitialiseThreads(tfxStore);
-	context->suspended = false;
+	tfxCurrentContext->suspended = false;
 }
 
 void tfx_EndTimelineFX() {
@@ -19995,7 +20048,7 @@ void tfx_EndTimelineFX() {
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot end TimelineFX without a current context.\n", TFX_ERROR_NAME);
 		return;
 	}
-	if (!tfxCurrentContext->suspended) tfx_SuspendContext(tfxCurrentContext);
+	if (!tfxCurrentContext->suspended) tfx_SuspendTimelineFX();
 	while (tfxStore->stages.Size()) {
 		tfx_stage stage = tfxStore->stages.data.back();
 		tfx_FreeStage(stage);

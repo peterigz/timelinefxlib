@@ -740,29 +740,35 @@ Cleanup up all threads and memory used by timelinefx
 tfxAPI void tfx_EndTimelineFX(void);
 
 /*
-Get or set the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
-You can use this to call into TimelineFX across ABI boundaries.
-The context and library instance must be compatible; currently this generally means the context came from the same library instance.
+Get the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
 */
-tfxAPI tfx_context tfx_GetCurrentContext(void);
-tfxAPI void tfx_SetCurrentContext(tfx_context context);
+tfxAPI tfx_context tfx_GetContext(void);
+
+/*
+Adopt a context obtained from tfx_GetContext into the currently running module and rebind every function pointer that
+the module owns. Call this after a hot-reload of the dynamic library hosting the TimelineFX instance, before calling
+tfx_ResumeTimelineFX.
+Passing non-NULL allocation_callbacks replaces the stored callbacks. Passing NULL preserves the stored callbacks.
+The caller must provide fresh callback addresses when the prior callback addresses are expected to be invalid.
+Any update or uv lookup callbacks previously registered on effects, libraries and animation managers are cleared and
+must be registered again by the caller.
+* @returns    True if the context was adopted
+*/
+#ifdef __cplusplus
+tfxAPI bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 /*
 Drain and stop all current TimelineFX asynchronous work without deallocating memory.
 */
-tfxAPI void tfx_SuspendContext(tfx_context context);
+tfxAPI void tfx_SuspendTimelineFX(void);
 
 /*
-Restore the context to a provided checkpointed state obtained from a suspend call.
-For example, you can use this to resume work after suspending it due to a hot-reload of the dynamic library hosting the TimelineFX instance.
-Passing non-NULL allocation_callbacks replaces the stored callbacks. Passing NULL preserves the stored callbacks.
-The caller must provide fresh callback addresses when the prior callback addresses are expected to be invalid.
+Restart the worker threads after a call to tfx_SuspendTimelineFX.
 */
-#ifdef __cplusplus
-tfxAPI void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
-#else
-tfxAPI void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks);
-#endif
+tfxAPI void tfx_ResumeTimelineFX(void);
 
 //--------------------------------
 //Global_variable_access

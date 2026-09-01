@@ -1640,6 +1640,7 @@ void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
 tfxINTERNAL void tfx__free_handle(tfx_allocator *allocator, void *handle);
 tfxINTERNAL void tfx__scan_memory_and_free_resources();
+tfxINTERNAL void tfx__reset_object_callbacks();
 tfxINTERNAL void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_header *current_block);
 tfxAPI void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, bool output_all);
 //Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
