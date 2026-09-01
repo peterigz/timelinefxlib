@@ -6636,10 +6636,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	tfxIndex graph_list_index;
 	tfxIndex transform_index;
 
-	//User Data
-	void *user_data;
-	void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
-
 	//Spawn controls
 	tfx_parent_spawn_controls_t spawn_controls;
 	tfx_vec3_t emitter_size;

@@ -440,7 +440,8 @@ typedef enum {
 	tfxErrorCode_invalid_inventory                              = 1 << 10,
 	tfxErrorCode_file_version_out_of_date                       = 1 << 11,
 	tfxErrorCode_library_loaded_without_shape_loader            = 1 << 13,
-	tfxErrorCode_library_object_could_not_be_created            = 1 << 14
+	tfxErrorCode_library_object_could_not_be_created            = 1 << 14,
+	tfxErrorCode_some_images_loaded_without_user_ptr            = 1 << 15
 } tfx_error_flag_bits;
 
 typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits

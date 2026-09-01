@@ -4354,20 +4354,26 @@ void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, 
 	shape_data->list.clear();
 	for (tfx_image_data_t &shape : *particle_shapes) {
 		if (shape.animation_frames == 1) {
-			tfx_gpu_image_data_t cs;
+			tfx_gpu_image_data_t cs = {};
 			cs.animation_frames = shape.animation_frames;
 			cs.image_size = shape.image_size;
-			uv_lookup(shape.ptr, &cs, 0);
+			if (shape.ptr) {
+				//Only call if the user pointer is set, this should be set in the user shape_loader callback
+				uv_lookup(shape.ptr, &cs, 0);
+			}
 			shape_data->list.push_back_copy(cs);
 			shape.compute_shape_index = index++;
 		}
 		else {
 			shape.compute_shape_index = index;
 			for (tfxU32 f = 0; f != shape.animation_frames; ++f) {
-				tfx_gpu_image_data_t cs;
+				tfx_gpu_image_data_t cs = {};
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
-				uv_lookup(shape.ptr, &cs, f);
+				if (shape.ptr) {
+					//Only call if the user pointer is set, this should be set in the user shape_loader callback
+					uv_lookup(shape.ptr, &cs, f);
+				}
 				shape_data->list.push_back_copy(cs);
 				index++;
 			}
@@ -9775,14 +9781,12 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 						shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
-						if (!image_data.ptr) {
-							//uid = -6;
+						animation_manager->particle_shapes.Insert(image_data.image_hash, image_data);
+						if (first_shape_hash == 0) {
+							first_shape_hash = image_data.image_hash;
 						}
-						else {
-							animation_manager->particle_shapes.Insert(image_data.image_hash, image_data);
-							if (first_shape_hash == 0) {
-								first_shape_hash = image_data.image_hash;
-							}
+						if (!image_data.ptr) {
+							error |= tfxErrorCode_some_images_loaded_without_user_ptr;
 						}
 					}
 					else {
@@ -10038,7 +10042,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
-					tfx_image_data_t image_data;
+					tfx_image_data_t image_data = {};
 					tfx__strcpy(image_data.name.data, image_data.name.capacity, pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
 					image_data.animation_frames = (float)atoi(pair[2].c_str());
@@ -10063,13 +10067,14 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 							shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 						}
 
+						//Always insert regardless if image_data.ptr is null or not. The user can handle that
+						//as it essentially belongs to them.
+						lib->particle_shapes.Insert(image_data.image_hash, image_data);
+						if (first_shape_hash == 0) {
+							first_shape_hash = image_data.image_hash;
+						}
 						if (!image_data.ptr) {
-							//uid = -6;
-						} else {
-							lib->particle_shapes.Insert(image_data.image_hash, image_data);
-							if (first_shape_hash == 0) {
-								first_shape_hash = image_data.image_hash;
-							}
+							error |= tfxErrorCode_some_images_loaded_without_user_ptr;
 						}
 					} else {
 						//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
@@ -12043,8 +12048,6 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 	new_effect.graph_list_index = effect->state_properties.graph_list_index;
 	new_effect.transform_index = effect->state_properties.transform_index;
 	new_effect.library = effect->library;
-	new_effect.user_data = effect->user_data;
-	new_effect.update_callback = effect->update_callback;
 
 	new_effect.age = -add_delayed_spawning;
 	new_effect.total_age = new_effect.age;
@@ -12091,6 +12094,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 				emitter.grid_coords = tfx_vec3_t();
 
 				emitter.state_properties = child->state_properties;
+				TFX_ASSERT(child->state_properties.image);
 				emitter.state_properties.image_frame_rate = child->state_properties.image->animation_frames > 1 && child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
 
 				emitter.source_emitter = child;
@@ -13320,7 +13324,7 @@ void tfx_HardExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
-	return pm->effects[effect_index].user_data;
+	return pm->effects[effect_index].source_effect->user_data;
 }
 
 void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
@@ -15858,7 +15862,7 @@ tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation) {
 
 void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].user_data = data;
+	pm->effects[effect_index].source_effect->user_data = data;
 }
 
 void tfx_DisableStageSpawning(tfx_stage pm, bool yesno) {
@@ -18909,8 +18913,8 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	translation.y = tfx__sample_multi_node_graph(&transform_list.graphs[tfxTransform_translate_y_index], age, oscillator_time);
 	translation.z = tfx__sample_multi_node_graph(&transform_list.graphs[tfxTransform_translate_z_index], age, oscillator_time);
 
-	if (pm->effects[index].update_callback) {
-		pm->effects[index].update_callback(pm, index);
+	if (pm->effects[index].source_effect->update_callback) {
+		pm->effects[index].source_effect->update_callback(pm, index);
 	}
 
 }
@@ -19539,8 +19543,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	//-------------------------------------------------------
 
 	work_entry->graphs = &library->graphs[emitter.state_properties.graph_list_index];
-	//work_entry->c.particle_update_callback = e.particle_update_callback;
-	//work_entry->c.user_data = e.user_data;
 
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 	tfxU32 amount_to_update = buffer.current_size;
@@ -19719,7 +19721,6 @@ bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *alloc
 	tfxMemoryAllocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
 	for (tfx_stage stage : tfxStore->stages.data) {
 		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
-		for (tfx_effect_state_t &effect : stage->effects) effect.update_callback = nullptr;
 	}
 	for (tfx_library library : tfxStore->libraries.data) {
 		library->uv_lookup = nullptr;
