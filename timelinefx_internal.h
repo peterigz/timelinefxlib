@@ -5242,7 +5242,6 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 //Section: Global_Variables
 //-----------------------------------------------------------
 // Platform-specific synchronization wrapper
-extern int tfxNumberOfThreadsInAdditionToMain;
 
 #ifndef tfxMAX_QUEUES
 #define tfxMAX_QUEUES 64
@@ -5320,8 +5319,25 @@ typedef struct tfx_storage_s {
 	tfxU32 thread_count;
 } tfx_storage_t;
 
-extern tfx_storage_t *tfxStore;
-extern tfx_allocator *tfxMemoryAllocator;
+struct tfx_vec3_t;
+
+typedef struct tfx_context_s {
+	tfx_storage_t store;
+	tfx_allocator *memory_allocator;
+	tfx_allocation_callbacks_t allocation_callbacks;
+	int number_of_threads_in_addition_to_main;
+	bool suspended;
+	tfxU32 stage_index_counter;
+	tfxU32 volatile tracy_worker_count;
+	tfx_vector_t<tfx_vec3_t> icosphere_points[6];
+} tfx_context_t;
+
+extern tfx_context tfxCurrentContext;
+
+#define tfxStore (&tfxCurrentContext->store)
+#define tfxMemoryAllocator (tfxCurrentContext->memory_allocator)
+#define tfxNumberOfThreadsInAdditionToMain (tfxCurrentContext->number_of_threads_in_addition_to_main)
+#define tfxIcospherePoints (tfxCurrentContext->icosphere_points)
 
 //-----------------------------------------------------------
 //Section: Multithreading_Work_Queues
@@ -6074,7 +6090,6 @@ typedef struct tfx_package_s {
 
 #ifdef __cplusplus
 
-extern tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 #endif
 

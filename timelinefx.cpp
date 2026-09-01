@@ -91,7 +91,7 @@ void tfxAddHostMemoryPool(size_t size) {
 		pool_size = tfxGetNextPower(size);
 	}
 	TFX_PRINT_NOTICE(TFX_NOTICE_COLOR"%s: Ran out of memory, creating a new pool of size %zu. \n", TFX_NOTICE_NAME, pool_size);
-	tfxStore->memory_pools[tfxStore->memory_pool_count] = (tfx_pool *)tfxALLOCATE_POOL(pool_size);
+	tfxStore->memory_pools[tfxStore->memory_pool_count] = (tfx_pool *)tfxCurrentContext->allocation_callbacks.allocate(tfxCurrentContext->allocation_callbacks.user_data, pool_size, 16);
 	TFX_ASSERT(tfxStore->memory_pools[tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
 	tfx_AddPool(tfxMemoryAllocator, (tfx_pool *)tfxStore->memory_pools[tfxStore->memory_pool_count], pool_size);
 	tfxStore->memory_pool_sizes[tfxStore->memory_pool_count] = pool_size;
@@ -897,8 +897,6 @@ tfx_rgba8_t tfx__convert_float_color(float color_array[4]) {
 	color.a = (char)tfx__Min(255, (int)(color_array[3] * 255.f));
 	return color;
 }
-
-tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 void tfx__make_icospheres() {
 	const float x = .525731112119133606f;
@@ -19650,23 +19648,71 @@ void tfx__transform_effect(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotati
 	*q = tfx__euler_to_quaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
 }
 
-int tfxNumberOfThreadsInAdditionToMain = 0;
+tfx_context tfxCurrentContext = nullptr;
 
-tfx_storage_t *tfxStore = 0;
-tfx_allocator *tfxMemoryAllocator = 0;
+static void *tfx__default_memory_allocate(void *user_data, size_t size, size_t alignment) {
+	(void)user_data;
+	(void)alignment;
+	return malloc(size);
+}
 
-void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
-	if (tfxMemoryAllocator) return;
-	void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
-	TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
-	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
+static void tfx__default_memory_deallocate(void *user_data, void *memory, size_t size, size_t alignment) {
+	(void)user_data;
+	(void)size;
+	(void)alignment;
+	free(memory);
+}
 
-    tfx_storage_t store{};
-	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
+tfx_context tfx_GetCurrentContext(void) {
+	return tfxCurrentContext;
+}
 
-    memcpy((void *)tfxStore, (const void *)&store, sizeof(tfx_storage_t));
+void tfx_SetCurrentContext(tfx_context context) {
+	tfxCurrentContext = context;
+}
+
+tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks) {
+	if (tfxCurrentContext) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX memory is already initialised.\n", TFX_ERROR_NAME);
+		return tfxCurrentContext;
+	}
+	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
+		return nullptr;
+	}
+	tfx_allocation_callbacks_t callbacks{nullptr, tfx__default_memory_allocate, tfx__default_memory_deallocate};
+	if (allocation_callbacks) callbacks = *allocation_callbacks;
+	void *memory_pool = callbacks.allocate(callbacks.user_data, memory_pool_size, 16);
+	if (!memory_pool) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callback failed to allocate the initial TimelineFX memory pool.\n", TFX_ERROR_NAME);
+		return nullptr;
+	}
+	tfx_allocator *allocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
+	if (!allocator) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to initialise the TimelineFX allocator.\n", TFX_ERROR_NAME);
+		callbacks.deallocate(callbacks.user_data, memory_pool, memory_pool_size, 16);
+		return nullptr;
+	}
+	tfx_context context = (tfx_context)tfx_AllocateAligned(allocator, sizeof(tfx_context_t), 16);
+	if (!context) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to allocate the TimelineFX context.\n", TFX_ERROR_NAME);
+		callbacks.deallocate(callbacks.user_data, memory_pool, memory_pool_size, 16);
+		return nullptr;
+	}
+	tfx_context_t initial_context{};
+	memcpy((void *)context, (const void *)&initial_context, sizeof(tfx_context_t));
+	context->memory_allocator = allocator;
+	context->allocation_callbacks = callbacks;
+	context->suspended = true;
+	tfxCurrentContext = context;
 	tfxStore->default_memory_pool_size = memory_pool_size;
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
+	tfxStore->memory_pool_sizes[0] = memory_pool_size;
 	tfxStore->memory_pool_count = 1;
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
 	//tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
@@ -19674,6 +19720,7 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxStore->animation_managers.init();
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfx__hash_initialise(&tfxStore->hasher, 0);
+	return context;
 }
 
 bool tfx_InitialiseThreads(tfx_storage_t *storage) {
@@ -19704,9 +19751,8 @@ void *tfx__thread_worker(void *arg) {
 	//the first worker is 0. The group hint folds the workers into one collapsible group in
 	//the UI instead of leaving a wall of separate lanes. SetThreadNameWithHint copies the
 	//string, so the stack buffer is safe.
-	static tfxU32 volatile tracy_worker_count = 0;
 	char thread_name[32];
-	snprintf(thread_name, sizeof(thread_name), "TimelineFX Worker %u", tfx_AtomicAdd32(&tracy_worker_count, 1));
+	snprintf(thread_name, sizeof(thread_name), "TimelineFX Worker %u", tfx_AtomicAdd32(&tfxCurrentContext->tracy_worker_count, 1));
 	tracy::SetThreadNameWithHint(thread_name, 1);
 #endif
 	tfx__begin_flush_denormals();
@@ -19853,25 +19899,105 @@ unsigned int tfx_GetDefaultThreadCount(void) {
 
 //Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 //max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
-void tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size) {
-	if (!tfxMemoryAllocator) {
-		tfx_InitialiseTimelineFXMemory(memory_pool_size);
+tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks) {
+	if (!tfxCurrentContext) tfx_InitialiseTimelineFXMemory(memory_pool_size, allocation_callbacks);
+	if (!tfxCurrentContext) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to initialise TimelineFX.\n", TFX_ERROR_NAME);
+		return nullptr;
 	}
-
+	if (!tfxCurrentContext->suspended) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
+		return nullptr;
+	}
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)tfx_HardwareConcurrency() - 1);
-    
+	tfx_ResumeContext(tfxCurrentContext, allocation_callbacks);
+	tfx__initialise_graph_indexes();
+	return tfxCurrentContext;
+}
+
+void tfx_SuspendContext(tfx_context context) {
+	if (!context) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot suspend a null TimelineFX context.\n", TFX_ERROR_NAME);
+		return;
+	}
+	if (context->suspended) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already suspended.\n", TFX_ERROR_NAME);
+		return;
+	}
+	
+	// Wait for stage work to be done, and shutdown update thread associated with the stage
+	tfxCurrentContext = context;
+	for (tfx_stage stage : tfxStore->stages.data) {
+		tfx__wait_for_external_recording(stage);
+		tfx_CompleteStageWork(stage);
+		tfx__shutdown_update_thread(stage);
+	}
+	
+	// Mark that the thread queue will not be doing anymore work
+	tfxStore->thread_queues.end_all_threads = true;
+	tfx__writebarrier;
+	
+	// Collect all threads and kill them off
+	tfx_work_queue_t end_queue{};
+	tfxU32 thread_count = tfxStore->thread_count;
+	while (thread_count > 0) {
+		tfx__add_work_queue_entry(&end_queue, nullptr, tfxEndThread);
+		tfx__complete_all_work(&end_queue);
+		thread_count--;
+	}
+	for (tfxU32 i = 0; i != tfxStore->thread_count; ++i) tfx__cleanup_thread(tfxStore, i);
+	tfxStore->thread_count = 0;
+	tfx__cleanup_thread_queues(&tfxStore->thread_queues);
+	context->suspended = true;
+}
+
+void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks) {
+	if (!context) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot resume a null TimelineFX context.\n", TFX_ERROR_NAME);
+		return;
+	}
+	if (!context->suspended) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
+		return;
+	}
+	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
+		return;
+	}
+	
+	// Copy over all data from the passed in context
+	tfxCurrentContext = context;
+	if (allocation_callbacks) context->allocation_callbacks = *allocation_callbacks; // We do this because maybe the DLL calling us owned the callbacks and it reset so now the callbacks are stale!
+	tfxMemoryAllocator->get_block_size_callback = tfx__block_size;
+	tfxMemoryAllocator->merge_next_callback = tfx__null_merge_callback;
+	tfxMemoryAllocator->merge_prev_callback = tfx__null_merge_callback;
+	tfxMemoryAllocator->split_block_callback = tfx__null_split_callback;
+	tfxMemoryAllocator->add_pool_callback = tfx__null_add_pool_callback;
+	tfxMemoryAllocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
+	for (tfx_stage stage : tfxStore->stages.data) {
+		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
+	}
 	tfx__initialise_thread_queues(&tfxStore->thread_queues);
 	tfx_InitialiseThreads(tfxStore);
-	tfx__initialise_graph_indexes();
+	context->suspended = false;
 }
 
 void tfx_EndTimelineFX() {
-	tfxStore->thread_queues.end_all_threads = true;
-	tfx__writebarrier;
-
+	if (!tfxCurrentContext) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot end TimelineFX without a current context.\n", TFX_ERROR_NAME);
+		return;
+	}
+	if (!tfxCurrentContext->suspended) tfx_SuspendContext(tfxCurrentContext);
 	while (tfxStore->stages.Size()) {
 		tfx_stage stage = tfxStore->stages.data.back();
-		tfx_CompleteStageWork(stage);
 		tfx_FreeStage(stage);
 	}
 	tfxStore->stages.FreeAll();
@@ -19887,38 +20013,32 @@ void tfx_EndTimelineFX() {
 	tfxStore->data_types.names_and_types.FreeAll();
 	tfxStore->gpu_graph_data.free();
 	tfxFREE(tfxStore->ribbon_buffer_requirements);
-	tfx_work_queue_t end_queue{};
-	tfxU32 thread_count = tfxStore->thread_count;
-	while (thread_count > 0) {
-		tfx__add_work_queue_entry(&end_queue, nullptr, tfxEndThread);
-		tfx__complete_all_work(&end_queue);
-		thread_count--;
-	}
-	for (tfxU32 i = 0; i != tfxStore->thread_count; ++i) {
-		tfx__cleanup_thread(tfxStore, i);
-	}
 	int pool_count = tfxStore->memory_pool_count;
-	tfx__unlock_thread_access(tfxMemoryAllocator);
-	for (tfxU32 i = 0; i != 6; ++i) {
-		tfxIcospherePoints[i].free();
+	void *memory_pools[tfxMAX_MEMORY_POOLS]{};
+	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS]{};
+	for (int i = 1; i < pool_count; ++i) {
+		memory_pools[i] = tfxStore->memory_pools[i];
+		memory_pool_sizes[i] = tfxStore->memory_pool_sizes[i];
 	}
-
+	size_t initial_pool_size = tfxStore->memory_pool_sizes[0];
+	tfx_allocation_callbacks_t allocation_callbacks = tfxCurrentContext->allocation_callbacks;
+	tfx_allocator *memory_allocator = tfxCurrentContext->memory_allocator;
+	tfx__unlock_thread_access(memory_allocator);
+	for (tfxU32 i = 0; i != 6; ++i) tfxIcospherePoints[i].free();
 	tfx__scan_memory_and_free_resources();
-
-	tfxFREE(tfxStore);
-
-	tfx_pool_stats_t stats = tfx_CreateMemorySnapshot(tfx_GetPool(tfxMemoryAllocator));
-    if (stats.used_blocks > 0) {
-        tfxPrint("There are still used memory blocks in TimelineFX, this indicates a memory leak and a possible bug!");
-        tfxPrintMemoryBlocks(tfxMemoryAllocator, tfx__first_block_in_pool(tfx_GetPool(tfxMemoryAllocator)), true);
-    } else {
+	tfx_Free(memory_allocator, tfxCurrentContext);
+	tfx_pool_stats_t stats = tfx_CreateMemorySnapshot(tfx_GetPool(memory_allocator));
+	if (stats.used_blocks > 0) {
+		tfxPrint("There are still used memory blocks in TimelineFX, this indicates a memory leak and a possible bug!");
+		tfxPrintMemoryBlocks(memory_allocator, tfx__first_block_in_pool(tfx_GetPool(memory_allocator)), true);
+	} else {
 		tfxPrint("Successful shutdown of TimelineFX.");
-    }
-
-	for (int i = pool_count - 1; i != 0; --i) {
-		free(tfxStore->memory_pools[i]);
 	}
-	free(tfxMemoryAllocator);
+	tfxCurrentContext = nullptr;
+	for (int i = pool_count - 1; i != 0; --i) {
+		allocation_callbacks.deallocate(allocation_callbacks.user_data, memory_pools[i], memory_pool_sizes[i], 16);
+	}
+	allocation_callbacks.deallocate(allocation_callbacks.user_data, memory_allocator, initial_pool_size, 16);
 }
 
 void tfx_SetColorRampFormat(tfx_color_format color_format) {
@@ -20375,8 +20495,7 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	//a slot index so it stays unique for the life of the process even as stages are freed
 	//and recreated - a profiler lane named after a recycled index would silently merge two
 	//unrelated stages. tfx_AtomicAdd32 returns the pre-add value, so the first stage is 0.
-	static tfxU32 volatile stage_index_counter = 0;
-	pm->stage_index = tfx_AtomicAdd32(&stage_index_counter, 1);
+	pm->stage_index = tfx_AtomicAdd32(&tfxCurrentContext->stage_index_counter, 1);
 	pm->info = info;
 	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);

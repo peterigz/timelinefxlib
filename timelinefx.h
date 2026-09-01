@@ -457,6 +457,7 @@ typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits
 typedef struct tfx_package_s tfx_package_t;
 
 tfxMAKE_HANDLE(tfx_package)
+tfxMAKE_HANDLE(tfx_context);
 tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_stage);
 tfxMAKE_HANDLE(tfx_animation_manager);
@@ -479,6 +480,15 @@ typedef struct tfx_animation_instance_s tfx_animation_instance_t;
 typedef struct tfx_frame_meta_s tfx_frame_meta_t;
 typedef struct tfx_sprite_data_settings_s tfx_sprite_data_settings_t;
 typedef struct tfx_emitter_path_s tfx_emitter_path_t;
+
+typedef void *(*tfx_allocate_callback)(void *user_data, size_t size, size_t alignment);
+typedef void (*tfx_deallocate_callback)(void *user_data, void *memory, size_t size, size_t alignment);
+
+typedef struct tfx_allocation_callbacks_s {
+	void *user_data;
+	tfx_allocate_callback allocate;
+	tfx_deallocate_callback deallocate;
+} tfx_allocation_callbacks_t;
 
 typedef struct tfx_random_s {
 	tfxU64 seeds[2];
@@ -700,23 +710,59 @@ tearing anything down mid-frame.
 
 /*
 You don't have to call this, you can just call tfx_BeginTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
-needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
+needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand. Passing NULL allocation_callbacks 
+uses the default internal allocator and deallocator.
 * @param memory_pool_size    The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
+* @param allocation_callbacks    The callbacks used to allocate and deallocate every TimelineFX backing pool, or NULL for the default internal allocator and deallocator
 */
-tfxAPI void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size);
+#ifdef __cplusplus
+tfxAPI tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
 * @param max_threads        The number of worker threads to use in addition to the main thread. Pass 0 to run single threaded.
 *                            The count is clamped to the number of hardware threads available on the machine.
 * @param memory_pool_size    The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
+* @param allocation_callbacks    The callbacks used to allocate and deallocate every TimelineFX backing pool, or NULL for the default internal allocator and deallocator
 */
-tfxAPI void tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size);
+#ifdef __cplusplus
+tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 /*
 Cleanup up all threads and memory used by timelinefx
 */
 tfxAPI void tfx_EndTimelineFX(void);
+
+/*
+Get or set the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
+You can use this to call into TimelineFX across ABI boundaries.
+The context and library instance must be compatible; currently this generally means the context came from the same library instance.
+*/
+tfxAPI tfx_context tfx_GetCurrentContext(void);
+tfxAPI void tfx_SetCurrentContext(tfx_context context);
+
+/*
+Drain and stop all current TimelineFX asynchronous work without deallocating memory.
+*/
+tfxAPI void tfx_SuspendContext(tfx_context context);
+
+/*
+Restore the context to a provided checkpointed state obtained from a suspend call.
+For example, you can use this to resume work after suspending it due to a hot-reload of the dynamic library hosting the TimelineFX instance.
+Passing non-NULL allocation_callbacks replaces the stored callbacks. Passing NULL preserves the stored callbacks.
+The caller must provide fresh callback addresses when the prior callback addresses are expected to be invalid.
+*/
+#ifdef __cplusplus
+tfxAPI void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI void tfx_ResumeContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 //--------------------------------
 //Global_variable_access
