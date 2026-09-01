@@ -6362,8 +6362,6 @@ typedef struct tfx_image_data_s {
 	tfxU32 image_index;
 	//The number of frames in the image, can be one or more
 	float animation_frames;
-	//Maximum distance to the nearest transparent edge of the image
-	float max_radius;
 	int import_filter;
 	tfxU32 compute_shape_index;
 	//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using

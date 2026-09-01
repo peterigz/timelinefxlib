@@ -219,7 +219,7 @@ typedef struct tfx_gpu_image_data_s {
 	tfx_float32x2_t image_size;
 	tfxU32 texture_array_index;
 	float animation_frames;
-	float max_radius;
+	float padding;	//Was max_radius which isn't used anymore
 }tfx_gpu_image_data_t;
 
 //------------------------------------------------------------

@@ -43,11 +43,10 @@ tfx__pin_image_data_offset(image_hash, 272);
 tfx__pin_image_data_offset(image_size, 280);
 tfx__pin_image_data_offset(image_index, 288);
 tfx__pin_image_data_offset(animation_frames, 292);
-tfx__pin_image_data_offset(max_radius, 296);
-tfx__pin_image_data_offset(import_filter, 300);
-tfx__pin_image_data_offset(compute_shape_index, 304);
+tfx__pin_image_data_offset(import_filter, 296);
+tfx__pin_image_data_offset(compute_shape_index, 300);
 #ifndef tfxCUSTOM_IMAGE_DATA
-static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 312, "tfx_image_data_t size changed; the C API reads this struct through tfx_GetLibraryImage");
+static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 304, "tfx_image_data_t size changed; the C API reads this struct through tfx_GetLibraryImage");
 #endif
 #undef tfx__pin_image_data_offset
 
