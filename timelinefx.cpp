@@ -4276,23 +4276,11 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 		if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
 			bool shape_found = false;
 			tfxKey hash = library->shared_properties[current->state_properties.shared_index].image_hash;
-			if (hash == 0) {
-				//Try to match index instead might be a converted eff file
-				tfxU32 image_index = library->shared_properties[current->state_properties.shared_index].image_index;
-				for (tfx_image_data_t &image_data : library->particle_shapes.data) {
-					if (image_data.shape_index == image_index) {
-						current->state_properties.image = &image_data;
-						current->state_properties.end_frame = image_data.animation_frames - 1;
-						library->shared_properties[current->state_properties.shared_index].image_hash = image_data.image_hash;
-					}
-				}
-			}
 			if (library->particle_shapes.ValidKey(library->shared_properties[current->state_properties.shared_index].image_hash)) {
 				current->state_properties.image = &library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash);
 				current->state_properties.end_frame = library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash).animation_frames - 1;
 				shape_found = true;
-			}
-			else {
+			} else {
 				for (auto &shape : library->particle_shapes.data) {
 					if (shape.image_hash == library->shared_properties[current->state_properties.shared_index].image_hash) {
 						library->shared_properties[current->state_properties.shared_index].image_hash = shape.image_hash;
@@ -4303,7 +4291,7 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 					}
 				}
 			}
-			if (!shape_found) {
+			if (!shape_found && library->particle_shapes.ValidKey(default_hash)) {
 				tfx_image_data_t *image = &library->particle_shapes.At(default_hash);
 				library->shared_properties[current->state_properties.shared_index].image_hash = default_hash;
 				current->state_properties.image = image;
