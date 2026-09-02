@@ -752,7 +752,8 @@ tfx_ResumeTimelineFX.
 Passing non-NULL allocation_callbacks replaces the stored callbacks. Passing NULL preserves the stored callbacks.
 The caller must provide fresh callback addresses when the prior callback addresses are expected to be invalid.
 Any update or uv lookup callbacks previously registered on effects, libraries and animation managers are cleared and
-must be registered again by the caller.
+must be registered again by the caller with tfx_SetTemplateEffectUpdateCallback, tfx_SetLibraryUVLookup and
+tfx_SetAnimationManagerInstanceCallback.
 * @returns    True if the context was adopted
 */
 #ifdef __cplusplus
@@ -883,6 +884,14 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 * @param tfx_library                A valid pointer to a tfx_library
 */
 tfxAPI void tfx_UpdateLibraryGPUImageData(tfx_library library);
+
+/*
+* Set the uv lookup callback that tfx_UpdateLibraryGPUImageData uses. Normally this is set for you when the library is loaded, but it is cleared by
+* tfx_SetContext so it must be set again after hot reloading the module that owns the callback.
+* @param library                   A valid pointer to a tfx_library
+* @param uv_lookup                 A function pointer that fills in the uv coordinates from whatever renderer you're using
+*/
+tfxAPI void tfx_SetLibraryUVLookup(tfx_library library, tfx_uv_lookup uv_lookup);
 
 /*
 Get the number of shapes stored in the library

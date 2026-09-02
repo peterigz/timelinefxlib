@@ -4084,6 +4084,11 @@ void tfx_UpdateLibraryGPUImageData(tfx_library library) {
     }
 }
 
+void tfx_SetLibraryUVLookup(tfx_library library, tfx_uv_lookup uv_lookup) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	library->uv_lookup = uv_lookup;
+}
+
 tfxU32 tfx_GetLibraryImageCount(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	return library->particle_shapes.Size();
@@ -19711,15 +19716,18 @@ bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *alloc
 	for (tfx_stage stage : tfxStore->stages.data) {
 		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
 	}
+	//Set user callbacks to null for uv_lookup in the libraries and update_callbacks in the effects.
 	for (tfx_library library : tfxStore->libraries.data) {
 		library->uv_lookup = nullptr;
 		for (tfx_effect_descriptor effect : library->effect_paths.data) {
 			effect->update_callback = nullptr;
 		}
 	}
+	//Set the user culling callback in animation managers.
 	for (tfx_animation_manager animation_manager : tfxStore->animation_managers.data) {
 		animation_manager->maybe_render_instance_callback = nullptr;
 	}
+	//Reset all other objects that have callbacks (currently only effect templates and their effect update_callbacks
 	tfx__reset_object_callbacks();
 	return true;
 }
