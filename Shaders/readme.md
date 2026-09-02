@@ -47,4 +47,4 @@ The bounding box shaders are optional extras rather than part of the render path
 
 The editor uses these to auto-fit the camera and to size sprite sheet exports; they're useful in a game for culling a baked effect.
 
-[See here for an example of how to use the library to draw pre-baked effect data](https://github.com/peterigz/zest/blob/main/examples/GLFW/zest-timelinefx-prerecorded-effects/zest-timelinefx-prerecorded-effects.cpp)
+[See here for an example of how to use the library to draw pre-baked effect data](https://github.com/peterigz/zest/tree/main/examples/SDL2/zest-timelinefx-prerecorded-effects)
