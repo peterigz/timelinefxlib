@@ -19986,6 +19986,18 @@ tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const 
 	return tfxCurrentContext;
 }
 
+void tfx_DrainAllThreadWork(void) {
+	if (!tfxCurrentContext) {
+		TFX_ASSERT(false);
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot drain thread work without a current TimelineFX context.\n", TFX_ERROR_NAME);
+		return;
+	}
+	for (tfx_stage stage : tfxStore->stages.data) {
+		tfx__wait_for_external_recording(stage);
+		tfx_CompleteStageWork(stage);
+	}
+}
+
 void tfx_SuspendTimelineFX(void) {
 	if (!tfxCurrentContext) {
 		TFX_ASSERT(false);
@@ -19998,10 +20010,8 @@ void tfx_SuspendTimelineFX(void) {
 		return;
 	}
 
-	// Wait for stage work to be done, and shutdown update thread associated with the stage
+	tfx_DrainAllThreadWork();
 	for (tfx_stage stage : tfxStore->stages.data) {
-		tfx__wait_for_external_recording(stage);
-		tfx_CompleteStageWork(stage);
 		tfx__shutdown_update_thread(stage);
 	}
 	

@@ -763,6 +763,12 @@ tfxAPI bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t
 #endif
 
 /*
+Call this function to wait on all thread work currently in process in TimelineFX. This does not close threads.
+Use tfx_SuspendTimelineFX to draid and close threads.
+*/
+tfxAPI void tfx_DrainAllThreadWork(void);
+
+/*
 Drain and stop all current TimelineFX asynchronous work without deallocating memory.
 */
 tfxAPI void tfx_SuspendTimelineFX(void);
