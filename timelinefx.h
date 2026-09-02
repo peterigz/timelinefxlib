@@ -855,6 +855,7 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_invalid_format
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
+	tfxErrorCode_some_images_loaded_without_user_ptr
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
