@@ -1,0 +1,205 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+#define tfxINVALID 0xFFFFFFFF
+const float unorm_multiplier = 1.0 / 65535.0;
+const float intensity_max_value = 128.0 / 32767.0;
+const float intensity_max_divisor = 32767.0 / 128.0;
+
+//Pre-recorded ribbon data for all effects. Mirrors tfx_ribbon_instance_data_t (64 bytes)
+struct RibbonData {
+	vec4 position;						//xyz position, w = normalised age
+	float width;
+	uint start_index;					//Into shared segment data
+	uint flags;
+	uint captured_index;				//Previous frame ribbon for interpolation
+	uvec2 quaternion;					//16-bit snorm packed rotation
+	float scale;                        //Per frame overall_scale; the emitter index comes from the property index below
+	uint texture_indexes;
+	uint intensity_gradient_map;
+	uint curved_alpha;
+	uint property_index_lerp_offset;	//UNorm lerp offset in FFFF and the property index in FFFF0000
+	uint phase_seed;					//Ribbon uid, hash it to drive per ribbon phase offsets
+};
+
+//Output ribbon struct consumed by ribbons.comp. Mirrors tfx_ribbon_t (64 bytes)
+struct RibbonOutput {
+	vec4 position;						//xyz position, w = normalised age
+	float width;
+	uint segment_start_index;
+	uint flags;
+	uint captured_index;
+	uvec2 quaternion;					//16-bit snorm packed rotation
+	uint emitter_index;
+	uint texture_indexes;
+	uint intensity_gradient_map;
+	uint curved_alpha;
+	uint phase_seed;					//Ribbon uid, hash it to drive per ribbon phase offsets
+	float scale;                        //Per frame overall_scale of the parent effect
+};
+
+//Contains each animation instance
+struct AnimationInstance {
+	vec3 position;					//position that the instance should be played at
+	float scale;					//Overal scale of the effect
+	uint sprite_count;				//The number of sprites to be drawn
+	uint properties_start_index;	//Used cpu side only
+	uint frame_count;				//The number of frames in the animation
+	uint offset_into_sprite_data;	//The starting ofset in the buffer that contains all the sprite data
+	uint offset_into_ribbon_data;	//The starting offset in the buffer that contains all the ribbon data
+	uint info_index;				//Index into the effect_animation_info storage map to get at the frame meta
+	float current_time;				//Current point of time in the animation
+	float animation_length_in_time;	//Total time that the animation lasts for
+	float tween;					//The point time within the frame (0..1)
+	uint flags;						//Flags associated with the instance
+};
+
+struct RibbonEmitterProperties {
+	uint segment_count;
+	uint sample_count;
+	uint tessellation;
+	uint shader_type;
+	uint color_ramp_index;
+	uint segment_data_offset;
+	float animation_frames;
+	uint start_frame_index;
+	uint flags;
+	uint graph_lookup_offset;
+	uint bucket_index;
+	uint morph_segment_start_index;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	uint noise_packed;
+};
+
+layout (local_size_x = 128) in;
+
+layout (std430, binding = 5) readonly buffer InRibbonData {
+   RibbonData data[];
+} ribbon_data[];
+
+layout (std430, binding = 5) readonly buffer InOffsets {
+   uint data[];
+} offsets[];
+
+layout (std430, binding = 5) readonly buffer InAnimationInstances {
+   AnimationInstance data[];
+} animation_instances[];
+
+layout (std430, binding = 5) readonly buffer InRibbonEmitterProperties {
+   RibbonEmitterProperties data[];
+} ribbon_emitter_properties[];
+
+layout (std430, binding = 5) buffer OutRibbons {
+	RibbonOutput data[];
+} ribbons_out[];
+
+layout(push_constant) uniform compute_push
+{
+	uint animation_instances_total;
+	uint ribbons_total;
+	uint offsets_index;
+	uint animation_instances_index;
+	uint ribbon_data_index;
+	uint ribbon_output_index;
+	uint ribbon_properties_index;
+} pc;
+
+vec2 Unpack16bit2SScale(uint packed, float max_value) {
+	int x_scaled = int(packed & 0xFFFF);
+	int y_scaled = int((packed >> 16) & 0xFFFF);
+	vec2 unpacked;
+	unpacked.x = float(x_scaled * max_value);
+	unpacked.y = float(y_scaled * max_value);
+	return unpacked;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+
+	if (index >= pc.ribbons_total)
+		return;
+
+	uint instance_index = 0;
+	uint ribbon_index_offset = 0;
+
+	//Walk through the offsets buffer to find which animation instance this ribbon belongs to.
+	//Same approach as sprite_data_playback.comp
+	for(int i = 0; i < int(pc.animation_instances_total); ++i) {
+		instance_index += uint(offsets[pc.offsets_index].data[instance_index] <= index);
+	}
+
+	ribbon_index_offset = instance_index == 0 ? 0 : offsets[pc.offsets_index].data[instance_index - 1];
+
+	//Calculate frame_time and lerp exactly as sprite_data_playback.comp does
+	float animation_time = animation_instances[pc.animation_instances_index].data[instance_index].animation_length_in_time;
+	float frame_count = float(animation_instances[pc.animation_instances_index].data[instance_index].frame_count);
+	float frame_time = (animation_instances[pc.animation_instances_index].data[instance_index].current_time / animation_time) * frame_count;
+	float lerp = frame_time - float(floor(frame_time));
+
+	//Calculate the current ribbon data index to read from
+	uint ribbon_record_index = (index - ribbon_index_offset) + animation_instances[pc.animation_instances_index].data[instance_index].offset_into_ribbon_data;
+	uint captured_index = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].captured_index;
+	//If the captured index is invalid then set it to the current ribbon index (first frame of this ribbon's life)
+	if (captured_index == tfxINVALID) captured_index = ribbon_record_index;
+
+	//Determine spawn visibility using lerp_offset, same logic as sprite_data_playback.comp
+	float lerp_offset = float(ribbon_data[pc.ribbon_data_index].data[captured_index].property_index_lerp_offset & 0xFFFF) * unorm_multiplier;
+	float spawn_scale = ((lerp_offset >= (1 - lerp)) && (captured_index != ribbon_record_index)) ? 1 : 0;
+
+	//Interpolate position
+	vec3 current_position =		ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].position.xyz;
+	vec3 previous_position =	ribbon_data[pc.ribbon_data_index].data[captured_index].position.xyz;
+	vec3 lerped_position =		mix(previous_position, current_position, lerp) * animation_instances[pc.animation_instances_index].data[instance_index].scale;
+
+	//Interpolate normalised age (position.w)
+	float current_age =		ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].position.w;
+	float previous_age =	ribbon_data[pc.ribbon_data_index].data[captured_index].position.w;
+	float lerped_age =		mix(previous_age, current_age, lerp);
+
+	//Interpolate width, applying spawn_scale to hide ribbons that haven't spawned yet
+	float current_width =	ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].width;
+	float previous_width =	ribbon_data[pc.ribbon_data_index].data[captured_index].width;
+	float lerped_width =	mix(previous_width, current_width, lerp) * spawn_scale;
+
+	//Interpolate quaternion
+	vec4 current_quaternion =	vec4(unpackSnorm2x16(ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].quaternion.x), unpackSnorm2x16(ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].quaternion.y));
+	vec4 captured_quaternion =	vec4(unpackSnorm2x16(ribbon_data[pc.ribbon_data_index].data[captured_index].quaternion.x), unpackSnorm2x16(ribbon_data[pc.ribbon_data_index].data[captured_index].quaternion.y));
+	vec4 lerped_quaternion =	mix(captured_quaternion, current_quaternion, lerp);
+
+	//Interpolate intensity_gradient_map
+	vec2 current_igm =		Unpack16bit2SScale(ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].intensity_gradient_map, intensity_max_value);
+	vec2 captured_igm =		Unpack16bit2SScale(ribbon_data[pc.ribbon_data_index].data[captured_index].intensity_gradient_map, intensity_max_value);
+	vec2 lerped_igm =		mix(captured_igm, current_igm, lerp);
+
+	//Interpolate curved_alpha
+	vec4 current_ca =	unpackUnorm4x8(ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].curved_alpha);
+	vec4 captured_ca =	unpackUnorm4x8(ribbon_data[pc.ribbon_data_index].data[captured_index].curved_alpha);
+	vec4 lerped_ca =	mix(captured_ca, current_ca, lerp);
+
+	//Offset the position by the current animation instance position
+	lerped_position += animation_instances[pc.animation_instances_index].data[instance_index].position;
+	uint property_index = (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].property_index_lerp_offset & 0xFFFF0000) >> 16;
+	//Write the interpolated ribbon output that ribbons.comp can consume directly
+	ribbons_out[pc.ribbon_output_index].data[index].position = vec4(lerped_position, lerped_age);
+	ribbons_out[pc.ribbon_output_index].data[index].width = lerped_width;
+	ribbons_out[pc.ribbon_output_index].data[index].segment_start_index = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].start_index;
+	ribbons_out[pc.ribbon_output_index].data[index].flags = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].flags;
+	ribbons_out[pc.ribbon_output_index].data[index].captured_index = index;
+	ribbons_out[pc.ribbon_output_index].data[index].quaternion.x = packSnorm2x16(lerped_quaternion.xy);
+	ribbons_out[pc.ribbon_output_index].data[index].quaternion.y = packSnorm2x16(lerped_quaternion.zw);
+	//The baked emitter array is built one entry per animation ribbon property, so the property index is the emitter index
+	ribbons_out[pc.ribbon_output_index].data[index].emitter_index = property_index;
+	//A per ribbon constant, not interpolated - the captured record carries the same seed
+	ribbons_out[pc.ribbon_output_index].data[index].phase_seed = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].phase_seed;
+	float current_scale =	ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].scale;
+	float previous_scale =	ribbon_data[pc.ribbon_data_index].data[captured_index].scale;
+	ribbons_out[pc.ribbon_output_index].data[index].scale = mix(previous_scale, current_scale, lerp);
+	uint texture_indexes = (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].texture_indexes & 0xFFFFE000) | ribbon_emitter_properties[pc.ribbon_properties_index].data[property_index].start_frame_index;
+	ribbons_out[pc.ribbon_output_index].data[index].texture_indexes = texture_indexes;
+	ribbons_out[pc.ribbon_output_index].data[index].intensity_gradient_map = (uint(lerped_igm.y * intensity_max_divisor) << 16) + uint(lerped_igm.x * intensity_max_divisor);
+	ribbons_out[pc.ribbon_output_index].data[index].curved_alpha = packUnorm4x8(lerped_ca);
+}

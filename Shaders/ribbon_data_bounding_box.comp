@@ -1,0 +1,471 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+/*
+This compute shader uses parallel reduction to find the min/max bounding box of all ribbon segments in an effect.
+
+Segment positions are built the way ribbons.comp builds them - same clip window, same scale graph, same morph
+blend - so the box tracks the geometry that actually gets drawn. Only the right vector needs the camera or the
+angle mode, so the half width is the one term that has to be spread over all axes.
+*/
+
+#define tfxINVALID 0xFFFFFFFF
+
+#define group_size 128
+
+//Graph lookup slots, must match the ordering in ribbons.comp
+const int tfx_width_offset                      = 4;
+const int tfx_scale_offset                      = 5;
+const int tfx_clip_offset_offset                = 8;
+const int tfx_clip_size_offset                  = 9;
+const int tfx_morph_amount_offset               = 10;
+const int tfx_noise_amount_offset               = 11;
+const int tfx_noise_scroll_offset               = 12;
+const int tfx_width_overlength_offset           = 18;
+const int tfx_morph_bias_offset                 = 20;
+const int tfx_noise_envelope_offset             = 21;
+
+const int tfx_active_mask              = 0x1;
+const int tfx_use_bezier_sampling_flag = 1;
+const int tfx_enable_oscillator_flag   = 2;
+const float tfx_two_pi = 6.283185307;
+
+//Pre-recorded ribbon data. Must match tfx_ribbon_instance_data_t (64 bytes)
+struct RibbonData {
+	vec4 position;						//xyz = position, w = normalised age
+	float width;
+	uint start_index;					//Into shared segment data
+	uint flags;
+	uint captured_index;
+	uvec2 quaternion;					//16-bit snorm packed rotation
+	float scale;                        //Per frame overall_scale of the parent effect
+	uint texture_indexes;
+	uint intensity_gradient_map;
+	uint curved_alpha;
+	uint property_index_lerp_offset;	//UNorm lerp offset in FFFF and the property index in FFFF0000
+	uint phase_seed;
+};
+
+//Contains each animation instance with data that the compute shader uses to position the ribbons
+struct AnimationInstance {
+	vec3 position;					//position that the instance should be played at
+	float scale;					//Overal scale of the effect
+	uint sprite_count;				//The number of sprites to be drawn
+	uint ribbon_count;				//The number of ribbons to be drawn
+	uint frame_count;				//The number of frames in the animation
+	uint offset_into_sprite_data;	//The starting offset in the buffer that contains all the sprite data
+	uint offset_into_ribbon_data;	//The starting offset in the buffer that contains all the ribbon data
+	uint info_index;				//Index into the effect_animation_info storage map to get at the frame meta
+	float current_time;				//Current point of time in the animation
+	float animation_length_in_time;	//Total time that the animation lasts for
+	float tween;					//The point time within the frame (0..1)
+	uint flags;						//Flags associated with the instance
+};
+
+struct RibbonProperties {
+	uint segment_count;
+	uint sample_count;
+	uint tessellation;
+	uint shader_type;
+	uint color_ramp_index;
+	uint segment_data_offset;
+	float animation_frames;
+	uint start_frame_index;
+	uint flags;
+	uint graph_lookup_offset;
+	uint bucket_index;
+	uint morph_segment_start_index;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	uint noise_packed;
+};
+
+//Must match tfx_ribbon_segment_t (16 bytes)
+struct RibbonSegment {
+	vec4 position;
+};
+
+//Must match tfx_gpu_graph_data_t and the struct of the same name in ribbons.comp
+struct tfx_gpu_graph_data {
+	vec4 node_data;
+	vec4 oscillator;
+	int easing_type;
+	int flags;
+	int padding[2];
+};
+
+struct BoundingBox {
+	vec3 min_corner;
+	float max_stretch;
+	vec3 max_corner;
+	float padding;
+};
+
+//The size of each local group, ie., how many ribbons are processed by each compute thread
+layout (local_size_x = group_size) in;
+
+//Bindings for all the buffers being used
+layout (std430, binding = 5) buffer InRibbonData {
+   RibbonData data[];
+} ribbon_data[];
+
+layout (std430, binding = 5) buffer InAnimationInstances {
+   AnimationInstance data[];
+} instances[];
+
+layout (std430, binding = 5) buffer InRibbonSegments {
+   RibbonSegment data[];
+} ribbon_segments[];
+
+layout (std430, binding = 5) buffer InRibbonProperties {
+   RibbonProperties data[];
+} ribbon_properties[];
+
+layout (std430, binding = 5) buffer InBoundingBox {
+   BoundingBox data[];
+} bounding_boxes[];
+
+layout (std430, binding = 5) readonly buffer InGraphs {
+   tfx_gpu_graph_data data[];
+} graphs[];
+
+//Push constants
+layout(push_constant) uniform compute_push
+{
+	uint ribbons_total;
+	uint animation_instances_index;
+	uint ribbon_data_index;
+	uint ribbon_segments_index;
+	uint ribbon_properties_index;
+	uint bounding_boxes_index;
+	uint graphs_index;
+} pc;
+
+vec3 rotate_with_quaternion(vec3 point, vec4 quat) {
+    return point + 2.0 * cross(cross(point, quat.xyz) + quat.w * point, quat.xyz);
+}
+
+float tfx_easing_in_cubic(float t)     { return t * t * t; }
+float tfx_easing_out_cubic(float t)    { float u = 1.0 - t; return 1.0 - u * u * u; }
+float tfx_easing_in_out_cubic(float t) { return t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) * 0.5; }
+float tfx_easing_smoothstep(float t)   { return t * t * (3.0 - 2.0 * t); }
+float tfx_easing_out_in(float t)       { return t < 0.5 ? tfx_easing_out_cubic(t * 2.0) * 0.5 : tfx_easing_in_cubic((t - 0.5) * 2.0) * 0.5 + 0.5; }
+
+float tfx_apply_easing(int easing_type, float t) {
+    switch(easing_type) {
+        case 0:  return 0.0;
+        case 4:  return tfx_easing_in_cubic(t);
+        case 5:  return tfx_easing_out_cubic(t);
+        case 6:  return tfx_easing_in_out_cubic(t);
+        case 16: return t;
+        case 17: return tfx_easing_smoothstep(t);
+        case 18: return tfx_easing_out_in(t);
+        default: return t;
+    }
+}
+
+float tfx_do_bezier_lerp(float t, float first_node, float curve1, float curve2, float second_node) {
+	float u = 1.0 - t;
+	return u * u * u * first_node + 3.0 * u * u * t * curve1 + 3.0 * u * t * t * curve2 + t * t * t * second_node;
+}
+
+float tfx_graph_lookup(tfx_gpu_graph_data graph, float t) {
+    float eased_t = tfx_apply_easing(graph.easing_type, t);
+    float result;
+    if ((graph.flags & tfx_use_bezier_sampling_flag) != 0) {
+        result = tfx_do_bezier_lerp(eased_t, graph.node_data.x, graph.node_data.y, graph.node_data.z, graph.node_data.w);
+    } else {
+        result = graph.node_data.x + (graph.node_data.w - graph.node_data.x) * eased_t;
+    }
+    if ((graph.flags & tfx_enable_oscillator_flag) != 0) {
+        float oscillator_sin = 0.5 + sin((eased_t + graph.oscillator.z) * graph.oscillator.x * tfx_two_pi) * graph.oscillator.y;
+        result = result * (oscillator_sin + graph.oscillator.w);
+    }
+    return result;
+}
+
+//Mirrors sample_ribbon_path in ribbons.comp: the clip window picks which slice of the stored samples is drawn
+vec3 sample_ribbon_path(int segment, uint segment_count, uint base_index, uint sample_count, float clip_offset, float clip_size) {
+    float lerp = float(segment) / float(segment_count - 1);
+    float path_t = clip_offset + lerp * clip_size;
+    float stored = clamp(path_t, 0.0, 1.0) * float(sample_count - 1);
+    uint i0 = min(uint(stored), sample_count - 2);
+    float frac = clamp(stored - float(i0), 0.0, 1.0);
+    return mix(ribbon_segments[pc.ribbon_segments_index].data[base_index + i0].position.xyz,
+               ribbon_segments[pc.ribbon_segments_index].data[base_index + i0 + 1].position.xyz, frac);
+}
+
+//Shared arrays for parallel reduction
+shared vec3 local_min[group_size];
+shared vec3 local_max[group_size];
+
+//Final warp-level reduction without barriers (warp size = 32)
+void warp_reduce(uint tid) {
+	local_min[tid] = min(local_min[tid], local_min[tid + 32]);
+	local_min[tid] = min(local_min[tid], local_min[tid + 16]);
+	local_min[tid] = min(local_min[tid], local_min[tid + 8]);
+	local_min[tid] = min(local_min[tid], local_min[tid + 4]);
+	local_min[tid] = min(local_min[tid], local_min[tid + 2]);
+	local_min[tid] = min(local_min[tid], local_min[tid + 1]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 32]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 16]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 8]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 4]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 2]);
+	local_max[tid] = max(local_max[tid], local_max[tid + 1]);
+}
+
+//Hash axes the ribbon noise phase offset is drawn on, one per field axis. They must differ from each
+//other and from every other axis in the system, or the offsets correlate and the decorrelation is lost.
+const uint tfx_ribbon_noise_phase_x_axis = 0x27d4eb2du;
+const uint tfx_ribbon_noise_phase_y_axis = 0x165667b1u;
+const uint tfx_ribbon_noise_phase_z_axis = 0x9e3779b1u;
+
+//Murmur3 finalizer, a direct port of tfx__seedgen_u32 so the GPU field matches the CPU one's character
+uint tfx_seedgen_u32(uint h) {
+    h ^= h >> 15;
+    h *= 0x85ebca6bu;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35u;
+    h ^= h >> 16;
+    return h;
+}
+
+//Port of tfx__white_unit, same [-1, 1] range - the signed reinterpret is what centres it
+float tfx_white_unit(uint seed, uint axis) {
+    return (float(int(tfx_seedgen_u32(seed ^ axis))) / 4294967295.0) * 2.0;
+}
+
+//One corner of the value noise lattice. A single hash is unpacked into all three components, which is
+//what makes this cheap: eight hashes cover the whole 3D vector rather than sampling one field three
+//times over. Mirrors tfx__wide_value_noise_corner.
+vec3 tfx_value_noise_corner(ivec3 lattice) {
+    uint h = tfx_seedgen_u32(uint(lattice.x + lattice.y) ^ uint(lattice.z));
+    return vec3(float((h >> 20) & 0x3FFu), float((h >> 10) & 0x3FFu), float(h & 0x3FFu)) * (1.0 / 511.0) - 1.0;
+}
+
+//Trilinear value noise, a port of tfx__wide_value_noise_3d. Lattice coordinates are premultiplied by
+//large odd primes so stepping to the far corner is an add; floor() is already integral so the
+//truncating convert is exact for negative positions too.
+vec3 tfx_value_noise_3d(vec3 position) {
+    vec3 floor_position = floor(position);
+    vec3 fade = position - floor_position;
+    fade = fade * fade * (3.0 - 2.0 * fade);
+
+    const ivec3 primes = ivec3(1619, 31337, 6971);
+    ivec3 lattice0 = ivec3(floor_position) * primes;
+    ivec3 lattice1 = lattice0 + primes;
+
+    vec3 near_edge = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice0.y, lattice0.z)),
+                         tfx_value_noise_corner(ivec3(lattice1.x, lattice0.y, lattice0.z)), fade.x);
+    vec3 far_edge  = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice1.y, lattice0.z)),
+                         tfx_value_noise_corner(ivec3(lattice1.x, lattice1.y, lattice0.z)), fade.x);
+    vec3 near_slice = mix(near_edge, far_edge, fade.y);
+
+    near_edge = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice0.y, lattice1.z)),
+                    tfx_value_noise_corner(ivec3(lattice1.x, lattice0.y, lattice1.z)), fade.x);
+    far_edge  = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice1.y, lattice1.z)),
+                    tfx_value_noise_corner(ivec3(lattice1.x, lattice1.y, lattice1.z)), fade.x);
+    vec3 far_slice = mix(near_edge, far_edge, fade.y);
+
+    return mix(near_slice, far_slice, fade.z);
+}
+
+//Perlin's gradient select: one of the cube edge vectors picked by the low bits of the hash.
+float tfx_gradient_dot(uint hash, vec3 distance_to_corner) {
+    uint h = hash & 15u;
+    float u = h < 8u ? distance_to_corner.x : distance_to_corner.y;
+    float v = h < 4u ? distance_to_corner.y : ((h == 12u || h == 14u) ? distance_to_corner.x : distance_to_corner.z);
+    return ((h & 1u) == 0u ? u : -u) + ((h & 2u) == 0u ? v : -v);
+}
+
+//One scalar field of gradient noise. The lattice points hold zero and the gradient is what is random,
+//so the field crosses a cell boundary with a non zero slope. Value noise has to stall at every boundary
+//to stay continuous, which is what reads as morphing between fixed poses; this is the fix for that.
+float tfx_gradient_noise_field(vec3 position, uint seed) {
+    vec3 floor_position = floor(position);
+    vec3 relative = position - floor_position;
+    //Quintic fade: zero first and second derivative at the boundary, so the gradient stays continuous
+    vec3 fade = relative * relative * relative * (relative * (relative * 6.0 - 15.0) + 10.0);
+
+    const ivec3 primes = ivec3(1619, 31337, 6971);
+    ivec3 lattice0 = ivec3(floor_position) * primes;
+    ivec3 lattice1 = lattice0 + primes;
+
+    float near_lower = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative - vec3(1.0, 0.0, 0.0)), fade.x);
+    float far_lower  = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - vec3(0.0, 1.0, 0.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - vec3(1.0, 1.0, 0.0)), fade.x);
+    float lower_slice = mix(near_lower, far_lower, fade.y);
+
+    float near_upper = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - vec3(0.0, 0.0, 1.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - vec3(1.0, 0.0, 1.0)), fade.x);
+    float far_upper  = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - vec3(0.0, 1.0, 1.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - vec3(1.0, 1.0, 1.0)), fade.x);
+    float upper_slice = mix(near_upper, far_upper, fade.y);
+
+    return mix(lower_slice, upper_slice, fade.z);
+}
+
+//Measured so gradient noise lands at the same rms as the value noise, otherwise switching algorithm
+//would read as an amplitude change rather than a character change.
+const float tfx_gradient_noise_scale = 1.397;
+
+//Three decorrelated fields for the three displacement axes. Value noise gets a vec3 out of one hash;
+//gradient noise cannot, so this is three times the work - still cheap, but it is the real cost here.
+vec3 tfx_gradient_noise_3d(vec3 position) {
+    return vec3(tfx_gradient_noise_field(position, 0u),
+                tfx_gradient_noise_field(position, 0x9e3779b9u),
+                tfx_gradient_noise_field(position, 0x85ebca6bu)) * tfx_gradient_noise_scale;
+}
+
+const uint tfx_noise_algorithm_simplex = 2u;
+const uint tfx_noise_algorithm_value   = 4u;
+
+//Octaves at doubling frequency and halving amplitude. Normalised by the root of the summed squares
+//rather than the summed amplitudes: independent octaves add in variance, so this is what keeps the
+//apparent amplitude constant as the octave count changes. Octaves add detail, they do not fix the
+//value noise stall - every octave stalls on its own lattice.
+vec3 tfx_noise_octaves(vec3 position, uint algorithm, uint octaves) {
+    vec3 sum = vec3(0.0);
+    float amplitude = 1.0;
+    float frequency = 1.0;
+    float normalisation = 0.0;
+    for (uint octave = 0u; octave < octaves; ++octave) {
+        sum += amplitude * (algorithm == tfx_noise_algorithm_value
+            ? tfx_value_noise_3d(position * frequency)
+            : tfx_gradient_noise_3d(position * frequency));
+        normalisation += amplitude * amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    return sum * inversesqrt(max(normalisation, 1e-8));
+}
+
+//Both paths are stored at the same density so one i0/frac pair addresses either block. The bias is looked up per
+//sample rather than reused from the centre sample, otherwise a steep bias flattens the forward vector across the
+//transition band, which is the part of the morph you are actually looking at.
+//Path, then morph, then noise. main() calls this for the centre segment and both neighbours, so the frame
+//each angle_type branch derives is built from displaced geometry without any of them having to know.
+
+//Build every drawn segment position the way ribbons.comp does, then expand by the half width.
+void calculate_ribbon_bounds(inout vec3 min_vertex, inout vec3 max_vertex, uint ribbon_index) {
+	RibbonData ribbon = ribbon_data[pc.ribbon_data_index].data[ribbon_index];
+
+	uint property_index = (ribbon.property_index_lerp_offset >> 16) & 0xFFFF;
+	RibbonProperties properties = ribbon_properties[pc.ribbon_properties_index].data[property_index];
+	uint segment_count = properties.segment_count;
+	uint sample_count = properties.sample_count;
+	uint lookup_offset = properties.graph_lookup_offset;
+	//tfxINVALID when the emitter does not morph, in which case the morph target is never sampled
+	uint morph_start_index = properties.morph_segment_start_index;
+	if (segment_count < 2 || sample_count < 2 || ribbon.start_index == tfxINVALID) {
+		return;
+	}
+
+	float age = ribbon.position.w;
+	float clip_offset = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_clip_offset_offset + lookup_offset], age);
+	float clip_size = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_clip_size_offset + lookup_offset], age);
+	float ribbon_scale = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_scale_offset + lookup_offset], age);
+	float morph_amount = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_morph_amount_offset + lookup_offset], age);
+	float width_overtime = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_width_offset + lookup_offset], age);
+	float ribbon_is_active = float(ribbon.flags & tfx_active_mask);
+
+	vec4 quaternion = vec4(
+		unpackSnorm2x16(ribbon.quaternion.x),
+		unpackSnorm2x16(ribbon.quaternion.y)
+	);
+	float scale = ribbon_scale * ribbon.scale;
+
+	uint noise_packed = properties.noise_packed;
+	float noise_amplitude = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_noise_amount_offset + lookup_offset], age);
+	float noise_time = age * properties.noise_speed;
+	if (properties.noise_lock_rate > 0.0) {
+		noise_time = floor(noise_time * properties.noise_lock_rate) / properties.noise_lock_rate;
+	}
+	float noise_scroll = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_noise_scroll_offset + lookup_offset], age);
+	vec3 phase_offset = vec3(tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_x_axis),
+	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_y_axis),
+	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_z_axis))
+	                    * properties.noise_phase_range;
+	vec3 noise_sample_offset = phase_offset + vec3(noise_scroll, noise_time, 0.0);
+
+	for (int segment = 0; segment < int(segment_count); ++segment) {
+		float lerp = float(segment) / float(segment_count - 1);
+		vec3 segment_pos = sample_ribbon_path(segment, segment_count, ribbon.start_index, sample_count, clip_offset, clip_size);
+		if (morph_start_index != tfxINVALID) {
+			float morph = clamp(morph_amount + tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_morph_bias_offset + lookup_offset], lerp), 0.0, 1.0);
+			vec3 morph_pos = sample_ribbon_path(segment, segment_count, morph_start_index, sample_count, clip_offset, clip_size);
+			segment_pos = mix(segment_pos, morph_pos, morph);
+		}
+		if (noise_amplitude != 0.0 && noise_packed != 0u) {
+			float envelope = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_noise_envelope_offset + lookup_offset], clamp(lerp, 0.0, 1.0));
+			vec3 sample_position = noise_sample_offset + vec3(lerp * properties.noise_frequency, 0.0, 0.0);
+			segment_pos += noise_amplitude * envelope * tfx_noise_octaves(sample_position, noise_packed & 0xFu, (noise_packed >> 4) & 0xFu);
+		}
+
+		//The emitter transform is already folded into the record, so the ribbon transform is all that is left
+		vec3 world_pos = rotate_with_quaternion(segment_pos * scale, quaternion) + ribbon.position.xyz;
+
+		float width_overlength = tfx_graph_lookup(graphs[pc.graphs_index].data[tfx_width_overlength_offset + lookup_offset], lerp);
+		//A width graph is free to go negative, the quad just flips, so the half extent is the magnitude
+		float half_width = abs(ribbon.width * width_overlength * width_overtime) * ribbon_is_active * 0.5;
+
+		min_vertex = min(min_vertex, world_pos - vec3(half_width));
+		max_vertex = max(max_vertex, world_pos + vec3(half_width));
+	}
+}
+
+void main()
+{
+    uint local_index = gl_LocalInvocationID.x;
+    uint group_index = gl_WorkGroupID.x;
+
+	//Initialise shared memory with extreme values so real data always wins
+	local_min[local_index] = vec3(99999999, 9999999, 9999999);
+	local_max[local_index] = vec3(-99999999, -9999999, -9999999);
+
+	barrier();
+
+	//Same double-loading pattern as sprite_data_bounding_box.comp:
+	//Each group processes 2x group_size ribbons by loading two halves. gl_GlobalInvocationID already
+	//contains group_index * group_size, so the group stride is built from the local index alone.
+	uint frame_offset = instances[pc.animation_instances_index].data[0].offset_into_ribbon_data;
+	uint last_ribbon_in_frame = pc.ribbons_total > 0 ? pc.ribbons_total - 1 : 0;
+	uint ribbon_in_frame = group_index * gl_WorkGroupSize.x * 2 + local_index;
+
+	//Clamp to valid range without early exit (avoid barrier deadlocks)
+	uint ribbon_index = frame_offset + min(ribbon_in_frame, last_ribbon_in_frame);
+
+	vec3 min_vertex = vec3( 99999999);
+	vec3 max_vertex = vec3(-99999999);
+
+	//Load the second half ribbon index, clamped to valid range
+	uint next_ribbon_index = frame_offset + min(ribbon_in_frame + gl_WorkGroupSize.x, last_ribbon_in_frame);
+
+	calculate_ribbon_bounds(min_vertex, max_vertex, ribbon_index);
+	calculate_ribbon_bounds(min_vertex, max_vertex, next_ribbon_index);
+
+	local_min[local_index] = min_vertex;
+	local_max[local_index] = max_vertex;
+
+	barrier();
+
+	//Unrolled reduction with barriers for sizes > 64
+	if(group_size >= 512) {local_min[local_index] = min(local_min[local_index], local_min[local_index + 256]); local_max[local_index] = max(local_max[local_index], local_max[local_index + 256]);	barrier();}
+	if(group_size >= 256) {local_min[local_index] = min(local_min[local_index], local_min[local_index + 128]); local_max[local_index] = max(local_max[local_index], local_max[local_index + 128]);	barrier();}
+	if(group_size >= 128) {local_min[local_index] = min(local_min[local_index], local_min[local_index + 64 ]); local_max[local_index] = max(local_max[local_index], local_max[local_index + 64 ]);	barrier();}
+
+	//Final warp-level reduction
+	warp_reduce(local_index);
+
+	//Store the per-group result
+	if(local_index == 0) {
+		bounding_boxes[pc.bounding_boxes_index].data[group_index].min_corner = local_min[local_index];
+		bounding_boxes[pc.bounding_boxes_index].data[group_index].max_stretch = 0;
+		bounding_boxes[pc.bounding_boxes_index].data[group_index].max_corner = local_max[local_index];
+		bounding_boxes[pc.bounding_boxes_index].data[group_index].padding = 0;
+	}
+}

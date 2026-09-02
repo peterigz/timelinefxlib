@@ -1,0 +1,748 @@
+#version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+#define group_size 1024
+
+const float packed_scale_max = 32767.0 / 128.0;
+
+const int tfx_intensity_offset                  = 0;
+const int tfx_alpha_sharpness_offset            = 1;
+const int tfx_curved_alpha_offset               = 2;
+const int tfx_gradient_map_offset               = 3;
+const int tfx_width_offset                      = 4;
+const int tfx_scale_offset                      = 5;
+const int tfx_uv_offset_y_offset                = 6;
+const int tfx_uv_scale_y_offset                 = 7;
+const int tfx_clip_offset_offset                = 8;
+const int tfx_clip_size_offset                  = 9;
+const int tfx_morph_amount_offset               = 10;
+const int tfx_noise_amount_offset               = 11;
+const int tfx_noise_scroll_offset               = 12;
+const int tfx_lag_amount_offset                 = 13;
+const int tfx_intensity_overlength_offset       = 14;
+const int tfx_alpha_sharpness_overlength_offset = 15;
+const int tfx_curved_alpha_overlength_offset    = 16;
+const int tfx_gradient_map_overlength_offset    = 17;
+const int tfx_width_overlength_offset           = 18;
+const int tfx_fixed_angle_offset                = 19;
+const int tfx_morph_bias_offset                 = 20;
+const int tfx_noise_envelope_offset             = 21;
+const int tfx_lag_profile_offset                = 22;
+
+const int tfx_active_mask       = 0x1;
+const int tfx_relative_mask     = 0x2;
+
+//Hash axes the ribbon noise phase offset is drawn on, one per field axis. They must differ from each
+//other and from every other axis in the system, or the offsets correlate and the decorrelation is lost.
+const uint tfx_ribbon_noise_phase_x_axis = 0x27d4eb2du;
+const uint tfx_ribbon_noise_phase_y_axis = 0x165667b1u;
+const uint tfx_ribbon_noise_phase_z_axis = 0x9e3779b1u;
+
+const uint tfx_invalid_index = 0xFFFFFFFFu;
+
+/*
+This compute shader takes in a buffer of ribbon segments and builds a vertex and index buffer for consumption by the vertex
+shader. The push constant contains data such as the number of individual ribbons and the segment count of each ribbon. All 
+ribbons are the same length passed into the push constant as segment_count.
+*/
+
+struct tfx_ribbon_segment {
+    vec4 position;                      // Position
+};
+
+struct tfx_ribbon {
+    vec4 position;                      //normalised age is in w
+    float width;
+	uint segment_start_index;
+	uint flags;
+	uint captured_index;
+	uvec2 quaternion;                   //16-bit snorm quaternion: .x = X|Y, .y = Z|W
+    uint emitter_index;
+	uint texture_indexes;
+	uint intensity_gradient_map;		//Multiplier for the color of the ribbon
+	uint curved_alpha;	    			//Sharpness and dissolve amount value for fading the image
+	uint phase_seed;					//Ribbon uid, hash it to draw per ribbon phase offsets
+	float scale;                        //Per frame overall_scale of the parent effect
+};
+
+struct tfx_vertex {
+    vec3 position;
+    uint segment_index;
+    vec2 uv_offset_scale;
+    uint ribbon_index;
+    uint padding;
+};
+
+const uint tfx_angle_type_face_camera   = 0;
+const uint tfx_angle_type_fixed_angle   = 1;
+const uint tfx_angle_type_frenet_serret = 2;
+
+const int tfx_lag_spine_samples = 16;
+
+struct tfx_emitter {
+	uvec2 quaternion;
+	uint lookup_offset;
+	uint angle_type;
+	vec3 position;
+	float age;
+	vec3 captured_position;
+	uint morph_segment_start_index;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	vec3 fixed_angle_normal;
+	uint sample_count;
+	uint noise_packed;
+	float lag_time;
+	float lag_span;
+	float overall_scale;
+	float lag_spine_position_x[tfx_lag_spine_samples];
+	float lag_spine_position_y[tfx_lag_spine_samples];
+	float lag_spine_position_z[tfx_lag_spine_samples];
+	uvec2 lag_spine_quaternion[tfx_lag_spine_samples];
+};
+
+struct tfx_gpu_graph_data {
+	vec4 node_data;
+	vec4 oscillator;
+	int easing_type;
+	int flags;
+	int padding[2];
+};
+
+layout(push_constant) uniform push_constants
+{
+    vec4 camera_position;           
+    uint segment_count;             
+    uint tessellation;              
+    uint index_offset;              
+    uint vertex_offset;              
+    uint ribbon_count;              
+    uint ribbon_offset;
+    uint segment_offset;
+	uint uniform_index;
+	uint emitters_index;
+	uint graphs_index;
+	uint ribbons_index;
+	uint ribbon_segments_index;
+	uint vertexes_index;
+	uint indexes_index;
+	uint image_data_index;
+	uint sampler_index;
+	uint particle_texture_index;
+	uint color_ramp_texture_index;
+    float lerp;
+} pc;
+
+layout (local_size_x = group_size) in;
+
+layout(binding = 7) uniform UboView
+{
+    mat4 view;
+    mat4 proj;
+    vec2 screen_size;
+	uint millisecs;
+    float timer_lerp;
+    float update_time;
+} ub[];
+
+layout (std430, binding = 5) readonly buffer InEmitters {
+    tfx_emitter data[];
+} emitters[];
+
+layout (std430, binding = 5) readonly buffer InLookups {
+    tfx_gpu_graph_data data[];
+} graphs[];
+
+layout (std430, binding = 5) buffer InRibbonInstances {
+    tfx_ribbon data[];
+} ribbons[];
+
+layout (std430, binding = 5) buffer InOutRibbonSegments {
+    tfx_ribbon_segment data[];
+} ribbon_segments[];
+
+layout (std430, binding = 5) buffer OutVertices {
+    tfx_vertex data[];
+} vertexes[];
+
+layout (std430, binding = 5) buffer OutIndices {  
+    uint data[];
+} indexes[];
+
+uint pack_segment_data(uint segment_index, uint ribbon_lerped, uint tessellation, uint tessellation_index, uint side) {
+    return (tessellation << 29) | (tessellation_index << 26) | (side << 25) | (ribbon_lerped << 12) | segment_index;
+}
+
+vec3 rotate_with_quaternion(vec3 point, vec4 quat) {
+    return point + 2.0 * cross(cross(point, quat.xyz) + quat.w * point, quat.xyz);
+}
+
+//When the emitter utilises clip_size only the clip window + clip offset section of the path is sampled
+//And all the geometry is essentially squeezed into the clip space.
+vec3 sample_ribbon_path(int segment, uint base_index, uint sample_count, float clip_offset, float clip_size) {
+    float lerp = float(segment) / float(pc.segment_count - 1);
+    float path_t = clip_offset + lerp * clip_size;
+    float stored = clamp(path_t, 0.0, 1.0) * float(sample_count - 1);
+    uint i0 = min(uint(stored), sample_count - 2);
+    float frac = clamp(stored - float(i0), 0.0, 1.0);
+    return mix(ribbon_segments[pc.ribbon_segments_index].data[base_index + i0].position.xyz,
+               ribbon_segments[pc.ribbon_segments_index].data[base_index + i0 + 1].position.xyz, frac);
+}
+
+//A small epsilon for 0 sized clips works fine
+vec3 safe_normalize(vec3 v) {
+    float length_squared = dot(v, v);
+	return v * inversesqrt(length_squared + 1e-16);
+}
+
+uint pack16bit_sscaled(float x, float y) {
+    int x_scaled = int(x * packed_scale_max);
+    int y_scaled = int(y * packed_scale_max);
+    uint x_bits = uint(x_scaled & 0xFFFF);
+    uint y_bits = uint(y_scaled & 0xFFFF) << 16u;
+    return x_bits | y_bits;
+}
+
+vec4 multiply_quaternions(vec4 q1, vec4 q2) {
+    return vec4(
+        q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,  // x
+        q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,  // y
+        q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,  // z
+        q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z   // w
+    );
+}
+
+float tfx_easing_constant       (float t) { return 0;}
+float tfx_easing_linear         (float t) { return t;}
+float tfx_easing_in_cubic       (float t) { return t * t * t; }
+float tfx_easing_out_cubic      (float t) { t = 1 - t; return 1 - (t * t * t); }
+float tfx_easing_in_out_cubic   (float t) { float t3 = -2 * t + 2; t3 = t3 * t3 * t3; return t < 0.5 ? 4 * t * t * t : 1 - t3 * 0.5; }
+float tfx_easing_smoothstep     (float t) { return t * t * (3.0 - 2.0 * t); }
+float tfx_easing_out_in         (float t) { return t < 0.5 ? t * (2.0 - 2.0 * t) : 2.0 * (t - 0.5) * (t - 0.5) + 0.5; }
+
+float tfx_apply_easing(int easing_type, float t) {
+    switch(easing_type) {
+        case 0:  return 0.0;                         // constant
+        case 4:  return tfx_easing_in_cubic(t);      // in
+        case 5:  return tfx_easing_out_cubic(t);     // out
+        case 6:  return tfx_easing_in_out_cubic(t);  // in_out
+        case 16: return t;                           // linear
+        case 17: return tfx_easing_smoothstep(t);    // smoothstep
+        case 18: return tfx_easing_out_in(t);        // out_in
+        default: return t;                           // fallback to linear
+    }
+}
+
+float tfx_do_bezier_lerp(float t, float first_node, float curve1, float curve2, float second_node) {
+	float u = 1 - t;
+	float w1 = u * u * u;
+	float w2 = 3 * u * u * t;
+	float w3 = 3 * u * t * t;
+	float w4 = t * t * t;
+	return w1 * first_node + w2 * curve1 + w3 * curve2 + w4 * second_node;
+}
+
+float tfx_do_linear_lerp(float t, float first_node, float second_node) {
+	return first_node + (second_node - first_node) * t;
+}
+
+const int tfx_use_bezier_sampling_flag = 1;
+const int tfx_enable_oscillator_flag   = 2;
+const float tfx_two_pi = 6.283185307;
+
+float tfx_graph_lookup(tfx_gpu_graph_data graph, float t) {
+    float eased_t = tfx_apply_easing(graph.easing_type, t);
+    float result;
+    if ((graph.flags & tfx_use_bezier_sampling_flag) != 0) {
+        result = tfx_do_bezier_lerp(eased_t, graph.node_data.x, graph.node_data.y, graph.node_data.z, graph.node_data.w);
+    } else {
+        result = tfx_do_linear_lerp(eased_t, graph.node_data.x, graph.node_data.w);
+    }
+    if ((graph.flags & tfx_enable_oscillator_flag) != 0) {
+        //oscillator: .x = frequency, .y = amplitude, .z = offset_x, .w = offset_y
+        //offset_x shifts the phase and offset_y lifts the multiplier, matching tfxOSCILLATOR_WIDE_APPLY.
+        float oscillator_sin = 0.5 + sin((eased_t + graph.oscillator.z) * graph.oscillator.x * tfx_two_pi) * graph.oscillator.y;
+        result = result * (oscillator_sin + graph.oscillator.w);
+    }
+    return result;
+}
+
+//Murmur3 finalizer, a direct port of tfx__seedgen_u32 so the GPU field matches the CPU one's character
+uint tfx_seedgen_u32(uint h) {
+    h ^= h >> 15;
+    h *= 0x85ebca6bu;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35u;
+    h ^= h >> 16;
+    return h;
+}
+
+//Port of tfx__white_unit, same [-1, 1] range - the signed reinterpret is what centres it
+float tfx_white_unit(uint seed, uint axis) {
+    return (float(int(tfx_seedgen_u32(seed ^ axis))) / 4294967295.0) * 2.0;
+}
+
+//One corner of the value noise lattice. A single hash is unpacked into all three components, which is
+//what makes this cheap: eight hashes cover the whole 3D vector rather than sampling one field three
+//times over. Mirrors tfx__wide_value_noise_corner.
+vec3 tfx_value_noise_corner(ivec3 lattice) {
+    uint h = tfx_seedgen_u32(uint(lattice.x + lattice.y) ^ uint(lattice.z));
+    return vec3(float((h >> 20) & 0x3FFu), float((h >> 10) & 0x3FFu), float(h & 0x3FFu)) * (1.0 / 511.0) - 1.0;
+}
+
+//Trilinear value noise, a port of tfx__wide_value_noise_3d. Lattice coordinates are premultiplied by
+//large odd primes so stepping to the far corner is an add; floor() is already integral so the
+//truncating convert is exact for negative positions too.
+vec3 tfx_value_noise_3d(vec3 position) {
+    vec3 floor_position = floor(position);
+    vec3 fade = position - floor_position;
+    fade = fade * fade * (3.0 - 2.0 * fade);
+
+    const ivec3 primes = ivec3(1619, 31337, 6971);
+    ivec3 lattice0 = ivec3(floor_position) * primes;
+    ivec3 lattice1 = lattice0 + primes;
+
+    vec3 near_edge = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice0.y, lattice0.z)),
+                         tfx_value_noise_corner(ivec3(lattice1.x, lattice0.y, lattice0.z)), fade.x);
+    vec3 far_edge  = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice1.y, lattice0.z)),
+                         tfx_value_noise_corner(ivec3(lattice1.x, lattice1.y, lattice0.z)), fade.x);
+    vec3 near_slice = mix(near_edge, far_edge, fade.y);
+
+    near_edge = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice0.y, lattice1.z)),
+                    tfx_value_noise_corner(ivec3(lattice1.x, lattice0.y, lattice1.z)), fade.x);
+    far_edge  = mix(tfx_value_noise_corner(ivec3(lattice0.x, lattice1.y, lattice1.z)),
+                    tfx_value_noise_corner(ivec3(lattice1.x, lattice1.y, lattice1.z)), fade.x);
+    vec3 far_slice = mix(near_edge, far_edge, fade.y);
+
+    return mix(near_slice, far_slice, fade.z);
+}
+
+//Perlin's gradient select: one of the cube edge vectors picked by the low bits of the hash.
+float tfx_gradient_dot(uint hash, vec3 distance_to_corner) {
+    uint h = hash & 15u;
+    float u = h < 8u ? distance_to_corner.x : distance_to_corner.y;
+    float v = h < 4u ? distance_to_corner.y : ((h == 12u || h == 14u) ? distance_to_corner.x : distance_to_corner.z);
+    return ((h & 1u) == 0u ? u : -u) + ((h & 2u) == 0u ? v : -v);
+}
+
+//One scalar field of gradient noise. The lattice points hold zero and the gradient is what is random,
+//so the field crosses a cell boundary with a non zero slope. Value noise has to stall at every boundary
+//to stay continuous, which is what reads as morphing between fixed poses; this is the fix for that.
+float tfx_gradient_noise_field(vec3 position, uint seed) {
+    vec3 floor_position = floor(position);
+    vec3 relative = position - floor_position;
+    //Quintic fade: zero first and second derivative at the boundary, so the gradient stays continuous
+    vec3 fade = relative * relative * relative * (relative * (relative * 6.0 - 15.0) + 10.0);
+
+    const ivec3 primes = ivec3(1619, 31337, 6971);
+    ivec3 lattice0 = ivec3(floor_position) * primes;
+    ivec3 lattice1 = lattice0 + primes;
+
+    float near_lower = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative - vec3(1.0, 0.0, 0.0)), fade.x);
+    float far_lower  = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - vec3(0.0, 1.0, 0.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - vec3(1.0, 1.0, 0.0)), fade.x);
+    float lower_slice = mix(near_lower, far_lower, fade.y);
+
+    float near_upper = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - vec3(0.0, 0.0, 1.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - vec3(1.0, 0.0, 1.0)), fade.x);
+    float far_upper  = mix(tfx_gradient_dot(tfx_seedgen_u32(uint(lattice0.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - vec3(0.0, 1.0, 1.0)),
+                           tfx_gradient_dot(tfx_seedgen_u32(uint(lattice1.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - vec3(1.0, 1.0, 1.0)), fade.x);
+    float upper_slice = mix(near_upper, far_upper, fade.y);
+
+    return mix(lower_slice, upper_slice, fade.z);
+}
+
+//Measured so gradient noise lands at the same rms as the value noise, otherwise switching algorithm
+//would read as an amplitude change rather than a character change.
+const float tfx_gradient_noise_scale = 1.397;
+
+//Three decorrelated fields for the three displacement axes. Value noise gets a vec3 out of one hash;
+//gradient noise cannot, so this is three times the work - still cheap, but it is the real cost here.
+vec3 tfx_gradient_noise_3d(vec3 position) {
+    return vec3(tfx_gradient_noise_field(position, 0u),
+                tfx_gradient_noise_field(position, 0x9e3779b9u),
+                tfx_gradient_noise_field(position, 0x85ebca6bu)) * tfx_gradient_noise_scale;
+}
+
+const uint tfx_noise_algorithm_simplex = 2u;
+const uint tfx_noise_algorithm_value   = 4u;
+
+//Octaves at doubling frequency and halving amplitude. Normalised by the root of the summed squares
+//rather than the summed amplitudes: independent octaves add in variance, so this is what keeps the
+//apparent amplitude constant as the octave count changes. Octaves add detail, they do not fix the
+//value noise stall - every octave stalls on its own lattice.
+vec3 tfx_noise_octaves(vec3 position, uint algorithm, uint octaves) {
+    vec3 sum = vec3(0.0);
+    float amplitude = 1.0;
+    float frequency = 1.0;
+    float normalisation = 0.0;
+    for (uint octave = 0u; octave < octaves; ++octave) {
+        sum += amplitude * (algorithm == tfx_noise_algorithm_value
+            ? tfx_value_noise_3d(position * frequency)
+            : tfx_gradient_noise_3d(position * frequency));
+        normalisation += amplitude * amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    return sum * inversesqrt(max(normalisation, 1e-8));
+}
+
+//Both paths are stored at the same density so one i0/frac pair addresses either block. The bias is looked up per
+//sample rather than reused from the centre sample, otherwise a steep bias flattens the forward vector across the
+//transition band, which is the part of the morph you are actually looking at.
+//Path, then morph, then noise. main() calls this for the centre segment and both neighbours, so the frame
+//each angle_type branch derives is built from displaced geometry without any of them having to know.
+vec3 sample_ribbon_shape(int segment, uint base_index, uint morph_base_index, uint sample_count,
+                         float clip_offset, float clip_size, float morph_amount,
+                         tfx_gpu_graph_data morph_bias_graph, tfx_gpu_graph_data noise_envelope_graph,
+                         float noise_amplitude, float noise_frequency, vec3 noise_sample_offset, uint noise_packed) {
+    vec3 position = sample_ribbon_path(segment, base_index, sample_count, clip_offset, clip_size);
+    float lerp = float(segment) / float(pc.segment_count - 1);
+    if (morph_base_index != tfx_invalid_index) {
+        float morph = clamp(morph_amount + tfx_graph_lookup(morph_bias_graph, clamp(lerp, 0.0, 1.0)), 0.0, 1.0);
+        vec3 morph_position = sample_ribbon_path(segment, morph_base_index, sample_count, clip_offset, clip_size);
+        position = mix(position, morph_position, morph);
+    }
+
+    if (noise_amplitude == 0.0 || noise_packed == 0u) {
+        return position;
+    }
+    float envelope = tfx_graph_lookup(noise_envelope_graph, clamp(lerp, 0.0, 1.0));
+    vec3 sample_position = noise_sample_offset + vec3(lerp * noise_frequency, 0.0, 0.0);
+    return position + noise_amplitude * envelope * tfx_noise_octaves(sample_position,
+        noise_packed & 0xFu, (noise_packed >> 4) & 0xFu);
+}
+
+struct tfx_lag_transform {
+    vec3 position;
+    vec4 quaternion;
+};
+
+tfx_lag_transform tfx_emitter_transform_at(uint emitter_index, float lag_time, float lag_span, float depth) {
+    float frame_length = lag_span - lag_time;
+    float distance_back = (1.0 - pc.lerp) * frame_length + depth * lag_time;
+    float spine_position = clamp(distance_back / lag_span, 0.0, 1.0) * float(tfx_lag_spine_samples - 1);
+    uint first_index = min(uint(spine_position), uint(tfx_lag_spine_samples - 2));
+    uint second_index = first_index + 1u;
+    float fraction = spine_position - float(first_index);
+
+    vec3 first_position = vec3(emitters[pc.emitters_index].data[emitter_index].lag_spine_position_x[first_index],
+                               emitters[pc.emitters_index].data[emitter_index].lag_spine_position_y[first_index],
+                               emitters[pc.emitters_index].data[emitter_index].lag_spine_position_z[first_index]);
+    vec3 second_position = vec3(emitters[pc.emitters_index].data[emitter_index].lag_spine_position_x[second_index],
+                                emitters[pc.emitters_index].data[emitter_index].lag_spine_position_y[second_index],
+                                emitters[pc.emitters_index].data[emitter_index].lag_spine_position_z[second_index]);
+
+    uvec2 first_packed = emitters[pc.emitters_index].data[emitter_index].lag_spine_quaternion[first_index];
+    uvec2 second_packed = emitters[pc.emitters_index].data[emitter_index].lag_spine_quaternion[second_index];
+    vec4 first_quaternion = vec4(unpackSnorm2x16(first_packed.x), unpackSnorm2x16(first_packed.y));
+    vec4 second_quaternion = vec4(unpackSnorm2x16(second_packed.x), unpackSnorm2x16(second_packed.y));
+    second_quaternion *= dot(first_quaternion, second_quaternion) < 0.0 ? -1.0 : 1.0;
+
+    tfx_lag_transform result;
+    result.position = mix(first_position, second_position, fraction);
+    result.quaternion = normalize(mix(first_quaternion, second_quaternion, fraction));
+    return result;
+}
+
+/*
+Segment counts are always a multiple of 32, which means ribbon boundaries always align to warp/wavefront
+boundaries (32 on NVIDIA, 32 or 64 on AMD RDNA). This guarantees that all threads in a warp process
+segments from the same ribbon, so the angle type branch (emitter.angle_type) and the easing type branches
+in the graph lookups are fully uniform per warp with zero divergence.
+*/
+void main() {
+    uint global_index = gl_GlobalInvocationID.x;
+    if (global_index >= pc.segment_count * pc.ribbon_count) return;
+
+    uint local_ribbon_index = (global_index / pc.segment_count);
+    uint global_ribbon_index = local_ribbon_index + pc.ribbon_offset;
+    //All ribbon segments are in a single array of segments, so we need the offset to the location in the buffer
+    //for the current ribbon using the ribbon index
+    uint global_offset =  pc.segment_offset;
+
+	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[global_ribbon_index];
+    uint emitter_index = ribbon.emitter_index;
+	//Be aware here that the shader compiler should optimise so that the lag arrays are not copied here
+	//because when we access them we use the full emitters[index].data[emitter_index]. to access them
+	tfx_emitter emitter = emitters[pc.emitters_index].data[emitter_index];
+	uint local_segment_index = global_index % pc.segment_count;
+    float ribbon_lerp = float(local_segment_index) / float(pc.segment_count - 1);
+
+	uint base_segment_index = global_offset + ribbon.segment_start_index;
+	//Still a unique id per segment for the packed vertex attribute, no longer used to fetch a position
+	uint global_segment_index = base_segment_index + local_segment_index;
+
+	tfx_gpu_graph_data clip_offset_graph = graphs[pc.graphs_index].data[tfx_clip_offset_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data clip_size_graph = graphs[pc.graphs_index].data[tfx_clip_size_offset + emitter.lookup_offset];
+	float clip_offset = tfx_graph_lookup(clip_offset_graph, ribbon.position.w);
+	float clip_size = tfx_graph_lookup(clip_size_graph, ribbon.position.w);
+
+	tfx_gpu_graph_data morph_amount_graph = graphs[pc.graphs_index].data[tfx_morph_amount_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data morph_bias_graph = graphs[pc.graphs_index].data[tfx_morph_bias_offset + emitter.lookup_offset];
+	float morph_amount = tfx_graph_lookup(morph_amount_graph, ribbon.position.w);
+	//The morph block lives in the same bucket as the static one so it rebases with the same scalar
+	uint morph_base_segment_index = emitter.morph_segment_start_index == tfx_invalid_index
+		? tfx_invalid_index : global_offset + emitter.morph_segment_start_index;
+
+	tfx_gpu_graph_data noise_amount_graph = graphs[pc.graphs_index].data[tfx_noise_amount_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data noise_scroll_graph = graphs[pc.graphs_index].data[tfx_noise_scroll_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data noise_envelope_graph = graphs[pc.graphs_index].data[tfx_noise_envelope_offset + emitter.lookup_offset];
+	float noise_amplitude = tfx_graph_lookup(noise_amount_graph, ribbon.position.w);
+	float noise_time = ribbon.position.w * emitter.noise_speed;
+	if (emitter.noise_lock_rate > 0.0) {
+		noise_time = floor(noise_time * emitter.noise_lock_rate) / emitter.noise_lock_rate;
+	}
+	float noise_scroll = tfx_graph_lookup(noise_scroll_graph, ribbon.position.w);
+	vec3 phase_offset = vec3(tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_x_axis),
+	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_y_axis),
+	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_z_axis))
+	                    * emitter.noise_phase_range;
+	vec3 noise_sample_offset = phase_offset + vec3(noise_scroll, noise_time, 0.0);
+
+    bool relative = (ribbon.flags & tfx_relative_mask) > 0;
+
+    vec4 ribbon_quaternion = vec4(unpackSnorm2x16(ribbon.quaternion.x), unpackSnorm2x16(ribbon.quaternion.y));
+    vec4 emitter_unpacked_quaternion = vec4(unpackSnorm2x16(emitter.quaternion.x), unpackSnorm2x16(emitter.quaternion.y));
+    vec4 emitter_quaternion = relative ? emitter_unpacked_quaternion : vec4(0, 0, 0, 1.0);
+    vec3 emitter_position = relative ? mix(emitter.captured_position.xyz, emitter.position.xyz, pc.lerp) : vec3(0.0);
+    int neighbour_segment_index = (local_segment_index < pc.segment_count - 1) ? int(local_segment_index) + 1 : int(local_segment_index) - 1;
+    vec4 neighbour_emitter_quaternion = emitter_quaternion;
+    vec3 neighbour_emitter_position = emitter_position;
+    bool lagging = false;
+    if (relative && emitter.lag_time > 0.0) {
+        tfx_gpu_graph_data lag_amount_graph = graphs[pc.graphs_index].data[tfx_lag_amount_offset + emitter.lookup_offset];
+        float lag_amount = tfx_graph_lookup(lag_amount_graph, ribbon.position.w);
+        if (lag_amount > 0.0) {
+            tfx_gpu_graph_data lag_profile_graph = graphs[pc.graphs_index].data[tfx_lag_profile_offset + emitter.lookup_offset];
+            float neighbour_lerp = clamp(float(neighbour_segment_index) / float(pc.segment_count - 1), 0.0, 1.0);
+            tfx_lag_transform centre_transform = tfx_emitter_transform_at(emitter_index, emitter.lag_time, emitter.lag_span, lag_amount * tfx_graph_lookup(lag_profile_graph, ribbon_lerp));
+            tfx_lag_transform neighbour_transform = tfx_emitter_transform_at(emitter_index, emitter.lag_time, emitter.lag_span, lag_amount * tfx_graph_lookup(lag_profile_graph, neighbour_lerp));
+            emitter_quaternion = centre_transform.quaternion;
+            emitter_position = centre_transform.position;
+            neighbour_emitter_quaternion = neighbour_transform.quaternion;
+            neighbour_emitter_position = neighbour_transform.position;
+            lagging = true;
+        }
+    }
+	vec3 current_segment_pos = sample_ribbon_shape(int(local_segment_index), base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
+
+	tfx_gpu_graph_data scale_graph = graphs[pc.graphs_index].data[tfx_scale_offset + emitter.lookup_offset];
+    float ribbon_scale = tfx_graph_lookup(scale_graph, ribbon.position.w);
+
+    //Get the ribbon direction vector. Becuase the ribbon segment data are all ring buffers the next and previous indexes need to be properly
+    //calculated. If there is a next ribbon segment then use that to get the forward vector, otherwise if we're at the end of the ribbon_count
+    //then use the previous ribbon segment.
+    vec3 next_segment_pos = sample_ribbon_shape(int(local_segment_index) + 1, base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
+	vec3 prev_segment_pos = sample_ribbon_shape(int(local_segment_index) - 1, base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
+    
+    //Determine the angle type from the emitter and calculate the right vector and current position accordingly
+    vec3 current_pos;
+    vec3 right;
+
+    if (emitter.angle_type == tfx_angle_type_face_camera) {
+        //Always face camera
+        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+        current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
+
+		vec3 to_camera = normalize(pc.camera_position.xyz - current_pos.xyz);
+
+		vec3 forward;
+		if (local_segment_index < pc.segment_count - 1) {
+			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+			forward = safe_normalize(next_pos - current_pos);
+		} else {
+			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+			forward = safe_normalize(current_pos - prev_pos);
+		}
+
+		vec3 bisector = normalize(to_camera + forward);
+		right = safe_normalize(cross(forward, bisector));
+
+    } else if (emitter.angle_type == tfx_angle_type_fixed_angle) {
+        //Fixed angle as defined by the fixed angle lookup graph
+		tfx_gpu_graph_data fixed_angle_graph = graphs[pc.graphs_index].data[tfx_fixed_angle_offset + emitter.lookup_offset];
+		float fixed_angle = tfx_graph_lookup(fixed_angle_graph, ribbon_lerp);
+		float c = cos(fixed_angle);
+		float s = sin(fixed_angle);
+
+		current_pos = current_segment_pos * ribbon_scale * ribbon.scale;
+		current_pos = rotate_with_quaternion(current_pos, ribbon_quaternion) + ribbon.position.xyz;
+        current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
+
+		if (lagging) {
+			vec3 forward;
+			if (local_segment_index < pc.segment_count - 1) {
+				vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+				next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+				forward = safe_normalize(next_pos - current_pos);
+			} else {
+				vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+				prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+				forward = safe_normalize(current_pos - prev_pos);
+			}
+			vec3 up = rotate_with_quaternion(emitter.fixed_angle_normal, multiply_quaternions(ribbon_quaternion, emitter_quaternion));
+			right = safe_normalize(cross(forward, up));
+			right = safe_normalize(right * c + cross(forward, right) * s + forward * dot(forward, right) * (1.0 - c));
+		} else {
+			vec3 forward = (local_segment_index < pc.segment_count - 1)
+			? next_segment_pos - current_segment_pos
+			: current_segment_pos - prev_segment_pos;
+
+			forward = safe_normalize(forward);
+
+			vec3 up = emitter.fixed_angle_normal;
+			right = safe_normalize(cross(forward, up));
+			right = right * c + cross(forward, right) * s + forward * dot(forward, right) * (1.0 - c);
+
+			right = safe_normalize(rotate_with_quaternion(right, multiply_quaternions(ribbon_quaternion, emitter_quaternion)));
+		}
+
+    } else {
+        //Frenet-serret frame
+        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+        current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
+
+		vec3 tangent;
+		if (local_segment_index < pc.segment_count - 1) {
+			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+			tangent = safe_normalize(next_pos - current_pos);
+		} else {
+			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
+			tangent = safe_normalize(current_pos - prev_pos);
+		}
+
+		vec3 up = vec3(0.0, 1.0, 0.0);
+		if (abs(dot(tangent, up)) > 0.999) {
+			up = vec3(1.0, 0.0, 0.0);
+		}
+		vec3 binormal = safe_normalize(cross(tangent, up));
+		right = safe_normalize(cross(binormal, tangent));
+    }
+    
+    uint ribbon_lerp_packed = uint(ribbon_lerp * 2047);
+    float u_scaled = ribbon_lerp;
+    float ribbon_is_active = float(ribbon.flags & tfx_active_mask);
+
+	tfx_gpu_graph_data width_overlength_graph = graphs[pc.graphs_index].data[tfx_width_overlength_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data width_overtime_graph = graphs[pc.graphs_index].data[tfx_width_offset + emitter.lookup_offset];
+	float width_overtime_and_length = tfx_graph_lookup(width_overlength_graph, ribbon_lerp);
+    width_overtime_and_length = width_overtime_and_length * emitter.overall_scale * tfx_graph_lookup(width_overtime_graph, ribbon.position.w) * ribbon_is_active;
+
+	tfx_gpu_graph_data uv_offset_graph = graphs[pc.graphs_index].data[tfx_uv_offset_y_offset + emitter.lookup_offset];
+	tfx_gpu_graph_data uv_scale_graph = graphs[pc.graphs_index].data[tfx_uv_scale_y_offset + emitter.lookup_offset];
+    float uv_offset = tfx_graph_lookup(uv_offset_graph, ribbon.position.w);
+    float uv_scale = tfx_graph_lookup(uv_scale_graph, ribbon.position.w);
+
+   
+    //Calculate the number of vertices per segment and ribbon. We could optimise this out and put it in the push constants instead. They will
+    //be the same across the whole shader.
+    uint vertices_per_segment = (pc.tessellation + 1) * 2;
+    uint vertices_per_ribbon = pc.segment_count * vertices_per_segment;
+    //Calculate the current base offset in to the vertex buffer we're writing to.
+    uint vertex_base_index = (local_ribbon_index * vertices_per_ribbon) + (local_segment_index * vertices_per_segment) + pc.vertex_offset;
+
+    //Vertex generation
+    //We have to do a separate calculation if there are 0 tessellations. No branching here, tessellation will always be the same
+    //across the shader. Do separate dispatches for ribbons that have different configurations.
+    if(pc.tessellation > 0) {
+        // Calculate vertices per segment based on tessellation
+        for (uint i = 0; i <= pc.tessellation; i++) {
+            float t = float(i) / float(pc.tessellation);                                        // Interpolation factor
+            float width_factor = mix(.5, 0, t) * width_overtime_and_length;                     // Interpolate from outer to inner
+            
+            uint vertex_index = vertex_base_index + i;
+			vertexes[pc.vertexes_index].data[vertex_index].position = current_pos + right * ribbon.width * width_factor;
+			vertexes[pc.vertexes_index].data[vertex_index].segment_index = pack_segment_data(global_segment_index, ribbon_lerp_packed, pc.tessellation, i, 0);
+			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.x = uv_offset;
+			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.y = uv_scale;
+			vertexes[pc.vertexes_index].data[vertex_index].ribbon_index = global_ribbon_index;
+
+            width_factor = mix(0, -0.5, t) * width_overtime_and_length;                         // Interpolate from inner to outer
+            vertex_index = vertex_base_index + (pc.tessellation + 1) + i;
+			vertexes[pc.vertexes_index].data[vertex_index].position =  current_pos + right * ribbon.width * width_factor;
+			vertexes[pc.vertexes_index].data[vertex_index].segment_index = pack_segment_data(global_segment_index, ribbon_lerp_packed, pc.tessellation, i, 1);
+			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.x = uv_offset;
+			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.y = uv_scale;
+			vertexes[pc.vertexes_index].data[vertex_index].ribbon_index = global_ribbon_index;
+        }
+
+        // Generate indices for tessellated segments
+        if (local_segment_index < pc.segment_count - 1) {
+            uint indices_per_segment = pc.tessellation * 12; 
+            uint indices_per_ribbon = pc.segment_count * indices_per_segment - indices_per_segment;
+            uint index_base = pc.index_offset + (local_ribbon_index * indices_per_ribbon) + (local_segment_index * indices_per_segment);
+			uint next_base_vertex = vertex_base_index + vertices_per_segment;
+            
+            for (uint t = 0; t < pc.tessellation; t++) {
+                uint current_quad_index = index_base + (t * 12);
+
+                uint v0 = vertex_base_index + t;
+                uint v1 = vertex_base_index + t + 1;
+                uint v2 = next_base_vertex + t;
+                uint v3 = next_base_vertex + t + 1;
+                
+                // First triangle
+				indexes[pc.indexes_index].data[current_quad_index + 0] = v0;
+				indexes[pc.indexes_index].data[current_quad_index + 1] = v1;
+				indexes[pc.indexes_index].data[current_quad_index + 2] = v2;
+                
+                // Second triangle
+				indexes[pc.indexes_index].data[current_quad_index + 3] = v2;
+				indexes[pc.indexes_index].data[current_quad_index + 4] = v1;
+				indexes[pc.indexes_index].data[current_quad_index + 5] = v3;
+
+                uint next_t = pc.tessellation + 1;
+				v0 += next_t;
+                v1 += next_t;
+                v2 += next_t;
+                v3 += next_t;
+
+                // First triangle
+				indexes[pc.indexes_index].data[current_quad_index + 6] = v0;
+				indexes[pc.indexes_index].data[current_quad_index + 7] = v1;
+				indexes[pc.indexes_index].data[current_quad_index + 8] = v2;
+                
+                // Second triangle
+				indexes[pc.indexes_index].data[current_quad_index + 9] = v2;
+				indexes[pc.indexes_index].data[current_quad_index + 10] = v1;
+				indexes[pc.indexes_index].data[current_quad_index + 11] = v3;
+            }
+        }
+    } else {
+        // Non-tessellated version
+        float width_factor = ribbon.width * 0.5;
+		vertexes[pc.vertexes_index].data[vertex_base_index].position = current_pos + right * width_factor;
+		vertexes[pc.vertexes_index].data[vertex_base_index].segment_index = global_segment_index;
+		//vertexes[pc.vertexes_index].data[vertex_base_index].color = current_color;
+		vertexes[pc.vertexes_index].data[vertex_base_index + 1].position = current_pos - right * width_factor;
+		vertexes[pc.vertexes_index].data[vertex_base_index + 1].segment_index = global_segment_index;
+		//vertexes[pc.vertexes_index].data[vertex_base_index + 1].color = current_color;
+
+        // Generate indices for non-tessellated segments
+        if (local_segment_index < pc.segment_count - 1) {
+            uint index_base = pc.index_offset + (global_segment_index * 6);
+            uint v0 = vertex_base_index;
+            uint v1 = vertex_base_index + 2;  // Next segment's first vertex
+            uint v2 = vertex_base_index + 1;
+            uint v3 = vertex_base_index + 3;  // Next segment's second vertex
+            
+            // First triangle
+			indexes[pc.indexes_index].data[index_base + 0] = v0;
+			indexes[pc.indexes_index].data[index_base + 1] = v1;
+			indexes[pc.indexes_index].data[index_base + 2] = v2;
+            
+            // Second triangle
+			indexes[pc.indexes_index].data[index_base + 3] = v2;
+			indexes[pc.indexes_index].data[index_base + 4] = v1;
+			indexes[pc.indexes_index].data[index_base + 5] = v3;
+        }
+    }
+}
