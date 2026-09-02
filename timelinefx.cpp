@@ -4276,16 +4276,15 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 		if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
 			bool shape_found = false;
 			tfxKey hash = library->shared_properties[current->state_properties.shared_index].image_hash;
-			if (library->particle_shapes.ValidKey(library->shared_properties[current->state_properties.shared_index].image_hash)) {
-				current->state_properties.image = &library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash);
-				current->state_properties.end_frame = library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash).animation_frames - 1;
+			if (library->particle_shapes.ValidKey(hash)) {
+				current->state_properties.image = &library->particle_shapes.At(hash);
+				current->state_properties.end_frame = library->particle_shapes.At(hash).animation_frames - 1;
 				shape_found = true;
 			} else {
 				for (auto &shape : library->particle_shapes.data) {
-					if (shape.image_hash == library->shared_properties[current->state_properties.shared_index].image_hash) {
-						library->shared_properties[current->state_properties.shared_index].image_hash = shape.image_hash;
-						current->state_properties.image = &library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash);
-						current->state_properties.end_frame = library->particle_shapes.At(library->shared_properties[current->state_properties.shared_index].image_hash).animation_frames - 1;
+					if (shape.image_hash == hash) {
+						current->state_properties.image = &library->particle_shapes.At(hash);
+						current->state_properties.end_frame = library->particle_shapes.At(hash).animation_frames - 1;
 						shape_found = true;
 						break;
 					}
@@ -10144,6 +10143,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		tfx__update_all_library_graphs(lib);
 		tfx__reindex_library(lib);
 		if (first_shape_hash != 0) {
+			//Need a better solution for this if for some reason no shapes load. Should be very rare.
 			tfx__update_library_particle_shape_references(lib, first_shape_hash);
 		}
 		tfx__update_library_effect_paths(lib);
