@@ -1640,6 +1640,7 @@ void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
 tfxINTERNAL void tfx__free_handle(tfx_allocator *allocator, void *handle);
 tfxINTERNAL void tfx__scan_memory_and_free_resources();
+tfxINTERNAL void tfx__reset_object_callbacks();
 tfxINTERNAL void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_header *current_block);
 tfxAPI void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, bool output_all);
 //Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
@@ -5242,7 +5243,6 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 //Section: Global_Variables
 //-----------------------------------------------------------
 // Platform-specific synchronization wrapper
-extern int tfxNumberOfThreadsInAdditionToMain;
 
 #ifndef tfxMAX_QUEUES
 #define tfxMAX_QUEUES 64
@@ -5320,8 +5320,25 @@ typedef struct tfx_storage_s {
 	tfxU32 thread_count;
 } tfx_storage_t;
 
-extern tfx_storage_t *tfxStore;
-extern tfx_allocator *tfxMemoryAllocator;
+struct tfx_vec3_t;
+
+typedef struct tfx_context_s {
+	tfx_storage_t store;
+	tfx_allocator *memory_allocator;
+	tfx_allocation_callbacks_t allocation_callbacks;
+	int number_of_threads_in_addition_to_main;
+	bool suspended;
+	tfxU32 stage_index_counter;
+	tfxU32 volatile tracy_worker_count;
+	tfx_vector_t<tfx_vec3_t> icosphere_points[6];
+} tfx_context_t;
+
+extern tfx_context tfxCurrentContext;
+
+#define tfxStore (&tfxCurrentContext->store)
+#define tfxMemoryAllocator (tfxCurrentContext->memory_allocator)
+#define tfxNumberOfThreadsInAdditionToMain (tfxCurrentContext->number_of_threads_in_addition_to_main)
+#define tfxIcospherePoints (tfxCurrentContext->icosphere_points)
 
 //-----------------------------------------------------------
 //Section: Multithreading_Work_Queues
@@ -6074,7 +6091,6 @@ typedef struct tfx_package_s {
 
 #ifdef __cplusplus
 
-extern tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 #endif
 
@@ -6346,8 +6362,6 @@ typedef struct tfx_image_data_s {
 	tfxU32 image_index;
 	//The number of frames in the image, can be one or more
 	float animation_frames;
-	//Maximum distance to the nearest transparent edge of the image
-	float max_radius;
 	int import_filter;
 	tfxU32 compute_shape_index;
 	//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
@@ -6624,7 +6638,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 
 	//User Data
 	void *user_data;
-	void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
 
 	//Spawn controls
 	tfx_parent_spawn_controls_t spawn_controls;

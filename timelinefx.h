@@ -219,7 +219,7 @@ typedef struct tfx_gpu_image_data_s {
 	tfx_float32x2_t image_size;
 	tfxU32 texture_array_index;
 	float animation_frames;
-	float max_radius;
+	float padding;	//Was max_radius which isn't used anymore
 }tfx_gpu_image_data_t;
 
 //------------------------------------------------------------
@@ -440,7 +440,8 @@ typedef enum {
 	tfxErrorCode_invalid_inventory                              = 1 << 10,
 	tfxErrorCode_file_version_out_of_date                       = 1 << 11,
 	tfxErrorCode_library_loaded_without_shape_loader            = 1 << 13,
-	tfxErrorCode_library_object_could_not_be_created            = 1 << 14
+	tfxErrorCode_library_object_could_not_be_created            = 1 << 14,
+	tfxErrorCode_some_images_loaded_without_user_ptr            = 1 << 15
 } tfx_error_flag_bits;
 
 typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits
@@ -457,6 +458,7 @@ typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits
 typedef struct tfx_package_s tfx_package_t;
 
 tfxMAKE_HANDLE(tfx_package)
+tfxMAKE_HANDLE(tfx_context);
 tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_stage);
 tfxMAKE_HANDLE(tfx_animation_manager);
@@ -479,6 +481,15 @@ typedef struct tfx_animation_instance_s tfx_animation_instance_t;
 typedef struct tfx_frame_meta_s tfx_frame_meta_t;
 typedef struct tfx_sprite_data_settings_s tfx_sprite_data_settings_t;
 typedef struct tfx_emitter_path_s tfx_emitter_path_t;
+
+typedef void *(*tfx_allocate_callback)(void *user_data, size_t size, size_t alignment);
+typedef void (*tfx_deallocate_callback)(void *user_data, void *memory, size_t size, size_t alignment);
+
+typedef struct tfx_allocation_callbacks_s {
+	void *user_data;
+	tfx_allocate_callback allocate;
+	tfx_deallocate_callback deallocate;
+} tfx_allocation_callbacks_t;
 
 typedef struct tfx_random_s {
 	tfxU64 seeds[2];
@@ -700,23 +711,72 @@ tearing anything down mid-frame.
 
 /*
 You don't have to call this, you can just call tfx_BeginTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
-needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
+needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand. Passing NULL allocation_callbacks 
+uses the default internal allocator and deallocator.
 * @param memory_pool_size    The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
+* @param allocation_callbacks    The callbacks used to allocate and deallocate every TimelineFX backing pool, or NULL for the default internal allocator and deallocator
 */
-tfxAPI void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size);
+#ifdef __cplusplus
+tfxAPI tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
 * @param max_threads        The number of worker threads to use in addition to the main thread. Pass 0 to run single threaded.
 *                            The count is clamped to the number of hardware threads available on the machine.
 * @param memory_pool_size    The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
+* @param allocation_callbacks    The callbacks used to allocate and deallocate every TimelineFX backing pool, or NULL for the default internal allocator and deallocator
 */
-tfxAPI void tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size);
+#ifdef __cplusplus
+tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
 
 /*
 Cleanup up all threads and memory used by timelinefx
 */
 tfxAPI void tfx_EndTimelineFX(void);
+
+/*
+Get the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
+*/
+tfxAPI tfx_context tfx_GetContext(void);
+
+/*
+Adopt a context obtained from tfx_GetContext into the currently running module and rebind every function pointer that
+the module owns. Call this after a hot-reload of the dynamic library hosting the TimelineFX instance, before calling
+tfx_ResumeTimelineFX.
+Passing non-NULL allocation_callbacks replaces the stored callbacks. Passing NULL preserves the stored callbacks.
+The caller must provide fresh callback addresses when the prior callback addresses are expected to be invalid.
+Any update or uv lookup callbacks previously registered on effects, libraries and animation managers are cleared and
+must be registered again by the caller with tfx_SetTemplateEffectUpdateCallback, tfx_SetLibraryUVLookup and
+tfx_SetAnimationManagerInstanceCallback.
+* @returns    True if the context was adopted
+*/
+#ifdef __cplusplus
+tfxAPI bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks = nullptr);
+#else
+tfxAPI bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks);
+#endif
+
+/*
+Call this function to wait on all thread work currently in process in TimelineFX. This does not close threads.
+Use tfx_SuspendTimelineFX to draid and close threads.
+*/
+tfxAPI void tfx_DrainAllThreadWork(void);
+
+/*
+Drain and stop all current TimelineFX asynchronous work without deallocating memory.
+*/
+tfxAPI void tfx_SuspendTimelineFX(void);
+
+/*
+Restart the worker threads after a call to tfx_SuspendTimelineFX.
+*/
+tfxAPI void tfx_ResumeTimelineFX(void);
 
 //--------------------------------
 //Global_variable_access
@@ -795,6 +855,7 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_invalid_format
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
+	tfxErrorCode_some_images_loaded_without_user_ptr
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
@@ -830,6 +891,14 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 * @param tfx_library                A valid pointer to a tfx_library
 */
 tfxAPI void tfx_UpdateLibraryGPUImageData(tfx_library library);
+
+/*
+* Set the uv lookup callback that tfx_UpdateLibraryGPUImageData uses. Normally this is set for you when the library is loaded, but it is cleared by
+* tfx_SetContext so it must be set again after hot reloading the module that owns the callback.
+* @param library                   A valid pointer to a tfx_library
+* @param uv_lookup                 A function pointer that fills in the uv coordinates from whatever renderer you're using
+*/
+tfxAPI void tfx_SetLibraryUVLookup(tfx_library library, tfx_uv_lookup uv_lookup);
 
 /*
 Get the number of shapes stored in the library
