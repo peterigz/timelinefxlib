@@ -8179,6 +8179,7 @@ tfxAPI_EDITOR tfx_graph_list_t *tfx__get_library_graph_list(tfx_library_t *libra
 tfxAPI_EDITOR void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__set_effect_name(tfx_effect_descriptor effect, const char *n);
 tfxAPI_EDITOR bool tfx__rename_child(tfx_effect_descriptor effect, const char *new_name);
+tfxAPI_EDITOR bool tfx__names_match_ignoring_case(const char *left, const char *right);
 tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_effect_descriptor excluding_effect, const char *name);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone, tfx_library library, tfxEffectCloningFlags flags = 0);

@@ -2395,7 +2395,7 @@ tfxINTERNAL void tfx__sort_file_names(tfx_vector_t<tfx_str256_t> *names) {
 	}
 }
 
-tfxINTERNAL bool tfx__names_match_ignoring_case(const char *left, const char *right) {
+bool tfx__names_match_ignoring_case(const char *left, const char *right) {
 	while (*left && *right) {
 		if (tolower((unsigned char)*left) != tolower((unsigned char)*right)) {
 			return false;
@@ -3658,10 +3658,11 @@ bool tfx__rename_child(tfx_effect_descriptor emitter, const char *new_name) {
 	return false;
 }
 
+//Case insensitive because siblings are written as files, and two names differing only by case are one file
 bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_effect_descriptor excluding_effect, const char *name) {
 	for (tfx_effect_descriptor child : in_effect->children) {
 		if (excluding_effect != child) {
-			if (child->name == name) {
+			if (tfx__names_match_ignoring_case(child->name.c_str(), name)) {
 				return true;
 			}
 		}
