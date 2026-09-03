@@ -1775,6 +1775,10 @@ union tfxUInt8bit
 };
 
 //Section: OS_Specific_Functions
+
+//False for a file, a broken path, or anything the process cannot stat
+bool tfx__path_is_folder(const char *path);
+
 #ifdef _WIN32
 FILE *tfx__open_file(const char *file_name, const char *mode);
 
@@ -5129,8 +5133,11 @@ typedef struct tfx_stream_s {
 	inline bool            Empty() { return size == 0; }
 	inline tfxU64        Size() { return size; }
 	inline const tfxU64    Size() const { return size; }
-	inline tfxU64        Length() { if (!data) { return 0; } return data[size] == '\0' && size > 0 ? size - 1 : size; }
-	inline const tfxU64    Length() const { if (!data) { return 0; } return data[size] == '\0' && size > 0 ? size - 1 : size; }
+	//Tests the last byte rather than the one past it. AddLine counts its terminator in size, but a
+	//stream read off disk is sized to exactly the file, so data[size] is outside the allocation and
+	//whatever it happens to hold decides whether the caller sees the last character.
+	inline tfxU64        Length() { if (!data || size == 0) { return 0; } return data[size - 1] == '\0' ? size - 1 : size; }
+	inline const tfxU64    Length() const { if (!data || size == 0) { return 0; } return data[size - 1] == '\0' ? size - 1 : size; }
 
 	inline void            Free() { if (data) { size = position = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { if (data) { size = 0; } }
@@ -6033,6 +6040,14 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 
 const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size.
 
+//The folder library format: a directory of text files that materialises into a package on load
+const tfxU32 tfxFOLDER_FORMAT_VERSION = 1;
+#define tfxFOLDER_MANIFEST_FILE "manifest.txt"
+#define tfxFOLDER_SHAPES_FILE "shapes.txt"
+#define tfxFOLDER_SHAPES_DIRECTORY "shapes"
+#define tfxFOLDER_NAME_FILE "folder.txt"
+#define tfxFOLDER_EFFECT_EXTENSION ".tfxe"
+
 typedef struct tfx_package_entry_info_t {
 	tfx_str512_t file_name;                     //The name of the file stored in the package
 	tfxU64 offset_from_start_of_file;           //Offset from the start of the file to where the file is located
@@ -6362,7 +6377,6 @@ typedef struct tfx_image_data_s {
 	tfxU32 image_index;
 	//The number of frames in the image, can be one or more
 	float animation_frames;
-	int import_filter;
 	tfxU32 compute_shape_index;
 	//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
 	//Just define tfxCUSTOM_IMAGE_DATA before you include timelinefx.h
@@ -7767,6 +7781,8 @@ tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emi
 tfxAPI_EDITOR void tfx__read_entire_file(const char *file_name, tfx_stream buffer, bool terminate = false);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package);
+//Materialises a folder library into an in memory package so that tfx__load_effect_library_package can consume it unchanged
+tfxAPI_EDITOR tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package);
 tfxAPI_EDITOR tfx_package tfx__create_package(const char *file_path);
 tfxAPI_EDITOR bool tfx__save_package_disk(tfx_package package);
 tfxAPI_EDITOR tfx_stream tfx__save_package_memory(tfx_package package);

@@ -12,6 +12,8 @@
 #else
 #include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <dirent.h>
 #endif
 
 //static asserts for tfx_str_t to pin the c++ layouts to the the exact layout the c mirrors are forced to have 
@@ -43,8 +45,7 @@ tfx__pin_image_data_offset(image_hash, 272);
 tfx__pin_image_data_offset(image_size, 280);
 tfx__pin_image_data_offset(image_index, 288);
 tfx__pin_image_data_offset(animation_frames, 292);
-tfx__pin_image_data_offset(import_filter, 296);
-tfx__pin_image_data_offset(compute_shape_index, 300);
+tfx__pin_image_data_offset(compute_shape_index, 296);
 #ifndef tfxCUSTOM_IMAGE_DATA
 static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 304, "tfx_image_data_t size changed; the C API reads this struct through tfx_GetLibraryImage");
 #endif
@@ -76,6 +77,18 @@ static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 304, "tfx_image
 #else
 	FILE *tfx__open_file(const char *file_name, const char *mode) {
 		return fopen(file_name, mode);
+	}
+#endif
+
+#ifdef _WIN32
+	bool tfx__path_is_folder(const char *path) {
+		DWORD attributes = GetFileAttributesA(path);
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+	}
+#else
+	bool tfx__path_is_folder(const char *path) {
+		struct stat path_status;
+		return stat(path, &path_status) == 0 && S_ISDIR(path_status.st_mode);
 	}
 #endif
 
@@ -1897,6 +1910,10 @@ tfx_line_t tfx_stream_s::ReadLine() {
 		position++;
 	}
 	line.end = data + position - 1;
+	//Folder libraries live in git, so a checkout with autocrlf on hands us CRLF line endings
+	if (line.end > line.start && *(line.end - 1) == '\r') {
+		line.end--;
+	}
 	line.length = int(line.end - line.start);
 	return line;
 }
@@ -2033,9 +2050,15 @@ tfx_package_entry_info_t *tfx__get_package_file(tfx_package package, const char 
 		if (!(package->flags & tfxPackageFlags_loaded_from_memory)) {
 			FILE *file = tfx__open_file(package->file_path.data, "rb");
 			TFX_ASSERT(file);        //couldn't open the file!
+			if (!file) {
+				return nullptr;
+			}
 			tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
 			if (fread(entry->data.data, 1, entry->file_size, file) != (size_t)entry->file_size) {
+				//Left sized to file_size the next call would take this branch as already loaded and
+				//hand back a buffer holding whatever was never read into it
+				entry->data.Free();
 				fclose(file);
 				return nullptr;
 			}
@@ -2123,11 +2146,12 @@ void tfx__read_entire_file(const char *file_name, tfx_stream buffer, bool termin
 		return;
 	}
 
+	//NullTerminate writes at data[size] and grows size, so the terminator needs capacity of its own
+	//rather than room already claimed by Resize
 	if (terminate) {
-		buffer->Resize((tfxU64)length + 1);
-	} else {
-		buffer->Resize(length);
+		buffer->Reserve((tfxU64)length + 1);
 	}
+	buffer->Resize(length);
 
 	if (buffer->data == NULL || fread(buffer->data, 1, length, file) != (size_t)length) {
 		buffer->Free();
@@ -2297,6 +2321,405 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package)
 	package->file_path.SetText(file_name);
 
 	return 0;
+}
+
+//A folder library is materialised into a package rather than parsed directly, so that
+//tfx__load_effect_library_package stays the one and only reader of the effect format.
+
+//One effect file or folder directory listed in the manifest, in the order the library holds them
+typedef struct tfx_folder_manifest_entry_t {
+	tfx_str512_t path;              //Relative to the library folder, always '/' separated
+	bool is_folder;
+} tfx_folder_manifest_entry_t;
+
+#ifdef _WIN32
+tfxINTERNAL bool tfx__list_folder(const char *path, tfx_vector_t<tfx_str256_t> *files, tfx_vector_t<tfx_str256_t> *folders) {
+	tfx_str512_t search;
+	search.Setf("%s/*", path);
+	WIN32_FIND_DATAA find_data;
+	HANDLE find = FindFirstFileA(search.c_str(), &find_data);
+	if (find == INVALID_HANDLE_VALUE) {
+		return false;
+	}
+	do {
+		if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+			continue;
+		}
+		tfx_str256_t entry_name;
+		entry_name.Set(find_data.cFileName);
+		if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+			folders->push_back(entry_name);
+		} else {
+			files->push_back(entry_name);
+		}
+	} while (FindNextFileA(find, &find_data));
+	FindClose(find);
+	return true;
+}
+#else
+tfxINTERNAL bool tfx__list_folder(const char *path, tfx_vector_t<tfx_str256_t> *files, tfx_vector_t<tfx_str256_t> *folders) {
+	DIR *directory = opendir(path);
+	if (!directory) {
+		return false;
+	}
+	struct dirent *directory_entry = nullptr;
+	while ((directory_entry = readdir(directory)) != nullptr) {
+		if (strcmp(directory_entry->d_name, ".") == 0 || strcmp(directory_entry->d_name, "..") == 0) {
+			continue;
+		}
+		tfx_str512_t entry_path;
+		entry_path.Setf("%s/%s", path, directory_entry->d_name);
+		tfx_str256_t entry_name;
+		entry_name.Set(directory_entry->d_name);
+		if (tfx__path_is_folder(entry_path.c_str())) {
+			folders->push_back(entry_name);
+		} else {
+			files->push_back(entry_name);
+		}
+	}
+	closedir(directory);
+	return true;
+}
+#endif
+
+//Directory order is not defined by either OS, so it is sorted to keep loads reproducible
+tfxINTERNAL void tfx__sort_file_names(tfx_vector_t<tfx_str256_t> *names) {
+	for (tfxU32 i = 1; i < names->current_size; ++i) {
+		tfx_str256_t key = (*names)[i];
+		int j = (int)i - 1;
+		while (j >= 0 && strcmp((*names)[j].c_str(), key.c_str()) > 0) {
+			(*names)[j + 1] = (*names)[j];
+			--j;
+		}
+		(*names)[j + 1] = key;
+	}
+}
+
+tfxINTERNAL bool tfx__names_match_ignoring_case(const char *left, const char *right) {
+	while (*left && *right) {
+		if (tolower((unsigned char)*left) != tolower((unsigned char)*right)) {
+			return false;
+		}
+		left++;
+		right++;
+	}
+	return *left == *right;
+}
+
+tfxINTERNAL bool tfx__file_name_has_extension(const char *file_name, const char *extension) {
+	size_t name_length = strlen(file_name);
+	size_t extension_length = strlen(extension);
+	if (name_length <= extension_length) {
+		return false;
+	}
+	return tfx__names_match_ignoring_case(file_name + name_length - extension_length, extension);
+}
+
+tfxINTERNAL void tfx__append_bytes_to_stream(tfx_stream_t *destination, const void *source, tfxU64 length) {
+	if (length == 0) {
+		return;
+	}
+	tfxU64 offset = destination->size;
+	destination->Resize(offset + length);
+	memcpy(destination->data + offset, source, length);
+}
+
+tfxINTERNAL void tfx__append_line_to_stream(tfx_stream_t *destination, const char *text) {
+	tfx__append_bytes_to_stream(destination, text, strlen(text));
+	tfx__append_bytes_to_stream(destination, "\n", 1);
+}
+
+tfxINTERNAL void tfx__append_context_to_stream(tfx_stream_t *destination, int context) {
+	char context_line[16];
+	snprintf(context_line, sizeof(context_line), "%i", context);
+	tfx__append_line_to_stream(destination, context_line);
+}
+
+//A hand edited file may not end in a newline, which would splice two lines together
+tfxINTERNAL void tfx__append_file_to_stream(tfx_stream_t *destination, tfx_stream_t *contents) {
+	//Length() rather than Size() so a null terminator can never land in the middle of the stream
+	tfxU64 length = contents->Length();
+	tfx__append_bytes_to_stream(destination, contents->data, length);
+	if (length && contents->data[length - 1] != '\n') {
+		tfx__append_bytes_to_stream(destination, "\n", 1);
+	}
+}
+
+//tfx__read_entire_file leaves the buffer untouched when it cannot open the file, so a reused one
+//would otherwise still be holding whatever the last read put there
+tfxINTERNAL bool tfx__read_folder_text_file(const char *file_path, tfx_stream_t *out) {
+	out->Clear();
+	tfx__read_entire_file(file_path, out, false);
+	return out->Size() != 0;
+}
+
+tfxINTERNAL bool tfx__append_folder_file_to_stream(const char *path, const char *relative_path, tfx_stream_t *destination, tfx_stream_t *scratch) {
+	tfx_str512_t file_path;
+	file_path.Setf("%s/%s", path, relative_path);
+	if (!tfx__read_folder_text_file(file_path.c_str(), scratch)) {
+		return false;
+	}
+	tfx__append_file_to_stream(destination, scratch);
+	return true;
+}
+
+//The manifest lists every effect file in library order, which is the only record of that order
+tfxINTERNAL void tfx__append_manifest_entries_to_stream(const char *path, tfx_vector_t<tfx_folder_manifest_entry_t> *entries, tfx_stream_t *destination, tfxErrorFlags *error) {
+	tfx_stream_t scratch;
+	tfx_str512_t open_folder;
+	for (tfxU32 i = 0; i != entries->current_size; ++i) {
+		tfx_folder_manifest_entry_t &entry = (*entries)[i];
+		const char *separator = strchr(entry.path.c_str(), '/');
+		if (entry.is_folder || !separator) {
+			if (open_folder.Length()) {
+				tfx__append_context_to_stream(destination, tfxEndFolder);
+				open_folder.Clear();
+			}
+		} else {
+			//Only the folder the manifest last opened can own this effect
+			size_t directory_length = (size_t)(separator - entry.path.c_str());
+			if (open_folder.Length() != directory_length || strncmp(open_folder.c_str(), entry.path.c_str(), directory_length) != 0) {
+				*error |= tfxErrorCode_some_data_not_loaded;
+				continue;
+			}
+		}
+		if (entry.is_folder) {
+			//The directory name is sanitized for the file system, so the real folder name comes out of folder.txt
+			tfx_str512_t folder_name_path;
+			folder_name_path.Setf("%s/%s", entry.path.c_str(), tfxFOLDER_NAME_FILE);
+			if (!tfx__append_folder_file_to_stream(path, folder_name_path.c_str(), destination, &scratch)) {
+				*error |= tfxErrorCode_some_data_not_loaded;
+				continue;
+			}
+			open_folder = entry.path;
+		} else if (!tfx__append_folder_file_to_stream(path, entry.path.c_str(), destination, &scratch)) {
+			*error |= tfxErrorCode_some_data_not_loaded;
+		}
+	}
+	if (open_folder.Length()) {
+		tfx__append_context_to_stream(destination, tfxEndFolder);
+	}
+	scratch.Free();
+}
+
+tfxINTERNAL void tfx__append_effect_files_to_stream(const char *path, const char *relative_folder, tfx_vector_t<tfx_str256_t> *files, tfx_stream_t *destination, tfxErrorFlags *error) {
+	tfx_stream_t scratch;
+	tfx_str512_t relative_path;
+	for (tfxU32 i = 0; i != files->current_size; ++i) {
+		if (!tfx__file_name_has_extension((*files)[i].c_str(), tfxFOLDER_EFFECT_EXTENSION)) {
+			continue;
+		}
+		if (relative_folder) {
+			relative_path.Setf("%s/%s", relative_folder, (*files)[i].c_str());
+		} else {
+			relative_path.Set((*files)[i].c_str());
+		}
+		if (!tfx__append_folder_file_to_stream(path, relative_path.c_str(), destination, &scratch)) {
+			*error |= tfxErrorCode_some_data_not_loaded;
+		}
+	}
+	scratch.Free();
+}
+
+//Fallback for a folder whose manifest lists no files: the tree still loads, but in name order
+tfxINTERNAL void tfx__append_enumerated_folder_to_stream(const char *path, tfx_stream_t *destination, tfxErrorFlags *error) {
+	tmpStack(tfx_str256_t, root_files);
+	tmpStack(tfx_str256_t, root_folders);
+	if (!tfx__list_folder(path, &root_files, &root_folders)) {
+		*error |= tfxErrorCode_some_data_not_loaded;
+		root_files.free();
+		root_folders.free();
+		return;
+	}
+	tfx__sort_file_names(&root_files);
+	tfx__sort_file_names(&root_folders);
+
+	tfx__append_effect_files_to_stream(path, nullptr, &root_files, destination, error);
+
+	tfx_stream_t scratch;
+	for (tfxU32 i = 0; i != root_folders.current_size; ++i) {
+		if (tfx__names_match_ignoring_case(root_folders[i].c_str(), tfxFOLDER_SHAPES_DIRECTORY)) {
+			continue;
+		}
+		tfx_str512_t folder_name_path;
+		folder_name_path.Setf("%s/%s", root_folders[i].c_str(), tfxFOLDER_NAME_FILE);
+		if (!tfx__append_folder_file_to_stream(path, folder_name_path.c_str(), destination, &scratch)) {
+			*error |= tfxErrorCode_some_data_not_loaded;
+			continue;
+		}
+		tfx_str512_t sub_folder_path;
+		sub_folder_path.Setf("%s/%s", path, root_folders[i].c_str());
+		tmpStack(tfx_str256_t, child_files);
+		tmpStack(tfx_str256_t, child_folders);
+		if (tfx__list_folder(sub_folder_path.c_str(), &child_files, &child_folders)) {
+			tfx__sort_file_names(&child_files);
+			tfx__append_effect_files_to_stream(path, root_folders[i].c_str(), &child_files, destination, error);
+		} else {
+			*error |= tfxErrorCode_some_data_not_loaded;
+		}
+		child_files.free();
+		child_folders.free();
+		tfx__append_context_to_stream(destination, tfxEndFolder);
+	}
+	scratch.Free();
+	root_files.free();
+	root_folders.free();
+}
+
+//format_version must come first; effect and folder values may contain '=' so the key ends at the first one
+tfxINTERNAL tfxErrorFlags tfx__read_folder_manifest(const char *path, tfx_vector_t<tfx_folder_manifest_entry_t> *entries) {
+	tfx_str512_t manifest_path;
+	manifest_path.Setf("%s/%s", path, tfxFOLDER_MANIFEST_FILE);
+	tfx_stream_t manifest;
+	if (!tfx__read_folder_text_file(manifest_path.c_str(), &manifest)) {
+		manifest.Free();
+		return tfxErrorCode_no_inventory;
+	}
+	manifest.Seek(0);
+	tfxErrorFlags error = 0;
+	bool version_checked = false;
+	while (!manifest.EoF()) {
+		tfx_line_t line = manifest.ReadLine();
+		if (line.length == 0) {
+			continue;
+		}
+		const char *separator = (const char *)memchr(line.start, '=', (size_t)line.length);
+		if (!separator) {
+			continue;
+		}
+		size_t key_length = (size_t)(separator - line.start);
+		const char *value = separator + 1;
+		int value_length = line.length - (int)key_length - 1;
+		if (!version_checked) {
+			if (key_length != 14 || strncmp(line.start, "format_version", 14) != 0) {
+				manifest.Free();
+				return tfxErrorCode_invalid_format;
+			}
+			if ((tfxU32)atoi(value) > tfxFOLDER_FORMAT_VERSION) {
+				manifest.Free();
+				return tfxErrorCode_file_version_out_of_date;
+			}
+			version_checked = true;
+			continue;
+		}
+		bool is_folder = key_length == 6 && strncmp(line.start, "folder", 6) == 0;
+		if (!is_folder && (key_length != 6 || strncmp(line.start, "effect", 6) != 0)) {
+			continue;
+		}
+		if (value_length <= 0 || value_length >= (int)tfx_str512_t::capacity - 1) {
+			error |= tfxErrorCode_some_data_not_loaded;
+			continue;
+		}
+		tfx_folder_manifest_entry_t entry;
+		entry.is_folder = is_folder;
+		entry.path.Setf("%.*s", value_length, value);
+		entries->push_back(entry);
+	}
+	manifest.Free();
+	if (!version_checked) {
+		return tfxErrorCode_invalid_format;
+	}
+	return error;
+}
+
+//Each image is keyed by its shape name, which is what the shapes block of data.txt looks it up by.
+//The optional eighth field carries the file name whenever it had to differ from the name.
+tfxINTERNAL tfxErrorFlags tfx__add_folder_shapes_to_package(const char *path, tfx_package package, tfx_stream_t *shapes_list) {
+	tfxErrorFlags error = 0;
+	tfx_str512_t file_path;
+	tmpStack(tfx_str256_t, fields);
+	shapes_list->Seek(0);
+	while (!shapes_list->EoF()) {
+		tfx_line_t line = shapes_list->ReadLine();
+		if (line.length == 0 || tfx__line_is_uint(&line)) {
+			continue;
+		}
+		fields.clear();
+		tfx__split_string_stack(line.start, line.length, &fields, 44);
+		if (fields.current_size < 6) {
+			error |= tfxErrorCode_error_loading_shapes;
+			continue;
+		}
+		const char *shape_name = fields[0].c_str();
+		const char *shape_file = fields.current_size > 7 ? fields[7].c_str() : shape_name;
+		if (tfx__file_exists_in_package(package, shape_name)) {
+			error |= tfxErrorCode_error_loading_shapes;	//Two rows claim the same shape name, the second would silently replace the first
+			continue;
+		}
+		tfx_package_entry_info_t image_entry;
+		image_entry.offset_from_start_of_file = 0;
+		image_entry.file_name.Set(shape_name);
+		file_path.Setf("%s/%s/%s", path, tfxFOLDER_SHAPES_DIRECTORY, shape_file);
+		tfx__read_entire_file(file_path.c_str(), &image_entry.data, false);
+		if (image_entry.data.Size() == 0) {
+			image_entry.data.Free();
+			error |= tfxErrorCode_error_loading_shapes;
+			continue;
+		}
+		image_entry.file_size = image_entry.data.Size();
+		tfx__add_entry_to_package(package, image_entry);
+	}
+	fields.free();
+	return error;
+}
+
+tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package) {
+	TFX_ASSERT_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
+
+	if (!tfx__path_is_folder(path)) {
+		return tfxErrorCode_unable_to_open_file;
+	}
+
+	//The manifest is written last, so its absence means the folder was never finished
+	tmpStack(tfx_folder_manifest_entry_t, manifest_entries);
+	tfxErrorFlags error = tfx__read_folder_manifest(path, &manifest_entries);
+	if (error == tfxErrorCode_no_inventory || error == tfxErrorCode_invalid_format || error == tfxErrorCode_file_version_out_of_date) {
+		manifest_entries.free();
+		return error;
+	}
+
+	tfx_str512_t file_path;
+	file_path.Setf("%s/%s", path, tfxFOLDER_SHAPES_FILE);
+	tfx_stream_t shapes_list;
+	if (!tfx__read_folder_text_file(file_path.c_str(), &shapes_list)) {
+		shapes_list.Free();
+		manifest_entries.free();
+		return tfxErrorCode_error_loading_shapes;
+	}
+
+	error |= tfx__add_folder_shapes_to_package(path, package, &shapes_list);
+
+	tfx_package_entry_info_t data_file;
+	data_file.offset_from_start_of_file = 0;
+	data_file.file_name.Set("data.txt");
+
+	//The shapes block keeps its sentinels so it can be spliced in verbatim
+	tfx__append_file_to_stream(&data_file.data, &shapes_list);
+	shapes_list.Free();
+
+	if (manifest_entries.current_size) {
+		tfx__append_manifest_entries_to_stream(path, &manifest_entries, &data_file.data, &error);
+	} else {
+		tfx__append_enumerated_folder_to_stream(path, &data_file.data, &error);
+	}
+	manifest_entries.free();
+
+	tfx__append_context_to_stream(&data_file.data, tfxEndOfFile);
+	data_file.file_size = data_file.data.Size();
+
+	tfxU64 materialised_size = data_file.file_size;
+	for (tfx_package_entry_info_t &entry : package->inventory.entries.data) {
+		materialised_size += entry.file_size;
+	}
+
+	tfx__add_entry_to_package(package, data_file);
+
+	//Every entry already holds its data, so tfx__get_package_file never goes back to disk for it
+	package->flags |= tfxPackageFlags_loaded_from_memory;
+	package->file_size = materialised_size;
+	package->file_path.SetText(path);
+
+	return error;
 }
 
 tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
@@ -5739,6 +6162,25 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 }
 
 int tfx_ValidateEffectPackage(const char *filename) {
+	//A folder is checked from its manifest and shapes list rather than materialised, so that
+	//validating does not read every effect and image only to throw them away
+	if (tfx__path_is_folder(filename)) {
+		tmpStack(tfx_folder_manifest_entry_t, manifest_entries);
+		tfxErrorFlags status = tfx__read_folder_manifest(filename, &manifest_entries);
+		manifest_entries.free();
+		if (status & tfxErrorCode_package_unreadable) {
+			return status;
+		}
+		tfx_str512_t shapes_path;
+		shapes_path.Setf("%s/%s", filename, tfxFOLDER_SHAPES_FILE);
+		FILE *shapes_file = tfx__open_file(shapes_path.c_str(), "rb");
+		if (!shapes_file) {
+			return tfxErrorCode_data_could_not_be_loaded;
+		}
+		fclose(shapes_file);
+		return 0;
+	}
+
 	tfx_package package = tfx__create_package("");
 	tfxErrorFlags status = tfx__load_package_file(filename, package);
 	if (status) {
@@ -9753,17 +10195,16 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
+					//Pair index 5 used to be import_filter which has now been removed
+					//Gets written as 0 by default and is not used for now. Will be completely removed
+					//or replaced with something else in the future.
 					tfx_image_data_t image_data = {};
 					image_data.name.Set(pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
 					image_data.animation_frames = (float)atoi(pair[2].c_str());
 					image_data.image_size = { (float)atoi(pair[3].c_str()), (float)atoi(pair[4].c_str()) };
-					image_data.import_filter = atoi(pair[5].c_str());
 					if (pair.current_size > 6) {
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
-					}
-					if (image_data.import_filter < 0 || image_data.import_filter > 1) {
-						image_data.import_filter = 0;
 					}
 
 					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
@@ -10034,17 +10475,16 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
+					//Pair index 5 used to be import_filter which has now been removed
+					//Gets written as 0 by default and is not used for now. Will be completely removed
+					//or replaced with something else in the future.
 					tfx_image_data_t image_data = {};
 					tfx__strcpy(image_data.name.data, image_data.name.capacity, pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
 					image_data.animation_frames = (float)atoi(pair[2].c_str());
 					image_data.image_size = { (float)atoi(pair[3].c_str()), (float)atoi(pair[4].c_str()) };
-					image_data.import_filter = atoi(pair[5].c_str());
 					if (pair.current_size > 6) {
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
-					}
-					if (image_data.import_filter < 0 || image_data.import_filter>1) {
-						image_data.import_filter = 0;
 					}
 
 					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
@@ -10222,12 +10662,13 @@ tfx_library tfx_LoadEffectLibrary(const char *filename, tfx_shape_loader shape_l
 	TFX_ASSERT_HANDLE(library);	//Could not create library handle, out of memory?
 
 	tfx_package package = tfx__create_package("");
-	library->error_flags = tfx__load_package_file(filename, package);
-	if (library->error_flags != 0) {
+	//A folder can report a missing file without that stopping the rest of the library from loading
+	library->error_flags = tfx__path_is_folder(filename) ? tfx__load_package_folder(filename, package) : tfx__load_package_file(filename, package);
+	if (library->error_flags & tfxErrorCode_package_unreadable) {
 		tfx__free_package(package);
 		return library;
 	}
-	library->error_flags = tfx__load_effect_library_package(package, library, shape_loader, uv_lookup, user_data);
+	library->error_flags |= tfx__load_effect_library_package(package, library, shape_loader, uv_lookup, user_data);
 
 	tfx__free_package(package);
 	return library;

@@ -444,6 +444,9 @@ typedef enum {
 	tfxErrorCode_some_images_loaded_without_user_ptr            = 1 << 15
 } tfx_error_flag_bits;
 
+//Errors that mean nothing at all could be read, as opposed to a partially loaded library
+#define tfxErrorCode_package_unreadable (tfxErrorCode_incorrect_package_format | tfxErrorCode_unable_to_open_file | tfxErrorCode_unable_to_read_file | tfxErrorCode_wrong_file_size | tfxErrorCode_invalid_format | tfxErrorCode_no_inventory | tfxErrorCode_invalid_inventory | tfxErrorCode_file_version_out_of_date)
+
 typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits
 
 //-----------------------------------------------------------
