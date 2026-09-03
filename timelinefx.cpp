@@ -2622,8 +2622,8 @@ tfxINTERNAL tfxErrorFlags tfx__read_folder_manifest(const char *path, tfx_vector
 	return error;
 }
 
-//Each image is keyed by its shape name, which is what the shapes block of data.txt looks it up by.
-//The optional eighth field carries the file name whenever it had to differ from the name.
+//Each image is keyed by the file it came from, which is what the shapes block of data.txt looks it up by:
+//the optional eighth field when the file name had to differ from the shape name, and the name itself otherwise.
 tfxINTERNAL tfxErrorFlags tfx__add_folder_shapes_to_package(const char *path, tfx_package package, tfx_stream_t *shapes_list) {
 	tfxErrorFlags error = 0;
 	tfx_str512_t file_path;
@@ -2642,13 +2642,13 @@ tfxINTERNAL tfxErrorFlags tfx__add_folder_shapes_to_package(const char *path, tf
 		}
 		const char *shape_name = fields[0].c_str();
 		const char *shape_file = fields.current_size > 7 ? fields[7].c_str() : shape_name;
-		if (tfx__file_exists_in_package(package, shape_name)) {
-			error |= tfxErrorCode_error_loading_shapes;	//Two rows claim the same shape name, the second would silently replace the first
+		if (tfx__file_exists_in_package(package, shape_file)) {
+			error |= tfxErrorCode_error_loading_shapes;	//Two rows claim the same file, the second would silently replace the first
 			continue;
 		}
 		tfx_package_entry_info_t image_entry;
 		image_entry.offset_from_start_of_file = 0;
-		image_entry.file_name.Set(shape_name);
+		image_entry.file_name.Set(shape_file);
 		file_path.Setf("%s/%s/%s", path, tfxFOLDER_SHAPES_DIRECTORY, shape_file);
 		tfx__read_entire_file(file_path.c_str(), &image_entry.data, false);
 		if (image_entry.data.Size() == 0) {
@@ -4432,7 +4432,7 @@ bool tfx__library_name_exists(tfx_library library, tfx_effect_descriptor effect,
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	for (tfx_effect_descriptor library_effect : library->effects) {
 		if (effect->library_index != library_effect->library_index) {
-			if (library_effect->name == name) {
+			if (tfx__names_match_ignoring_case(library_effect->name.c_str(), name)) {
 				return true;
 			}
 		}
@@ -5279,7 +5279,7 @@ tfx_str64_t tfx__get_name_from_path(const char *path) {
 bool tfx__name_exists(tfx_vector_t<tfx_effect_descriptor> *list, const char *name) {
 	for (tfx_effect_descriptor effect : *list) {
 		if (tfx__is_descriptor_hidden(effect)) continue;
-		if (effect->name == name) {
+		if (tfx__names_match_ignoring_case(effect->name.c_str(), name)) {
 			return true;
 		}
 	}
@@ -10208,7 +10208,9 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
+					//The optional eighth field names the package entry whenever it had to differ from the shape name
+					const char *shape_entry_name = pair.current_size > 7 ? pair[7].c_str() : image_data.name.c_str();
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, shape_entry_name);
 					if (shape_entry) {
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						TFX_ASSERT(image_data.image_hash != 0);
@@ -10488,7 +10490,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
+					//The optional eighth field names the package entry whenever it had to differ from the shape name
+					const char *shape_entry_name = pair.current_size > 7 ? pair[7].c_str() : image_data.name.c_str();
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, shape_entry_name);
 					if (shape_entry) {
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						if (image_data.image_hash == 0) {
