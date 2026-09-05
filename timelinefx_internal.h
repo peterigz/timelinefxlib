@@ -6042,11 +6042,8 @@ const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects wer
 
 //The folder library format: a directory of text files that materialises into a package on load
 const tfxU32 tfxFOLDER_FORMAT_VERSION = 1;
-#define tfxFOLDER_MANIFEST_FILE "manifest.txt"
-#define tfxFOLDER_SHAPES_FILE "shapes.txt"
+#define tfxLIBRARY_DATA_FILE "effects.txt"
 #define tfxFOLDER_SHAPES_DIRECTORY "shapes"
-#define tfxFOLDER_NAME_FILE "folder.txt"
-#define tfxFOLDER_EFFECT_EXTENSION ".tfxe"
 
 typedef struct tfx_package_entry_info_t {
 	tfx_str512_t file_name;                     //The name of the file stored in the package
@@ -6081,7 +6078,7 @@ typedef struct tfx_package_header_s {
 	tfxU32 magic_number;                        //Magic number to confirm file format
 	tfxU32 file_version;                        //The version of the file
 	tfxU32 flags;                               //Any state_flags for the file
-	tfxU32 reserved0;                           //Reserved for future if needed
+	tfxU32 reserved0;                     
 	tfxU64 offset_to_inventory;                 //Memory offset for the inventory of files
 	tfxU64 user_data1;                          //Any data you might find useful
 	tfxU64 user_data2;                          //Any data you might find useful
@@ -6914,6 +6911,7 @@ typedef struct tfx_effect_descriptor_s {
 	void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
 	//A link to the library that this effect/emitter belongs to
 	tfx_library library;
+	tfxU32 version;
 
 	//List of children if this is a folder, or list of particle/ribbon emitters
 #ifdef __cplusplus
@@ -7698,6 +7696,7 @@ typedef struct tfx_library_s {
 	tfx_str256_t name;
 	bool open_library;
 	bool dirty;
+	tfxU32 version;
 	tfx_stream_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
