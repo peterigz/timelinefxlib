@@ -2418,7 +2418,7 @@ tfxINTERNAL void tfx__append_bytes_to_stream(tfx_stream_t *destination, const vo
 	memcpy(destination->data + offset, source, length);
 }
 
-tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path) {
+tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path, tfxU32 *file_version) {
 	tfx_str512_t data_path;
 	data_path.Setf("%s/%s", path, tfxLIBRARY_DATA_FILE);
 	tfx_stream_t file;
@@ -2434,6 +2434,17 @@ tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path) {
 	if (first_line.length < (int)tfxLIBRARY_VERSION_KEY_LENGTH
 		|| strncmp(first_line.start, tfxLIBRARY_VERSION_KEY, tfxLIBRARY_VERSION_KEY_LENGTH) != 0) {
 		error = tfxErrorCode_could_not_find_valid_effect_data_in_folder;
+	}
+	tfx_line_t second_line = file.ReadLine();
+	if (second_line.length < (int)tfxFILE_VERSION_KEY_LENGTH
+		|| strncmp(second_line.start, tfxFILE_VERSION_KEY, tfxFILE_VERSION_KEY_LENGTH) != 0) {
+		*file_version = 0;
+	} else {
+		tfx_vector_t<tfx_str256_t> pair{};
+		tfx__split_string_stack(second_line.start, second_line.length, &pair);
+		//A version that cannot be read is an unknown one, which has to run the upgrades, not skip them
+		*file_version = (pair.size() == 2 && pair[0] == "file_version") ? (tfxU32)atoi(pair[1].c_str()) : 0;
+		pair.free();
 	}
 	file.Free();
 	return error;
@@ -2496,8 +2507,7 @@ tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package) {
 		return tfxErrorCode_unable_to_open_file;
 	}
 
-	tfxU32 library_version = 0;
-	tfxErrorFlags error = tfx__folder_has_library_data(path);
+	tfxErrorFlags error = tfx__folder_has_library_data(path, &package->header.file_version);
 	if (error != tfxErrorCode_success) {
 		return error;
 	}
@@ -5965,11 +5975,11 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 }
 
 int tfx_ValidateEffectPackage(const char *filename) {
-	//A folder is checked from its manifest and shapes list rather than materialised, so that
+	//A folder is checked from the version lines of effects.txt rather than materialised, so that
 	//validating does not read every effect and image only to throw them away
 	if (tfx__path_is_folder(filename)) {
-		tfxU32 library_version = 0;
-		tfxErrorFlags status = tfx__folder_has_library_data(filename);
+		tfxU32 file_version = 0;
+		tfxErrorFlags status = tfx__folder_has_library_data(filename, &file_version);
 		if (status != tfxErrorCode_success) {
 			return status;
 		}

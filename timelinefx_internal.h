@@ -6043,7 +6043,9 @@ const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects wer
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
 #define tfxLIBRARY_VERSION_KEY "library_version="
+#define tfxFILE_VERSION_KEY "file_version="
 #define tfxLIBRARY_VERSION_KEY_LENGTH (sizeof(tfxLIBRARY_VERSION_KEY) - 1)
+#define tfxFILE_VERSION_KEY_LENGTH (sizeof(tfxFILE_VERSION_KEY) - 1)
 #define tfxFOLDER_SHAPES_DIRECTORY "shapes"
 
 typedef struct tfx_package_entry_info_t {
