@@ -2421,18 +2421,18 @@ tfxINTERNAL void tfx__append_bytes_to_stream(tfx_stream_t *destination, const vo
 tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path) {
 	tfx_str512_t data_path;
 	data_path.Setf("%s/%s", path, tfxLIBRARY_DATA_FILE);
-	tfxErrorFlags error = tfxErrorCode_success;
 	tfx_stream_t file;
 	tfx__read_entire_file(data_path.c_str(), &file);
+	//Any folder can be picked in the open dialog, so nothing below may assume a line was read
 	if (!file.Size()) {
-		error |= tfxErrorCode_folder_effect_data_not_found;
+		file.Free();
+		return tfxErrorCode_folder_effect_data_not_found;
 	}
+	tfxErrorFlags error = tfxErrorCode_success;
 	tfx_line_t first_line = file.ReadLine();
-	int separator = tfx__find_in_line(&first_line, "=");
-	if (separator < 0) {
-		error |= tfxErrorCode_could_not_find_valid_effect_data_in_folder;
-	}
-	if (strncmp(first_line.start, "library_version=", 16) != 0) {
+	//The buffer is not null terminated, so the key has to fit inside the line before it is compared
+	if (first_line.length < (int)tfxLIBRARY_VERSION_KEY_LENGTH
+		|| strncmp(first_line.start, tfxLIBRARY_VERSION_KEY, tfxLIBRARY_VERSION_KEY_LENGTH) != 0) {
 		error = tfxErrorCode_could_not_find_valid_effect_data_in_folder;
 	}
 	file.Free();
@@ -10467,6 +10467,7 @@ tfx_library tfx_CreateLibrary() {
 	}
 	memset((void *)library, 0, sizeof(tfx_library_t));
 	library->magic = tfxINIT_MAGIC(tfx_struct_type_effect_library);
+	library->version = 1;
 	tfx__init_library(library);
 	tfxStore->libraries.Insert((tfxKey)library, library);
 	return library;
