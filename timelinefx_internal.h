@@ -6040,8 +6040,6 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 
 const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size.
 
-//The folder library format: a directory of text files that materialises into a package on load
-const tfxU32 tfxFOLDER_FORMAT_VERSION = 1;
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
 #define tfxLIBRARY_VERSION_KEY "library_version="
