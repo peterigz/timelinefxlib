@@ -92,8 +92,8 @@ struct tfx_emitter {
 	float noise_phase_range;
 	float noise_lock_rate;
 	vec3 fixed_angle_normal;
-	uint sample_count;
-	uint noise_packed;
+	uint sample_count_noise;		//[sample count in the low 24 bits, noise algorithm and octaves in the top 8]
+	uint start_frame_index;
 	float lag_time;
 	float lag_span;
 	float overall_scale;
@@ -528,7 +528,9 @@ void main() {
             lagging = true;
         }
     }
-	vec3 current_segment_pos = sample_ribbon_shape(int(local_segment_index), base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
+	uint sample_count = emitter.sample_count_noise & 0xFFFFFFu;
+	uint noise_packed = emitter.sample_count_noise >> 24;
+	vec3 current_segment_pos = sample_ribbon_shape(int(local_segment_index), base_segment_index, morph_base_segment_index, sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, noise_packed);
 
 	tfx_gpu_graph_data scale_graph = graphs[pc.graphs_index].data[tfx_scale_offset + emitter.lookup_offset];
     float ribbon_scale = tfx_graph_lookup(scale_graph, ribbon.position.w);
@@ -536,8 +538,8 @@ void main() {
     //Get the ribbon direction vector. Becuase the ribbon segment data are all ring buffers the next and previous indexes need to be properly
     //calculated. If there is a next ribbon segment then use that to get the forward vector, otherwise if we're at the end of the ribbon_count
     //then use the previous ribbon segment.
-    vec3 next_segment_pos = sample_ribbon_shape(int(local_segment_index) + 1, base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
-	vec3 prev_segment_pos = sample_ribbon_shape(int(local_segment_index) - 1, base_segment_index, morph_base_segment_index, emitter.sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, emitter.noise_packed);
+    vec3 next_segment_pos = sample_ribbon_shape(int(local_segment_index) + 1, base_segment_index, morph_base_segment_index, sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, noise_packed);
+	vec3 prev_segment_pos = sample_ribbon_shape(int(local_segment_index) - 1, base_segment_index, morph_base_segment_index, sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, noise_packed);
     
     //Determine the angle type from the emitter and calculate the right vector and current position accordingly
     vec3 current_pos;
@@ -634,7 +636,9 @@ void main() {
 	tfx_gpu_graph_data width_overlength_graph = graphs[pc.graphs_index].data[tfx_width_overlength_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data width_overtime_graph = graphs[pc.graphs_index].data[tfx_width_offset + emitter.lookup_offset];
 	float width_overtime_and_length = tfx_graph_lookup(width_overlength_graph, ribbon_lerp);
-    width_overtime_and_length = width_overtime_and_length * emitter.overall_scale * tfx_graph_lookup(width_overtime_graph, ribbon.position.w) * ribbon_is_active;
+    //ribbon.scale, not emitter.overall_scale: both hold the parent effect's scale for this frame, but only
+	//the ribbon carries it through a bake, and it is what the positions above are already scaled by.
+	width_overtime_and_length = width_overtime_and_length * ribbon.scale * tfx_graph_lookup(width_overtime_graph, ribbon.position.w) * ribbon_is_active;
 
 	tfx_gpu_graph_data uv_offset_graph = graphs[pc.graphs_index].data[tfx_uv_offset_y_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data uv_scale_graph = graphs[pc.graphs_index].data[tfx_uv_scale_y_offset + emitter.lookup_offset];

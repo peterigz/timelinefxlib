@@ -72,8 +72,8 @@ struct tfx_emitter {
 	float noise_phase_range;
 	float noise_lock_rate;
 	vec3 fixed_angle_normal;
-	uint sample_count;
-	uint noise_packed;
+	uint sample_count_noise;		//[sample count in the low 24 bits, noise algorithm and octaves in the top 8]
+	uint start_frame_index;
 	float lag_time;
 	float lag_span;
 	uint padding;
@@ -211,7 +211,8 @@ void main() {
 	float ribbon_position = float((segment_index & 0x007FF000) >> 12) / 2047.0;
 	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[ribbon_index];
 	tfx_emitter emitter = emitters[pc.emitters_index].data[ribbon.emitter_index];
-	uint image_index = ribbon.texture_indexes & 0x00001FFF;
+	//The ribbon holds the animation frame; its emitter holds where the image starts
+	uint image_index = emitter.start_frame_index + (ribbon.texture_indexes & 0x00001FFF);
 
 	//Calculate the uv coords across the width of the ribbon
 	float tessellation = float((segment_index & 0xE0000000) >> 29);
