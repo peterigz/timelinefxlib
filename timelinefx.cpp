@@ -11302,7 +11302,8 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 				tfx__record_restart_effect(library, effect_template->original_effect->path_hash);
 			}
 		}
-	} else if (structural) {
+	} else if (structural || library->refresh_changed_effects.current_size) {
+		//A refused walk applies nothing either, so it needs the same signal a structural change gets
 		result->flags |= tfxRefreshFlags_needs_reload;
 	}
 
@@ -11318,6 +11319,11 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		if (shapes_differ) {
 			tfx__repoint_live_emitter_images(library);
 		}
+	}
+
+	//Closing the gate is about nothing being left outstanding, not about something having been applied
+	bool changes_outstanding = structural || (library->refresh_changed_effects.current_size && !(result->flags & tfxRefreshFlags_merged));
+	if (!changes_outstanding) {
 		library->version = result->library_version;
 	}
 
