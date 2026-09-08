@@ -844,6 +844,47 @@ tfxAPI tfx_library tfx_LoadEffectLibrary(const char *filename, tfx_shape_loader 
 */
 tfxAPI tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data);
 
+//What a refresh found. Effects are reported by path hash; shapes only as a set difference, because a
+//host cannot do anything finer with them than rebuild its atlas.
+typedef enum {
+	tfxRefreshFlags_none = 0,
+	tfxRefreshFlags_effects_changed = 1 << 0,   //One or more effects carry a version the library did not load
+	tfxRefreshFlags_effects_added = 1 << 1,     //Paths on disk that the library does not have
+	tfxRefreshFlags_effects_removed = 1 << 2,   //Paths the library has that are no longer on disk
+	tfxRefreshFlags_shapes_changed = 1 << 3,    //The shape set differs, so an atlas rebuild is needed
+	tfxRefreshFlags_unreadable = 1 << 4,        //The file could not be re-read; every list is empty
+	tfxRefreshFlags_merged = 1 << 5,            //The changed values were applied to the library in place
+	tfxRefreshFlags_needs_reload = 1 << 6,      //Nothing was applied: the change is more than values
+} tfx_refresh_flag_bits;
+
+typedef tfxU32 tfxRefreshFlags;                 //tfx_refresh_flag_bits
+
+typedef enum {
+	tfxEffectTemplateFlags_none = 0,
+	tfxEffectTemplateFlags_orphaned = 1 << 0,	//Since a call to tfx_RefreshLibrary the template effect is now orphaned: it's original effect no longer exists in the library.
+} tfxEffectTemplateFlags;
+
+typedef struct tfx_refresh_result_s {
+	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags
+	tfxU32 library_version;              //The library_version found on disk, or the loaded one if unreadable
+	tfxU32 changed_count;
+	tfxU32 added_count;
+	tfxU32 removed_count;
+	const tfxKey *changed_effects;       //Path hashes, owned by the library, valid until the next refresh
+	const tfxKey *added_effects;
+	const tfxKey *removed_effects;
+	//Merged effects whose live emitters could not take the change without respawning. The values are in
+	//the library either way; these are the effects a host has to restart for them to be seen.
+	tfxU32 restart_count;
+	const tfxKey *restart_effects;
+	//Image hashes. Added shapes have been loaded through the shape_loader and are in the library; removed
+	//ones are already gone. A host that keeps its own texture per shape only has to act on these two.
+	tfxU32 added_shape_count;
+	tfxU32 removed_shape_count;
+	const tfxKey *added_shapes;
+	const tfxKey *removed_shapes;
+} tfx_refresh_result_t;
+
 /*
 Get the error flags from a library. When you load a library from file or memory, if something goes wrong then the error status is stored in the library object and you can retrieve it with this command.
 * @param lib            A handle to a tfx_library object that will hold the loaded effect library data.
@@ -863,6 +904,28 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_some_images_loaded_without_user_ptr
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
+
+/*
+Checks the library on disk to see if it's been updated since it was loaded.
+
+In most cases the effects can be updated in place and either any live effects in a particle manager will
+just update or they will have to just be restarted. Shapes that are added are passed to shape_loader for
+you to load in the renderer. 
+
+The only reason the library would have to be reloaded is if it didn't parse properly or a folder in the
+library changed.
+
+It's safe to call this function regularily as it only loads the initial bytes of the file (whether it's
+loaded from a folder or a .tfx package) to assertain whether the library is a newer version.
+
+* @param library                 A handle to the loaded library to compare against its file
+* @param shape_loader            Not called yet
+* @param uv_lookup               Not called yet
+* @param user_data               Not called yet
+* @param result                  Filled in with the flags and the lists described above. The lists point
+                                 into the library and stay valid until the next call for that library.
+*/
+tfxAPI void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -2257,6 +2320,15 @@ Delete an effect template and free all memory associated with it
 //Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
 */
 tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
+
+/*
+Check to see if an effect template's original effect is no longer in the library after a called to tfxRefreshLibrary. 
+The template will still work becuase it clones all the data from the library so you can modify it but you might want to delete
+the template if it's not used now.
+* @param effect_template    A handle to the effect template
+* @returns bool             True if the effect it was cloned from has been deleted from the library
+*/
+tfxAPI bool tfx_EffectTemplateIsOrphaned(tfx_effect_template effect_template);
 
 /*
 Reset an effect template and make it empty so you can use it to store another effect.

@@ -2962,6 +2962,17 @@ typedef enum {
 	tfxGraphMaxIndex
 } tfx_graph_type;
 
+//These are different tiers of effect updates so that when a library is refreshed effects and their emitters
+//are either updated in place or restarted. If multiple changes were made then the highest tier is chosen.
+typedef enum {
+	tfx_change_tier_nosim,          //Patch the live emitter in place, nothing about the simulation changes
+	tfx_change_tier_redraw,         //Patch in place, then redraw so a paused preview shows it
+	tfx_change_tier_modify,         //Patch in place only
+	tfx_change_tier_resim,          //Restart the effect
+	tfx_change_tier_resim_on_pause, //Resart the effect if paused or it's a single emitter, otherwise edit in place
+	tfx_change_tier_max,            
+} tfx_change_tier;
+
 #define tfxEffectGraph(graph, index_name) graph.graphs[tfxEffect_##index_name##_index]
 #define tfxTransformGraph(graph, index_name) graph.graphs[tfxTransform_##index_name##_index]
 
@@ -6081,7 +6092,7 @@ typedef struct tfx_package_header_s {
 	tfxU32 magic_number;                        //Magic number to confirm file format
 	tfxU32 file_version;                        //The version of the file
 	tfxU32 flags;                               //Any state_flags for the file
-	tfxU32 reserved0;                     
+	tfxU32 library_version;						//The same value stored in the library so the package can be cheaply polled to find out if the library was updated
 	tfxU64 offset_to_inventory;                 //Memory offset for the inventory of files
 	tfxU64 user_data1;                          //Any data you might find useful
 	tfxU64 user_data2;                          //Any data you might find useful
@@ -7700,6 +7711,19 @@ typedef struct tfx_library_s {
 	bool open_library;
 	bool dirty;
 	tfxU32 version;
+	//Refilled by each tfx_RefreshLibrary call, which is what the result's lists point at
+	tfx_vector_t<tfxKey> refresh_changed_effects;
+	tfx_vector_t<tfxKey> refresh_added_effects;
+	tfx_vector_t<tfxKey> refresh_removed_effects;
+	tfx_vector_t<tfxKey> refresh_restart_effects;
+	tfx_vector_t<tfxKey> refresh_added_shapes;
+	tfx_vector_t<tfxKey> refresh_removed_shapes;
+	//Effects taken out of the library whose instances have not finished tearing down. Freeing returns their
+	//slots for reuse, and a stage mid-teardown is still reading them.
+	tfx_vector_t<tfx_effect_descriptor> pending_free_effects;
+	//Every template cloned out of this library. A template's clone has its own slots, so refreshing the
+	//library does nothing to it unless it is refreshed too, and only the library knows they exist.
+	tfx_vector_t<tfx_effect_template> effect_templates;
 	tfx_stream_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
@@ -7711,7 +7735,8 @@ typedef struct tfx_effect_template_s {
 	tfxU32 magic;
 	tfx_storage_map_t<tfx_effect_descriptor> paths;
 	tfx_effect_descriptor effect;
-	tfx_effect_descriptor original_effect;
+	tfx_effect_descriptor original_effect;		//Null once the original has been deleted from the library
+	tfxU32 flags;
 }tfx_effect_template_t;
 #endif
 
@@ -7784,7 +7809,9 @@ tfxAPI_EDITOR void tfx__read_entire_file(const char *file_name, tfx_stream buffe
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package);
 //Materialises a folder library into an in memory package so that tfx__load_effect_library_package can consume it unchanged
-tfxAPI_EDITOR tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package);
+//include_shape_files false reads effects.txt and leaves the images on disk, for callers that only need
+//the shapes block's recorded hashes
+tfxAPI_EDITOR tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package, bool include_shape_files = true);
 tfxAPI_EDITOR tfx_package tfx__create_package(const char *file_path);
 tfxAPI_EDITOR bool tfx__save_package_disk(tfx_package package);
 tfxAPI_EDITOR tfx_stream tfx__save_package_memory(tfx_package package);
@@ -7846,6 +7873,18 @@ tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_unorm(float x, float y);
 tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter);
+
+//Reads just the 64 byte header. Reports 0 for a package written before the version was recorded there.
+tfxAPI_EDITOR tfxErrorFlags tfx__read_package_library_version(const char *path, tfxU32 *library_version);
+
+//The change tier of a graph or a named property. One table, so the widgets and a reload diff agree.
+tfxAPI_EDITOR tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope);
+tfxAPI_EDITOR tfx_change_tier tfx__get_property_change_tier(const char *property_name);
+
+//Patches a live emitter or ribbon emitter with its descriptor's current properties, and reports whether the
+//change is one only a respawn can apply. A library refresh calls this per emitter; hosts go through that.
+tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
+tfxAPI_EDITOR bool tfx__refresh_live_effect(tfx_stage pm, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -8115,6 +8154,8 @@ tfxAPI_EDITOR void tfx__update_library_compute_nodes();
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__update_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_emitter_image_index(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_library_image_indexes(tfx_library library);
 tfxAPI_EDITOR void tfx__update_effect_gpu_properties(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__update_all_library_gpu_properties(tfx_library library);
 tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
@@ -10116,7 +10157,7 @@ tfxINTERNAL void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfx
 tfxINTERNAL void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_ribbon_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 8);
 tfxINTERNAL void tfx__initialise_force_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 2);
-tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data = nullptr);
+tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data = nullptr, bool shapes_from_recorded_hashes = false);
 tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, tfx_uv_lookup uv_lookup);
 
 //--------------------------------

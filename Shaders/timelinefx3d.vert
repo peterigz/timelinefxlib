@@ -264,7 +264,8 @@ void main() {
     modelView[2].xyz = !billboarding ? vec3(0, 0, 1) : modelView[2].xyz;
 
     vec2 uvs[4];
-	uint image_index = texture_indexes & 0x00001FFF;
+	//The sprite holds the animation frame only; the emitter's properties hold where its image starts
+	uint image_index = props.start_frame_index + (texture_indexes & 0x00001FFF);
 	vec4 uv = in_image_data[pc.image_data_index].data[image_index].uv;
     uvs[0] = uv.xy;
     uvs[1] = uv.zy;

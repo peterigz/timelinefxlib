@@ -1120,7 +1120,6 @@ tfx_hsv_t tfx__rgb_to_hsv(tfx_rgb_t in)
 	return out;
 }
 
-
 tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in)
 {
 	float      hh, p, q, t, ff;
@@ -2418,36 +2417,45 @@ tfxINTERNAL void tfx__append_bytes_to_stream(tfx_stream_t *destination, const vo
 	memcpy(destination->data + offset, source, length);
 }
 
-tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path, tfxU32 *file_version) {
+//Only the two version lines are read. This is the poll a host makes to ask whether anything changed at
+//all, so reading a library that can run to megabytes in order to look at the first line would be the
+//whole cost of the question.
+tfxINTERNAL tfxErrorFlags tfx__folder_has_library_data(const char *path, tfxU32 *file_version, tfxU32 *library_version) {
 	tfx_str512_t data_path;
 	data_path.Setf("%s/%s", path, tfxLIBRARY_DATA_FILE);
-	tfx_stream_t file;
-	tfx__read_entire_file(data_path.c_str(), &file);
-	//Any folder can be picked in the open dialog, so nothing below may assume a line was read
-	if (!file.Size()) {
-		file.Free();
+	FILE *file = tfx__open_file(data_path.c_str(), "rb");
+	//Any folder can be picked in the open dialog, so nothing below may assume a file was there
+	if (!file) {
 		return tfxErrorCode_folder_effect_data_not_found;
 	}
-	tfxErrorFlags error = tfxErrorCode_success;
-	tfx_line_t first_line = file.ReadLine();
-	//The buffer is not null terminated, so the key has to fit inside the line before it is compared
-	if (first_line.length < (int)tfxLIBRARY_VERSION_KEY_LENGTH
-		|| strncmp(first_line.start, tfxLIBRARY_VERSION_KEY, tfxLIBRARY_VERSION_KEY_LENGTH) != 0) {
-		error = tfxErrorCode_could_not_find_valid_effect_data_in_folder;
+	char header[256];
+	size_t read = fread(header, 1, sizeof(header) - 1, file);
+	fclose(file);
+	if (read == 0) {
+		return tfxErrorCode_folder_effect_data_not_found;
 	}
-	tfx_line_t second_line = file.ReadLine();
-	if (second_line.length < (int)tfxFILE_VERSION_KEY_LENGTH
-		|| strncmp(second_line.start, tfxFILE_VERSION_KEY, tfxFILE_VERSION_KEY_LENGTH) != 0) {
-		*file_version = 0;
-	} else {
-		tfx_vector_t<tfx_str256_t> pair{};
-		tfx__split_string_stack(second_line.start, second_line.length, &pair);
+	//Terminated here, so the compares below cannot run past what was actually read
+	header[read] = '\0';
+
+	if (strncmp(header, tfxLIBRARY_VERSION_KEY, tfxLIBRARY_VERSION_KEY_LENGTH) != 0) {
+		return tfxErrorCode_could_not_find_valid_effect_data_in_folder;
+	}
+	if (library_version) {
+		*library_version = (tfxU32)atoi(header + tfxLIBRARY_VERSION_KEY_LENGTH);
+	}
+
+	if (file_version) {
 		//A version that cannot be read is an unknown one, which has to run the upgrades, not skip them
-		*file_version = (pair.size() == 2 && pair[0] == "file_version") ? (tfxU32)atoi(pair[1].c_str()) : 0;
-		pair.free();
+		*file_version = 0;
+		const char *second_line = strchr(header, '\n');
+		if (second_line) {
+			second_line++;
+			if (strncmp(second_line, tfxFILE_VERSION_KEY, tfxFILE_VERSION_KEY_LENGTH) == 0) {
+				*file_version = (tfxU32)atoi(second_line + tfxFILE_VERSION_KEY_LENGTH);
+			}
+		}
 	}
-	file.Free();
-	return error;
+	return tfxErrorCode_success;
 }
 
 //Each image is keyed by the file it came from, which is what the shapes block of data.txt looks it up by:
@@ -2500,14 +2508,36 @@ tfxINTERNAL tfxErrorFlags tfx__add_folder_shapes_to_package(const char *path, tf
 	return error;
 }
 
-tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package) {
+//The whole point of putting the version in the header: this touches 64 bytes, whatever the package holds.
+tfxErrorFlags tfx__read_package_library_version(const char *path, tfxU32 *library_version) {
+	TFX_ASSERT(library_version);
+	*library_version = 0;
+	FILE *file = tfx__open_file(path, "rb");
+	if (!file) {
+		return tfxErrorCode_unable_to_open_file;
+	}
+	tfx_package_header_t header;
+	size_t read = fread(&header, 1, sizeof(header), file);
+	fclose(file);
+	if (read != sizeof(header)) {
+		return tfxErrorCode_wrong_file_size;
+	}
+	if (header.magic_number != tfxMAGIC_NUMBER) {
+		return tfxErrorCode_invalid_format;
+	}
+	*library_version = header.library_version;
+	return tfxErrorCode_success;
+}
+
+tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package, bool include_shape_files) {
 	TFX_ASSERT_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
 
 	if (!tfx__path_is_folder(path)) {
 		return tfxErrorCode_unable_to_open_file;
 	}
 
-	tfxErrorFlags error = tfx__folder_has_library_data(path, &package->header.file_version);
+	//Filled in from the folder's own version lines, so a package built from a folder carries both across
+	tfxErrorFlags error = tfx__folder_has_library_data(path, &package->header.file_version, &package->header.library_version);
 	if (error != tfxErrorCode_success) {
 		return error;
 	}
@@ -2523,7 +2553,10 @@ tfxErrorFlags tfx__load_package_folder(const char *path, tfx_package package) {
 
 	tfx__add_entry_to_package(package, data_file);
 
-	error |= tfx__add_folder_shapes_to_package(path, package, &data_file.data);
+	//A diff only needs the hashes the shapes block already records, so it can skip reading every image
+	if (include_shape_files) {
+		error |= tfx__add_folder_shapes_to_package(path, package, &data_file.data);
+	}
 
 	//Every entry already holds its data, so tfx__get_package_file never goes back to disk for it
 	package->flags |= tfxPackageFlags_loaded_from_memory;
@@ -3773,11 +3806,30 @@ tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *na
 	effect_template->magic = tfxINIT_MAGIC(tfx_struct_type_effect_template);
 	tfx_ResetTemplate(effect_template);
 	tfx__prepare_library_effect_template_path(library, name, effect_template);
+	library->effect_templates.push_back(effect_template);
 	return effect_template;
+}
+
+bool tfx_EffectTemplateIsOrphaned(tfx_effect_template effect_template) {
+	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle
+	return (effect_template->flags & tfxEffectTemplateFlags_orphaned) > 0;
 }
 
 void tfx_FreeEffectTemplate(tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. 
+	//The one place a template is freed, which is what makes the library's list safe to hold raw handles.
+	//Reached through the clone rather than the original, because the original can be deleted first.
+	if (TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor)
+		&& TFX_VALID_HANDLE(effect_template->effect->library, tfx_struct_type_effect_library)) {
+		tfx_vector_t<tfx_effect_template> &templates = effect_template->effect->library->effect_templates;
+		for (tfxU32 index = 0; index != templates.current_size; ++index) {
+			if (templates[index] == effect_template) {
+				templates[index] = templates[templates.current_size - 1];
+				templates.pop();
+				break;
+			}
+		}
+	}
 	tfx_ResetTemplate(effect_template);
 	tfxFREE(effect_template);
 }
@@ -4310,12 +4362,39 @@ void tfx__build_all_library_paths(tfx_library library) {
 	}
 }
 
+//The sprite only carries an animation frame, so the emitter has to carry where its image starts in the
+//gpu shape list. Reads compute_shape_index, so it has to run after the shape data is built.
+void tfx__update_emitter_image_index(tfx_effect_descriptor emitter) {
+	if (emitter->type != tfxEmitterType || emitter->state_properties.gpu_property_index == tfxINVALID) {
+		return;
+	}
+	tfx_gpu_particle_properties_t *gpu_properties = &emitter->library->particle_gpu_properties[emitter->state_properties.gpu_property_index];
+	gpu_properties->start_frame_index = emitter->state_properties.image ? emitter->state_properties.image->compute_shape_index : 0;
+}
+
+void tfx__update_library_image_indexes(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	tfx_vector_t<tfx_effect_descriptor> stack;
+	for (tfx_effect_descriptor effect : library->effects) {
+		stack.push_back(effect);
+	}
+	while (stack.size()) {
+		tfx_effect_descriptor current = stack.pop_back();
+		tfx__update_emitter_image_index(current);
+		for (tfx_effect_descriptor sub : current->children) {
+			stack.push_back(sub);
+		}
+	}
+	stack.free();
+}
+
 void tfx_UpdateLibraryGPUImageData(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	library->gpu_shapes->list.free();
     if(library->particle_shapes.Size() > 0) {
         tfx_BuildLibraryGPUShapeData(library, library->gpu_shapes, library->uv_lookup);
     }
+	tfx__update_library_image_indexes(library);
 }
 
 void tfx_SetLibraryUVLookup(tfx_library library, tfx_uv_lookup uv_lookup) {
@@ -5151,6 +5230,17 @@ void tfx_FreeLibrary(tfx_library library) {
 		tfx__free_effect(effect);
 	}
 	library->effects.free();
+	library->refresh_changed_effects.free();
+	library->refresh_added_effects.free();
+	library->refresh_removed_effects.free();
+	library->refresh_restart_effects.free();
+	library->refresh_added_shapes.free();
+	library->refresh_removed_shapes.free();
+	for (tfx_effect_descriptor pending : library->pending_free_effects) {
+		tfx__free_effect(pending);
+	}
+	library->pending_free_effects.free();
+	library->effect_templates.free();
 	library->effect_paths.FreeAll();
 	library->particle_shapes.FreeAll();
 	if (TFX_VALID_HANDLE(library->gpu_shapes, tfx_struct_type_gpu_shapes)) {
@@ -5338,6 +5428,7 @@ void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter) {
 		tfxU32 layer = tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes);
 		tfxU32 index = tfxColorRampIndex(graph_list->color_ramp_bitmap_indexes);
 		gpu_properties->color_ramp_indexes = (layer << 8) | index;
+		tfx__update_emitter_image_index(emitter);
 	}
 }
 
@@ -5979,7 +6070,7 @@ int tfx_ValidateEffectPackage(const char *filename) {
 	//validating does not read every effect and image only to throw them away
 	if (tfx__path_is_folder(filename)) {
 		tfxU32 file_version = 0;
-		tfxErrorFlags status = tfx__folder_has_library_data(filename, &file_version);
+		tfxErrorFlags status = tfx__folder_has_library_data(filename, &file_version, nullptr);
 		if (status != tfxErrorCode_success) {
 			return status;
 		}
@@ -6976,6 +7067,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	} else if (*field == "path_node_count") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.node_count = value;
 	}
+	else if (*field == "version") effect->version = value;
 }
 void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_t *field, int value) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
@@ -6991,7 +7083,6 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
 	else if (*field == "extra_frames_count") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].extra_frames_count = value;
 	else if (*field == "preview_camera_view_mode") effect->library->preview_camera_settings[effect->preview_camera_settings].view_mode = (tfx_render_view_mode)value;
-	else if (*field == "version") effect->version = value;
 	else if (*field == "animation_view_mode") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].view_mode = (tfx_render_view_mode)value;
 	else if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
@@ -8913,7 +9004,6 @@ void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t *bitmap, tf
 	tfx_graph_t *heat_response = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_heat_response_index] : &graph_list->graphs[tfxRibbon_overtime_heat_response_index];
 	tfx_color_ramp_t *color_ramp = &graph_list->color_ramps;
 
-
 	if (color_ramp->interpolation_mode == tfxColorInterpolation_oklch || color_ramp->interpolation_mode == tfxColorInterpolation_hsl) {
 		// Collect all unique node frame positions from R, G, B graphs
 		float stop_frames[256];
@@ -9082,6 +9172,11 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 	library->color_ramps.color_ramp_ids.Clear();
 	library->color_ramps.color_ramp_count = 0;
 	for (tfx_graph_list_t &graph_list : library->graphs) {
+		//A freed slot keeps the type it had but has no graphs left, and hashing the colour graphs of one
+		//indexes an empty list. Freed slots stay in library->graphs to be reused, so they are met here.
+		if (graph_list.graphs.current_size == 0) {
+			continue;
+		}
 		if (graph_list.effect_descriptor_type == tfxEmitterType || graph_list.effect_descriptor_type == tfxRibbonType) {
 			tfxKey hash = tfx__hash_color_graphs(&graph_list);
 			if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
@@ -9403,7 +9498,6 @@ bool tfx__has_key_frames(tfx_effect_descriptor effect) {
 	return size > 0;
 }
 
-
 bool tfx__has_more_than_one_key_frame(tfx_effect_descriptor effect) {
 	TFX_ASSERT(effect->state_properties.transform_index < effect->library->graphs.size());        //Must be a valid index into the library graphs
 	tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.transform_index];
@@ -9673,7 +9767,6 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 	if (!data)
 		error = -5;
 
-
 	if (error < 0) {
 		tfx__free_package(package);
 		return error;
@@ -9728,7 +9821,6 @@ int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats
 
 	if (!data)
 		error = -5;
-
 
 	if (error < 0) {
 		tfx__free_package(package);
@@ -10104,7 +10196,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	return error;
 }
 
-tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data) {
+tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, bool shapes_from_recorded_hashes) {
 	TFX_ASSERT_HANDLE(lib);	//Library is not initialised!
 	if (!tfxStore->data_types.initialised) {
 		tfx__initialise_dictionary(&tfxStore->data_types);
@@ -10153,6 +10245,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() == 2 && pair[0] == "library_version") {
 				lib->version = (tfxU32)atoi(pair[1].c_str());
+				//The header carries the same number so that it can be read without opening the data. A
+				//package written before that was recorded reports zero, which is not a disagreement.
+				TFX_ASSERT(package->header.library_version == 0 || package->header.library_version == lib->version);
 			}
 			version_read = true;
 		}
@@ -10310,8 +10405,17 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 					//The optional eighth field names the package entry whenever it had to differ from the shape name
 					const char *shape_entry_name = pair.current_size > 7 ? pair[7].c_str() : image_data.name.c_str();
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, shape_entry_name);
-					if (shape_entry) {
+					tfx_package_entry_info_t *shape_entry = shapes_from_recorded_hashes ? nullptr : tfx__get_package_file(package, shape_entry_name);
+					if (shapes_from_recorded_hashes) {
+						//No image bytes were read, so the row's own hash is the only thing identifying the shape.
+						//Enough to tell one shape set from another, which is all a diff asks.
+						if (image_data.image_hash) {
+							lib->particle_shapes.Insert(image_data.image_hash, image_data);
+							if (first_shape_hash == 0) {
+								first_shape_hash = image_data.image_hash;
+							}
+						}
+					} else if (shape_entry) {
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						if (image_data.image_hash == 0) {
 							image_data.image_hash = image_data.image_hash;
@@ -10486,10 +10590,13 @@ tfx_library tfx_CreateLibrary() {
 tfx_library tfx_LoadEffectLibrary(const char *filename, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data) {
 	tfx_library library = tfx_CreateLibrary();
 	TFX_ASSERT_HANDLE(library);	//Could not create library handle, out of memory?
+	//Recorded so the library can be compared against its file later. A library loaded from memory has
+	//no path, which is how tfx_RefreshLibrary tells the two apart.
+	library->library_file_path.SetText(filename);
 
 	tfx_package package = tfx__create_package("");
 	//A folder can report a missing file without that stopping the rest of the library from loading
-	library->error_flags = tfx__path_is_folder(filename) ? tfx__load_package_folder(filename, package) : tfx__load_package_file(filename, package);
+	library->error_flags = tfx__path_is_folder(filename) ? tfx__load_package_folder(filename, package, true) : tfx__load_package_file(filename, package);
 	if (library->error_flags & tfxErrorCode_package_unreadable) {
 		tfx__free_package(package);
 		return library;
@@ -10519,6 +10626,700 @@ tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_s
 
 tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 	return library->error_flags;
+}
+
+//A merge rewrites values. Anything that would move an index a running emitter has already cached - a
+//different graph list, a force added or removed, a path appearing where there was none - is not a value
+//change, and the library has to be reloaded instead. Asked of every changed effect before any of them is
+//touched, because a half merged library is worse than one that was not merged at all.
+tfxINTERNAL bool tfx__effect_can_merge_in_place(tfx_effect_descriptor live, tfx_effect_descriptor disk) {
+	if (live->type != disk->type) {
+		return false;
+	}
+	tfx_library live_library = live->library;
+	tfx_library disk_library = disk->library;
+	tfxIndex live_slots[4] = { live->state_properties.graph_list_index, live->state_properties.transform_index,
+		live->state_properties.path_attributes, live->state_properties.morph_path_attributes };
+	tfxIndex disk_slots[4] = { disk->state_properties.graph_list_index, disk->state_properties.transform_index,
+		disk->state_properties.path_attributes, disk->state_properties.morph_path_attributes };
+	for (int slot = 0; slot != 4; ++slot) {
+		if ((live_slots[slot] == tfxINVALID) != (disk_slots[slot] == tfxINVALID)) {
+			return false;
+		}
+	}
+	//tfx__copy_graph_list asserts on a size mismatch, so the sizes are what decides mergeability
+	for (int slot = 0; slot != 2; ++slot) {
+		if (live_slots[slot] != tfxINVALID
+			&& live_library->graphs[live_slots[slot]].graphs.current_size != disk_library->graphs[disk_slots[slot]].graphs.current_size) {
+			return false;
+		}
+	}
+	tfx_particle_emitter_properties_t *live_properties = live->type == tfxEmitterType ? tfx__get_particle_emitter_properties(live) : nullptr;
+	tfx_particle_emitter_properties_t *disk_properties = disk->type == tfxEmitterType ? tfx__get_particle_emitter_properties(disk) : nullptr;
+	if ((live_properties == nullptr) != (disk_properties == nullptr)) {
+		return false;
+	}
+	if (live_properties) {
+		if (live_properties->force_count != disk_properties->force_count) {
+			return false;
+		}
+		for (tfxU32 force_index = 0; force_index != live_properties->force_count; ++force_index) {
+			tfxU32 live_list = live_properties->forces[force_index].graph_list_index;
+			tfxU32 disk_list = disk_properties->forces[force_index].graph_list_index;
+			if ((live_list == tfxINVALID) != (disk_list == tfxINVALID)) {
+				return false;
+			}
+			if (live_list != tfxINVALID
+				&& live_library->graphs[live_list].graphs.current_size != disk_library->graphs[disk_list].graphs.current_size) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+//Copies the values across and leaves everything else alone: the identity, the parent and child links, the
+//library, and every index into library storage, all of which a running emitter is already holding.
+tfxINTERNAL void tfx__merge_effect_in_place(tfx_effect_descriptor live, tfx_effect_descriptor disk) {
+	tfx_library live_library = live->library;
+	tfx_library disk_library = disk->library;
+
+	live->warmup_time = disk->warmup_time;
+	live->ribbon_flags = disk->ribbon_flags;
+	live->effect_flags = disk->effect_flags;
+	live->emitter_handle = disk->emitter_handle;
+	live->sort_passes = disk->sort_passes;
+	live->noise_base_offset_range = disk->noise_base_offset_range;
+	live->gpu_lookup_offset = disk->gpu_lookup_offset;
+	live->version = disk->version;
+
+	//state_properties mixes values with slot indexes, so the whole thing is taken and the indexes put back
+	tfx_common_state_properties_t slots = live->state_properties;
+	live->state_properties = disk->state_properties;
+	live->state_properties.graph_list_index = slots.graph_list_index;
+	live->state_properties.transform_index = slots.transform_index;
+	live->state_properties.path_attributes = slots.path_attributes;
+	live->state_properties.morph_path_attributes = slots.morph_path_attributes;
+	live->state_properties.property_index = slots.property_index;
+	live->state_properties.shared_index = slots.shared_index;
+	live->state_properties.gpu_group_index = slots.gpu_group_index;
+	live->state_properties.gpu_property_index = slots.gpu_property_index;
+	//Re-resolved from the image hash once every effect has been merged
+	live->state_properties.image = slots.image;
+
+	tfx_shared_properties_t *live_shared = tfx__get_shared_emitter_properties(live);
+	if (live_shared) {
+		*live_shared = *tfx__get_shared_emitter_properties(disk);
+	}
+	tfx_gpu_particle_properties_t *live_gpu = tfx__get_gpu_particle_properties(live);
+	if (live_gpu) {
+		*live_gpu = *tfx__get_gpu_particle_properties(disk);
+	}
+	if (live->type == tfxRibbonType) {
+		*tfx__get_ribbon_emitter_properties(live) = *tfx__get_ribbon_emitter_properties(disk);
+	}
+	if (live->type == tfxEmitterType) {
+		tfx_particle_emitter_properties_t *live_properties = tfx__get_particle_emitter_properties(live);
+		tfx_particle_emitter_properties_t *disk_properties = tfx__get_particle_emitter_properties(disk);
+		//A force holds the index of its own graph list, which belongs to whichever library it was read from
+		tfxU32 force_lists[tfxMAX_FORCES];
+		tfxU32 force_count = live_properties->force_count;
+		for (tfxU32 force_index = 0; force_index != force_count; ++force_index) {
+			force_lists[force_index] = live_properties->forces[force_index].graph_list_index;
+		}
+		*live_properties = *disk_properties;
+		for (tfxU32 force_index = 0; force_index != force_count; ++force_index) {
+			tfxU32 disk_list = live_properties->forces[force_index].graph_list_index;
+			live_properties->forces[force_index].graph_list_index = force_lists[force_index];
+			if (force_lists[force_index] != tfxINVALID) {
+				tfx__copy_graph_list(&disk_library->graphs[disk_list], &live_library->graphs[force_lists[force_index]]);
+			}
+		}
+	}
+
+	if (slots.graph_list_index != tfxINVALID) {
+		tfx__copy_graph_list(&disk_library->graphs[disk->state_properties.graph_list_index], &live_library->graphs[slots.graph_list_index]);
+	}
+	if (slots.transform_index != tfxINVALID) {
+		tfx__copy_graph_list(&disk_library->graphs[disk->state_properties.transform_index], &live_library->graphs[slots.transform_index]);
+	}
+	if (slots.path_attributes != tfxINVALID) {
+		tfx__copy_path(&disk_library->paths[disk->state_properties.path_attributes], "", &live_library->paths[slots.path_attributes]);
+	}
+	if (slots.morph_path_attributes != tfxINVALID) {
+		tfx__copy_path(&disk_library->paths[disk->state_properties.morph_path_attributes], "", &live_library->paths[slots.morph_path_attributes]);
+	}
+}
+
+//Restart reporting is deduplicated: an effect and a template cloned from it can both ask for one.
+tfxINTERNAL void tfx__record_restart_effect(tfx_library library, tfxKey path_hash) {
+	for (tfxU32 index = 0; index != library->refresh_restart_effects.current_size; ++index) {
+		if (library->refresh_restart_effects[index] == path_hash) {
+			return;
+		}
+	}
+	library->refresh_restart_effects.push_back(path_hash);
+}
+
+//A change is recorded against the root it was made under, so a reported ancestor puts everything below it in scope
+tfxINTERNAL bool tfx__effect_is_in_changed_set(tfx_effect_descriptor effect, tfx_vector_t<tfxKey> *changed) {
+	for (tfx_effect_descriptor current = effect; current; current = current->parent) {
+		for (tfxU32 index = 0; index != changed->current_size; ++index) {
+			if ((*changed)[index] == current->path_hash) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+//Check mode writes nothing, so the caller can refuse the whole refresh before any of it is merged
+tfxINTERNAL bool tfx__merge_or_check_pair(tfx_effect_descriptor live, tfx_effect_descriptor disk, bool merge) {
+	if (!merge) {
+		return tfx__effect_can_merge_in_place(live, disk);
+	}
+	tfx__merge_effect_in_place(live, disk);
+	return true;
+}
+
+//A hidden descriptor is an emitter deleted but kept for undo, and is never streamed, so the file has no counterpart
+tfxINTERNAL tfxU32 tfx__count_visible_children(tfx_effect_descriptor effect) {
+	tfxU32 count = 0;
+	for (tfx_effect_descriptor child : effect->children) {
+		if (!tfx__is_descriptor_hidden(child)) {
+			++count;
+		}
+	}
+	return count;
+}
+
+//Matched by name rather than by position, so that reordering an emitter still merges it into itself
+tfxINTERNAL tfx_effect_descriptor tfx__find_matching_child(tfx_effect_descriptor parent, tfx_effect_descriptor child) {
+	for (tfx_effect_descriptor candidate : parent->children) {
+		if (tfx__is_descriptor_hidden(candidate)) {
+			continue;
+		}
+		if (candidate->type == child->type && strcmp(candidate->name.c_str(), child->name.c_str()) == 0) {
+			return candidate;
+		}
+	}
+	return nullptr;
+}
+
+//A rename, addition or removal below leaves a child unmatched or the counts unequal, refusing the refresh
+tfxINTERNAL bool tfx__walk_effect_subtree(tfx_effect_descriptor live, tfx_effect_descriptor disk, bool merge) {
+	if (tfx__count_visible_children(live) != tfx__count_visible_children(disk)) {
+		return false;
+	}
+	if (!tfx__merge_or_check_pair(live, disk, merge)) {
+		return false;
+	}
+	for (tfxU32 child = 0; child != live->children.current_size; ++child) {
+		if (tfx__is_descriptor_hidden(live->children[child])) {
+			continue;
+		}
+		tfx_effect_descriptor disk_child = tfx__find_matching_child(disk, live->children[child]);
+		if (!disk_child || !tfx__walk_effect_subtree(live->children[child], disk_child, merge)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+//The clone has its own graph lists and slots, so it is walked in its own right against the original's disk descriptor
+tfxINTERNAL bool tfx__walk_template_clone(tfx_effect_template effect_template, tfx_library scratch, bool merge) {
+	tfx_effect_descriptor original = effect_template->original_effect;
+	//An orphaned template has nothing on disk to merge from, which is not a failure, just nothing to do
+	if (!original || !scratch->effect_paths.ValidKey(original->path_hash)) {
+		//The clone is out of step with what it was cloned from, which only a reload can settle
+		return false;
+	}
+	return tfx__walk_effect_subtree(effect_template->effect, scratch->effect_paths.At(original->path_hash), merge);
+}
+
+//Answers for the whole subtree because a host respawns the effect it added to a stage, never one emitter inside it
+tfxINTERNAL bool tfx__patch_live_subtree(tfx_effect_descriptor effect) {
+	bool needs_restart = false;
+	if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
+		for (tfx_stage pm : tfxStore->stages.data) {
+			needs_restart |= tfx__refresh_live_emitter(pm, effect);
+		}
+	}
+	for (tfx_effect_descriptor child : effect->children) {
+		if (tfx__is_descriptor_hidden(child)) {
+			continue;
+		}
+		needs_restart |= tfx__patch_live_subtree(child);
+	}
+	return needs_restart;
+}
+
+//A running emitter holds a raw pointer into particle_shapes, and inserting or removing a shape moves that
+//vector, so every one of them has to be found again by hash.
+tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
+	for (tfx_stage pm : tfxStore->stages.data) {
+		tfx_CompleteStageWork(pm);
+		for (tfxU32 e : pm->control_emitter_queue) {
+			if (pm->emitters[e].library != library) {
+				continue;
+			}
+			tfxKey image_hash = library->shared_properties[pm->emitters[e].state_properties.shared_index].image_hash;
+			if (library->particle_shapes.ValidKey(image_hash)) {
+				pm->emitters[e].state_properties.image = &library->particle_shapes.At(image_hash);
+			}
+		}
+		tfx_ribbon_dispatch_t ribbon_dispatch{};
+		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+			for (tfxU32 e : ribbon_dispatch.ribbon_data->control_ribbon_queue) {
+				if (pm->ribbon_emitters[e].library != library) {
+					continue;
+				}
+				tfxKey image_hash = library->shared_properties[pm->ribbon_emitters[e].state_properties.shared_index].image_hash;
+				if (library->particle_shapes.ValidKey(image_hash)) {
+					pm->ribbon_emitters[e].state_properties.image = &library->particle_shapes.At(image_hash);
+				}
+			}
+		}
+	}
+}
+
+//The diff opens no images at all, so an added shape's bytes have to be fetched separately. Matched by
+//hashing each entry rather than by name, because the hash is the identity the diff reported and the entry
+//name it was stored under is not kept anywhere.
+tfxINTERNAL void tfx__apply_shape_changes(tfx_library library, tfx_library scratch, bool is_folder,
+	tfx_shape_loader shape_loader, void *user_data) {
+	for (tfxU32 index = 0; index != library->refresh_removed_shapes.current_size; ++index) {
+		tfx__remove_library_shape(library, library->refresh_removed_shapes[index]);
+	}
+	if (library->refresh_added_shapes.current_size) {
+		tfx_package package = tfx__create_package("");
+		tfxErrorFlags error = is_folder
+			? tfx__load_package_folder(library->library_file_path.data, package, true)
+			: tfx__load_package_file(library->library_file_path.data, package);
+		if (!(error & tfxErrorCode_package_unreadable)) {
+			for (tfx_package_entry_info_t &entry : package->inventory.entries.data) {
+				if (!entry.data.data || entry.file_size == 0) {
+					continue;
+				}
+				tfxKey image_hash = tfx_Hash(&tfxStore->hasher, entry.data.data, entry.file_size, 0);
+				bool wanted = false;
+				for (tfxU32 index = 0; index != library->refresh_added_shapes.current_size; ++index) {
+					if (library->refresh_added_shapes[index] == image_hash) {
+						wanted = true;
+						break;
+					}
+				}
+				if (!wanted || !scratch->particle_shapes.ValidKey(image_hash)) {
+					continue;
+				}
+				//The row the diff already read carries everything except the bytes
+				tfx_image_data_t image_data = scratch->particle_shapes.At(image_hash);
+				image_data.ptr = nullptr;
+				image_data.compute_shape_index = 0;
+				if (shape_loader) {
+					shape_loader(image_data.name.c_str(), &image_data, entry.data.data, (tfxU32)entry.file_size, user_data);
+				}
+				library->particle_shapes.Insert(image_hash, image_data);
+			}
+		}
+		tfx__free_package(package);
+	}
+}
+
+tfxINTERNAL bool tfx__key_in_list(tfx_vector_t<tfxKey> *list, tfxKey key) {
+	for (tfxU32 index = 0; index != list->current_size; ++index) {
+		if ((*list)[index] == key) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//True when one descriptor is the other, or holds it somewhere below. Both directions matter: freeing a
+//root takes its sub effects with it, and freeing a sub effect breaks the root that spawns it.
+tfxINTERNAL bool tfx__descriptors_overlap(tfx_effect_descriptor first, tfx_effect_descriptor second) {
+	for (tfx_effect_descriptor current = first; current; current = current->parent) {
+		if (current == second) {
+			return true;
+		}
+	}
+	for (tfx_effect_descriptor current = second; current; current = current->parent) {
+		if (current == first) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//Anything running from a descriptor about to be freed has to be expired first. Only the library can do
+//this: the host has no way to know the descriptor is going away. Expiring is a request, not an act - the
+//teardown takes two ticks and reads the emitter's library slots on the way, so the free has to wait for it.
+tfxINTERNAL bool tfx__expire_running_instances(tfx_effect_descriptor effect, bool expire) {
+	bool found = false;
+	for (tfx_stage pm : tfxStore->stages.data) {
+		tfx_CompleteStageWork(pm);
+		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
+		for (tfxU32 index = 0; index != effects_in_use.current_size; ++index) {
+			tfx_effect_descriptor source = pm->effects[effects_in_use[index].index].source_effect;
+			if (TFX_VALID_HANDLE(source, tfx_struct_type_effect_descriptor) && tfx__descriptors_overlap(source, effect)) {
+				if (expire) {
+					tfx_HardExpireEffect(pm, effects_in_use[index].index);
+				}
+				found = true;
+			}
+		}
+	}
+	return found;
+}
+
+//Freed once nothing is running from them any more, which is the tick after the expiry above lands. Called
+//at the top of every refresh, so a host that polls collects them without having to know they exist.
+tfxINTERNAL void tfx__collect_pending_effect_frees(tfx_library library) {
+	for (tfxU32 index = library->pending_free_effects.current_size; index-- > 0;) {
+		tfx_effect_descriptor pending = library->pending_free_effects[index];
+		if (!tfx__expire_running_instances(pending, false)) {
+			tfx__free_effect(pending);
+			library->pending_free_effects[index] = library->pending_free_effects[library->pending_free_effects.current_size - 1];
+			library->pending_free_effects.pop();
+		}
+	}
+}
+
+//A template's clone owns its own graphs and slots, so it keeps working with the original gone. It is cut
+//loose rather than freed, because the host owns the handle and may still be spawning from it.
+tfxINTERNAL void tfx__orphan_templates_of(tfx_library library, tfx_effect_descriptor effect) {
+	for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
+		tfx_effect_template effect_template = library->effect_templates[index];
+		if (effect_template->original_effect && tfx__descriptors_overlap(effect_template->original_effect, effect)) {
+			effect_template->original_effect = nullptr;
+			effect_template->flags |= tfxEffectTemplateFlags_orphaned;
+		}
+	}
+}
+
+//Freeing returns the graph lists and property slots to the library's free lists, where the next add will
+//reuse them, so nothing may still be holding an index into them by the time this runs.
+tfxINTERNAL void tfx__remove_library_root(tfx_library library, tfx_effect_descriptor root) {
+	bool still_running = tfx__expire_running_instances(root, true);
+	tfx__orphan_templates_of(library, root);
+	for (tfxU32 index = 0; index != library->effects.current_size; ++index) {
+		if (library->effects[index] == root) {
+			library->effects.erase(&library->effects[index]);
+			break;
+		}
+	}
+	//Out of the library either way, so the host cannot reach it again. Only the memory waits.
+	if (still_running) {
+		library->pending_free_effects.push_back(root);
+	} else {
+		tfx__free_effect(root);
+	}
+}
+
+tfxINTERNAL void tfx__remove_deleted_effects(tfx_library library) {
+	tfx_vector_t<tfx_effect_descriptor> roots;
+	for (tfxU32 index = 0; index != library->refresh_removed_effects.current_size; ++index) {
+		tfx_effect_descriptor loaded = library->effect_paths.At(library->refresh_removed_effects[index]);
+		if (!loaded->parent && loaded->type == tfxEffectType) {
+			roots.push_back(loaded);
+		}
+	}
+	for (tfx_effect_descriptor root : roots) {
+		tfx__remove_library_root(library, root);
+	}
+	roots.free();
+	tfx__reindex_library(library);
+	tfx__update_library_effect_paths(library);
+	tfx__update_library_compute_nodes();
+}
+
+//A root that is on both sides but whose tree gained or lost a descriptor. Collected by path hash, which
+//survives the rebuild, rather than by pointer, which does not.
+tfxINTERNAL void tfx__collect_rebuilt_roots(tfx_library library, tfx_library scratch, tfx_vector_t<tfxKey> *roots) {
+	for (tfxU32 index = 0; index != library->refresh_added_effects.current_size; ++index) {
+		tfx_effect_descriptor root = scratch->effect_paths.At(library->refresh_added_effects[index]);
+		while (root->parent) {
+			root = root->parent;
+		}
+		if (root->type == tfxEffectType && library->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
+			roots->push_back(root->path_hash);
+		}
+	}
+	for (tfxU32 index = 0; index != library->refresh_removed_effects.current_size; ++index) {
+		tfx_effect_descriptor root = library->effect_paths.At(library->refresh_removed_effects[index]);
+		while (root->parent) {
+			root = root->parent;
+		}
+		if (root->type == tfxEffectType && scratch->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
+			roots->push_back(root->path_hash);
+		}
+	}
+}
+
+//Taken out and cloned back in from disk. The in-place merge cannot do this: it needs the two trees to have
+//the same shape, and here they do not. Pairings between emitters are intra-effect - tfx__store_paired_emitters
+//rejects a destination whose parent is a different effect - so a whole root carries both sides with it.
+tfxINTERNAL void tfx__rebuild_changed_roots(tfx_library library, tfx_library scratch, tfx_vector_t<tfxKey> *roots) {
+	for (tfxU32 index = 0; index != roots->current_size; ++index) {
+		tfx__remove_library_root(library, library->effect_paths.At((*roots)[index]));
+	}
+	for (tfxU32 index = 0; index != roots->current_size; ++index) {
+		tfx_effect_descriptor disk = scratch->effect_paths.At((*roots)[index]);
+		tfx_effect_descriptor clone = tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs);
+		tfx_effect_descriptor rebuilt = tfx__add_library_effect(library, clone);
+		tfx__add_library_sprite_sheet_settings(library, rebuilt);
+		tfx__add_library_sprite_data_settings(library, rebuilt);
+	}
+	tfx__reindex_library(library);
+	tfx__update_library_effect_paths(library);
+	tfx__update_library_compute_nodes();
+}
+
+//Nothing a running emitter holds moves when an effect is added: library->effects is a vector of pointers so
+//the descriptors already in it stay put, and the new slots come off the free lists or the end.
+tfxINTERNAL void tfx__add_new_effects(tfx_library library, tfx_library scratch) {
+	for (tfxU32 index = 0; index != library->refresh_added_effects.current_size; ++index) {
+		tfx_effect_descriptor disk = scratch->effect_paths.At(library->refresh_added_effects[index]);
+		//Cloning a root brings its whole tree, so children reported alongside it are already covered, and a
+		//path that resolves already belongs to a root the rebuild pass has just put back
+		if (disk->parent || disk->type != tfxEffectType || library->effect_paths.ValidKey(disk->path_hash)) {
+			continue;
+		}
+		tfx_effect_descriptor clone = tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs);
+		tfx_effect_descriptor added = tfx__add_library_effect(library, clone);
+		tfx__add_library_sprite_sheet_settings(library, added);
+		tfx__add_library_sprite_data_settings(library, added);
+	}
+	tfx__reindex_library(library);
+	tfx__update_library_effect_paths(library);
+	tfx__update_library_compute_nodes();
+}
+
+//Reports what a library's file now holds that the library does not. Reads only: applying the difference
+//is a separate step, so that the diff can be trusted before anything depends on it.
+void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
+	TFX_ASSERT_HANDLE(library);
+	TFX_ASSERT(result);		//Nowhere to report to
+	//Passed per call rather than stored, because tfx_SetContext deliberately nulls a library's stored
+	//callbacks on a module reload. A caller that passes one is the authority on it from here on.
+	if (uv_lookup) {
+		library->uv_lookup = uv_lookup;
+	}
+
+	library->refresh_changed_effects.clear();
+	library->refresh_added_effects.clear();
+	library->refresh_removed_effects.clear();
+	library->refresh_restart_effects.clear();
+	library->refresh_added_shapes.clear();
+	library->refresh_removed_shapes.clear();
+	tfx__collect_pending_effect_frees(library);
+	memset(result, 0, sizeof(tfx_refresh_result_t));
+	result->library_version = library->version;
+
+	if (library->library_file_path.Length() == 0) {
+		//Loaded from memory, so there is no file to compare against
+		result->flags |= tfxRefreshFlags_unreadable;
+		return;
+	}
+
+	//A folder keeps its version on the first line, so a library nobody has saved since it was loaded is
+	//answered here without reading the effects or the shapes at all
+	bool is_folder = tfx__path_is_folder(library->library_file_path.data);
+	tfxU32 disk_library_version = 0;
+	tfxErrorFlags status = is_folder
+		? tfx__folder_has_library_data(library->library_file_path.data, nullptr, &disk_library_version)
+		: tfx__read_package_library_version(library->library_file_path.data, &disk_library_version);
+	if (status != tfxErrorCode_success) {
+		result->flags |= tfxRefreshFlags_unreadable;
+		return;
+	}
+	//A package written before the header carried the version reports zero, which says nothing either way,
+	//so those fall through to the read below rather than being answered here
+	if (disk_library_version != 0) {
+		result->library_version = disk_library_version;
+		if (disk_library_version == library->version) {
+			return;
+		}
+	}
+
+	//A folder keeps every shape's hash in the shapes block, so the diff reads effects.txt and nothing else:
+	//no image is opened, and none is hashed. A package has to be opened whole, because its data.txt is
+	//inside it. Either way no callback fires, so the host is handed no images it never asked for.
+	tfx_library scratch = tfx_CreateLibrary();
+	tfx_package scratch_package = tfx__create_package("");
+	tfxErrorFlags scratch_error = is_folder
+		? tfx__load_package_folder(library->library_file_path.data, scratch_package, false)
+		: tfx__load_package_file(library->library_file_path.data, scratch_package);
+	if (!(scratch_error & tfxErrorCode_package_unreadable)) {
+		scratch_error |= tfx__load_effect_library_package(scratch_package, scratch, nullptr, nullptr, nullptr, is_folder);
+	}
+	tfx__free_package(scratch_package);
+	//Only the errors that mean the effect data did not arrive. A library merely older than the current
+	//format still diffs correctly, and so does one whose images were deliberately left on disk.
+	tfxErrorFlags fatal = tfxErrorCode_incorrect_package_format | tfxErrorCode_data_could_not_be_loaded
+		| tfxErrorCode_some_data_not_loaded | tfxErrorCode_unable_to_open_file | tfxErrorCode_unable_to_read_file
+		| tfxErrorCode_wrong_file_size | tfxErrorCode_invalid_format | tfxErrorCode_no_inventory
+		| tfxErrorCode_invalid_inventory | tfxErrorCode_library_object_could_not_be_created
+		| tfxErrorCode_folder_effect_data_not_found | tfxErrorCode_could_not_find_valid_effect_data_in_folder;
+	if (scratch_error & fatal) {
+		tfx_FreeLibrary(scratch);
+		result->flags |= tfxRefreshFlags_unreadable;
+		return;
+	}
+	result->library_version = scratch->version;
+
+	for (tfx_effect_descriptor disk_effect : scratch->effect_paths.data) {
+		if (!library->effect_paths.ValidKey(disk_effect->path_hash)) {
+			library->refresh_added_effects.push_back(disk_effect->path_hash);
+			continue;
+		}
+		tfx_effect_descriptor loaded_effect = library->effect_paths.At(disk_effect->path_hash);
+		if (loaded_effect->version != disk_effect->version) {
+			library->refresh_changed_effects.push_back(disk_effect->path_hash);
+		}
+	}
+	for (tfx_effect_descriptor loaded_effect : library->effect_paths.data) {
+		if (!scratch->effect_paths.ValidKey(loaded_effect->path_hash)) {
+			library->refresh_removed_effects.push_back(loaded_effect->path_hash);
+		}
+	}
+
+	//An image is keyed by the hash of its bytes, so a set difference catches an edited image as well as an
+	//added or removed one: an edit rehashes, and arrives as the old hash leaving and a new one appearing.
+	for (tfx_image_data_t &disk_shape : scratch->particle_shapes.data) {
+		if (!library->particle_shapes.ValidKey(disk_shape.image_hash)) {
+			library->refresh_added_shapes.push_back(disk_shape.image_hash);
+		}
+	}
+	for (tfx_image_data_t &loaded_shape : library->particle_shapes.data) {
+		if (!scratch->particle_shapes.ValidKey(loaded_shape.image_hash)) {
+			library->refresh_removed_shapes.push_back(loaded_shape.image_hash);
+		}
+	}
+	bool shapes_differ = library->refresh_added_shapes.current_size || library->refresh_removed_shapes.current_size;
+
+	if (library->refresh_changed_effects.current_size) result->flags |= tfxRefreshFlags_effects_changed;
+	if (library->refresh_added_effects.current_size) result->flags |= tfxRefreshFlags_effects_added;
+	if (library->refresh_removed_effects.current_size) result->flags |= tfxRefreshFlags_effects_removed;
+	if (shapes_differ) result->flags |= tfxRefreshFlags_shapes_changed;
+
+	//Shapes are applied whether or not the effects can be merged: the two are independent, and a host that
+	//keeps a texture per shape needs the delta even when nothing else moved.
+	if (shapes_differ) {
+		tfx__apply_shape_changes(library, scratch, is_folder, shape_loader, user_data);
+	}
+
+	//A new root can be cloned straight in. Anything else structural still moves slots that running emitters
+	//are holding indexes into, and is reported rather than applied.
+	//Three separate shapes of topology change, applied in an order that keeps the library consistent at each
+	//step: whole roots leaving, roots whose own tree changed shape, then whole roots arriving.
+	tfx_vector_t<tfxKey> rebuilt_roots;
+	tfx__collect_rebuilt_roots(library, scratch, &rebuilt_roots);
+	bool topology_applied = (result->flags & (tfxRefreshFlags_effects_added | tfxRefreshFlags_effects_removed)) != 0;
+	if (result->flags & tfxRefreshFlags_effects_removed) {
+		tfx__remove_deleted_effects(library);
+	}
+	if (rebuilt_roots.current_size) {
+		tfx__rebuild_changed_roots(library, scratch, &rebuilt_roots);
+	}
+	if (result->flags & tfxRefreshFlags_effects_added) {
+		tfx__add_new_effects(library, scratch);
+	}
+	rebuilt_roots.free();
+
+	//Asked of the result rather than of the plan: every added path has to resolve now, and every removed one
+	//has to be gone. Anything left over is something none of the three passes above knew how to do.
+	bool structural = false;
+	for (tfxU32 index = 0; !structural && index != library->refresh_added_effects.current_size; ++index) {
+		structural = !library->effect_paths.ValidKey(library->refresh_added_effects[index]);
+	}
+	for (tfxU32 index = 0; !structural && index != library->refresh_removed_effects.current_size; ++index) {
+		structural = library->effect_paths.ValidKey(library->refresh_removed_effects[index]);
+	}
+	bool mergeable = !structural && library->refresh_changed_effects.current_size > 0;
+	for (tfxU32 index = 0; mergeable && index != library->refresh_changed_effects.current_size; ++index) {
+		tfxKey path_hash = library->refresh_changed_effects[index];
+		mergeable = tfx__walk_effect_subtree(library->effect_paths.At(path_hash), scratch->effect_paths.At(path_hash), false);
+	}
+	//The templates have to agree too, before anything is written
+	for (tfxU32 index = 0; mergeable && index != library->effect_templates.current_size; ++index) {
+		tfx_effect_template effect_template = library->effect_templates[index];
+		if (tfx__effect_is_in_changed_set(effect_template->original_effect, &library->refresh_changed_effects)) {
+			mergeable = tfx__walk_template_clone(effect_template, scratch, false);
+		}
+	}
+
+	if (mergeable) {
+		for (tfxU32 index = 0; index != library->refresh_changed_effects.current_size; ++index) {
+			tfxKey path_hash = library->refresh_changed_effects[index];
+			tfx__walk_effect_subtree(library->effect_paths.At(path_hash), scratch->effect_paths.At(path_hash), true);
+		}
+		//An effect spawned from a template runs the clone's slots, not the library's, so the same values
+		//have to reach both
+		for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
+			tfx_effect_template effect_template = library->effect_templates[index];
+			if (tfx__effect_is_in_changed_set(effect_template->original_effect, &library->refresh_changed_effects)) {
+				tfx__walk_template_clone(effect_template, scratch, true);
+			}
+		}
+
+		//The same tail the loader runs, minus the parts only a structural change needs
+		tfx__update_all_library_graphs(library);
+		tfx__build_all_library_paths(library);
+		tfx__update_library_control_profiles(library);
+		result->flags |= tfxRefreshFlags_merged;
+
+		//Patch whatever is already running under these effects, and name the ones that cannot take it
+		for (tfxU32 index = 0; index != library->refresh_changed_effects.current_size; ++index) {
+			tfxKey path_hash = library->refresh_changed_effects[index];
+			if (tfx__patch_live_subtree(library->effect_paths.At(path_hash))) {
+				tfx__record_restart_effect(library, path_hash);
+			}
+		}
+		//And the same for anything running from a template, reported under the library path the host asked
+		//for the template by rather than the clone's own
+		for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
+			tfx_effect_template effect_template = library->effect_templates[index];
+			if (!tfx__effect_is_in_changed_set(effect_template->original_effect, &library->refresh_changed_effects)) {
+				continue;
+			}
+			if (tfx__patch_live_subtree(effect_template->effect)) {
+				tfx__record_restart_effect(library, effect_template->original_effect->path_hash);
+			}
+		}
+	} else if (structural) {
+		result->flags |= tfxRefreshFlags_needs_reload;
+	}
+
+	//Shared by every path: a shape set that moved leaves every image reference stale, in the library and in
+	//whatever is running, and the emitters' base indexes have to be rebuilt from the new shape list.
+	if (shapes_differ || topology_applied || (result->flags & tfxRefreshFlags_merged)) {
+		if (library->particle_shapes.Size()) {
+			tfx__update_library_particle_shape_references(library, library->particle_shapes.data[0].image_hash);
+		}
+		if (library->uv_lookup) {
+			tfx_UpdateLibraryGPUImageData(library);
+		}
+		if (shapes_differ) {
+			tfx__repoint_live_emitter_images(library);
+		}
+		library->version = result->library_version;
+	}
+
+	tfx_FreeLibrary(scratch);
+
+	result->changed_count = library->refresh_changed_effects.current_size;
+	result->added_count = library->refresh_added_effects.current_size;
+	result->removed_count = library->refresh_removed_effects.current_size;
+	result->restart_count = library->refresh_restart_effects.current_size;
+	result->added_shape_count = library->refresh_added_shapes.current_size;
+	result->removed_shape_count = library->refresh_removed_shapes.current_size;
+	result->added_shapes = library->refresh_added_shapes.data;
+	result->removed_shapes = library->refresh_removed_shapes.data;
+	result->changed_effects = library->refresh_changed_effects.data;
+	result->added_effects = library->refresh_added_effects.data;
+	result->removed_effects = library->refresh_removed_effects.data;
+	result->restart_effects = library->refresh_restart_effects.data;
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
@@ -12677,6 +13478,293 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	}
 }
 
+//The change tier of every graph the editor exposes: how much work a change to it costs to apply to a
+//running effect. Declared here rather than at each widget so that a reload diff, which has no widgets,
+//can reach the same answer for the same graph.
+tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope) {
+	//The transform graphs exist at both scopes: on an effect they only move what is already drawn, while on
+	//an emitter they move where particles spawn, which the existing particles cannot be told about.
+	if (effect_scope) {
+		switch (graph_type) {
+		case tfxTransform_pitch: return tfx_change_tier_redraw;
+		case tfxTransform_roll: return tfx_change_tier_redraw;
+		case tfxTransform_translate_x: return tfx_change_tier_redraw;
+		case tfxTransform_translate_y: return tfx_change_tier_redraw;
+		case tfxTransform_translate_z: return tfx_change_tier_redraw;
+		case tfxTransform_yaw: return tfx_change_tier_redraw;
+		default: break;
+		}
+	}
+	switch (graph_type) {
+	case tfxOverlength_alpha_sharpness:
+	case tfxOverlength_curved_alpha:
+	case tfxOverlength_gradient_map:
+	case tfxOverlength_intensity:
+	case tfxOverlength_lag_profile:
+	case tfxOverlength_morph_bias:
+	case tfxOverlength_noise_envelope:
+	case tfxOvertime_alpha_sharpness:
+	case tfxOvertime_blendfactor:
+	case tfxOvertime_clip_offset:
+	case tfxOvertime_clip_size:
+	case tfxOvertime_curved_alpha:
+	case tfxOvertime_gradient_mapper:
+	case tfxOvertime_heat_response:
+	case tfxOvertime_lag_amount:
+	case tfxOvertime_morph_amount:
+	case tfxOvertime_noise_amount:
+	case tfxOvertime_noise_scroll:
+		return tfx_change_tier_nosim;
+	case tfxGlobal_intensity:
+	case tfxOverlength_ribbon_fixed_angle:
+	case tfxOvertime_height:
+	case tfxOvertime_intensity:
+	case tfxOvertime_overall_ribbon_scale:
+	case tfxOvertime_pitch_spin:
+	case tfxOvertime_stretch:
+	case tfxOvertime_uv_offset_y:
+	case tfxOvertime_uv_scale_y:
+	case tfxOvertime_velocity:
+	case tfxOvertime_velocity_adjuster:
+	case tfxOvertime_width:
+	case tfxOvertime_yaw_spin:
+		return tfx_change_tier_redraw;
+	case tfxGlobal_amount:
+	case tfxGlobal_life:
+		return tfx_change_tier_resim;
+	case tfxBase_amount:
+	case tfxBase_height:
+	case tfxBase_life:
+	case tfxBase_pitch_spin:
+	case tfxBase_roll_spin:
+	case tfxBase_weight:
+	case tfxBase_width:
+	case tfxBase_yaw_spin:
+	case tfxFactor_intensity:
+	case tfxFactor_life:
+	case tfxFactor_size:
+	case tfxFactor_velocity:
+	case tfxGlobal_emitter_depth:
+	case tfxGlobal_emitter_height:
+	case tfxGlobal_emitter_width:
+	case tfxGlobal_height:
+	case tfxGlobal_noise:
+	case tfxGlobal_overall_scale:
+	case tfxGlobal_pitch_spin:
+	case tfxGlobal_roll_spin:
+	case tfxGlobal_splatter:
+	case tfxGlobal_stretch:
+	case tfxGlobal_velocity:
+	case tfxGlobal_weight:
+	case tfxGlobal_width:
+	case tfxGlobal_yaw_spin:
+	case tfxOverlength_width:
+	case tfxOvertime_weight:
+	case tfxProperty_arc_offset:
+	case tfxProperty_arc_size:
+	case tfxProperty_emission_pitch:
+	case tfxProperty_emission_range:
+	case tfxProperty_emission_yaw:
+	case tfxProperty_emitter_depth:
+	case tfxProperty_emitter_height:
+	case tfxProperty_emitter_width:
+	case tfxProperty_extrusion:
+	case tfxProperty_splatter:
+	case tfxTransform_pitch:
+	case tfxTransform_roll:
+	case tfxTransform_translate_x:
+	case tfxTransform_translate_y:
+	case tfxTransform_translate_z:
+	case tfxTransform_yaw:
+	case tfxVariation_amount:
+	case tfxVariation_height:
+	case tfxVariation_life:
+	case tfxVariation_path_trajectory_scale:
+	case tfxVariation_pitch_spin:
+	//Roll spin overtime is only a redraw when the billboard is free aligned, which the widget knows and this
+	//does not, so the table gives the answer that is safe in either mode.
+	case tfxOvertime_roll_spin:
+	case tfxVariation_roll_spin:
+	case tfxVariation_weight:
+	case tfxVariation_width:
+	case tfxVariation_yaw_spin:
+		return tfx_change_tier_resim_on_pause;
+	default:
+		//A graph with no entry is treated as needing a resim, which is the safe direction to be wrong in
+		return tfx_change_tier_resim_on_pause;
+	}
+}
+
+//The same question for the scalar and flag properties, keyed by the name they are written under in the
+//effect data, so the diff and the widgets look them up identically.
+typedef struct tfx_property_tier_s {
+	const char *name;
+	tfx_change_tier tier;
+} tfx_property_tier_t;
+
+static const tfx_property_tier_t tfx__property_change_tiers[] = {
+	{ "alt_color_lifetime_sampling",    tfx_change_tier_resim_on_pause },
+	{ "alt_size_lifetime_sampling",     tfx_change_tier_resim_on_pause },
+	{ "alt_velocity_lifetime_sampling", tfx_change_tier_resim_on_pause },
+	{ "area_open_ends",                 tfx_change_tier_resim_on_pause },
+	{ "delay_spawning",                 tfx_change_tier_resim },
+	{ "draw_order_by_age",              tfx_change_tier_resim },
+	{ "draw_order_by_depth",            tfx_change_tier_resim },
+	{ "emitter_handle_auto_center",     tfx_change_tier_resim_on_pause },
+	{ "exclude_from_global_hue",        tfx_change_tier_nosim },
+	{ "fill_area",                      tfx_change_tier_resim_on_pause },
+	{ "grid_columns",                   tfx_change_tier_resim_on_pause },
+	{ "grid_rows",                      tfx_change_tier_resim_on_pause },
+	{ "grid_spawn_clockwise",           tfx_change_tier_resim_on_pause },
+	{ "grid_spawn_random",              tfx_change_tier_resim_on_pause },
+	{ "guaranteed_draw_order",          tfx_change_tier_resim },
+	{ "image_animate",                  tfx_change_tier_redraw },
+	{ "image_frame_rate",               tfx_change_tier_redraw },
+	{ "image_play_once",                tfx_change_tier_redraw },
+	{ "image_random_start_frame",       tfx_change_tier_redraw },
+	{ "image_reverse_animation",        tfx_change_tier_redraw },
+	{ "loop_length",                    tfx_change_tier_resim_on_pause },
+	{ "match_amount_to_grid_points",    tfx_change_tier_resim },
+	{ "noise_base_offset_range",        tfx_change_tier_resim },
+	{ "noise_offset_variation",         tfx_change_tier_resim_on_pause },
+	{ "path_rotation_lifetime",         tfx_change_tier_resim_on_pause },
+	{ "path_rotation_range_yaw_only",   tfx_change_tier_resim_on_pause },
+	{ "path_rotation_stagger",          tfx_change_tier_resim_on_pause },
+	{ "random_color",                   tfx_change_tier_resim_on_pause },
+	{ "relative_position",              tfx_change_tier_resim },
+	{ "ribbon_lag",                     tfx_change_tier_resim },
+	{ "ribbon_lag_time",                tfx_change_tier_resim },
+	{ "ribbon_noise",                   tfx_change_tier_resim },
+	{ "ribbon_noise_frequency",         tfx_change_tier_nosim },
+	{ "ribbon_noise_lock_rate",         tfx_change_tier_nosim },
+	{ "ribbon_noise_octaves",           tfx_change_tier_nosim },
+	{ "ribbon_noise_phase_range",       tfx_change_tier_nosim },
+	{ "ribbon_noise_speed",             tfx_change_tier_nosim },
+	{ "ribbon_path_morph",              tfx_change_tier_resim },
+	{ "run_on_gpu",                     tfx_change_tier_resim },
+	{ "single",                         tfx_change_tier_resim },
+	{ "sort_passes",                    tfx_change_tier_resim },
+	{ "spawn_amount",                   tfx_change_tier_resim },
+	{ "spawn_on_grid",                  tfx_change_tier_resim_on_pause },
+	{ "static_ribbon",                  tfx_change_tier_resim },
+	{ "use_spawn_ratio",                tfx_change_tier_resim_on_pause },
+	{ "warmup_time",                    tfx_change_tier_resim },
+	{ "wrap_single_sprite",             tfx_change_tier_resim_on_pause },
+};
+
+tfx_change_tier tfx__get_property_change_tier(const char *property_name) {
+	for (int index = 0; index != (int)(sizeof(tfx__property_change_tiers) / sizeof(tfx_property_tier_t)); ++index) {
+		if (strcmp(tfx__property_change_tiers[index].name, property_name) == 0) {
+			return tfx__property_change_tiers[index].tier;
+		}
+	}
+	return tfx_change_tier_resim_on_pause;
+}
+
+//Applies an edited descriptor's properties to every emitter already running from it, without respawning.
+//Takes either an emitter or a ribbon emitter: they patch different live state, but a caller refreshing a
+//library after a reload should not have to know which it is holding.
+bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter) {
+	TFX_ASSERT_HANDLE(pm);
+	TFX_ASSERT_HANDLE(emitter);
+	tfx_CompleteStageWork(pm);
+	if (emitter->type == tfxRibbonType) {
+		tfx_ribbon_dispatch_t ribbon_dispatch{};
+		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+			for (tfxU32 e : ribbon_dispatch.ribbon_data->control_ribbon_queue) {
+				if (pm->ribbon_emitters[e].state_properties.property_index == emitter->state_properties.property_index) {
+					pm->ribbon_emitters[e].ribbon_property_flags = emitter->ribbon_flags;
+					pm->ribbon_emitters[e].state_properties.shared_flags = emitter->state_properties.shared_flags;
+					tfx_shared_properties_t &shared_properties = *tfx__get_shared_emitter_properties(emitter);
+					tfxEmitterStateFlags &state_flags = pm->ribbon_emitters[e].state_flags;
+					tfxEmitterStateFlags flags_we_want_to_keep = state_flags & tfxEmitterStateFlags_single_shot_done;
+					tfx_gpu_ribbon_emitter_t *gpu_properties = &pm->gpu_ribbon_emitters[pm->ribbon_emitters[e].state_properties.gpu_property_index];
+					gpu_properties->fixed_angle_normal = tfx__get_ribbon_emitter_properties(emitter)->fixed_angle_normal;
+
+					if (shared_properties.emission_type == tfxPath) {
+						tfx_emitter_path_t *path = &pm->ribbon_emitters[e].library->paths[emitter->state_properties.path_attributes];
+						state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
+					}
+
+					if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
+						emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
+					}
+					state_flags |= flags_we_want_to_keep;
+
+					pm->ribbon_emitters[e].state_properties.image_frame_rate = emitter->state_properties.image->animation_frames > 1 && emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties.frame_rate : 0.f;
+					pm->ribbon_emitters[e].state_properties.end_frame = emitter->state_properties.end_frame;
+				}
+			}
+		}
+		//Every ribbon change can be applied in place
+		return false;
+	}
+	bool need_restart = false;
+	tfx__update_emitter_control_profile(emitter);
+	for (tfxU32 e : pm->control_emitter_queue) {
+		//A property index only identifies an emitter within its own library, so a stage running two of them
+		//would otherwise patch whichever matched first
+		if (pm->emitters[e].library != emitter->library
+			|| pm->emitters[e].state_properties.property_index != emitter->state_properties.property_index) {
+			continue;
+		}
+		//What this instance is actually running: callers may already have refreshed the descriptor's profile, so it is the only reliable before.
+		tfxEmitterControlProfileFlags live_control_profile = pm->emitters[e].state_properties.control_profile;
+		pm->emitters[e].state_properties.control_profile = emitter->state_properties.control_profile;
+		pm->emitters[e].state_properties.property_flags = emitter->state_properties.property_flags;
+		pm->emitters[e].state_properties.shared_flags = emitter->state_properties.shared_flags;
+		tfx_particle_emitter_properties_t &properties = *tfx__get_particle_emitter_properties(emitter);
+		tfx_shared_properties_t &shared_properties = *tfx__get_shared_emitter_properties(emitter);
+		tfx_gpu_particle_properties_t &gpu_properties = *tfx__get_gpu_particle_properties(emitter);
+		pm->emitters[e].state_properties.angle_offsets = emitter->state_properties.angle_offsets;
+		tfxEmitterStateFlags &state_flags = pm->emitters[e].state_flags;
+		tfxEmitterControlProfileFlags &control_profile = pm->emitters[e].state_properties.control_profile;
+		bool has_path = (live_control_profile & tfxEmitterControlProfile_path) > 0;
+		tfxEmitterStateFlags flags_we_want_to_keep = (state_flags & tfxEmitterStateFlags_single_shot_done) | (state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative);
+		state_flags = 0;
+		state_flags |= emitter->state_properties.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+		state_flags |= (emitter->state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && shared_properties.single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
+		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && !(pm->flags & tfxStageFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
+		state_flags |= (shared_properties.emission_type != tfxLine && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || (shared_properties.emission_type == tfxLine && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) ? tfxEmitterStateFlags_not_line : 0;
+		state_flags |= properties.angle_settings != tfxAngleSettingFlags_align_roll && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		//A bit test, not an equality: angle_settings combines, and the spawn path that decides what the live
+		//particles were created with tests the bit
+		state_flags |= (properties.angle_settings & tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
+		state_flags |= shared_properties.emission_type == tfxLine && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
+		state_flags |= shared_properties.emission_type == tfxPath && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
+		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once;
+		state_flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
+		state_flags |= properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
+		state_flags |= shared_properties.emission_type == tfxLine && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
+		state_flags |= ((gpu_properties.flags & 0x3) == tfxBillboarding_free_align || (gpu_properties.flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
+		state_flags |= shared_properties.emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
+		if (shared_properties.emission_type == tfxPath) {
+			tfx_emitter_path_t *path = &pm->emitters[e].library->paths[emitter->state_properties.path_attributes];
+			state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
+		}
+
+		//Noise and path data are written at spawn, so a profile that now wants them has particles alive that never got them.
+		if ((live_control_profile & tfxEmitterControlProfile_has_any_noise) != (control_profile & tfxEmitterControlProfile_has_any_noise) || (!has_path && control_profile & tfxEmitterControlProfile_path)) {
+			need_restart = true;
+			break;
+		}
+
+		if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
+			emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
+		}
+		state_flags |= flags_we_want_to_keep;
+
+		pm->emitters[e].state_properties.image_frame_rate = emitter->state_properties.image->animation_frames > 1 && emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties.frame_rate : 0.f;
+		pm->emitters[e].state_properties.end_frame = emitter->state_properties.end_frame;
+	}
+	return need_restart;
+}
+
+bool tfx__refresh_live_effects(tfx_stage pm) {
+	(void)pm;
+	return false;
+}
+
 int tfx__add_compute_controller(tfx_stage pm) {
 	//Compute slots should only ever be added for the bottom emitter that has no sub effects
 	unsigned int free_slot;
@@ -14369,7 +15457,6 @@ typedef struct tfx_instance_pass_s {
 	tfxWideFloat frames;
 	tfxWideInt capture_after_transform_flag;
 	tfxWideInt particle_gpu_properties_index;
-	tfxWideInt image_start_index;
 	bool reverse_animation;
 	bool play_once;
 
@@ -14385,7 +15472,6 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_library library = emitter.library;
-	tfx_image_data_t *image = emitter.state_properties.image;
 
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfxParticleEmitterFlags property_flags = emitter.state_properties.property_flags;
@@ -14467,7 +15553,6 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
 	pass->capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	pass->particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.gpu_property_index << 16);
-	pass->image_start_index = tfxWideSetSinglei((pm.flags & tfxStageFlags_recording_sprites) && !(pm.flags & tfxStageFlags_record_with_compute_image_index) && (pm.flags & tfxStageFlags_using_uids) ? 0 : image->compute_shape_index);
 	pass->reverse_animation = (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) != 0;
 	pass->play_once = (shared_flags & tfxSharedEmitterPropertyFlags_play_once) != 0;
 
@@ -14731,7 +15816,9 @@ tfxINTERNAL inline void tfx__block_particle_image_frame(const tfx_instance_pass_
 		image_frame = tfxWideMod(image_frame, pass->frames);
 	}
 
-	block->image_indexes.m = tfxWideOri(pass->particle_gpu_properties_index, tfxWideAddi(tfxWideConverti(image_frame), pass->image_start_index));
+	//Only the animation frame. The base index of the emitter's image lives in its gpu properties, so a shape
+	//list that renumbers is picked up by particles that are already alive.
+	block->image_indexes.m = tfxWideOri(pass->particle_gpu_properties_index, tfxWideConverti(image_frame));
 }
 
 //The 40 bytes of tfx_instance_t that come straight out of the block. indexes/captured_index are built by
@@ -16461,7 +17548,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	local_rotations.pitch = tfx__sample_multi_node_graph(&pitch_graph, emitter.age, emitter.oscillator_time);
 	local_rotations.yaw = tfx__sample_multi_node_graph(&yaw_graph, emitter.age, emitter.oscillator_time);
 
-
 	tfx_shared_properties_t &shared_properties = *spawn_work_entry->shared_properties;
 
 	TFX_ASSERT(emitter.parent_index != tfxINVALID);    //Emitter must have a valid parent (an effect)
@@ -17017,7 +18103,6 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		} else {
 			max_age = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
 		}
-
 
 		if ((entry->emission_type == tfxOtherEmitter && emitter.other_emitter_index == tfxINVALID) || (entry->emission_type == tfxSpawnOnRibbon)) {
 			float time = 0.f;
@@ -18457,7 +19542,6 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 }
 
-
 /*
 Update the ribbon segment buffer using the arc_length look up table so that they're evenly spaced.
 */
@@ -18561,7 +19645,6 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_emitter.morph_segment_start_index = tfxINVALID;
 		}
 	}
-
 
 	bool is_offset = !ribbon_emitter.emitter_size.IsNill();
 
@@ -18966,7 +20049,6 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 
 		}
 	}
-
 
 	float emission_pitch = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.age, emitter.oscillator_time);
 	float emission_yaw = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], emitter.age, emitter.oscillator_time);
