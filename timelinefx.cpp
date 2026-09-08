@@ -10883,11 +10883,11 @@ tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
 	}
 }
 
+
 //The diff opens no images at all, so an added shape's bytes have to be fetched separately. Matched by
 //hashing each entry rather than by name, because the hash is the identity the diff reported and the entry
 //name it was stored under is not kept anywhere.
-tfxINTERNAL void tfx__apply_shape_changes(tfx_library library, tfx_library scratch, bool is_folder,
-	tfx_shape_loader shape_loader, void *user_data) {
+tfxINTERNAL void tfx__apply_shape_changes(tfx_library library, tfx_library scratch, bool is_folder, tfx_shape_loader shape_loader, void *user_data) {
 	for (tfxU32 index = 0; index != library->refresh_removed_shapes.current_size; ++index) {
 		tfx__remove_library_shape(library, library->refresh_removed_shapes[index]);
 	}
@@ -10898,7 +10898,10 @@ tfxINTERNAL void tfx__apply_shape_changes(tfx_library library, tfx_library scrat
 			: tfx__load_package_file(library->library_file_path.data, package);
 		if (!(error & tfxErrorCode_package_unreadable)) {
 			for (tfx_package_entry_info_t &entry : package->inventory.entries.data) {
-				if (!entry.data.data || entry.file_size == 0) {
+				if (entry.file_size == 0) {
+					continue;
+				}
+				if (!entry.data.data && !tfx__get_package_file(package, entry.file_name.c_str())) {
 					continue;
 				}
 				tfxKey image_hash = tfx_Hash(&tfxStore->hasher, entry.data.data, entry.file_size, 0);
