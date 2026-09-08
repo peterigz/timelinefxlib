@@ -6731,8 +6731,11 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	float noise_phase_range;
 	float noise_lock_rate;
 	tfx_vec3_t fixed_angle_normal;
-	tfxU32 sample_count;
-	tfxU32 noise_packed;
+	//[sample count in the low 24 bits, the noise algorithm and octaves in the top 8]. Packed so that
+	//start_frame_index fits without growing the struct: std430 rounds it to 16 for the vec3s where C++ rounds
+	//to 8, and the two only agree while the whole thing stays a multiple of 16.
+	tfxU32 sample_count_noise;
+	tfxU32 start_frame_index;
 	float lag_time;
 	float lag_span;
 	float overall_scale;

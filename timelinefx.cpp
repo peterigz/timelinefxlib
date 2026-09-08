@@ -11020,7 +11020,7 @@ tfxINTERNAL void tfx__remove_deleted_effects(tfx_library library) {
 	tfx_vector_t<tfx_effect_descriptor> roots;
 	for (tfxU32 index = 0; index != library->refresh_removed_effects.current_size; ++index) {
 		tfx_effect_descriptor loaded = library->effect_paths.At(library->refresh_removed_effects[index]);
-		if (!loaded->parent && loaded->type == tfxEffectType) {
+		if (!loaded->parent) {
 			roots.push_back(loaded);
 		}
 	}
@@ -11033,15 +11033,39 @@ tfxINTERNAL void tfx__remove_deleted_effects(tfx_library library) {
 	tfx__update_library_compute_nodes();
 }
 
-//A root that is on both sides but whose tree gained or lost a descriptor. Collected by path hash, which
-//survives the rebuild, rather than by pointer, which does not.
+tfxINTERNAL void tfx__add_settings_to_cloned_tree(tfx_library library, tfx_effect_descriptor root) {
+	tfx_vector_t<tfx_effect_descriptor> stack;
+	stack.push_back(root);
+	while (stack.size()) {
+		tfx_effect_descriptor current = stack.pop_back();
+		if (current->type == tfxEffectType) {
+			tfx__add_library_sprite_sheet_settings(library, current);
+			tfx__add_library_sprite_data_settings(library, current);
+		}
+		for (tfx_effect_descriptor child : current->children) {
+			stack.push_back(child);
+		}
+	}
+	stack.free();
+}
+
+tfxINTERNAL tfx_effect_descriptor tfx__insert_cloned_root(tfx_library library, tfx_effect_descriptor clone) {
+	clone->library_index = library->effects.current_size;
+	clone->uid = ++library->uid;
+	clone->library = library;
+	library->effects.push_back(clone);
+	tfx__add_settings_to_cloned_tree(library, clone);
+	return clone;
+}
+
+//Collect root effects/folders that have updated children
 tfxINTERNAL void tfx__collect_rebuilt_roots(tfx_library library, tfx_library scratch, tfx_vector_t<tfxKey> *roots) {
 	for (tfxU32 index = 0; index != library->refresh_added_effects.current_size; ++index) {
 		tfx_effect_descriptor root = scratch->effect_paths.At(library->refresh_added_effects[index]);
 		while (root->parent) {
 			root = root->parent;
 		}
-		if (root->type == tfxEffectType && library->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
+		if (library->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
 			roots->push_back(root->path_hash);
 		}
 	}
@@ -11050,53 +11074,41 @@ tfxINTERNAL void tfx__collect_rebuilt_roots(tfx_library library, tfx_library scr
 		while (root->parent) {
 			root = root->parent;
 		}
-		if (root->type == tfxEffectType && scratch->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
+		if (scratch->effect_paths.ValidKey(root->path_hash) && !tfx__key_in_list(roots, root->path_hash)) {
 			roots->push_back(root->path_hash);
 		}
 	}
 }
 
-//Taken out and cloned back in from disk. The in-place merge cannot do this: it needs the two trees to have
-//the same shape, and here they do not. Pairings between emitters are intra-effect - tfx__store_paired_emitters
-//rejects a destination whose parent is a different effect - so a whole root carries both sides with it.
+//Take all the changed roots and rebuild them with new updated children.
 tfxINTERNAL void tfx__rebuild_changed_roots(tfx_library library, tfx_library scratch, tfx_vector_t<tfxKey> *roots) {
 	for (tfxU32 index = 0; index != roots->current_size; ++index) {
 		tfx__remove_library_root(library, library->effect_paths.At((*roots)[index]));
 	}
 	for (tfxU32 index = 0; index != roots->current_size; ++index) {
 		tfx_effect_descriptor disk = scratch->effect_paths.At((*roots)[index]);
-		tfx_effect_descriptor clone = tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs);
-		tfx_effect_descriptor rebuilt = tfx__add_library_effect(library, clone);
-		tfx__add_library_sprite_sheet_settings(library, rebuilt);
-		tfx__add_library_sprite_data_settings(library, rebuilt);
+		tfx__insert_cloned_root(library, tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs));
 	}
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	tfx__update_library_compute_nodes();
 }
 
-//Nothing a running emitter holds moves when an effect is added: library->effects is a vector of pointers so
-//the descriptors already in it stay put, and the new slots come off the free lists or the end.
 tfxINTERNAL void tfx__add_new_effects(tfx_library library, tfx_library scratch) {
 	for (tfxU32 index = 0; index != library->refresh_added_effects.current_size; ++index) {
 		tfx_effect_descriptor disk = scratch->effect_paths.At(library->refresh_added_effects[index]);
 		//Cloning a root brings its whole tree, so children reported alongside it are already covered, and a
 		//path that resolves already belongs to a root the rebuild pass has just put back
-		if (disk->parent || disk->type != tfxEffectType || library->effect_paths.ValidKey(disk->path_hash)) {
+		if (disk->parent || library->effect_paths.ValidKey(disk->path_hash)) {
 			continue;
 		}
-		tfx_effect_descriptor clone = tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs);
-		tfx_effect_descriptor added = tfx__add_library_effect(library, clone);
-		tfx__add_library_sprite_sheet_settings(library, added);
-		tfx__add_library_sprite_data_settings(library, added);
+		tfx__insert_cloned_root(library, tfx__clone_effect_into_library(disk, nullptr, library, tfxEffectCloningFlags_camera_and_graphs));
 	}
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	tfx__update_library_compute_nodes();
 }
 
-//Reports what a library's file now holds that the library does not. Reads only: applying the difference
-//is a separate step, so that the diff can be trusted before anything depends on it.
 void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
 	TFX_ASSERT_HANDLE(library);
 	TFX_ASSERT(result);		//Nowhere to report to
@@ -16119,8 +16131,10 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 		} else {
 			image_frame = fmodf(image_frame, frames);
 		}
+		//The frame only. The base lives on the emitter, which is rewritten every frame, so a shape list that
+		//renumbers is picked up without touching the ribbons at all.
 		ribbon.texture_indexes &= ~0x1FFF;
-		ribbon.texture_indexes += tfxU32(image_frame) + ribbon_emitter.state_properties.image->compute_shape_index;
+		ribbon.texture_indexes += tfxU32(image_frame);
 	}
 }
 
@@ -17426,6 +17440,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	ribbon_work_entry->new_ribbons = tfx__new_ribbons_needed(pm, &ribbon_work_entry->random, ribbon_emitter_index, &parent_effect, ribbon_work_entry->shared_properties);
 
 	tfx_gpu_ribbon_emitter_t &gpu_emitter = pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index];
+	gpu_emitter.start_frame_index = ribbon_emitter.state_properties.image ? ribbon_emitter.state_properties.image->compute_shape_index : 0;
 	if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		gpu_emitter.position = ribbon_emitter.world_position;
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
@@ -17452,9 +17467,9 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.noise_speed = noise_properties->noise_speed;
 	gpu_emitter.noise_phase_range = noise_properties->noise_phase_range;
 	gpu_emitter.noise_lock_rate = noise_properties->noise_lock_rate;
-	gpu_emitter.noise_packed = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
+	tfxU32 packed_noise = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
 		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
-	gpu_emitter.sample_count = ribbon_emitter.stored_sample_count;
+	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
 	gpu_emitter.overall_scale = parent_effect.overall_scale;
 
@@ -19690,7 +19705,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				ribbon.position += splat;
 			}
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
-			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (ribbon_emitter.state_properties.image->compute_shape_index + tfxU32(image_frame));
+			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | tfxU32(image_frame);
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			ribbon.texture_indexes = texture_indexes;
 			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time));
