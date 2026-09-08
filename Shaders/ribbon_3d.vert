@@ -76,7 +76,6 @@ struct tfx_emitter {
 	uint start_frame_index;
 	float lag_time;
 	float lag_span;
-	uint padding;
 	float lag_spine_position_x[tfx_lag_spine_samples];
 	float lag_spine_position_y[tfx_lag_spine_samples];
 	float lag_spine_position_z[tfx_lag_spine_samples];

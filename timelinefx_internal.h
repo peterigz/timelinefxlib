@@ -6738,14 +6738,13 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU32 start_frame_index;
 	float lag_time;
 	float lag_span;
-	float overall_scale;
 	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
 	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_gpu_ribbon_emitter_t;
 
-//std430 in ribbons.comp and ribbon_3d.vert has to agree with this byte for byte and the compiler cannot check it
+//Size must agree with the shader struct size
 tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
 
 //---- GPU compute particle buffer management ----

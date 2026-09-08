@@ -17471,7 +17471,6 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
 	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
-	gpu_emitter.overall_scale = parent_effect.overall_scale;
 
 	double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
 	double tween = 0;
