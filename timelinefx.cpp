@@ -2322,6 +2322,118 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package)
 	return 0;
 }
 
+//Pulls a single entry out of a package on disk by reading only the header, the inventory and the
+//entry's own bytes, so a large package never has to be loaded in full to get at one file.
+tfxErrorFlags tfx__load_file_from_package(const char *package_file_name, const char *entry_file_name, tfx_stream buffer) {
+	TFX_ASSERT(buffer);		//The buffer stream has not been created. Use tfx__create_stream to create it.
+
+	FILE *file = tfx__open_file(package_file_name, "rb");
+	if (!file) {
+		return tfxErrorCode_unable_to_open_file;
+	}
+
+	if (tfx__fseek(file, 0, SEEK_END)) {
+		fclose(file);
+		return tfxErrorCode_unable_to_read_file;
+	}
+	tfxS64 file_length = tfx__ftell(file);
+	rewind(file);
+	if (file_length == -1) {
+		fclose(file);
+		return tfxErrorCode_unable_to_read_file;
+	}
+	tfxU64 file_size = (tfxU64)file_length;
+
+	if (file_size < sizeof(tfx_package_header_t)) {
+		fclose(file);
+		return tfxErrorCode_wrong_file_size;
+	}
+
+	tfx_package_header_t header;
+	if (fread(&header, 1, sizeof(tfx_package_header_t), file) != sizeof(tfx_package_header_t)) {
+		fclose(file);
+		return tfxErrorCode_unable_to_read_file;
+	}
+
+	if (header.magic_number != tfxMAGIC_NUMBER) {
+		fclose(file);
+		return tfxErrorCode_invalid_format;
+	}
+
+	if (header.offset_to_inventory + sizeof(tfxU32) * 2 > file_size) {
+		fclose(file);
+		return tfxErrorCode_no_inventory;
+	}
+
+	if (tfx__fseek(file, (tfxS64)header.offset_to_inventory, SEEK_SET)) {
+		fclose(file);
+		return tfxErrorCode_no_inventory;
+	}
+
+	tfxU32 inventory_magic_number = 0;
+	tfxU32 entry_count = 0;
+	if (fread(&inventory_magic_number, 1, sizeof(tfxU32), file) != sizeof(tfxU32) || inventory_magic_number != tfxMAGIC_NUMBER_INVENTORY) {
+		fclose(file);
+		return tfxErrorCode_invalid_inventory;
+	}
+	if (fread(&entry_count, 1, sizeof(tfxU32), file) != sizeof(tfxU32)) {
+		fclose(file);
+		return tfxErrorCode_invalid_inventory;
+	}
+
+	tfxU64 entry_offset = 0;
+	tfxU64 entry_size = 0;
+	bool entry_found = false;
+	for (tfxU32 i = 0; i != entry_count && !entry_found; ++i) {
+		tfxU32 name_size = 0;
+		if (fread(&name_size, 1, sizeof(tfxU32), file) != sizeof(tfxU32) || name_size == 0 || name_size > 512) {
+			fclose(file);
+			return tfxErrorCode_invalid_inventory;
+		}
+		char name[512];
+		if (fread(name, 1, name_size, file) != name_size) {
+			fclose(file);
+			return tfxErrorCode_invalid_inventory;
+		}
+		name[name_size - 1] = '\0';
+		tfxU64 size_of_entry = 0;
+		tfxU64 offset_of_entry = 0;
+		if (fread(&size_of_entry, 1, sizeof(tfxU64), file) != sizeof(tfxU64) || fread(&offset_of_entry, 1, sizeof(tfxU64), file) != sizeof(tfxU64)) {
+			fclose(file);
+			return tfxErrorCode_invalid_inventory;
+		}
+		if (strcmp(name, entry_file_name) == 0) {
+			entry_size = size_of_entry;
+			entry_offset = offset_of_entry;
+			entry_found = true;
+		}
+	}
+
+	if (!entry_found) {
+		fclose(file);
+		return tfxErrorCode_data_could_not_be_loaded;
+	}
+
+	if (entry_offset + entry_size > file_size) {
+		fclose(file);
+		return tfxErrorCode_wrong_file_size;
+	}
+
+	buffer->Free();
+	buffer->Resize(entry_size);
+	buffer->position = 0;
+	if (entry_size) {
+		if (buffer->data == NULL || tfx__fseek(file, (tfxS64)entry_offset, SEEK_SET) || fread(buffer->data, 1, entry_size, file) != (size_t)entry_size) {
+			buffer->Free();
+			fclose(file);
+			return tfxErrorCode_unable_to_read_file;
+		}
+	}
+
+	fclose(file);
+	return 0;
+}
+
 //A folder library is materialised into a package rather than parsed directly, so that
 //tfx__load_effect_library_package stays the one and only reader of the effect format.
 
@@ -4544,7 +4656,7 @@ tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index) {
 	return library->effects[index];
 }
 
-tfx_effect_descriptor tfx_GetLibraryEffectPath(tfx_library library, const char *path) {
+tfx_effect_descriptor tfx_GetLibraryEffect(tfx_library library, const char *path) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	if (!library->effect_paths.ValidName(path)) {
 		TFX_ASSERT(0 && "Effect was not found by that path. Use tfx_IsValidEffectPath to check a path first.");
@@ -4577,7 +4689,7 @@ tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey
 
 void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	tfx_effect_descriptor effect = tfx_GetLibraryEffectPath(library, path);
+	tfx_effect_descriptor effect = tfx_GetLibraryEffect(library, path);
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect = effect;
@@ -4586,6 +4698,17 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 	}
 	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs);
 	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
+}
+
+void tfx__update_effect_template(tfx_effect_template effect_template, tfx_effect_descriptor latest_effect) {
+	effect_template->original_effect = latest_effect;
+	if (TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor) && TFX_VALID_HANDLE(effect_template->effect->library, tfx_struct_type_effect_library)) {
+		tfx__free_effect(effect_template->effect);
+	}
+	tfx__overwrite_effect(latest_effect, &effect_template->effect);
+	effect_template->paths.Clear();
+	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
+	effect_template->flags |= tfxEffectTemplateFlags_needs_updating;
 }
 
 void tfx__reindex_library(tfx_library library) {
@@ -5237,45 +5360,6 @@ tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path) {
 	return find_name;
 }
 
-//Hashes the *structure* of a library's text and nothing else: the context markers, which give the order and
-//nesting of every effect and emitter block, and the name lines, which give their identity. Values are skipped
-//entirely, so an artist editing a graph leaves this unchanged while adding, deleting, renaming or reordering
-//anything moves it.
-//
-//That distinction is the whole basis of the reload. Slot indexes are handed out in parse order from empty
-//free lists, so a file whose structure has not moved reloads to byte-identical indexes and the emitters
-//already running on them stay valid. A file whose structure has moved does not, anywhere - one emitter added
-//near the top shifts every index after it - which is why this is a single yes/no for the file rather than a
-//judgement per effect.
-//
-//Read from the raw bytes rather than a parsed library, so nothing has to be loaded to answer it.
-tfxINTERNAL tfxKey tfx__hash_library_structure(const char *data, size_t size) {
-	tfxKey hash = 0;
-	size_t index = 0;
-	while (index != size) {
-		size_t start = index;
-		while (index != size && data[index] != '\n' && data[index] != '\r') {
-			++index;
-		}
-		size_t length = index - start;
-		while (index != size && (data[index] == '\n' || data[index] == '\r')) {
-			++index;
-		}
-		if (length == 0) {
-			continue;
-		}
-		bool is_marker = true;
-		for (size_t scan = start; is_marker && scan != start + length; ++scan) {
-			is_marker = data[scan] >= '0' && data[scan] <= '9';
-		}
-		bool is_name = length > 5 && memcmp(data + start, "name=", 5) == 0;
-		if (is_marker || is_name) {
-			hash = tfx_Hash(&tfxStore->hasher, (void *)(data + start), length, hash);
-		}
-	}
-	return hash;
-}
-
 //Everything tfx_FreeLibrary releases except the handle itself and, when keep_shapes is set, the shape set and
 //the gpu shape list that indexes it. Split out so a reload can empty the library in place: the descriptors
 //the loader then builds take the real library pointer from the start, which is what makes reloading into the
@@ -5342,13 +5426,6 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	tfx__free_library_contents(library, false);
-	library->refresh_changed_effects.free();
-	library->refresh_added_effects.free();
-	library->refresh_removed_effects.free();
-	library->refresh_restart_effects.free();
-	library->refresh_added_shapes.free();
-	library->refresh_removed_shapes.free();
-	library->loaded_shape_hashes.free();
 	library->effect_templates.free();
 	library->library_file_path.Free();
 	tfxStore->libraries.Remove((tfxKey)library);
@@ -10292,10 +10369,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	}
 
 	tfxKey first_shape_hash = 0;
-	//Recorded from the same bytes the parse below reads, so a later refresh can tell a value edit from a
-	//structural one without loading anything
-	lib->structure_hash = tfx__hash_library_structure((const char *)data->data.data, (size_t)data->file_size);
-	lib->loaded_shape_hashes.clear();
 
 	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
@@ -10474,11 +10547,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
 
-					//Recorded whether or not the shape is loaded below, because this is the file's shape set and a
-					//reload works out what left by comparing it against what the library already held
-					if (image_data.image_hash) {
-						lib->loaded_shape_hashes.push_back(image_data.image_hash);
-					}
 					//A reload empties the library but keeps its shapes, so the ones the file still names are
 					//already here with the host's own pointer in them. Loading one again would hand the host a
 					//second copy of an image it never asked to reload.
@@ -10714,33 +10782,6 @@ tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 	return library->error_flags;
 }
 
-//Restart reporting is deduplicated: an effect and a template cloned from it can both ask for one.
-tfxINTERNAL void tfx__record_restart_effect(tfx_library library, tfxKey path_hash) {
-	for (tfxU32 index = 0; index != library->refresh_restart_effects.current_size; ++index) {
-		if (library->refresh_restart_effects[index] == path_hash) {
-			return;
-		}
-	}
-	library->refresh_restart_effects.push_back(path_hash);
-}
-
-//Answers for the whole subtree because a host respawns the effect it added to a stage, never one emitter inside it
-tfxINTERNAL bool tfx__patch_live_subtree(tfx_effect_descriptor effect) {
-	bool needs_restart = false;
-	if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
-		for (tfx_stage pm : tfxStore->stages.data) {
-			needs_restart |= tfx__refresh_live_emitter(pm, effect);
-		}
-	}
-	for (tfx_effect_descriptor child : effect->children) {
-		if (tfx__is_descriptor_hidden(child)) {
-			continue;
-		}
-		needs_restart |= tfx__patch_live_subtree(child);
-	}
-	return needs_restart;
-}
-
 //A running emitter holds a raw pointer into particle_shapes, and inserting or removing a shape moves that
 //vector, so every one of them has to be found again by hash.
 tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
@@ -10796,246 +10837,24 @@ tfxINTERNAL bool tfx__descriptors_overlap(tfx_effect_descriptor first, tfx_effec
 	return false;
 }
 
-tfxINTERNAL bool tfx__index_in_list(tfx_vector_t<tfxU32> *list, tfxU32 value) {
-	for (tfxU32 index = 0; index != list->current_size; ++index) {
-		if ((*list)[index] == value) {
-			return true;
-		}
+tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect) {
+	if (disk_effect && disk_effect->version > effect->version) {
+		//Effect was updated
+		tfx__overwrite_effect(disk_effect, &effect);
+	} else if (!disk_effect) {
+		//The effect is no longer found in the latest version
+		effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
 	}
-	return false;
-}
-
-//Order is not preserved: every list this is used on is rebuilt from scratch by the next update pass
-tfxINTERNAL void tfx__prune_index_list(tfx_vector_t<tfxU32> *list, tfx_vector_t<tfxU32> *remove) {
-	for (tfxU32 index = list->current_size; index-- > 0;) {
-		if (tfx__index_in_list(remove, (*list)[index])) {
-			(*list)[index] = (*list)[list->current_size - 1];
-			list->pop();
-		}
-	}
-}
-
-//Frees every stage-side trace of the named effects immediately, so the caller can free their library storage
-//in the same call.
-//
-//This is the alternative to tfx_HardExpireEffect, which only *asks*: reaching the teardown that expiry
-//schedules costs a whole further update pass, and that pass reads the library on the way - tfx__update_effect
-//through source_effect->state_properties.loop_length, and every emitter through
-//&library->emitter_properties[property_index]. A caller that has already freed those is reading released
-//memory. Everything the teardown actually frees, on the other hand, is stage owned, so it can simply be done
-//here and now.
-//
-//Two ordering rules, both load bearing:
-//  - The library must still be intact. tfx__free_particle_list and tfx__free_spawn_location_list are keyed on
-//    source_emitter->path_hash, so this runs *before* any descriptor is freed, never after.
-//  - Every stage's work must be complete, and no update may run between this and the caller's reload.
-//
-//`doomed` names the roots to purge; null means everything belonging to `library`. Returns the effect count.
-tfxU32 tfx__purge_library_instances(tfx_library library, tfx_vector_t<tfx_effect_descriptor> *doomed) {
-	tfxU32 purged = 0;
-	for (tfx_stage pm : tfxStore->stages.data) {
-		tfx_CompleteStageWork(pm);
-		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
-		//effects_in_use[current_ebuff] is the authoritative live list once an update has completed. The other
-		//buffer and control_emitter_queue are cleared at the top of every pass, so only this one is a source.
-		tfx_vector_t<tfxU32> doomed_effects;
-		for (tfxU32 index = 0; index != effects_in_use.current_size; ++index) {
-			tfx_effect_state_t &effect = pm->effects[effects_in_use[index].index];
-			if (effect.library != library || !TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
-				continue;
-			}
-			bool is_doomed = doomed == nullptr;
-			for (tfxU32 entry = 0; !is_doomed && entry != doomed->current_size; ++entry) {
-				is_doomed = tfx__descriptors_overlap(effect.source_effect, (*doomed)[entry]);
-			}
-			if (is_doomed) {
-				doomed_effects.push_back(effects_in_use[index].index);
-			}
-		}
-
-		tfx_vector_t<tfxU32> freed_emitters;
-		for (tfxU32 index = 0; index != doomed_effects.current_size; ++index) {
-			tfx_effect_state_t &effect = pm->effects[doomed_effects[index]];
-			//A paired emitter's partner always shares its root (tfx__store_paired_emitters drops any pair
-			//whose destination has a different parent), so other_emitter_index can never point outside the
-			//set being purged here.
-			for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-				tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-				if (emitter.path_state.path_quaternions) {
-					tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
-				}
-				tfx__free_particle_list(pm, emitter_index);
-				if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
-					tfx__free_spawn_location_list(pm, emitter_index);
-				}
-				if (emitter.state_properties.gpu_group_index != tfxINVALID) {
-					pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
-					emitter.state_properties.gpu_group_index = tfxINVALID;
-				}
-				freed_emitters.push_back(emitter_index);
-				pm->free_emitters.push_back(emitter_index);
-			}
-			effect.emitter_indexes[0].clear();
-			effect.emitter_indexes[1].clear();
-			effect.active_emitters = 0;
-		}
-
-		//A ribbon emitter's ribbons live in its bucket rather than on the emitter, so they have to be handed
-		//back before the emitter slot is, or the next emitter in that slot inherits them.
-		tfx_ribbon_dispatch_t ribbon_dispatch{};
-		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
-			tfx_ribbon_bucket_t *bucket = ribbon_dispatch.ribbon_data;
-			tfx_vector_t<tfxU32> freed_ribbon_emitters;
-			for (tfxU32 ribbon_emitter_index : bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
-				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
-				if (!tfx__index_in_list(&doomed_effects, ribbon_emitter.parent_index)) {
-					continue;
-				}
-				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
-					bucket->ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
-					tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
-				}
-				ribbon_emitter.ribbon_indexes[0].clear();
-				ribbon_emitter.ribbon_indexes[1].clear();
-				ribbon_emitter.active_ribbons = 0;
-				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
-				freed_ribbon_emitters.push_back(ribbon_emitter_index);
-				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
-			}
-			tfx__prune_index_list(&bucket->ribbon_emitter_indexes[0], &freed_ribbon_emitters);
-			tfx__prune_index_list(&bucket->ribbon_emitter_indexes[1], &freed_ribbon_emitters);
-			tfx__prune_index_list(&bucket->control_ribbon_queue, &freed_ribbon_emitters);
-			freed_ribbon_emitters.free();
-		}
-
-		//Cleared at the top of the next pass anyway, but anything walking live emitters between now and then
-		//would otherwise be handed a recycled slot
-		tfx__prune_index_list(&pm->control_emitter_queue, &freed_emitters);
-		for (tfxU32 index = effects_in_use.current_size; index-- > 0;) {
-			if (!tfx__index_in_list(&doomed_effects, effects_in_use[index].index)) {
-				continue;
-			}
-			pm->free_effects.push_back(effects_in_use[index]);
-			effects_in_use[index] = effects_in_use[effects_in_use.current_size - 1];
-			effects_in_use.pop();
-			++purged;
-		}
-		freed_emitters.free();
-		doomed_effects.free();
-	}
-	return purged;
-}
-
-//A running instance caches three raw descriptor pointers - tfx_effect_state_t::source_effect,
-//tfx_particle_emitter_state_t::source_emitter and tfx_ribbon_emitter_state_t::source_ribbon - and a reload
-//frees and rebuilds every descriptor underneath them. The slot *indexes* survive, because the file's
-//structure did not move, but the pointers do not, so each one is recorded by path hash before the free and
-//looked up again afterwards. tfx__update_effect dereferences source_effect on the very next tick, so this is
-//not optional.
-typedef struct tfx_live_binding_s {
-	tfx_stage pm;
-	tfxU32 slot;
-	tfxKey path_hash;
-	tfx_effect_descriptor_type type;
-} tfx_live_binding_t;
-
-tfxINTERNAL void tfx__record_live_bindings(tfx_library library, tfx_vector_t<tfx_live_binding_t> *bindings) {
-	for (tfx_stage pm : tfxStore->stages.data) {
-		tfx_CompleteStageWork(pm);
-		for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
-			tfx_effect_state_t &effect = pm->effects[effect_index.index];
-			if (effect.library != library || !TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
-				continue;
-			}
-			tfx_live_binding_t binding = { pm, effect_index.index, effect.source_effect->path_hash, tfxEffectType };
-			bindings->push_back(binding);
-			for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-				tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-				if (!TFX_VALID_HANDLE(emitter.source_emitter, tfx_struct_type_effect_descriptor)) {
-					continue;
-				}
-				tfx_live_binding_t emitter_binding = { pm, emitter_index, emitter.source_emitter->path_hash, tfxEmitterType };
-				bindings->push_back(emitter_binding);
-			}
-		}
-		tfx_ribbon_dispatch_t ribbon_dispatch{};
-		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
-			for (tfxU32 ribbon_emitter_index : ribbon_dispatch.ribbon_data->ribbon_emitter_indexes[pm->current_ebuff]) {
-				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
-				if (ribbon_emitter.library != library || !TFX_VALID_HANDLE(ribbon_emitter.source_ribbon, tfx_struct_type_effect_descriptor)) {
-					continue;
-				}
-				tfx_live_binding_t ribbon_binding = { pm, ribbon_emitter_index, ribbon_emitter.source_ribbon->path_hash, tfxRibbonType };
-				bindings->push_back(ribbon_binding);
-			}
-		}
-	}
-}
-
-//Returns false if any recorded path is missing from the reloaded library, which would mean the structure
-//moved after all and the caller's decision not to purge was wrong.
-tfxINTERNAL bool tfx__restore_live_bindings(tfx_library library, tfx_vector_t<tfx_live_binding_t> *bindings) {
-	bool all_resolved = true;
-	for (tfxU32 index = 0; index != bindings->current_size; ++index) {
-		tfx_live_binding_t &binding = (*bindings)[index];
-		if (!library->effect_paths.ValidKey(binding.path_hash)) {
-			all_resolved = false;
-			continue;
-		}
-		tfx_effect_descriptor descriptor = library->effect_paths.At(binding.path_hash);
-		switch (binding.type) {
-		case tfxEffectType: {
-			tfx_effect_state_t &effect = binding.pm->effects[binding.slot];
-			effect.source_effect = descriptor;
-			//Cached copies of two library slots. Identical by determinism, but taken from the new descriptor
-			//rather than trusted, so the assumption is stated in one place instead of relied on in two.
-			effect.graph_list_index = descriptor->state_properties.graph_list_index;
-			effect.transform_index = descriptor->state_properties.transform_index;
-		} break;
-		case tfxEmitterType:
-			binding.pm->emitters[binding.slot].source_emitter = descriptor;
-			break;
-		case tfxRibbonType:
-			binding.pm->ribbon_emitters[binding.slot].source_ribbon = descriptor;
-			break;
-		default:
-			break;
-		}
-	}
-	return all_resolved;
-}
-
-//Everything running from a template's clone, whatever the file did. A clone's slots are allocated after the
-//parse rather than by it, so unlike the library's own effects they are not reproduced by a reload, and the
-//clone itself has to be rebuilt from the reloaded original.
-tfxINTERNAL void tfx__purge_template_instances(tfx_library library) {
-	tfx_vector_t<tfx_effect_descriptor> clones;
-	for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
-		if (library->effect_templates[index]->effect) {
-			clones.push_back(library->effect_templates[index]->effect);
-		}
-	}
-	if (clones.current_size) {
-		tfx__purge_library_instances(library, &clones);
-	}
-	clones.free();
 }
 
 void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
 	TFX_ASSERT_HANDLE(library);
 	TFX_ASSERT(result);		//Nowhere to report to
-	//Passed per call rather than stored, because tfx_SetContext deliberately nulls a library's stored
-	//callbacks on a module reload. A caller that passes one is the authority on it from here on.
+
 	if (uv_lookup) {
 		library->uv_lookup = uv_lookup;
 	}
 
-	library->refresh_changed_effects.clear();
-	library->refresh_added_effects.clear();
-	library->refresh_removed_effects.clear();
-	library->refresh_restart_effects.clear();
-	library->refresh_added_shapes.clear();
-	library->refresh_removed_shapes.clear();
 	memset(result, 0, sizeof(tfx_refresh_result_t));
 	result->library_version = library->version;
 
@@ -11069,9 +10888,20 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	//is never a second library alive, which is what the old diff-and-merge needed and what every derived
 	//value it imported out of that second library got wrong.
 	tfx_package package = tfx__create_package("");
-	tfxErrorFlags package_error = is_folder
-		? tfx__load_package_folder(library->library_file_path.data, package, true)
-		: tfx__load_package_file(library->library_file_path.data, package);
+	tfx_stream_t library_data{};
+	tfxErrorFlags package_error = 0; 
+	if (is_folder) {
+		package_error = tfx__load_package_folder(library->library_file_path.data, package, false);
+	} else {
+		package_error = tfx__load_file_from_package(library->library_file_path.data, "data.txt", &library_data);
+		if (!package_error) {
+			tfx_package_entry_info_t data_info{};
+			data_info.file_name = "data.txt";
+			data_info.data = library_data;
+			data_info.file_size = library_data.Size();
+			tfx__add_entry_to_package(package, data_info);
+		}
+	}
 	tfx_package_entry_info_t *data = (package_error & tfxErrorCode_package_unreadable)
 		? nullptr : tfx__get_package_file(package, "data.txt");
 	if (!data || !data->data.data) {
@@ -11080,209 +10910,55 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		return;
 	}
 
-	//The one decision the reload turns on. Values only, and every slot index comes back identical, so what is
-	//running stays running. Anything else and they do not, anywhere, so it all has to go.
-	tfxKey disk_structure_hash = tfx__hash_library_structure((const char *)data->data.data, (size_t)data->file_size);
-	bool structural = disk_structure_hash != library->structure_hash;
+	//At this point we've loaded the updated library but the data file only, no shape binaries.
+	tfx_library disk_library = tfx_CreateLibrary();
+	tfx__load_effect_library_package(package, disk_library, nullptr, nullptr, nullptr);
 
-	//Recorded before anything is freed, both because the descriptors are still alive to be read and because
-	//the purge below keys its free lists on source_emitter->path_hash
-	tfx_vector_t<tfx_live_binding_t> bindings;
-	if (!structural) {
-		tfx__record_live_bindings(library, &bindings);
-	}
-	tfx_vector_t<tfxKey> shapes_before;
-	for (tfx_image_data_t &shape : library->particle_shapes.data) {
-		shapes_before.push_back(shape.image_hash);
-	}
-	//The effect deltas are still reported, because a host caches descriptors by path and has to be told which
-	//of them stopped existing. With a reload there is nothing to diff against on disk, so what is recorded is
-	//the library as it stands and the comparison is made against the reloaded one afterwards.
-	tfx_vector_t<tfxKey> paths_before;
-	tfx_vector_t<tfxU32> versions_before;
-	for (tfx_effect_descriptor loaded : library->effect_paths.data) {
-		paths_before.push_back(loaded->path_hash);
-		versions_before.push_back(loaded->version);
-	}
-	//Which roots were running, so the ones that cannot survive can be named for the host to re-add
-	tfx_vector_t<tfxKey> running_roots;
+	//At this point we should stop any stage work that's happening, we're about to edit effects that might be in flight
 	for (tfx_stage pm : tfxStore->stages.data) {
 		tfx_CompleteStageWork(pm);
+	}
+
+	for (tfx_effect_descriptor effect : library->effects) {
+		if (effect->type == tfxFolder) {
+			for (tfx_effect_descriptor folder_effect : effect->children) {
+				tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
+				tfx__update_effect_from_disk(effect, disk_effect);
+			}
+		} else if (effect->type == tfxEffectType) {
+			tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
+			tfx__update_effect_from_disk(effect, disk_effect);
+		}
+	}
+
+	//Now the effects are updated, update the templates in the library
+	for (tfx_effect_template effect_template : library->effect_templates) {
+		tfx_effect_descriptor latest_effect = tfx_GetLibraryEffect(library, effect_template->original_effect->path.c_str());
+		if (!latest_effect) {
+			effect_template->flags |= tfxEffectTemplateFlags_marked_for_deletion;
+		} else if (latest_effect->version > effect_template->original_effect->version) {
+			tfx__update_effect_template(effect_template, latest_effect);
+		}
+	}
+
+	for (tfx_stage pm : tfxStore->stages.data) {
 		for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
-			tfx_effect_state_t &effect = pm->effects[effect_index.index];
-			if (effect.library != library || !TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
+			tfx_effect_state_t &effect_state = pm->effects[effect_index.index];
+			if (effect_state.library != library || !TFX_VALID_HANDLE(effect_state.source_effect, tfx_struct_type_effect_descriptor)) {
 				continue;
 			}
-			tfx_effect_descriptor root = effect.source_effect;
-			while (root->parent) {
-				root = root->parent;
-			}
-			if (!tfx__key_in_list(&running_roots, root->path_hash)) {
-				running_roots.push_back(root->path_hash);
-			}
-		}
-	}
-
-	//Nothing may run between here and the reload finishing
-	if (structural) {
-		tfx__purge_library_instances(library, nullptr);
-	} else {
-		tfx__purge_template_instances(library);
-	}
-	//The clones have to be freed while their slots are still the ones the library holds. After the reload
-	//those indexes belong to whatever the parse handed them to.
-	tfx_vector_t<tfxKey> template_originals;
-	for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
-		tfx_effect_template effect_template = library->effect_templates[index];
-		template_originals.push_back(effect_template->original_effect ? effect_template->original_effect->path_hash : 0);
-		tfx_ResetTemplate(effect_template);
-		effect_template->original_effect = nullptr;
-	}
-
-	//Emptied and rebuilt through the same handle, so every descriptor the parse creates carries the real
-	//library pointer and every slot is handed out in parse order from an empty free list
-	tfx__free_library_contents(library, true);
-	tfxErrorFlags reload_error = tfx__load_effect_library_package(package, library, shape_loader, library->uv_lookup, user_data, false);
-	tfx__free_package(package);
-
-	tfxErrorFlags fatal = tfxErrorCode_incorrect_package_format | tfxErrorCode_data_could_not_be_loaded
-		| tfxErrorCode_some_data_not_loaded | tfxErrorCode_unable_to_open_file | tfxErrorCode_unable_to_read_file
-		| tfxErrorCode_wrong_file_size | tfxErrorCode_invalid_format | tfxErrorCode_no_inventory
-		| tfxErrorCode_invalid_inventory | tfxErrorCode_library_object_could_not_be_created
-		| tfxErrorCode_folder_effect_data_not_found | tfxErrorCode_could_not_find_valid_effect_data_in_folder;
-	if (reload_error & fatal) {
-		//The library is empty and the file cannot refill it. Nothing is running from it either way, because
-		//the purge above ran before the free.
-		library->error_flags |= reload_error;
-		result->flags |= tfxRefreshFlags_unreadable | tfxRefreshFlags_needs_reload;
-		bindings.free();
-		shapes_before.free();
-		running_roots.free();
-		template_originals.free();
-		paths_before.free();
-		versions_before.free();
-		return;
-	}
-	library->structure_hash = disk_structure_hash;
-
-	//The effect delta, from what the library holds now against what it held a moment ago
-	for (tfxU32 index = 0; index != paths_before.current_size; ++index) {
-		if (!library->effect_paths.ValidKey(paths_before[index])) {
-			library->refresh_removed_effects.push_back(paths_before[index]);
-		} else if (library->effect_paths.At(paths_before[index])->version != versions_before[index]) {
-			library->refresh_changed_effects.push_back(paths_before[index]);
-		}
-	}
-	for (tfx_effect_descriptor loaded : library->effect_paths.data) {
-		if (!tfx__key_in_list(&paths_before, loaded->path_hash)) {
-			library->refresh_added_effects.push_back(loaded->path_hash);
-		}
-	}
-	if (library->refresh_changed_effects.current_size) result->flags |= tfxRefreshFlags_effects_changed;
-	if (library->refresh_added_effects.current_size) result->flags |= tfxRefreshFlags_effects_added;
-	if (library->refresh_removed_effects.current_size) result->flags |= tfxRefreshFlags_effects_removed;
-
-	//The shape delta, from the set the loader reported having seen against the set the library held. Shapes
-	//the file still names were kept and skipped by the loader, so only new ones reached shape_loader.
-	for (tfxU32 index = 0; index != shapes_before.current_size; ++index) {
-		if (!tfx__key_in_list(&library->loaded_shape_hashes, shapes_before[index])) {
-			library->refresh_removed_shapes.push_back(shapes_before[index]);
-		}
-	}
-	for (tfxU32 index = 0; index != library->loaded_shape_hashes.current_size; ++index) {
-		if (!tfx__key_in_list(&shapes_before, library->loaded_shape_hashes[index])) {
-			library->refresh_added_shapes.push_back(library->loaded_shape_hashes[index]);
-		}
-	}
-	for (tfxU32 index = 0; index != library->refresh_removed_shapes.current_size; ++index) {
-		tfx__remove_library_shape(library, library->refresh_removed_shapes[index]);
-	}
-	if (library->refresh_removed_shapes.current_size || library->refresh_added_shapes.current_size) {
-		result->flags |= tfxRefreshFlags_shapes_changed;
-	}
-
-	//Removing a shape moves particle_shapes, so every image reference has to be found again and the emitters'
-	//base indexes rebuilt from the new list. The loader did this already; a removal invalidates it.
-	if (library->refresh_removed_shapes.current_size && library->particle_shapes.Size()) {
-		tfx__update_library_particle_shape_references(library, library->particle_shapes.data[0].image_hash);
-	}
-	if (library->uv_lookup) {
-		tfx_UpdateLibraryGPUImageData(library);
-	}
-	result->flags |= tfxRefreshFlags_gpu_shapes_changed | tfxRefreshFlags_particle_properties_changed
-		| tfxRefreshFlags_color_ramps_changed | tfxRefreshFlags_graph_lookups_changed;
-
-	//A template is rebuilt from the reloaded original, or orphaned if the file no longer has one. Unlike
-	//before, an orphan keeps no clone: its slots went with the library it was cloned out of.
-	for (tfxU32 index = 0; index != library->effect_templates.current_size; ++index) {
-		tfx_effect_template effect_template = library->effect_templates[index];
-		tfxKey original_hash = template_originals[index];
-		if (original_hash && library->effect_paths.ValidKey(original_hash)) {
-			tfx_effect_descriptor original = library->effect_paths.At(original_hash);
-			tfx__prepare_library_effect_template_path(library, original->path.c_str(), effect_template);
-			tfx__record_restart_effect(library, original_hash);
-		} else {
-			effect_template->flags |= tfxEffectTemplateFlags_orphaned;
-		}
-	}
-	//Cloning allocates, so the gpu property and lookup tables have to account for the clones again
-	tfx__update_all_library_gpu_properties(library);
-	tfx__update_library_compute_nodes();
-
-	//Reported by what actually happened rather than by a diff: everything running either kept its slots or
-	//was purged and has to be re-added. A root the file no longer has is not restartable and is reported
-	//through removed_effects instead, so only paths that still resolve are named here.
-	if (structural) {
-		for (tfxU32 index = 0; index != running_roots.current_size; ++index) {
-			if (library->effect_paths.ValidKey(running_roots[index])) {
-				tfx__record_restart_effect(library, running_roots[index]);
+			tfx_effect_descriptor source_effect = effect_state.source_effect;
+			if (effect_template->original_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
+				tfx_HardExpireEffect(pm, effect_index);
+			} else if(effect_template->flags & tfxEffectTemplateFlags_needs_updating) {
+				//Restart the effect
 			}
 		}
-	} else if (!tfx__restore_live_bindings(library, &bindings)) {
-		//Every recorded path has to come back. If one did not then the structure moved after all and the
-		//decision not to purge was wrong, so it is taken back here rather than left to fault.
-		tfx__purge_library_instances(library, nullptr);
-		for (tfxU32 index = 0; index != running_roots.current_size; ++index) {
-			if (library->effect_paths.ValidKey(running_roots[index])) {
-				tfx__record_restart_effect(library, running_roots[index]);
-			}
-		}
-		result->flags |= tfxRefreshFlags_needs_reload;
-	} else {
-		//Values moved under emitters that kept their slots, so the state they cache has to be rebuilt
-		for (tfx_effect_descriptor effect : library->effects) {
-			if (tfx__patch_live_subtree(effect)) {
-				tfx_effect_descriptor root = effect;
-				while (root->parent) {
-					root = root->parent;
-				}
-				tfx__record_restart_effect(library, root->path_hash);
-			}
-		}
-		tfx__repoint_live_emitter_images(library);
 	}
+
+	//tfx__repoint_live_emitter_images(library);
 	result->flags |= tfxRefreshFlags_merged;
 	library->version = result->library_version;
-
-	bindings.free();
-	shapes_before.free();
-	running_roots.free();
-	template_originals.free();
-	paths_before.free();
-	versions_before.free();
-
-	result->changed_count = library->refresh_changed_effects.current_size;
-	result->added_count = library->refresh_added_effects.current_size;
-	result->removed_count = library->refresh_removed_effects.current_size;
-	result->restart_count = library->refresh_restart_effects.current_size;
-	result->added_shape_count = library->refresh_added_shapes.current_size;
-	result->removed_shape_count = library->refresh_removed_shapes.current_size;
-	result->added_shapes = library->refresh_added_shapes.data;
-	result->removed_shapes = library->refresh_removed_shapes.data;
-	result->changed_effects = library->refresh_changed_effects.data;
-	result->added_effects = library->refresh_added_effects.data;
-	result->removed_effects = library->refresh_removed_effects.data;
-	result->restart_effects = library->refresh_restart_effects.data;
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
@@ -12461,7 +12137,7 @@ void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, vo
 
 tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library library, const char *path) {
 	if (library->effect_paths.ValidName(path)) {
-		tfx_effect_descriptor effect = tfx_GetLibraryEffectPath(library, path);
+		tfx_effect_descriptor effect = tfx_GetLibraryEffect(library, path);
 		return &library->sprite_data_settings[effect->sprite_data_settings_index];
 	}
 	return nullptr;
@@ -12838,7 +12514,7 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_pa
 	tfx_effect_descriptor emitter = t->paths.At(emitter_path);
 	TFX_ASSERT(emitter->type == tfxEmitterType);			 //The path does not point to a emitter type
 	tfx_graph_t &graph = emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[graph_index];
-	tfx_effect_descriptor original_emitter = tfx_GetLibraryEffectPath(t->effect->library, emitter_path);
+	tfx_effect_descriptor original_emitter = tfx_GetLibraryEffect(t->effect->library, emitter_path);
 	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->state_properties.graph_list_index].graphs[graph_index];
 	tfx__copy_graph(&original_graph, &graph, false);
 	tfx__multiply_all_graph_values(&graph, amount);
@@ -12969,7 +12645,7 @@ tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effec
 
 tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
-	return tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
+	TFX_ASSERT(false);	//Function deprecated, you must create an effect template first and then add that to the stage
 }
 
 bool tfx_EffectIDIsValid(tfxEffectID id) {

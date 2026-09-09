@@ -3200,6 +3200,7 @@ typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxForceFlags;                   //tfx_force_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
+typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
 typedef tfxU32 tfxParticleFlags;                 //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
@@ -3388,9 +3389,16 @@ typedef enum {
 	tfxEffectPropertyFlags_include_in_sprite_data_export        = 1 << 5,		//In the editor you can specify which effects you want to be included in a spritedata export
 	tfxEffectPropertyFlags_global_uniform_size                  = 1 << 6,		//Keep the global particle size uniform
 	tfxEffectPropertyFlags_is_in_folder                         = 1 << 7,		//This effect is located inside a folder. 
+	tfxEffectPropertyFlags_marked_for_deletion                  = 1 << 8,		//Marked for deletion after a library refresh
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
 	tfxEffectPropertyFlags_is_ordered						    = tfxEffectPropertyFlags_depth_draw_order | tfxEffectPropertyFlags_age_order,
 } tfx_effect_property_flag_bits;
+
+typedef enum {
+	tfxEffectTemplateFlags_none									= 0,
+	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
+	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
+} tfx_effect_template_flag_bits;
 
 typedef enum {
 	tfxEmitterPropertyFlags_none							    = 0,
@@ -7713,21 +7721,7 @@ typedef struct tfx_library_s {
 	bool open_library;
 	bool dirty;
 	tfxU32 version;
-	//Refilled by each tfx_RefreshLibrary call, which is what the result's lists point at
-	tfx_vector_t<tfxKey> refresh_changed_effects;
-	tfx_vector_t<tfxKey> refresh_added_effects;
-	tfx_vector_t<tfxKey> refresh_removed_effects;
-	tfx_vector_t<tfxKey> refresh_restart_effects;
-	tfx_vector_t<tfxKey> refresh_added_shapes;
-	tfx_vector_t<tfxKey> refresh_removed_shapes;
-	//Hash of the structure - not the values - of the file this library was last loaded from, so a refresh can
-	//tell a value edit from one that moves slot indexes without building a second library to compare against.
-	tfxKey structure_hash;
-	//Filled in by the loader with every shape hash the file named, which is how a reload works out what left
-	//the shape set without parsing the shapes block a second time.
-	tfx_vector_t<tfxKey> loaded_shape_hashes;
-	//Every template cloned out of this library. A template's clone has its own slots, so refreshing the
-	//library does nothing to it unless it is refreshed too, and only the library knows they exist.
+	//Every template cloned out of this library. 
 	tfx_vector_t<tfx_effect_template> effect_templates;
 	tfx_stream_t library_file_path;
 	tfxU32 uid;
@@ -7742,7 +7736,7 @@ typedef struct tfx_effect_template_s {
 	tfx_effect_descriptor effect;				//Null between a tfx_ResetTemplate and the next prepare
 	tfx_effect_descriptor original_effect;		//Null once the original has been deleted from the library
 	tfx_library library;						//The library this is registered with, reachable when neither descriptor is
-	tfxU32 flags;
+	tfxEffectTemplateFlags flags;
 }tfx_effect_template_t;
 #endif
 
@@ -7814,6 +7808,8 @@ tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emi
 tfxAPI_EDITOR void tfx__read_entire_file(const char *file_name, tfx_stream buffer, bool terminate = false);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package);
+//Reads one named entry out of a package on disk without loading the whole package into memory
+tfxAPI_EDITOR tfxErrorFlags tfx__load_file_from_package(const char *package_file_name, const char *entry_file_name, tfx_stream buffer);
 //Materialises a folder library into an in memory package so that tfx__load_effect_library_package can consume it unchanged
 //include_shape_files false reads effects.txt and leaves the images on disk, for callers that only need
 //the shapes block's recorded hashes
@@ -7887,12 +7883,7 @@ tfxAPI_EDITOR tfxErrorFlags tfx__read_package_library_version(const char *path, 
 tfxAPI_EDITOR tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope);
 tfxAPI_EDITOR tfx_change_tier tfx__get_property_change_tier(const char *property_name);
 
-//Patches a live emitter or ribbon emitter with its descriptor's current properties, and reports whether the
-//change is one only a respawn can apply. A library refresh calls this per emitter; hosts go through that.
 tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
-//Frees every stage-side trace of the named roots (null = the whole library) without running an update, so the
-//caller can free their library storage in the same call. Must run before anything is freed.
-tfxAPI_EDITOR tfxU32 tfx__purge_library_instances(tfx_library library, tfx_vector_t<tfx_effect_descriptor> *doomed);
 tfxAPI_EDITOR bool tfx__refresh_live_effect(tfx_stage pm, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
@@ -10217,6 +10208,7 @@ tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx
 //Library functions, internal/Editor functions
 //--------------------------------
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
+tfxINTERNAL void tfx__update_effect_template(tfx_effect_template effect, tfx_effect_descriptor latest_effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, float frame_length, int *progress);

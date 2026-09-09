@@ -1021,7 +1021,7 @@ You will need this function to apply user data and update callbacks to effects a
 * @param tfx_library_t                A valid pointer to a tfx_library_t
 * @param const char *path             Path to the effect or emitter
 */
-tfxAPI tfx_effect_descriptor tfx_GetLibraryEffectPath(tfx_library library, const char *path);
+tfxAPI tfx_effect_descriptor tfx_GetLibraryEffect(tfx_library library, const char *path);
 
 /*
 Check whether a path resolves to an effect or emitter in the library. tfx_GetLibraryEffectPath asserts
