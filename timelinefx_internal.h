@@ -7720,9 +7720,12 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxKey> refresh_restart_effects;
 	tfx_vector_t<tfxKey> refresh_added_shapes;
 	tfx_vector_t<tfxKey> refresh_removed_shapes;
-	//Effects taken out of the library whose instances have not finished tearing down. Freeing returns their
-	//slots for reuse, and a stage mid-teardown is still reading them.
-	tfx_vector_t<tfx_effect_descriptor> pending_free_effects;
+	//Hash of the structure - not the values - of the file this library was last loaded from, so a refresh can
+	//tell a value edit from one that moves slot indexes without building a second library to compare against.
+	tfxKey structure_hash;
+	//Filled in by the loader with every shape hash the file named, which is how a reload works out what left
+	//the shape set without parsing the shapes block a second time.
+	tfx_vector_t<tfxKey> loaded_shape_hashes;
 	//Every template cloned out of this library. A template's clone has its own slots, so refreshing the
 	//library does nothing to it unless it is refreshed too, and only the library knows they exist.
 	tfx_vector_t<tfx_effect_template> effect_templates;
@@ -7736,8 +7739,9 @@ typedef struct tfx_library_s {
 typedef struct tfx_effect_template_s {
 	tfxU32 magic;
 	tfx_storage_map_t<tfx_effect_descriptor> paths;
-	tfx_effect_descriptor effect;
+	tfx_effect_descriptor effect;				//Null between a tfx_ResetTemplate and the next prepare
 	tfx_effect_descriptor original_effect;		//Null once the original has been deleted from the library
+	tfx_library library;						//The library this is registered with, reachable when neither descriptor is
 	tfxU32 flags;
 }tfx_effect_template_t;
 #endif
@@ -7886,6 +7890,9 @@ tfxAPI_EDITOR tfx_change_tier tfx__get_property_change_tier(const char *property
 //Patches a live emitter or ribbon emitter with its descriptor's current properties, and reports whether the
 //change is one only a respawn can apply. A library refresh calls this per emitter; hosts go through that.
 tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
+//Frees every stage-side trace of the named roots (null = the whole library) without running an update, so the
+//caller can free their library storage in the same call. Must run before anything is freed.
+tfxAPI_EDITOR tfxU32 tfx__purge_library_instances(tfx_library library, tfx_vector_t<tfx_effect_descriptor> *doomed);
 tfxAPI_EDITOR bool tfx__refresh_live_effect(tfx_stage pm, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);

@@ -855,6 +855,12 @@ typedef enum {
 	tfxRefreshFlags_unreadable = 1 << 4,        //The file could not be re-read; every list is empty
 	tfxRefreshFlags_merged = 1 << 5,            //The changed values were applied to the library in place
 	tfxRefreshFlags_needs_reload = 1 << 6,      //Nothing was applied: the change is more than values
+	//Which of the library's gpu-side buffers the refresh rebuilt. A host owns the uploaded copy of each of
+	//these, so it has to re-upload the ones flagged here or it goes on drawing with the old data.
+	tfxRefreshFlags_gpu_shapes_changed = 1 << 7,           //tfx_GetLibraryGPUShapes was rebuilt: re-upload it. Any cached tfx_GetGPUShapesArray pointer is now dangling
+	tfxRefreshFlags_particle_properties_changed = 1 << 8,  //tfx_GetParticlePropertiesBuffer changed, and may have grown: re-upload it
+	tfxRefreshFlags_color_ramps_changed = 1 << 9,          //The color ramp bitmaps were rebuilt and re-indexed: re-upload the ramp texture array
+	tfxRefreshFlags_graph_lookups_changed = 1 << 10,       //tfx_GetGPUGraphLookupsBuffer changed, and may have resized: re-upload it
 } tfx_refresh_flag_bits;
 
 typedef tfxU32 tfxRefreshFlags;                 //tfx_refresh_flag_bits
@@ -910,7 +916,12 @@ Checks the library on disk to see if it's been updated since it was loaded.
 
 In most cases the effects can be updated in place and either any live effects in a particle manager will
 just update or they will have to just be restarted. Shapes that are added are passed to shape_loader for
-you to load in the renderer. 
+you to load in the renderer.
+
+The library's own memory is all this updates. Anything you uploaded to the gpu is your copy and goes stale,
+so check the tfxRefreshFlags_*_changed bits in the result and re-upload what they name: the gpu shape data,
+the particle properties buffer, the color ramp bitmaps and the global graph lookup buffer. Restart every
+root named in restart_effects.
 
 The only reason the library would have to be reloaded is if it didn't parse properly or a folder in the
 library changed.
