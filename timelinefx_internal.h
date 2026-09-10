@@ -10177,7 +10177,7 @@ tfxINTERNAL void tfx__free_compute_slot(tfx_stage pm, unsigned int slot_id);
 tfxINTERNAL void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID, float millisecs);
 tfxAPI_EDITOR tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id);
-tfxAPI_EDITOR void tfx__purge_expired_effects(tfx_stage pm, tfxEffectID effect_id);
+tfxAPI_EDITOR void tfx__purge_expired_effects(tfx_stage pm);
 tfxINTERNAL void tfx__free_particle_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_all_particle_lists(tfx_stage pm);

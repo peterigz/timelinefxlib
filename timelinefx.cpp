@@ -13050,9 +13050,71 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 }
 
 void tfx__purge_expired_effects(tfx_stage pm) {
+	tfx_CompleteStageWork(pm);
+	const tfxEmitterStateFlags expired_flags = tfxEmitterStateFlags_stop_spawning | tfxEmitterStateFlags_remove;
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
+	pm->effects_in_use[next_buffer].clear();
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
+		tfx_effect_state_t &effect = pm->effects[effect_index.index];
+		if ((effect.state_flags & expired_flags) != expired_flags) {
+			effect.emitter_indexes[next_buffer].clear();
+			for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+				effect.emitter_indexes[next_buffer].push_back(emitter_index);
+			}
+			pm->effects_in_use[next_buffer].push_back(effect_index);
+			continue;
+		}
+		//Tear the emitters down the same way tfx__simulate_effect_spawn does for a removed effect, but without waiting for an update tick.
+		for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+			tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+			if (emitter.path_state.path_quaternions) {
+				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
+			}
+			tfx__free_particle_list(pm, emitter_index);
+			if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+				tfx__free_spawn_location_list(pm, emitter_index);
+			}
+			if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+				pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
+				emitter.state_properties.gpu_group_index = tfxINVALID;
+			}
+			pm->free_emitters.push_back(emitter_index);
+		}
+		effect.emitter_indexes[0].clear();
+		effect.emitter_indexes[1].clear();
+		effect.emitter_start_size = 0;
+		effect.active_emitters = 0;
+		pm->free_effects.push_back(effect_index);
 	}
+
+	//Ribbon emitters are owned by the buckets rather than the effect so they need walking separately.
+	tfx_ribbon_dispatch_t ribbon_dispatch{};
+	while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+		tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+		bucket.ribbon_emitter_indexes[next_buffer].clear();
+		for (tfxU32 ribbon_emitter_index : bucket.ribbon_emitter_indexes[pm->current_ebuff]) {
+			tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+			tfx_effect_state_t &effect = pm->effects[ribbon_emitter.parent_index];
+			if ((effect.state_flags & expired_flags) != expired_flags) {
+				ribbon_emitter.ribbon_indexes[next_buffer].clear();
+				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
+					ribbon_emitter.ribbon_indexes[next_buffer].push_back(ribbon_index);
+				}
+				bucket.ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
+				continue;
+			}
+			for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
+				bucket.ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+				tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
+			}
+			ribbon_emitter.ribbon_indexes[0].clear();
+			ribbon_emitter.ribbon_indexes[1].clear();
+			ribbon_emitter.active_ribbons = 0;
+			tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+			pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
+		}
+	}
+	pm->current_ebuff = next_buffer;
 }
 
 void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
