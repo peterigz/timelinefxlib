@@ -2342,7 +2342,7 @@ the template if it's not used now.
 * @param effect_template    A handle to the effect template
 * @returns bool             True if the effect it was cloned from has been deleted from the library
 */
-tfxAPI bool tfx_EffectTemplateIsOrphaned(tfx_effect_template effect_template);
+tfxAPI bool tfx_EffectTemplateIsMarkedForDeletion(tfx_effect_template effect_template);
 
 /*
 Reset an effect template and make it empty so you can use it to store another effect.
