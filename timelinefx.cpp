@@ -3923,9 +3923,9 @@ tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *na
 	return effect_template;
 }
 
-bool tfx_EffectTemplateIsOrphaned(tfx_effect_template effect_template) {
+bool tfx_EffectTemplateIsMarkedForDeletion(tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle
-	return (effect_template->flags & tfxEffectTemplateFlags_orphaned) > 0;
+	return (effect_template->flags & tfxEffectTemplateFlags_marked_for_deletion) > 0;
 }
 
 void tfx_FreeEffectTemplate(tfx_effect_template effect_template) {
@@ -10948,9 +10948,9 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 				continue;
 			}
 			tfx_effect_descriptor source_effect = effect_state.source_effect;
-			if (effect_template->original_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
-				tfx_HardExpireEffect(pm, effect_index);
-			} else if(effect_template->flags & tfxEffectTemplateFlags_needs_updating) {
+			if (source_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
+				tfx_HardExpireEffect(pm, effect_index.index);
+			} else if(source_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
 				//Restart the effect
 			}
 		}
@@ -11048,7 +11048,7 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	tfx_SetStageSeed(pm, settings->seed);
 	float saved_warmup = effect->warmup_time;
 	effect->warmup_time = 0;
-	preview_effect_index = tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect, 0.f);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -11206,7 +11206,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
 	tfx_SetStageSeed(pm, settings->seed);
-	preview_effect_index = tfx__add_effect_to_stage(pm, effect, pm->current_ebuff, 0, 0.f);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect, 0.f);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
@@ -12640,12 +12640,13 @@ void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_cal
 tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	return tfx__add_effect_to_stage(pm, effect_template->effect, pm->current_ebuff, 0, 0.f);
+	return tfx__add_effect_to_stage(pm, effect_template->effect, 0.f);
 }
 
 tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
 	TFX_ASSERT(false);	//Function deprecated, you must create an effect template first and then add that to the stage
+	return 0;
 }
 
 bool tfx_EffectIDIsValid(tfxEffectID id) {
@@ -12730,9 +12731,11 @@ void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID effect_id, float millisecs
 	pm->warmup_effects[0].push_back(entry);
 }
 
-tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning) {
+tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, float add_delayed_spawning) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
+
+	tfxU32 buffer = pm->current_ebuff;
 
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {

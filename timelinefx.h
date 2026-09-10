@@ -867,8 +867,11 @@ typedef tfxU32 tfxRefreshFlags;                 //tfx_refresh_flag_bits
 
 typedef enum {
 	tfxEffectTemplateFlags_none = 0,
-	tfxEffectTemplateFlags_orphaned = 1 << 0,	//Since a call to tfx_RefreshLibrary the template effect is now orphaned: it's original effect no longer exists in the library.
-} tfxEffectTemplateFlags;
+	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
+	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
+} tfx_effect_template_flag_bits;
+
+typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
 
 typedef struct tfx_refresh_result_s {
 	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags

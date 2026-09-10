@@ -3200,8 +3200,7 @@ typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxForceFlags;                   //tfx_force_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
-typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
-typedef tfxU32 tfxParticleFlags;                 //tfx_particle_flag_bits
+typedef tfxU32 tfxParticleFlags;                //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonFlags;		            //tfx_ribbon_flag_bits
@@ -3211,7 +3210,7 @@ typedef tfxU32 tfxEffectStateFlags;             //tfx_effect_state_flag_bits
 typedef tfxU32 tfxParticleControlFlags;         //tfx_particle_control_flag_bits
 typedef tfxU32 tfxAttributeNodeFlags;           //tfx_attribute_node_flag_bits
 typedef tfxU32 tfxAngleSettingFlags;            //tfx_angle_setting_flag_bits
-typedef tfxU32 tfxStageFlags;			//tfx_stage_flag_bits
+typedef tfxU32 tfxStageFlags;					//tfx_stage_flag_bits
 typedef tfxU32 tfxEffectCloningFlags;           //tfx_effect_cloning_flag_bits
 typedef tfxU32 tfxAnimationFlags;               //tfx_animation_flag_bits
 typedef tfxU32 tfxAnimationInstanceFlags;       //tfx_animation_instance_flag_bits
@@ -3390,15 +3389,10 @@ typedef enum {
 	tfxEffectPropertyFlags_global_uniform_size                  = 1 << 6,		//Keep the global particle size uniform
 	tfxEffectPropertyFlags_is_in_folder                         = 1 << 7,		//This effect is located inside a folder. 
 	tfxEffectPropertyFlags_marked_for_deletion                  = 1 << 8,		//Marked for deletion after a library refresh
+	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//Marked for deletion after a library refresh
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
 	tfxEffectPropertyFlags_is_ordered						    = tfxEffectPropertyFlags_depth_draw_order | tfxEffectPropertyFlags_age_order,
 } tfx_effect_property_flag_bits;
-
-typedef enum {
-	tfxEffectTemplateFlags_none									= 0,
-	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
-	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
-} tfx_effect_template_flag_bits;
 
 typedef enum {
 	tfxEmitterPropertyFlags_none							    = 0,
@@ -10181,7 +10175,7 @@ tfxINTERNAL tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_
 tfxINTERNAL void tfx__reset_particle_effect_flags(tfx_stage pm);
 tfxINTERNAL void tfx__free_compute_slot(tfx_stage pm, unsigned int slot_id);
 tfxINTERNAL void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID, float millisecs);
-tfxINTERNAL tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, int buffer, tfxU32 root_effect_index, float add_delayed_spawning);
+tfxAPI_EDITOR tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, float add_delayed_spawning);
 tfxINTERNAL void tfx__free_particle_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_all_particle_lists(tfx_stage pm);
