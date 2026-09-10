@@ -10902,6 +10902,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			tfx__add_entry_to_package(package, data_info);
 		}
 	}
+	tfx__copy_stream(&package->file_path, &library->library_file_path);
 	tfx_package_entry_info_t *data = (package_error & tfxErrorCode_package_unreadable)
 		? nullptr : tfx__get_package_file(package, "data.txt");
 	if (!data || !data->data.data) {
@@ -10959,6 +10960,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	//tfx__repoint_live_emitter_images(library);
 	result->flags |= tfxRefreshFlags_merged;
 	library->version = result->library_version;
+	tfx__free_package(package);
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
