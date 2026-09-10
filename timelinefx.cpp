@@ -4703,7 +4703,7 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 void tfx__update_effect_template(tfx_effect_template effect_template, tfx_effect_descriptor latest_effect) {
 	effect_template->original_effect = latest_effect;
 	if (TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor) && TFX_VALID_HANDLE(effect_template->effect->library, tfx_struct_type_effect_library)) {
-		tfx__free_effect(effect_template->effect);
+		tfx__clear_effect(effect_template->effect);
 	}
 	tfx__overwrite_effect(latest_effect, &effect_template->effect);
 	effect_template->paths.Clear();
@@ -10841,6 +10841,7 @@ tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_
 	if (disk_effect && disk_effect->version > effect->version) {
 		//Effect was updated
 		tfx__overwrite_effect(disk_effect, &effect);
+		effect->effect_flags |= tfxEffectPropertyFlags_was_updated;
 	} else if (!disk_effect) {
 		//The effect is no longer found in the latest version
 		effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
@@ -10902,7 +10903,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			tfx__add_entry_to_package(package, data_info);
 		}
 	}
-	tfx__copy_stream(&package->file_path, &library->library_file_path);
+	package->flags |= tfxPackageFlags_loaded_from_memory;
 	tfx_package_entry_info_t *data = (package_error & tfxErrorCode_package_unreadable)
 		? nullptr : tfx__get_package_file(package, "data.txt");
 	if (!data || !data->data.data) {
@@ -10937,7 +10938,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		tfx_effect_descriptor latest_effect = tfx_GetLibraryEffect(library, effect_template->original_effect->path.c_str());
 		if (!latest_effect) {
 			effect_template->flags |= tfxEffectTemplateFlags_marked_for_deletion;
-		} else if (latest_effect->version > effect_template->original_effect->version) {
+		} else if (latest_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
 			tfx__update_effect_template(effect_template, latest_effect);
 		}
 	}
@@ -10952,8 +10953,20 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			if (source_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
 				tfx_HardExpireEffect(pm, effect_index.index);
 			} else if(source_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
-				//Restart the effect
+				tfx_HardExpireEffect(pm, effect_index.index);
+				//tfx__restart_stage_effect(pm, effect_index.index);
 			}
+		}
+	}
+
+	for (tfx_effect_descriptor effect : library->effects) {
+		if (effect->type == tfxFolder) {
+			for (tfx_effect_descriptor folder_effect : effect->children) {
+				folder_effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
+			}
+		} else if (effect->type == tfxEffectType) {
+			tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
+			effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
 		}
 	}
 
@@ -11050,7 +11063,7 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	tfx_SetStageSeed(pm, settings->seed);
 	float saved_warmup = effect->warmup_time;
 	effect->warmup_time = 0;
-	preview_effect_index = tfx__add_effect_to_stage(pm, effect, 0.f);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -11208,7 +11221,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
 	tfx_SetStageSeed(pm, settings->seed);
-	preview_effect_index = tfx__add_effect_to_stage(pm, effect, 0.f);
+	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
@@ -12642,7 +12655,7 @@ void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_cal
 tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	return tfx__add_effect_to_stage(pm, effect_template->effect, 0.f);
+	return tfx__add_effect_to_stage(pm, effect_template->effect);
 }
 
 tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) {
@@ -12733,7 +12746,172 @@ void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID effect_id, float millisecs
 	pm->warmup_effects[0].push_back(entry);
 }
 
-tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect, float add_delayed_spawning) {
+tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tfx_effect_descriptor effect) {
+	tfx_effect_state_t *effect_state = &pm->effects[effect_id];
+	effect_state->source_effect = effect;
+	effect_state->graph_list_index = effect->state_properties.graph_list_index;
+	effect_state->transform_index = effect->state_properties.transform_index;
+	effect_state->library = effect->library;
+	effect_state->user_data = effect->user_data;
+
+	effect_state->age = 0.f;
+	effect_state->total_age = effect_state->age;
+	effect_state->state_flags = 0;
+	effect_state->effect_flags = effect->effect_flags;
+	effect_state->local_position = tfx_vec3_t();
+	effect_state->timeout = 1000.f;
+	effect_state->timeout_counter = 0;
+	float range = effect->noise_base_offset_range;
+	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
+	effect_state->sort_passes = effect->sort_passes;
+	effect_state->instance_data.instance_start_index = tfxINVALID;
+	effect_state->emitter_indexes[0].clear();
+	effect_state->emitter_indexes[1].clear();
+	effect_state->emitter_start_size = 0;
+	effect_state->active_emitters = 0;
+
+	if (effect->warmup_time > 0) {
+		tfx__add_warmup_effect(pm, effect_id, effect->warmup_time);
+	}
+}
+
+tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_index, tfxEffectID parent_index, tfx_effect_descriptor src_emitter, tfxU32 *seed_index) {
+	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+	tfx_effect_state_t &effect_state = pm->effects[parent_index];
+	emitter.particles_index = tfxINVALID;
+	emitter.parent_index = parent_index;
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
+	emitter.grid_coords = tfx_vec3_t();
+
+	emitter.state_properties = src_emitter->state_properties;
+	TFX_ASSERT(src_emitter->state_properties.image);
+	emitter.state_properties.image_frame_rate = src_emitter->state_properties.image->animation_frames > 1 && src_emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
+
+	emitter.source_emitter = src_emitter;
+	emitter.library = effect_state.library;
+
+	emitter.age = 0.f;
+	emitter.local_position = tfx_vec3_t();
+	emitter.grid_direction = tfx_vec3_t();
+	emitter.amount_remainder = 0.f;
+	emitter.qty_step_size = 0.f;
+	emitter.emitter_size = 0.f;
+	emitter.world_rotations = 0.f;
+	emitter.seed_index = *seed_index++;
+	emitter.spawn_counter = 0;
+	emitter.spawn_locations_index = tfxINVALID;
+	emitter.other_emitter_index = tfxINVALID;
+	emitter.path_state.path_quaternions = nullptr;
+	tfxEmitterStateFlags &state_flags = emitter.state_flags;
+	state_flags = src_emitter->state_flags;
+	/*
+	Remove if not needed
+	if (!(pm->flags & tfxStageFlags_disable_spawning)) {
+		state_flags &= ~tfxEmitterStateFlags_is_single;
+	}
+	*/
+	state_flags |= tfxEmitterStateFlags_no_tween_this_update;
+
+	if (shared_properties->emission_type == tfxPath) {
+		TFX_ASSERT(emitter.state_properties.path_attributes != tfxINVALID);
+		tfx_emitter_path_t *path = &emitter.library->paths[emitter.state_properties.path_attributes];
+		tfx_path_state_t &path_state = emitter.path_state;
+		path_state.last_path_index = 0;
+		path_state.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->settings.rotation_stagger == 0 ? path->settings.maximum_active_paths : 1;
+		path_state.path_stagger_counter = 0.f;
+		path_state.path_quaternion_index = tfx__allocate_path_quaternion(pm, path->settings.maximum_active_paths);
+		path_state.path_quaternions = pm->path_quaternions[path_state.path_quaternion_index];
+		path_state.path_quaternions[0].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
+		path_state.path_quaternions[0].cycles = 0;
+		path_state.path_cycle_count = path->settings.maximum_paths;
+		path_state.path_start_index = 0;
+		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+			for (tfxU32 qi = 0; qi != path->settings.maximum_active_paths; ++qi) {
+				path_state.path_quaternions[qi].cycles = tfxINVALID;
+			}
+			for (tfxU32 qi = 0; qi != path_state.active_paths; ++qi) {
+				tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+				path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
+				path_state.path_quaternions[qi].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
+				path_state.path_quaternions[qi].age = 0.f;
+				path_state.path_quaternions[qi].cycles = 0;
+				if (path_state.path_cycle_count > 0) {
+					path_state.path_cycle_count--;
+				} else if (path->settings.maximum_paths > 0) {
+					path_state.path_quaternions[qi].cycles = tfxINVALID;
+				}
+			}
+		}
+	}
+
+	if (emitter.particles_index == tfxINVALID) {
+		emitter.particles_index = tfx__grab_particle_lists(pm, src_emitter->path_hash, 100, src_emitter->state_properties.control_profile);
+		TFX_ASSERT(emitter.particles_index != tfxINVALID);
+	}
+
+	if (state_flags & tfxEmitterStateFlags_is_edge_traversal || emitter.state_properties.control_profile & tfxEmitterControlProfile_trajectory) {
+		emitter.state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
+	}
+}
+
+tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_index, tfxEffectID parent_index, tfx_effect_descriptor src_emitter, tfxU32 *seed_index) {
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
+	tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(src_emitter);
+	tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[emitter_index];
+	tfx_effect_state_t &effect_state = pm->effects[parent_index];
+	ribbon_emitter.segment_count = ribbon_properties->bucket_info.segment_count;
+	TFX_ASSERT(ribbon_emitter.segment_count <= tfxMAX_SEGMENT_COUNT);	//segment count for ribbon must not exceed the max segment count
+	if (!pm->ribbon_segment_buckets.ValidKey(ribbon_properties->ribbon_bucket_id)) {
+		tfx__init_ribbon_segment_buffer(pm, ribbon_properties->ribbon_bucket_id, &ribbon_properties->bucket_info, 1);
+	}
+	effect_state.active_emitters++;
+	ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
+	ribbon_emitter.state_properties = src_emitter->state_properties;
+	ribbon_emitter.state_properties.image_frame_rate = src_emitter->state_properties.image->animation_frames > 1 && src_emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
+	ribbon_emitter.state_properties.gpu_property_index = tfx__grab_gpu_ribbon_emitter(pm);
+	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].lookup_offset = src_emitter->gpu_lookup_offset;
+	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
+	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
+
+	ribbon_emitter.amount_remainder = 0.f;
+	ribbon_emitter.qty_step_size = 0.f;
+	ribbon_emitter.spawn_quantity = 0.f;
+	ribbon_emitter.source_ribbon = src_emitter;
+	ribbon_emitter.local_position = tfx_vec3_t();
+	ribbon_emitter.local_rotations = tfx_vec3_t();
+	ribbon_emitter.age = 0.f;
+	ribbon_emitter.ribbon_property_flags = src_emitter->ribbon_flags;
+	ribbon_emitter.library = effect_state.library;
+	ribbon_emitter.parent_index = parent_index;
+	ribbon_emitter.seed_index = *seed_index++;
+	ribbon_emitter.active_ribbons = 0;
+	ribbon_emitter.path_state.active_paths = 0;
+	ribbon_emitter.ribbon_indexes[0].init();
+	ribbon_emitter.ribbon_indexes[1].init();
+	ribbon_emitter.lag_clock = 0.f;
+	ribbon_emitter.lag_history_head = 0;
+	ribbon_emitter.lag_history_count = 0;
+	ribbon_emitter.state_flags = 0;
+	ribbon_emitter.samples_per_segment = 1;
+	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
+	ribbon_emitter.morph_segment_start_index = tfxINVALID;
+	if (shared_properties->emission_type == tfxPath) {
+		tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
+		ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
+		ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
+		//Emitters sharing a path but wanting different sample densities must not share a cached array
+		tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+		tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
+		ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
+		if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
+			tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
+			tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
+			ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
+		}
+	}
+}
+
+tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
 
@@ -12753,39 +12931,19 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
     pm->effects_in_use[buffer].push_back(parent_index);
 	tfx_effect_state_t &new_effect = pm->effects[parent_index.index];
 
-	new_effect.source_effect = effect;
-	new_effect.graph_list_index = effect->state_properties.graph_list_index;
-	new_effect.transform_index = effect->state_properties.transform_index;
-	new_effect.library = effect->library;
-	new_effect.user_data = effect->user_data;
-
-	new_effect.age = -add_delayed_spawning;
-	new_effect.total_age = new_effect.age;
-	new_effect.state_flags = 0;
-	new_effect.effect_flags = effect->effect_flags;
-	new_effect.local_position = tfx_vec3_t();
-	new_effect.timeout = 1000.f;
-	new_effect.timeout_counter = 0;
-	float range = effect->noise_base_offset_range;
-	new_effect.noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
-	new_effect.sort_passes = effect->sort_passes;
-	new_effect.instance_data.instance_start_index = tfxINVALID;
-	new_effect.emitter_indexes[0].clear();
-	new_effect.emitter_indexes[1].clear();
-	new_effect.emitter_start_size = 0;
-
-	if (effect->warmup_time > 0) {
-		tfx__add_warmup_effect(pm, parent_index.index, effect->warmup_time);
-	}
+	tfx__reset_effect_state(pm, parent_index.index, effect);
 
 	tfxU32 seed_index = 0;
+
 	struct hash_index_pair_t {
 		tfxKey hash;
 		tfxU32 index;
 		tfx_effect_descriptor_type type;
 	};
+
 	tmpStack(hash_index_pair_t, source_emitters);
 	tmpStack(hash_index_pair_t, target_emitters);
+
 	for (tfx_effect_descriptor child : effect->children) {
 		if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_enabled && !(child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden)) {
 			tfxU32 index = tfxINVALID;
@@ -12798,86 +12956,15 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 				tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 				new_effect.active_emitters++;
 				tfx__readbarrier;
-				emitter.particles_index = tfxINVALID;
-				emitter.parent_index = parent_index.index;
-				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
-				emitter.grid_coords = tfx_vec3_t();
 
-				emitter.state_properties = child->state_properties;
-				TFX_ASSERT(child->state_properties.image);
-				emitter.state_properties.image_frame_rate = child->state_properties.image->animation_frames > 1 && child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
-
-				emitter.source_emitter = child;
-				emitter.library = effect->library;
-
-				emitter.age = 0.f;
-				emitter.local_position = tfx_vec3_t();
-				emitter.grid_direction = tfx_vec3_t();
-				emitter.amount_remainder = 0.f;
-				emitter.qty_step_size = 0.f;
-				emitter.emitter_size = 0.f;
-				emitter.world_rotations = 0.f;
-				emitter.seed_index = seed_index++;
-				emitter.spawn_counter = 0;
-				emitter.spawn_locations_index = tfxINVALID;
-				emitter.other_emitter_index = tfxINVALID;
-				emitter.path_state.path_quaternions = nullptr;
-				tfxEmitterStateFlags &state_flags = emitter.state_flags;
-				state_flags = child->state_flags;
-				/*
-				Remove if not needed
-				if (!(pm->flags & tfxStageFlags_disable_spawning)) {
-					state_flags &= ~tfxEmitterStateFlags_is_single;
-				}
-				*/
-				state_flags |= tfxEmitterStateFlags_no_tween_this_update;
-
-				if (shared_properties->emission_type == tfxPath) {
-					TFX_ASSERT(emitter.state_properties.path_attributes != tfxINVALID);
-					tfx_emitter_path_t *path = &emitter.library->paths[emitter.state_properties.path_attributes];
-					tfx_path_state_t &path_state = emitter.path_state;
-					path_state.last_path_index = 0;
-					path_state.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->settings.rotation_stagger == 0 ? path->settings.maximum_active_paths : 1;
-					path_state.path_stagger_counter = 0.f;
-					path_state.path_quaternion_index = tfx__allocate_path_quaternion(pm, path->settings.maximum_active_paths);
-					path_state.path_quaternions = pm->path_quaternions[path_state.path_quaternion_index];
-					path_state.path_quaternions[0].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
-					path_state.path_quaternions[0].cycles = 0;
-					path_state.path_cycle_count = path->settings.maximum_paths;
-					path_state.path_start_index = 0;
-					if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
-						for (tfxU32 qi = 0; qi != path->settings.maximum_active_paths; ++qi) {
-							path_state.path_quaternions[qi].cycles = tfxINVALID;
-						}
-						for (tfxU32 qi = 0; qi != path_state.active_paths; ++qi) {
-							tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-							path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
-							path_state.path_quaternions[qi].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
-							path_state.path_quaternions[qi].age = 0.f;
-							path_state.path_quaternions[qi].cycles = 0;
-							if (path_state.path_cycle_count > 0) {
-								path_state.path_cycle_count--;
-							} else if (path->settings.maximum_paths > 0) {
-								path_state.path_quaternions[qi].cycles = tfxINVALID;
-							}
-						}
-					}
-				}
-
-				if (emitter.particles_index == tfxINVALID) {
-					emitter.particles_index = tfx__grab_particle_lists(pm, child->path_hash, 100, child->state_properties.control_profile);
-					TFX_ASSERT(emitter.particles_index != tfxINVALID);
-				}
-
-				if (state_flags & tfxEmitterStateFlags_is_edge_traversal || emitter.state_properties.control_profile & tfxEmitterControlProfile_trajectory) {
-					emitter.state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
-				}
+				tfx__reset_particle_emitter_state(pm, index, parent_index.index, child, &seed_index);
 
 				if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu) {
 					//Assign emitter to its GPU particle group (matched by control profile + life bucket)
 					tfx__assign_emitter_to_gpu_group(pm, index);
 				}
 
+				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
 				if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 					source_emitters.push_back({ emitter.source_emitter->path_hash, index, tfxEmitterType });
 					emitter.spawn_locations_index = tfx__grab_particle_location_lists(pm, child->path_hash, 100);
@@ -12887,61 +12974,14 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 
 			} else if (child->type == tfxRibbonType) {
 				index = tfx__get_ribbon_slot(pm);
+
+				tfx__reset_ribbon_emitter_state(pm, index, parent_index.index, child, &seed_index);
 				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(child);
-				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
-				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
-				ribbon_emitter.segment_count = ribbon_properties->bucket_info.segment_count;
-				TFX_ASSERT(ribbon_emitter.segment_count <= tfxMAX_SEGMENT_COUNT);	//segment count for ribbon must not exceed the max segment count
-				if (!pm->ribbon_segment_buckets.ValidKey(ribbon_properties->ribbon_bucket_id)) {
-					tfx__init_ribbon_segment_buffer(pm, ribbon_properties->ribbon_bucket_id, &ribbon_properties->bucket_info, 1);
-				}
-				new_effect.active_emitters++;
-				ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
 				tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
+				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 				bucket->ribbon_emitter_indexes[pm->current_ebuff].push_back(index);
-				ribbon_emitter.state_properties = child->state_properties;
-				ribbon_emitter.state_properties.image_frame_rate = child->state_properties.image->animation_frames > 1 && child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
-				ribbon_emitter.state_properties.gpu_property_index = tfx__grab_gpu_ribbon_emitter(pm);
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].lookup_offset = child->gpu_lookup_offset;
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
-				pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
 
-				ribbon_emitter.amount_remainder = 0.f;
-				ribbon_emitter.qty_step_size = 0.f;
-				ribbon_emitter.spawn_quantity = 0.f;
-				ribbon_emitter.source_ribbon = child;
-				ribbon_emitter.local_position = tfx_vec3_t();
-				ribbon_emitter.local_rotations = tfx_vec3_t();
-				ribbon_emitter.age = 0.f;
-				ribbon_emitter.ribbon_property_flags = child->ribbon_flags;
-				ribbon_emitter.library = effect->library;
-				ribbon_emitter.parent_index = parent_index.index;
-				ribbon_emitter.seed_index = seed_index++;
-				ribbon_emitter.active_ribbons = 0;
-				ribbon_emitter.path_state.active_paths = 0;
-				ribbon_emitter.ribbon_indexes[0].init();
-				ribbon_emitter.ribbon_indexes[1].init();
-				ribbon_emitter.lag_clock = 0.f;
-				ribbon_emitter.lag_history_head = 0;
-				ribbon_emitter.lag_history_count = 0;
-				ribbon_emitter.state_flags = 0;
-				ribbon_emitter.samples_per_segment = 1;
-				ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
-				ribbon_emitter.morph_segment_start_index = tfxINVALID;
-				if (shared_properties->emission_type == tfxPath) {
-					ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
-					ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
-					//Emitters sharing a path but wanting different sample densities must not share a cached array
-					tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
-					tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
-					ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
-					if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
-						tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
-						tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
-						ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
-					}
-				}
-
+				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
 				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 					source_emitters.push_back({ ribbon_emitter.source_ribbon->path_hash, index, tfxRibbonType });
 					ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
@@ -13007,6 +13047,81 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect,
 	target_emitters.free();
 	tfx__sync_unlock(&pm->add_effect_mutex);
 	return parent_index.index;
+}
+
+void tfx__purge_expired_effects(tfx_stage pm) {
+	tfxU32 next_buffer = pm->current_ebuff ^ 1;
+	for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
+	}
+}
+
+void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
+	tfx_effect_state_t &effect = pm->effects[effect_id];
+	effect.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
+	tfx__reset_effect_state(pm, effect_id, effect.source_effect);
+	tfxU32 seed_index = 0;
+
+	struct hash_index_pair_t {
+		tfxKey hash;
+		tfxU32 index;
+		tfx_effect_descriptor_type type;
+	};
+
+	tmpStack(hash_index_pair_t, source_emitters);
+	tmpStack(hash_index_pair_t, target_emitters);
+
+	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+		tfx__reset_particle_emitter_state(pm, emitter_index, effect_id, emitter.source_emitter, &seed_index);
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter.source_emitter);
+		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
+			source_emitters.push_back({ emitter.source_emitter->path_hash, emitter_index, tfxEmitterType });
+			emitter.spawn_locations_index = tfx__grab_particle_location_lists(pm, emitter.source_emitter->path_hash, 100);
+		} else if (shared_properties->paired_emitter_hash && (shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon)) {
+			target_emitters.push_back({ shared_properties->paired_emitter_hash, emitter_index, tfxEmitterType });
+		}
+	}
+	for (tfx_effect_descriptor ribbon_emitter : effect.source_effect->children) {
+		if (ribbon_emitter->type == tfxRibbonType) {
+			tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(ribbon_emitter);
+			tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
+			for (tfxU32 index : bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
+				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
+				tfx__reset_ribbon_emitter_state(pm, index, effect_id, ribbon_emitter.source_ribbon, &seed_index);
+				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(ribbon_emitter.source_ribbon);
+				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
+					source_emitters.push_back({ ribbon_emitter.source_ribbon->path_hash, index, tfxRibbonType });
+					ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
+				} else if (shared_properties->emission_type == tfxOtherEmitter) {
+					target_emitters.push_back({ shared_properties->paired_emitter_hash, index, tfxRibbonType });
+				}
+			}
+		}
+	}
+
+	if (target_emitters.current_size && source_emitters.current_size) {
+		for (hash_index_pair_t target_pair : target_emitters) {
+			for (hash_index_pair_t source_pair : source_emitters) {
+				if (target_pair.hash == source_pair.hash) {
+					if (source_pair.type == tfxRibbonType) {
+						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[source_pair.index];
+						tfx_particle_emitter_state_t &emitter = pm->emitters[target_pair.index];
+						emitter.other_emitter_index = source_pair.index;
+						emitter.state_properties.ribbon_bucket_id = ribbon_emitter.ribbon_bucket_id;
+						if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+							emitter.state_flags |= tfxEmitterStateFlags_src_ribbon_is_also_relative;
+						}
+					} else {
+						pm->emitters[target_pair.index].spawn_locations_index = pm->emitters[source_pair.index].spawn_locations_index;
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	source_emitters.free();
+	target_emitters.free();
 }
 
 void tfx__update_library_control_profiles(tfx_library library) {
