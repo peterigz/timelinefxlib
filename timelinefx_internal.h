@@ -8155,7 +8155,6 @@ tfxAPI_EDITOR void tfx__update_all_library_gpu_properties(tfx_library library);
 tfxAPI_EDITOR bool tfx__update_library_color_graphs(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
-tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress);

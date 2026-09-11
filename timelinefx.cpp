@@ -3861,14 +3861,21 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 
 void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst) {
 	TFX_ASSERT_HANDLE(src);	//source effect is not a valid handle
+	//The destination keeps its own library. A refresh clones out of the library just read from disk and
+	//every slot the clone takes has to be allocated in the library that is actually live, otherwise the
+	//effect is left holding indexes into a library that nothing else in the host knows about.
+	tfx_library destination_library = src->library;
 	if (TFX_VALID_HANDLE(*dst, tfx_struct_type_effect_descriptor)) {
+		if (TFX_VALID_HANDLE((*dst)->library, tfx_struct_type_effect_library)) {
+			destination_library = (*dst)->library;
+		}
 		tfx__clear_effect(*dst);
 	} else {
 		*dst = tfx_CreateEffectDescriptor(src->type);
 	}
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
-	tfx__clone_effect(src, *dst, src->library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
+	tfx__clone_effect(src, *dst, destination_library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
 	tfx__remap_paired_emitters(src, *dst);
 }
 
@@ -4659,19 +4666,17 @@ tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index) {
 tfx_effect_descriptor tfx_GetLibraryEffect(tfx_library library, const char *path) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	if (!library->effect_paths.ValidName(path)) {
-		TFX_ASSERT(0 && "Effect was not found by that path. Use tfx_IsValidEffectPath to check a path first.");
 		return nullptr;
 	}
 	return library->effect_paths.At(path);
 }
 
-bool tfx__is_valid_effect_path(tfx_library library, const char *path) {
-	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
-	return library->effect_paths.ValidName(path);
-}
-
 bool tfx_IsValidEffectPath(tfx_library library, const char *path) {
-	return tfx__is_valid_effect_path(library, path);
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	if (!library->effect_paths.ValidName(path)) {
+		return false;
+	}
+	return true;
 }
 
 bool tfx__is_valid_effect_key(tfx_library library, tfxKey key) {
@@ -4702,9 +4707,9 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 
 void tfx__update_effect_template(tfx_effect_template effect_template, tfx_effect_descriptor latest_effect) {
 	effect_template->original_effect = latest_effect;
-	if (TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor) && TFX_VALID_HANDLE(effect_template->effect->library, tfx_struct_type_effect_library)) {
-		tfx__clear_effect(effect_template->effect);
-	}
+	//No clear here: tfx__overwrite_effect clears the destination itself, and clearing twice returns the
+	//same graph list and property slots to the library's free lists twice, which hands one slot out to two
+	//emitters on the next allocation.
 	tfx__overwrite_effect(latest_effect, &effect_template->effect);
 	effect_template->paths.Clear();
 	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
@@ -5021,8 +5026,6 @@ tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 sourc
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT_HANDLE(destination_library);		//Not a valid library handle
 	tfxU32 new_graph_index = tfx__add_library_transform_graphs(destination_library);
-	tfx_graph_list_t new_graph_list = {};
-	library->graphs.push_back(new_graph_list);
 	tfx_graph_list_t &dst_list = destination_library->graphs[new_graph_index];
 	TFX_ASSERT(dst_list.graphs.current_size == library->graphs[source_index].graphs.current_size);	//dst and src graph list must be the same size at this point!
 	tfx__copy_graph_list(&library->graphs[source_index], &dst_list);
@@ -5092,6 +5095,7 @@ tfxU32 tfx__add_library_transform_graphs(tfx_library library) {
 		index = library->graphs.size() - 1;
 	}
 	tfx_graph_list_t &graph_list = library->graphs[index];
+	graph_list.effect_descriptor_type = tfxTransformType;
     graph_list.graphs.set_alignment(16);
 	graph_list.graphs.resize(tfxTransformGraphs_max_index);
 	for (tfx_graph_t &graph : graph_list.graphs) {
@@ -10848,6 +10852,15 @@ tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_
 	}
 }
 
+tfxINTERNAL void tfx__tmp_print_effects(tfx_library library) {
+	for (tfx_effect_descriptor effect : library->effects) {
+		tfxPrint("%s, %u", effect->name.c_str(), effect->state_properties.property_index);
+		for (tfx_effect_descriptor emitter : effect->children) {
+			tfxPrint("   - %s, %u, %u", emitter->name.c_str(), emitter->state_properties.property_index, emitter->state_properties.shared_index);
+		}
+	}
+}
+
 void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
 	TFX_ASSERT_HANDLE(library);
 	TFX_ASSERT(result);		//Nowhere to report to
@@ -10924,8 +10937,8 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	for (tfx_effect_descriptor effect : library->effects) {
 		if (effect->type == tfxFolder) {
 			for (tfx_effect_descriptor folder_effect : effect->children) {
-				tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
-				tfx__update_effect_from_disk(effect, disk_effect);
+				tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, folder_effect->path.c_str());
+				tfx__update_effect_from_disk(folder_effect, disk_effect);
 			}
 		} else if (effect->type == tfxEffectType) {
 			tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
@@ -10935,6 +10948,9 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 
 	//Now the effects are updated, update the templates in the library
 	for (tfx_effect_template effect_template : library->effect_templates) {
+		if (!TFX_VALID_HANDLE(effect_template->original_effect, tfx_struct_type_effect_descriptor)) {
+			continue;
+		}
 		tfx_effect_descriptor latest_effect = tfx_GetLibraryEffect(library, effect_template->original_effect->path.c_str());
 		if (!latest_effect) {
 			effect_template->flags |= tfxEffectTemplateFlags_marked_for_deletion;
@@ -10957,6 +10973,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 				//tfx__restart_stage_effect(pm, effect_index.index);
 			}
 		}
+		tfx__purge_expired_effects(pm);
 	}
 
 	for (tfx_effect_descriptor effect : library->effects) {
@@ -10965,14 +10982,23 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 				folder_effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
 			}
 		} else if (effect->type == tfxEffectType) {
-			tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
 			effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
 		}
 	}
 
+	tfx__update_all_library_graphs(library);
+	tfx__reindex_library(library);
+	tfxKey fallback_shape_hash = library->particle_shapes.Size() > 0 ? library->particle_shapes.data[0].image_hash : 0;
+	tfx__update_library_particle_shape_references(library, fallback_shape_hash);
+	tfx__update_library_effect_paths(library);
+	tfx__build_all_library_paths(library);
+	tfx__update_library_control_profiles(library);
+	tfx__update_library_compute_nodes();
+
 	//tfx__repoint_live_emitter_images(library);
 	result->flags |= tfxRefreshFlags_merged;
 	library->version = result->library_version;
+	tfx_FreeLibrary(disk_library);
 	tfx__free_package(package);
 }
 
