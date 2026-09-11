@@ -10959,6 +10959,15 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		}
 	}
 
+	tfx__update_all_library_graphs(library);
+	tfx__reindex_library(library);
+	tfxKey fallback_shape_hash = library->particle_shapes.Size() > 0 ? library->particle_shapes.data[0].image_hash : 0;
+	tfx__update_library_particle_shape_references(library, fallback_shape_hash);
+	tfx__update_library_effect_paths(library);
+	tfx__build_all_library_paths(library);
+	tfx__update_library_control_profiles(library);
+	tfx__update_library_compute_nodes();
+
 	for (tfx_stage pm : tfxStore->stages.data) {
 		for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
 			tfx_effect_state_t &effect_state = pm->effects[effect_index.index];
@@ -10968,32 +10977,26 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			tfx_effect_descriptor source_effect = effect_state.source_effect;
 			if (source_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
 				tfx_HardExpireEffect(pm, effect_index.index);
-			} else if(source_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
-				tfx_HardExpireEffect(pm, effect_index.index);
-				//tfx__restart_stage_effect(pm, effect_index.index);
+			} else if (source_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
+				tfx__restart_stage_effect(pm, effect_index.index);
 			}
 		}
 		tfx__purge_expired_effects(pm);
 	}
 
-	for (tfx_effect_descriptor effect : library->effects) {
-		if (effect->type == tfxFolder) {
-			for (tfx_effect_descriptor folder_effect : effect->children) {
-				folder_effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
-			}
-		} else if (effect->type == tfxEffectType) {
-			effect->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
+	//Cleared through the same walk the rest of the library rebuild uses, which reaches the clone each effect
+	//template holds as well as the library's own effects. That clone is what an effect added from a template
+	//points at, so a flag left set on one would restart that effect again on every refresh that followed.
+	tfx_vector_t<tfx_effect_descriptor> updated;
+	tfx__push_library_roots(library, &updated);
+	while (updated.size()) {
+		tfx_effect_descriptor current = updated.pop_back();
+		current->effect_flags &= ~tfxEffectPropertyFlags_was_updated;
+		for (tfx_effect_descriptor sub : current->children) {
+			updated.push_back(sub);
 		}
 	}
-
-	tfx__update_all_library_graphs(library);
-	tfx__reindex_library(library);
-	tfxKey fallback_shape_hash = library->particle_shapes.Size() > 0 ? library->particle_shapes.data[0].image_hash : 0;
-	tfx__update_library_particle_shape_references(library, fallback_shape_hash);
-	tfx__update_library_effect_paths(library);
-	tfx__build_all_library_paths(library);
-	tfx__update_library_control_profiles(library);
-	tfx__update_library_compute_nodes();
+	updated.free();
 
 	//tfx__repoint_live_emitter_images(library);
 	result->flags |= tfxRefreshFlags_merged;
@@ -12937,27 +12940,67 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	}
 }
 
-tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect) {
-	tfxPROFILE;
-	tfx__sync_lock(&pm->add_effect_mutex);
-
-	tfxU32 buffer = pm->current_ebuff;
-
-	TFX_ASSERT(effect->type == tfxEffectType);
-	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
-		tfx__sync_unlock(&pm->add_effect_mutex);
-		return tfxINVALID;
+//Release all the emitter owned items of an effect. The effect keeps it's id.
+tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID effect_id) {
+	//Particle emitters
+	tfx_effect_state_t &effect = pm->effects[effect_id];
+	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+		if (emitter.path_state.path_quaternions) {
+			tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
+		}
+		tfx__free_particle_list(pm, emitter_index);
+		if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+			tfx__free_spawn_location_list(pm, emitter_index);
+		}
+		if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+			pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
+			emitter.state_properties.gpu_group_index = tfxINVALID;
+		}
+		pm->free_emitters.push_back(emitter_index);
 	}
-	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
-    tfx__readbarrier;
-    if (parent_index.index == tfxINVALID) {
-		tfx__sync_unlock(&pm->add_effect_mutex);
-		return tfxINVALID;
-	}
-    pm->effects_in_use[buffer].push_back(parent_index);
-	tfx_effect_state_t &new_effect = pm->effects[parent_index.index];
+	effect.emitter_indexes[0].clear();
+	effect.emitter_indexes[1].clear();
+	effect.emitter_start_size = 0;
+	effect.active_emitters = 0;
 
-	tfx__reset_effect_state(pm, parent_index.index, effect);
+	//Ribbon emitters
+	tfx_ribbon_dispatch_t ribbon_dispatch{};
+	while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+		tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+		for (int buffer = 0; buffer != 2; ++buffer) {
+			tfxU32 keep = 0;
+			for (tfxU32 i = 0; i != bucket.ribbon_emitter_indexes[buffer].current_size; ++i) {
+				tfxU32 ribbon_emitter_index = bucket.ribbon_emitter_indexes[buffer][i];
+				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+				if (ribbon_emitter.parent_index != effect_id) {
+					bucket.ribbon_emitter_indexes[buffer][keep++] = ribbon_emitter_index;
+					continue;
+				}
+				//Only the buffer the stage is on owns the ribbons; the other one holds the same emitter
+				//indexes and must drop them without freeing anything a second time.
+				if (buffer != (int)pm->current_ebuff) {
+					continue;
+				}
+				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
+					bucket.ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+					tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
+				}
+				ribbon_emitter.ribbon_indexes[0].clear();
+				ribbon_emitter.ribbon_indexes[1].clear();
+				ribbon_emitter.active_ribbons = 0;
+				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
+			}
+			bucket.ribbon_emitter_indexes[buffer].shrink(keep);
+		}
+	}
+}
+
+//After an effect in a stage has had it's emitters release, this is used to rebuild them again
+tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effect_id, tfx_effect_descriptor effect) {
+	tfx_effect_state_t &effect_state = pm->effects[effect_id];
+	tfxU32 parent_index = effect_id;
 
 	tfxU32 seed_index = 0;
 
@@ -12978,12 +13021,12 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 				if (index == tfxINVALID) {
 					break;
 				}
-				new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
+				effect_state.emitter_indexes[pm->current_ebuff].push_back(index);
 				tfx_particle_emitter_state_t &emitter = pm->emitters[index];
-				new_effect.active_emitters++;
+				effect_state.active_emitters++;
 				tfx__readbarrier;
 
-				tfx__reset_particle_emitter_state(pm, index, parent_index.index, child, &seed_index);
+				tfx__reset_particle_emitter_state(pm, index, parent_index, child, &seed_index);
 
 				if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu) {
 					//Assign emitter to its GPU particle group (matched by control profile + life bucket)
@@ -13001,7 +13044,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 			} else if (child->type == tfxRibbonType) {
 				index = tfx__get_ribbon_slot(pm);
 
-				tfx__reset_ribbon_emitter_state(pm, index, parent_index.index, child, &seed_index);
+				tfx__reset_ribbon_emitter_state(pm, index, parent_index, child, &seed_index);
 				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(child);
 				tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
@@ -13068,9 +13111,32 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 		}
 	}
 
-	new_effect.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
+	effect_state.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
 	source_emitters.free();
 	target_emitters.free();
+}
+
+tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect) {
+	tfxPROFILE;
+	tfx__sync_lock(&pm->add_effect_mutex);
+
+	tfxU32 buffer = pm->current_ebuff;
+
+	TFX_ASSERT(effect->type == tfxEffectType);
+	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
+		return tfxINVALID;
+	}
+	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
+    tfx__readbarrier;
+    if (parent_index.index == tfxINVALID) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
+		return tfxINVALID;
+	}
+    pm->effects_in_use[buffer].push_back(parent_index);
+
+	tfx__reset_effect_state(pm, parent_index.index, effect);
+	tfx__build_stage_effect_emitters(pm, parent_index.index, effect);
 	tfx__sync_unlock(&pm->add_effect_mutex);
 	return parent_index.index;
 }
@@ -13143,73 +13209,37 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 	pm->current_ebuff = next_buffer;
 }
 
+//Restart a stage effect, used when tfx_RefreshLibrary is called after it's been reloaded
 void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
 	tfx_effect_state_t &effect = pm->effects[effect_id];
-	effect.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
-	tfx__reset_effect_state(pm, effect_id, effect.source_effect);
-	tfxU32 seed_index = 0;
-
-	struct hash_index_pair_t {
-		tfxKey hash;
-		tfxU32 index;
-		tfx_effect_descriptor_type type;
-	};
-
-	tmpStack(hash_index_pair_t, source_emitters);
-	tmpStack(hash_index_pair_t, target_emitters);
-
-	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-		tfx__reset_particle_emitter_state(pm, emitter_index, effect_id, emitter.source_emitter, &seed_index);
-		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter.source_emitter);
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
-			source_emitters.push_back({ emitter.source_emitter->path_hash, emitter_index, tfxEmitterType });
-			emitter.spawn_locations_index = tfx__grab_particle_location_lists(pm, emitter.source_emitter->path_hash, 100);
-		} else if (shared_properties->paired_emitter_hash && (shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon)) {
-			target_emitters.push_back({ shared_properties->paired_emitter_hash, emitter_index, tfxEmitterType });
-		}
+	if (!TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
+		return;
 	}
-	for (tfx_effect_descriptor ribbon_emitter : effect.source_effect->children) {
-		if (ribbon_emitter->type == tfxRibbonType) {
-			tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(ribbon_emitter);
-			tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
-			for (tfxU32 index : bucket->ribbon_emitter_indexes[pm->current_ebuff]) {
-				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
-				tfx__reset_ribbon_emitter_state(pm, index, effect_id, ribbon_emitter.source_ribbon, &seed_index);
-				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(ribbon_emitter.source_ribbon);
-				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
-					source_emitters.push_back({ ribbon_emitter.source_ribbon->path_hash, index, tfxRibbonType });
-					ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
-				} else if (shared_properties->emission_type == tfxOtherEmitter) {
-					target_emitters.push_back({ shared_properties->paired_emitter_hash, index, tfxRibbonType });
-				}
-			}
-		}
-	}
+	tfx_effect_descriptor source_effect = effect.source_effect;
 
-	if (target_emitters.current_size && source_emitters.current_size) {
-		for (hash_index_pair_t target_pair : target_emitters) {
-			for (hash_index_pair_t source_pair : source_emitters) {
-				if (target_pair.hash == source_pair.hash) {
-					if (source_pair.type == tfxRibbonType) {
-						tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[source_pair.index];
-						tfx_particle_emitter_state_t &emitter = pm->emitters[target_pair.index];
-						emitter.other_emitter_index = source_pair.index;
-						emitter.state_properties.ribbon_bucket_id = ribbon_emitter.ribbon_bucket_id;
-						if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
-							emitter.state_flags |= tfxEmitterStateFlags_src_ribbon_is_also_relative;
-						}
-					} else {
-						pm->emitters[target_pair.index].spawn_locations_index = pm->emitters[source_pair.index].spawn_locations_index;
-					}
-					break;
-				}
-			}
-		}
-	}
+	//Carry over the relevant info needed to restart the effect in-place
+	tfx_vec3_t local_position = effect.local_position;
+	tfx_vec3_t local_rotations = effect.local_rotations;
+	tfx_vec3_t emitter_size = effect.emitter_size;
+	tfx_parent_spawn_controls_t spawn_controls = effect.spawn_controls;
+	float overall_scale = effect.overall_scale;
+	float noise_base_offset = effect.noise_base_offset;
+	void *user_data = effect.user_data;
+	tfxEmitterStateFlags overrides = effect.state_flags & (tfxEffectStateFlags_override_overall_scale
+		| tfxEffectStateFlags_override_orientiation | tfxEffectStateFlags_override_size_multiplier);
 
-	source_emitters.free();
-	target_emitters.free();
+	tfx__release_stage_effect_emitters(pm, effect_id);
+	tfx__reset_effect_state(pm, effect_id, source_effect);
+	tfx__build_stage_effect_emitters(pm, effect_id, source_effect);
+
+	effect.local_position = local_position;
+	effect.local_rotations = local_rotations;
+	effect.emitter_size = emitter_size;
+	effect.spawn_controls = spawn_controls;
+	effect.overall_scale = overall_scale;
+	effect.noise_base_offset = noise_base_offset;
+	effect.user_data = user_data;
+	effect.state_flags |= overrides;
 }
 
 void tfx__update_library_control_profiles(tfx_library library) {
