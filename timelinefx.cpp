@@ -10861,6 +10861,71 @@ tfxINTERNAL void tfx__tmp_print_effects(tfx_library library) {
 	}
 }
 
+//Called by tfx_RefreshLibrary to update the library with what shapes were removed or added
+tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library disk_library, tfx_shape_loader shape_loader, void *user_data, bool is_folder, tfx_refresh_result_t *result) {
+	tfx_vector_t<tfx_image_data_t> added_shapes;
+	tfx_vector_t<tfx_image_data_t> removed_shapes;
+
+	for (tfx_image_data_t &image : library->particle_shapes.data) {
+		if (!disk_library->particle_shapes.ValidKey(image.image_hash)) {
+			removed_shapes.push_back(image);
+		}
+	}
+
+	for (tfx_image_data_t &image : disk_library->particle_shapes.data) {
+		if (!library->particle_shapes.ValidKey(image.image_hash)) {
+			added_shapes.push_back(image);
+		}
+	}
+
+	if (added_shapes.size() == 0 && removed_shapes.size() == 0) {
+		added_shapes.free();
+		removed_shapes.free();
+		return;
+	}
+
+	tfx_stream_t shape_data{};
+	for (tfx_image_data_t &image : added_shapes) {
+		void *data = nullptr;
+		tfxU32 size = 0;
+		if (is_folder) {
+			shape_data.Free();
+			tfx_str512_t shape_path;
+			shape_path.Setf("%s/%s/%s", library->library_file_path.data, tfxFOLDER_SHAPES_DIRECTORY, image.name.c_str());
+			tfx__read_entire_file(shape_path.c_str(), &shape_data, false);
+			data = shape_data.data;
+			size = (tfxU32)shape_data.Size();
+		} else if (tfx__load_file_from_package(library->library_file_path.data, image.name.c_str(), &shape_data) == tfxErrorCode_success) {
+			data = shape_data.data;
+			size = (tfxU32)shape_data.Size();
+		}
+		//Flag the result to reload library entire if a new shape could not be loaded
+		if (!data || !size) {
+			tfxPrint("There was an error loading a new shape on a refresh of the library. It will need to be reloaded.");
+			result->flags |= tfxRefreshFlags_needs_reload;
+			continue;
+		}
+		if (shape_loader) {
+			shape_loader(image.name.c_str(), &image, data, (int)size, user_data);
+		}
+		//Inserted whether or not the host took it, the same as a load does - the pointer belongs to the host
+		library->particle_shapes.Insert(image.image_hash, image);
+	}
+	shape_data.Free();
+
+	for (tfx_image_data_t &image : removed_shapes) {
+		tfx__remove_library_shape(library, image.image_hash);
+	}
+
+	result->added_shape_count = added_shapes.size();
+	result->removed_shape_count = removed_shapes.size();
+	added_shapes.free();
+	removed_shapes.free();
+	if (result->added_shape_count || result->removed_shape_count) {
+		result->flags |= tfxRefreshFlags_shapes_changed;
+	}
+}
+
 void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
 	TFX_ASSERT_HANDLE(library);
 	TFX_ASSERT(result);		//Nowhere to report to
@@ -10925,14 +10990,18 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		return;
 	}
 
-	//At this point we've loaded the updated library but the data file only, no shape binaries.
+	//At this point we've loaded the updated library but the data file only, no shape binaries. The shapes
+	//are taken from the hashes the rows record rather than from the images themselves, which is all a diff
+	//needs and is what keeps a refresh from reading every image in the file on every save.
 	tfx_library disk_library = tfx_CreateLibrary();
-	tfx__load_effect_library_package(package, disk_library, nullptr, nullptr, nullptr);
+	tfx__load_effect_library_package(package, disk_library, nullptr, nullptr, nullptr, true);
 
 	//At this point we should stop any stage work that's happening, we're about to edit effects that might be in flight
 	for (tfx_stage pm : tfxStore->stages.data) {
 		tfx_CompleteStageWork(pm);
 	}
+
+	tfx__refresh_library_shapes(library, disk_library, shape_loader, user_data, is_folder, result);
 
 	for (tfx_effect_descriptor effect : library->effects) {
 		if (effect->type == tfxFolder) {
@@ -10998,7 +11067,11 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	}
 	updated.free();
 
-	//tfx__repoint_live_emitter_images(library);
+	//Adding or removing a shape moves the vector every emitter's image pointer points into, and an effect
+	//that was not updated is never restarted, so its emitters are still holding the old one.
+	if (result->flags & tfxRefreshFlags_shapes_changed) {
+		tfx__repoint_live_emitter_images(library);
+	}
 	result->flags |= tfxRefreshFlags_merged;
 	library->version = result->library_version;
 	tfx_FreeLibrary(disk_library);
@@ -12963,6 +13036,9 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 	effect.emitter_indexes[1].clear();
 	effect.emitter_start_size = 0;
 	effect.active_emitters = 0;
+	//The slot is being reused without going back through tfx__get_effect_slot, so the reset it does when it
+	//hands one out has to happen here instead. The depth lists in particular index the banks freed above.
+	tfx__reset_effect_instance_data(&effect.instance_data);
 
 	//Ribbon emitters
 	tfx_ribbon_dispatch_t ribbon_dispatch{};
@@ -16803,6 +16879,21 @@ bool tfx__free_pm_effect_capacity(tfx_stage pm) {
 	return pm->effects.current_size < pm->max_effects;
 }
 
+//The bookkeeping an effect slot carries over from whatever ran in it before. The depth lists index
+//particles by their slot in a bank, so they only mean anything alongside the particles they were built
+//for: left behind, the next generation of particles is appended after them and indexes past the end of
+//the sprite buffer. Reset when a slot is handed out, and again when a running effect is rebuilt in place.
+tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *instance_data) {
+	instance_data->instance_start_index = tfxINVALID;
+	instance_data->instance_count = 0;
+	memset(instance_data->depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(instance_data->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
+	for (tfxEachLayer) {
+		instance_data->depth_indexes[layer][0].current_size = 0;
+		instance_data->depth_indexes[layer][1].current_size = 0;
+	}
+}
+
 tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
     tfx_effect_index_t parent_index;
 	if (!pm->free_effects.empty()) {
@@ -16810,15 +16901,7 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
 		parent_index = pm->free_effects.pop_back();
 		//Reset the bookkeeping in the instance data here or it can cause a crash and glitches 
 		//further down the road.
-		tfx_effect_instance_data_t *instance_data = &pm->effects[parent_index.index].instance_data;
-		instance_data->instance_start_index = tfxINVALID;
-		instance_data->instance_count = 0;
-		memset(instance_data->depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
-		memset(instance_data->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
-		for (tfxEachLayer) {
-			instance_data->depth_indexes[layer][0].current_size = 0;
-			instance_data->depth_indexes[layer][1].current_size = 0;
-		}
+		tfx__reset_effect_instance_data(&pm->effects[parent_index.index].instance_data);
 		return parent_index;
 	}
 	if (pm->effects.current_size == pm->effects.capacity) {

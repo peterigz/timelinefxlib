@@ -10166,6 +10166,7 @@ tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_insta
 //effect manager internal functions
 //--------------------------------
 tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm);
+tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *instance_data);
 tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_stage pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_stage pm);
 tfxINTERNAL tfxU32 tfx__allocate_path_quaternion(tfx_stage pm, tfxU32 amount);

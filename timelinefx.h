@@ -879,19 +879,11 @@ typedef struct tfx_refresh_result_s {
 	tfxU32 changed_count;
 	tfxU32 added_count;
 	tfxU32 removed_count;
-	const tfxKey *changed_effects;       //Path hashes, owned by the library, valid until the next refresh
-	const tfxKey *added_effects;
-	const tfxKey *removed_effects;
-	//Merged effects whose live emitters could not take the change without respawning. The values are in
-	//the library either way; these are the effects a host has to restart for them to be seen.
 	tfxU32 restart_count;
-	const tfxKey *restart_effects;
 	//Image hashes. Added shapes have been loaded through the shape_loader and are in the library; removed
 	//ones are already gone. A host that keeps its own texture per shape only has to act on these two.
 	tfxU32 added_shape_count;
 	tfxU32 removed_shape_count;
-	const tfxKey *added_shapes;
-	const tfxKey *removed_shapes;
 } tfx_refresh_result_t;
 
 /*
