@@ -143,6 +143,9 @@ layout(location = 1) out ivec3 out_texture_indexes;
 layout(location = 2) out vec4 out_intensity_curved_alpha_map;
 //Every shape has its own image so the descriptor index has to reach the fragment shader per particle
 layout(location = 3) out flat uint out_image_index;
+//Position across the ribbon's width, 0 to 1. Its screen space derivative is how many pixels wide the
+//ribbon is here, which the fragment shader needs to fade a ribbon out before it goes sub pixel.
+layout(location = 4) out float out_ribbon_across;
 
 vec2 unpack16bit_sscaled(uint packed) {
     int x_scaled = (int(packed) << 16) >> 16;
@@ -256,7 +259,9 @@ void main() {
 	*/
 
 	float uv_x = wrap_fraction * texture_uv_width + uv.x;
-	float uv_y = (t * 0.5 + (side * 0.5)) * (uv.w - uv.y) + uv.y;
+	float ribbon_across = t * 0.5 + (side * 0.5);
+	out_ribbon_across = ribbon_across;
+	float uv_y = ribbon_across * (uv.w - uv.y) + uv.y;
 	vec2 ribbon_intensity_gradient_map = unpack16bit_sscaled(ribbon.intensity_gradient_map);
 	vec2 ribbon_curved_alpha = unpack16bit_sscaled(ribbon.curved_alpha);
 	vec2 intensity_gradient_map = vec2(sampled_intensity, sampled_gradient_map);
