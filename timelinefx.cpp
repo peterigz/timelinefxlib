@@ -4552,6 +4552,11 @@ void tfx_SetImagePointer(tfx_image_data_t *image, void *pointer) {
 	image->ptr = pointer;
 }
 
+void *tfx_GetImagePointer(tfx_image_data_t *image) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	return image->ptr;
+}
+
 void tfx_SetGPUImageTextureInfo(tfx_gpu_image_data_t *image, float x, float y, float z, float w, int array_index) {
 	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_gpu_image_data_t
 	image->uv.x = x;
@@ -10862,7 +10867,7 @@ tfxINTERNAL void tfx__tmp_print_effects(tfx_library library) {
 }
 
 //Called by tfx_RefreshLibrary to update the library with what shapes were removed or added
-tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library disk_library, tfx_shape_loader shape_loader, void *user_data, bool is_folder, tfx_refresh_result_t *result) {
+tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library disk_library, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data, bool is_folder, tfx_refresh_result_t *result) {
 	tfx_vector_t<tfx_image_data_t> added_shapes;
 	tfx_vector_t<tfx_image_data_t> removed_shapes;
 
@@ -10915,6 +10920,9 @@ tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library di
 
 	for (tfx_image_data_t &image : removed_shapes) {
 		tfx__remove_library_shape(library, image.image_hash);
+		if (shape_remover) {
+			shape_remover(&image, user_data);
+		}
 	}
 
 	result->added_shape_count = added_shapes.size();
@@ -10926,7 +10934,7 @@ tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library di
 	}
 }
 
-void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result) {
+void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, tfx_shape_remover shape_remover, void *user_data, tfx_refresh_result_t *result) {
 	TFX_ASSERT_HANDLE(library);
 	TFX_ASSERT(result);		//Nowhere to report to
 
@@ -11001,7 +11009,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		tfx_CompleteStageWork(pm);
 	}
 
-	tfx__refresh_library_shapes(library, disk_library, shape_loader, user_data, is_folder, result);
+	tfx__refresh_library_shapes(library, disk_library, shape_loader, shape_remover, user_data, is_folder, result);
 
 	for (tfx_effect_descriptor effect : library->effects) {
 		if (effect->type == tfxFolder) {

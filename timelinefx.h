@@ -626,6 +626,7 @@ typedef struct tfx_gpu_graph_data_s {
 //Section: Callback_typedefs
 //------------------------------------------------------------
 typedef void(*tfx_shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data);
+typedef void(*tfx_shape_remover)(tfx_image_data_t *image_data, void *user_data);
 typedef void(*tfx_uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_float32x3_t position, float radius, void *user_data);
 
@@ -931,7 +932,7 @@ loaded from a folder or a .tfx package) to assertain whether the library is a ne
 * @param result                  Filled in with the flags and the lists described above. The lists point
                                  into the library and stay valid until the next call for that library.
 */
-tfxAPI void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, tfx_refresh_result_t *result);
+tfxAPI void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, tfx_shape_remover shape_remover, void *user_data, tfx_refresh_result_t *result);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -989,6 +990,7 @@ Get a particle image from a library by it's index
 tfxAPI tfx_image_data_t *tfx_GetLibraryImage(tfx_library library, tfxU32 index);
 
 tfxAPI void tfx_SetImagePointer(tfx_image_data_t *image, void *pointer);
+tfxAPI void *tfx_GetImagePointer(tfx_image_data_t *image);
 tfxAPI void tfx_SetGPUImageTextureInfo(tfx_gpu_image_data_t *image, float x, float y, float z, float w, int array_index);
 tfxAPI int tfx_GetImageFrameCount(tfx_image_data_t *image);
 tfxAPI int tfx_GetImageWidth(tfx_image_data_t *image);
