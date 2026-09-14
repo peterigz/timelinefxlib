@@ -10847,13 +10847,15 @@ tfxINTERNAL bool tfx__descriptors_overlap(tfx_effect_descriptor first, tfx_effec
 }
 
 tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect) {
-	if (disk_effect && disk_effect->version > effect->version) {
+	if (!disk_effect) {
+		effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
+		return;
+	}
+	effect->effect_flags &= ~tfxEffectPropertyFlags_marked_for_deletion;
+	if (disk_effect->version > effect->version) {
 		//Effect was updated
 		tfx__overwrite_effect(disk_effect, &effect);
 		effect->effect_flags |= tfxEffectPropertyFlags_was_updated;
-	} else if (!disk_effect) {
-		//The effect is no longer found in the latest version
-		effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
 	}
 }
 
@@ -11025,14 +11027,28 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 
 	//Now the effects are updated, update the templates in the library
 	for (tfx_effect_template effect_template : library->effect_templates) {
+		tfx_effect_descriptor template_clone = TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor) ? effect_template->effect : nullptr;
 		if (!TFX_VALID_HANDLE(effect_template->original_effect, tfx_struct_type_effect_descriptor)) {
+			effect_template->flags |= tfxEffectTemplateFlags_marked_for_deletion;
+			if (template_clone) {
+				template_clone->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
+			}
 			continue;
 		}
-		tfx_effect_descriptor latest_effect = tfx_GetLibraryEffect(library, effect_template->original_effect->path.c_str());
-		if (!latest_effect) {
+		tfx_effect_descriptor latest_effect = effect_template->original_effect;
+		if (latest_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
 			effect_template->flags |= tfxEffectTemplateFlags_marked_for_deletion;
-		} else if (latest_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
-			tfx__update_effect_template(effect_template, latest_effect);
+			if (template_clone) {
+				template_clone->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
+			}
+		} else {
+			effect_template->flags &= ~(tfxEffectTemplateFlags_marked_for_deletion | tfxEffectTemplateFlags_deletion_reported);
+			if (template_clone) {
+				template_clone->effect_flags &= ~tfxEffectPropertyFlags_marked_for_deletion;
+			}
+			if (latest_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
+				tfx__update_effect_template(effect_template, latest_effect);
+			}
 		}
 	}
 
@@ -12765,6 +12781,14 @@ void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_cal
 tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
 	TFX_ASSERT_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
+	if (effect_template->flags & tfxEffectTemplateFlags_marked_for_deletion) {
+		//tfx_RefreshLibrary marks the template effect for deletion if it's been removed from the library.
+		if (!(effect_template->flags & tfxEffectTemplateFlags_deletion_reported)) {
+			effect_template->flags |= tfxEffectTemplateFlags_deletion_reported;
+			tfxPrint("Effect that this template was based on has been deleted from the library.");
+		}
+		return tfxINVALID;
+	}
 	return tfx__add_effect_to_stage(pm, effect_template->effect);
 }
 
