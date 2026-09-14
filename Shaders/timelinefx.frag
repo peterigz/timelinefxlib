@@ -4,6 +4,10 @@
 layout(location = 0) in vec3 in_tex_coord;
 layout(location = 1) in flat ivec3 in_color_ramp_coords;
 layout(location = 2) in vec4 in_intensity_curved_alpha_map;
+layout(location = 3) in flat uint in_image_index;
+//Every shape has its own image, so the index varies per particle rather than per draw and the descriptor
+//read is non uniform
+#define TFX_PARTICLE_IMAGE images[nonuniformEXT(in_image_index)]
 
 layout(location = 0) out vec4 out_color;
 
@@ -12,7 +16,6 @@ layout(set = 0, binding = 0) uniform sampler samplers[];
 
 layout(push_constant) uniform quad_index
 {
-    uint particle_texture_index;
     uint color_ramp_texture_index;
     uint image_data_index;
     uint properties_index;
@@ -24,11 +27,11 @@ layout(push_constant) uniform quad_index
 } pc;
 
 void main() {
-	vec4 texel = texture(sampler2DArray(images[nonuniformEXT(pc.particle_texture_index)], samplers[nonuniformEXT(pc.sampler_index)]), in_tex_coord);
+	vec4 texel = texture(sampler2DArray(TFX_PARTICLE_IMAGE, samplers[pc.sampler_index]), in_tex_coord);
 	float lookup = clamp(texel.r * in_intensity_curved_alpha_map.w, 0.0, 1.0);
 	int ramp_x = int(lookup * 255);
 	ivec3 ramp = ivec3(ramp_x, in_color_ramp_coords.x, in_color_ramp_coords.y);
-	vec4 ramp_texel = texelFetch(sampler2DArray(images[nonuniformEXT(pc.color_ramp_texture_index)], samplers[nonuniformEXT(pc.sampler_index)]), ramp, 0);
+	vec4 ramp_texel = texelFetch(sampler2DArray(images[pc.color_ramp_texture_index], samplers[pc.sampler_index]), ramp, 0);
 	ramp_texel *= in_intensity_curved_alpha_map.x;
 	ramp_texel.a = min(1, ramp_texel.a);
 	float curved_alpha = 1 - smoothstep(texel.a * in_intensity_curved_alpha_map.z, texel.a, 1 - in_intensity_curved_alpha_map.y);

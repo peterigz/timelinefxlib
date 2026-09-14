@@ -12907,7 +12907,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.qty_step_size = 0.f;
 	emitter.emitter_size = 0.f;
 	emitter.world_rotations = 0.f;
-	emitter.seed_index = *seed_index++;
+	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
 	emitter.spawn_locations_index = tfxINVALID;
 	emitter.other_emitter_index = tfxINVALID;
@@ -12993,7 +12993,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.ribbon_property_flags = src_emitter->ribbon_flags;
 	ribbon_emitter.library = effect_state.library;
 	ribbon_emitter.parent_index = parent_index;
-	ribbon_emitter.seed_index = *seed_index++;
+	ribbon_emitter.seed_index = (*seed_index)++;
 	ribbon_emitter.active_ribbons = 0;
 	ribbon_emitter.path_state.active_paths = 0;
 	ribbon_emitter.ribbon_indexes[0].init();
