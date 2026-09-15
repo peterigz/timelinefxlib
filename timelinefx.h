@@ -1483,6 +1483,21 @@ first so that effectively it begins it's simulation from a set point in time.
 tfxAPI void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect, float millisecs);
 
 /*
+Returns true if the effect template is an effect that will spawn particles that eventually expire.
+* @param tfx_effect_template		A handle to the effect template
+* @returns bool						True if effect will expire on it's own, false if it spawns particles forever.
+*/
+tfxAPI bool tfx_IsFiniteEffect(tfx_effect_template effect);
+
+/*
+Returns the maximum possible lifetime of an effect taking into account particle lifetime and lifetime variation.
+If the effect is not finite then it returns 0.
+* @param tfx_effect_template		A handle to the effect template
+* @returns float					The time in milliseconds	
+*/
+tfxAPI float tfx_GetEffectLifetime(tfx_effect_template effect);
+
+/*
 Set the delta time used when warming up effects. Either match the fixed time step you're using like 1000/60 for 60fps 
 or used mulitples of that value for higher performance at the cost of precision
 * @param pm							A pointer to an initialised tfx_stage_t. 

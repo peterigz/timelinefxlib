@@ -12788,6 +12788,16 @@ void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect_template, float 
 	effect_template->effect->warmup_time = millisecs;
 }
 
+tfxAPI bool tfx_IsFiniteEffect(tfx_effect_template effect_template) {
+	TFX_ASSERT_HANDLE(effect_template);
+	return tfx__is_finite_effect(effect_template->effect);
+}
+
+tfxAPI float tfx_GetEffectLifetime(tfx_effect_descriptor effect_template) {
+	TFX_ASSERT_HANDLE(effect_template);
+	return tfx__get_effect_lifetime(effect_template, 16.666666667f);
+}
+
 void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
 	pm->warmup_delta_time = delta_time;
 }
