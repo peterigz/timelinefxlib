@@ -7,6 +7,11 @@
 #define TFX_VERSION_PATCH 0
 
 #define TFX_STRINGIFY(x) #x
+
+//Bookmarks are user time marker in an effect that are setup in the editor.
+#ifndef tfxMAX_BOOKMARKS
+#define tfxMAX_BOOKMARKS 8
+#endif
 #if defined(__clang__)
 #define TFX_DISABLE_COMPILER_WARNING(w) \
 	_Pragma("clang diagnostic push") \
@@ -1497,6 +1502,25 @@ If the effect is not finite then it returns 0.
 * @returns float					The time in milliseconds	
 */
 tfxAPI float tfx_GetEffectLifetime(tfx_effect_template effect);
+
+/*
+Get the time of a specific bookmark that was set in the effect via the editor by index. You can use bookmarks to
+see if a certain part of an effect has been reached yet. Bookmarks are in order of time, so index 0 will
+always be the earliest bookmark
+* @param tfx_effect_template		A handle to the effect template
+* @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1
+* @returns float					The time in milliseconds, or 0 if there is no bookmark in that slot
+*/
+tfxAPI float tfx_GetBookmarkTime(tfx_effect_template effect, tfxU32 bookmark_index);
+
+/*
+Check if a specific bookmark time has been crossed for an effect running in the stage. 
+* @param pm							A pointer to an initialised tfx_stage_t
+* @param effect_id					The effect id that is in the stage
+* @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1
+* @returns bool						True if the effect has passed that bookmark. Always false for an empty slot.
+*/
+tfxAPI bool tfx_IsBookmarkCrossed(tfx_stage pm, tfxEffectID effect_id, tfxU32 bookmark_index);
 
 /*
 Set the delta time used when warming up effects. Either match the fixed time step you're using like 1000/60 for 60fps 

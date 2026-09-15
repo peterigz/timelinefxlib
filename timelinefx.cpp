@@ -7573,6 +7573,184 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->state_properties.graph_list_index].color_ramps.interpolation_mode);
 }
 
+//Both Set and Setf assert rather than truncate, so a name arriving from a file or a text box has to be
+//bounded here. Commas are stripped because the name is written into a comma separated line.
+void tfx__set_bookmark_name(tfx_bookmark_t *bookmark, const char *name) {
+	bookmark->name.Setf("%.*s", (int)(bookmark->name.capacity - 2), name ? name : "");
+	for (char *character = bookmark->name.data; *character; ++character) {
+		if (*character == ',') {
+			*character = ' ';
+		}
+	}
+}
+
+tfxU32 tfx__effect_bookmark_count(tfx_effect_descriptor effect) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = 0;
+	while (count != tfxMAX_BOOKMARKS && effect->bookmarks[count].time != 0.f) {
+		count++;
+	}
+	return count;
+}
+
+//Closes any gap left by a missing row so that the first empty slot really is the end of the list
+void tfx__repack_effect_bookmarks(tfx_effect_descriptor effect) {
+	TFX_ASSERT_HANDLE(effect);
+	tfx_bookmark_t blank = {};
+	tfxU32 write = 0;
+	for (tfxU32 read = 0; read != tfxMAX_BOOKMARKS; ++read) {
+		if (effect->bookmarks[read].time == 0.f) {
+			continue;
+		}
+		if (write != read) {
+			effect->bookmarks[write] = effect->bookmarks[read];
+			effect->bookmarks[read] = blank;
+		}
+		write++;
+	}
+	tfx__sort_effect_bookmarks(effect, 0);
+}
+
+tfxU32 tfx__sort_effect_bookmarks(tfx_effect_descriptor effect, tfxU32 moved_index) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	tfxU32 landed_at = moved_index;
+	//Insertion sort: the list is at most tfxMAX_BOOKMARKS long and is already sorted apart from the one
+	//bookmark that was just added or retimed, so this walks that one entry into place and nothing else.
+	for (tfxU32 i = 1; i < count; ++i) {
+		tfx_bookmark_t held = effect->bookmarks[i];
+		bool holding_tracked = i == landed_at;
+		tfxU32 j = i;
+		while (j != 0 && effect->bookmarks[j - 1].time > held.time) {
+			if (landed_at == j - 1) {
+				landed_at = j;
+			}
+			effect->bookmarks[j] = effect->bookmarks[j - 1];
+			j--;
+		}
+		effect->bookmarks[j] = held;
+		if (holding_tracked) {
+			landed_at = j;
+		}
+	}
+	return landed_at;
+}
+
+tfxU32 tfx__add_effect_bookmark(tfx_effect_descriptor effect, float time, const char *name) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	if (count == tfxMAX_BOOKMARKS) {
+		return tfxINVALID;
+	}
+	//A zero time is the empty slot marker, so a bookmark can never sit at 0ms
+	tfx_bookmark_t blank = {};
+	tfx_bookmark_t *bookmark = &effect->bookmarks[count];
+	*bookmark = blank;
+	bookmark->time = tfx__Max(time, 1.f);
+	bookmark->flags = tfxBookmarkFlags_none;
+	tfx__set_bookmark_name(bookmark, name);
+	return tfx__sort_effect_bookmarks(effect, count);
+}
+
+void tfx__remove_effect_bookmark(tfx_effect_descriptor effect, tfxU32 index) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	if (index >= count) {
+		return;
+	}
+	tfx_bookmark_t blank = {};
+	for (tfxU32 i = index; i + 1 != count; ++i) {
+		effect->bookmarks[i] = effect->bookmarks[i + 1];
+	}
+	effect->bookmarks[count - 1] = blank;
+}
+
+float tfx__effect_play_start_time(tfx_effect_descriptor effect) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	for (tfxU32 i = 0; i != count; ++i) {
+		if (effect->bookmarks[i].flags & tfxBookmarkFlags_play_start) {
+			return effect->bookmarks[i].time;
+		}
+	}
+	return 0.f;
+}
+
+float tfx__effect_play_end_time(tfx_effect_descriptor effect) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	for (tfxU32 i = 0; i != count; ++i) {
+		if (effect->bookmarks[i].flags & tfxBookmarkFlags_play_end) {
+			return effect->bookmarks[i].time;
+		}
+	}
+	return 0.f;
+}
+
+void tfx__set_effect_bookmark_flag(tfx_effect_descriptor effect, tfxU32 index, tfxBookmarkFlags flag, bool on) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	if (index >= count) {
+		return;
+	}
+	if (!on) {
+		effect->bookmarks[index].flags &= ~flag;
+		return;
+	}
+	tfxBookmarkFlags opposite = flag == tfxBookmarkFlags_play_start ? tfxBookmarkFlags_play_end : tfxBookmarkFlags_play_start;
+	float time = effect->bookmarks[index].time;
+	for (tfxU32 i = 0; i != count; ++i) {
+		if (i == index) {
+			//A bookmark marks one end of the range or the other, never both
+			effect->bookmarks[i].flags = (effect->bookmarks[i].flags & ~opposite) | flag;
+			continue;
+		}
+		//Only one bookmark holds each flag, and a start can never sit at or after the end
+		effect->bookmarks[i].flags &= ~flag;
+		bool wrong_side = flag == tfxBookmarkFlags_play_start ? effect->bookmarks[i].time <= time : effect->bookmarks[i].time >= time;
+		if (wrong_side) {
+			effect->bookmarks[i].flags &= ~opposite;
+		}
+	}
+}
+
+void tfx__stream_effect_bookmarks(tfx_effect_descriptor effect, tfx_stream_t *file) {
+	TFX_ASSERT_HANDLE(effect);
+	tfxU32 count = tfx__effect_bookmark_count(effect);
+	for (tfxU32 i = 0; i != count; ++i) {
+		//The name goes last so that one containing a comma can still be recovered by rejoining the tail
+		file->AddLine("bookmark,%i,%f,%i,%s", (int)i, effect->bookmarks[i].time, (int)effect->bookmarks[i].flags, effect->bookmarks[i].name.c_str());
+	}
+}
+
+void tfx__assign_bookmark_line(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
+	if (effect->type != tfxEffectType || values->size() < 4 || (*values)[0] != "bookmark") {
+		return;
+	}
+	tfxU32 slot = (tfxU32)atoi((*values)[1].c_str());
+	if (slot >= tfxMAX_BOOKMARKS) {
+		return;
+	}
+	float time = (float)atof((*values)[2].c_str());
+	if (time <= 0.f) {
+		return;	//Zero is the empty slot marker, so a row claiming it was never a bookmark
+	}
+	tfx_bookmark_t blank = {};
+	tfx_bookmark_t *bookmark = &effect->bookmarks[slot];
+	*bookmark = blank;
+	bookmark->time = time;
+	bookmark->flags = (tfxBookmarkFlags)atoi((*values)[3].c_str());
+	if (values->size() > 4) {
+		//A name written before commas were stripped from them split across the remaining fields
+		tfx_str256_t rejoined;
+		rejoined.Set((*values)[4].c_str());
+		for (tfxU32 i = 5; i != values->size(); ++i) {
+			rejoined.Appendf(",%s", (*values)[i].c_str());
+		}
+		tfx__set_bookmark_name(bookmark, rejoined.c_str());
+	}
+}
+
 void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *file) {
 
 	file->AddLine("draw_order_by_age=%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
@@ -10534,6 +10712,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 			} else if (context == tfxStartGraphProperties) {
 				tfx__assign_graph_properties(effect_stack.back(), &pair);
+			} else if (context == tfxStartBookmarks) {
+				tfx__assign_bookmark_line(effect_stack.back(), &pair);
 			} else if (context == tfxStartForces) {
 				tfx__assign_force_line(effect_stack.back(), &pair);
 			} else if (context == tfxStartForceGraphs) {
@@ -10641,6 +10821,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		}
 
 		if (context == tfxEndEffect) {
+			//The writer packs and sorts them, but a hand edited file could leave a hole or an out of order
+			//row, and everything downstream reads the list as sorted and terminated by the first empty slot.
+			tfx__repack_effect_bookmarks(effect_stack.back());
 			tfx__reindex_effect(effect_stack.back());
 			if (effect_stack.size() > 1) {
 				//Effects inside a folder.
@@ -12822,6 +13005,23 @@ float tfx_GetEffectLifetime(tfx_effect_descriptor effect_template) {
 	return tfx__get_effect_lifetime(effect_template, 16.666666667f);
 }
 
+float tfx_GetBookmarkTime(tfx_effect_template effect_template, tfxU32 bookmark_index) {
+	TFX_ASSERT_HANDLE(effect_template);
+	if (bookmark_index >= tfxMAX_BOOKMARKS) {
+		return 0.f;
+	}
+	return effect_template->effect->bookmarks[bookmark_index].time;
+}
+
+bool tfx_IsBookmarkCrossed(tfx_stage pm, tfxEffectID effect_id, tfxU32 bookmark_index) {
+	TFX_VALIDATE_EFFECT(pm, effect_id, false);
+	if (bookmark_index >= tfxMAX_BOOKMARKS) {
+		return false;
+	}
+	//An empty slot never has its bit set, so the time check the crossing test does is not repeated here
+	return (pm->effects[effect_id].bookmarks_crossed & (tfxU8)(1 << bookmark_index)) > 0;
+}
+
 void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
 	pm->warmup_delta_time = delta_time;
 }
@@ -12913,6 +13113,13 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 	effect_state->emitter_indexes[1].clear();
 	effect_state->emitter_start_size = 0;
 	effect_state->active_emitters = 0;
+
+	//Copied rather than read back through source_effect each frame, and reset here rather than at the add
+	//site so a recycled effect slot cannot inherit the previous occupant's bookmarks or crossed bits.
+	for (tfxU32 bookmark_index = 0; bookmark_index != tfxMAX_BOOKMARKS; ++bookmark_index) {
+		effect_state->bookmarks[bookmark_index] = effect->bookmarks[bookmark_index].time;
+	}
+	effect_state->bookmarks_crossed = 0;
 
 	if (effect->warmup_time > 0) {
 		tfx__add_warmup_effect(pm, effect_id, effect->warmup_time);
@@ -17263,8 +17470,30 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	effect.total_age += (float)pm->frame_length;
 	effect.age += (float)pm->frame_length;
 
-	if (effect.source_effect->state_properties.loop_length && effect.age > effect.source_effect->state_properties.loop_length)
-		effect.age -= effect.source_effect->state_properties.loop_length;
+	float loop_length = effect.source_effect->state_properties.loop_length;
+	bool looped = false;
+	if (loop_length && effect.age > loop_length) {
+		effect.age -= loop_length;
+		looped = true;
+	}
+
+	if (effect.bookmarks[0] != 0.f) {
+		//A looping effect measures its bookmarks against the position within the loop and starts them over each
+		//time round. Everything else measures against the whole life of the effect with the warmup taken back
+		//off, because that is the time base the bookmarks were authored in.
+		if (looped) {
+			effect.bookmarks_crossed = 0;
+		}
+		float bookmark_age = loop_length ? effect.age : effect.total_age - effect.source_effect->warmup_time;
+		for (tfxU32 bookmark_index = 0; bookmark_index != tfxMAX_BOOKMARKS; ++bookmark_index) {
+			if (effect.bookmarks[bookmark_index] == 0.f) {
+				break;	//Bookmarks are packed to the front, so the first empty slot ends the list
+			}
+			if (bookmark_age >= effect.bookmarks[bookmark_index]) {
+				effect.bookmarks_crossed |= (tfxU8)(1 << bookmark_index);
+			}
+		}
+	}
 
 	if (effect.active_emitters == 0) {
 		effect.timeout_counter += (float)pm->frame_length;

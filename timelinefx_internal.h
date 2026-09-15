@@ -3189,7 +3189,9 @@ typedef enum {
 	//Holds the same path_* keys and node block as the primary path. The reader points the emitter's
 	//path_attributes at the morph path for the length of the block rather than carrying duplicate keys.
 	tfxStartMorphPath,
-	tfxEndMorphPath
+	tfxEndMorphPath,
+	tfxStartBookmarks,
+	tfxEndBookmarks
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
@@ -3200,6 +3202,7 @@ typedef tfxU32 tfxColorRampFlags;				//tfx_color_ramp_flag_bits
 typedef tfxU32 tfxGraphFlags;			        //tfx_graph_flag_bits
 typedef tfxU32 tfxForceFlags;                   //tfx_force_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
+typedef tfxU32 tfxBookmarkFlags;                //tfx_bookmark_flag_bits
 typedef tfxU32 tfxParticleFlags;                //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
@@ -6051,7 +6054,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 4;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size.
+const tfxU32 tfxFILE_VERSION = 5;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6676,6 +6679,10 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
 
+	//Any bookmarks that exist in the effect
+	float bookmarks[tfxMAX_BOOKMARKS];
+	tfxU8 bookmarks_crossed;
+
 	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
 	tfx_effect_instance_data_t instance_data;
 
@@ -6876,6 +6883,20 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_ribbon_emitter_state_t;
 
+enum tfx_bookmark_flag_bits {
+	tfxBookmarkFlags_none = 0,
+	tfxBookmarkFlags_play_start = 1 << 0,		//Start and end flags for bookmarks that the editor can use to loop between
+	tfxBookmarkFlags_play_end = 1 << 1,
+};
+
+//A named point on an effect's timeline, in milliseconds from the start of the effect with warmup excluded.
+//A time of zero means the slot is unused: the authoring UI cannot produce a bookmark at 0ms.
+typedef struct tfx_bookmark_s {
+	float time;
+	tfxBookmarkFlags flags;
+	tfx_str64_t name;
+} tfx_bookmark_t;
+
 //An tfx_effect_descriptor_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters,
 //an emitter which spawns all of the particles or a ribbon for spawning ribbon segments.
 //This is only for library storage, when using to update each frame aspects of this are copied to tfx_effect_state_t, tfx_particle_emitter_state_t and tfx_ribbon_emitter_state_t for realtime updates
@@ -6924,6 +6945,8 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 sort_passes;
 	//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
 	float noise_base_offset_range;
+	//Bookmarks are user defined times that mark certain points within an effect.
+	tfx_bookmark_t bookmarks[tfxMAX_BOOKMARKS];
 	//Custom user data, can be accessed in callback functions
 	void *user_data;
 	void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
@@ -8028,6 +8051,18 @@ tfxAPI_EDITOR void tfx__stream_emitter_force_graph_properties(tfx_effect_descrip
 tfxAPI_EDITOR void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
 tfxAPI_EDITOR void tfx__assign_force_graph_node_data(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
 tfxAPI_EDITOR void tfx__assign_force_graph_properties(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR void tfx__stream_effect_bookmarks(tfx_effect_descriptor effect, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__set_bookmark_name(tfx_bookmark_t *bookmark, const char *name);
+tfxAPI_EDITOR void tfx__assign_bookmark_line(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values);
+tfxAPI_EDITOR tfxU32 tfx__effect_bookmark_count(tfx_effect_descriptor effect);
+tfxAPI_EDITOR tfxU32 tfx__add_effect_bookmark(tfx_effect_descriptor effect, float time, const char *name);
+tfxAPI_EDITOR void tfx__remove_effect_bookmark(tfx_effect_descriptor effect, tfxU32 index);
+tfxAPI_EDITOR tfxU32 tfx__sort_effect_bookmarks(tfx_effect_descriptor effect, tfxU32 moved_index);
+tfxAPI_EDITOR void tfx__repack_effect_bookmarks(tfx_effect_descriptor effect);
+tfxAPI_EDITOR float tfx__effect_play_start_time(tfx_effect_descriptor effect);
+tfxAPI_EDITOR float tfx__effect_play_end_time(tfx_effect_descriptor effect);
+//Clears the flag from every other bookmark and drops the opposite flag from this one, keeping start before end
+tfxAPI_EDITOR void tfx__set_effect_bookmark_flag(tfx_effect_descriptor effect, tfxU32 index, tfxBookmarkFlags flag, bool on);
 tfxINTERNAL void tfx__assign_graph_property_values(tfx_graph_t *graph, tfx_vector_t<tfx_str256_t> *values);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
