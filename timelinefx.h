@@ -870,6 +870,7 @@ typedef enum {
 	tfxEffectTemplateFlags_none = 0,
 	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
 	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
+	tfxEffectTemplateFlags_deletion_reported					= 1 << 2,		//The block on adding it to a stage has been reported once
 } tfx_effect_template_flag_bits;
 
 typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
