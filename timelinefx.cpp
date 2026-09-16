@@ -10743,9 +10743,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
-					//Pair index 5 used to be import_filter which has now been removed
-					//Gets written as 0 by default and is not used for now. Will be completely removed
-					//or replaced with something else in the future.
 					tfx_image_data_t image_data = {};
 					tfx__strcpy(image_data.name.data, image_data.name.capacity, pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
