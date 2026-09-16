@@ -247,6 +247,10 @@ typedef enum tfx_image_format {
 	tfx_image_format_l8_png = 3,		//luminance only .png
 	tfx_image_format_a8_png = 4,		//alpha only .png
 	tfx_image_format_rgba8_raw = 5,		//4 channel rgba raw bitmap
+	tfx_image_format_a_bc4_ktx2 = 6,	//alpha only BC4 .ktx2 with its mip chain. Decodes to (1, 1, 1, a), KTXswizzle 111r
+	tfx_image_format_l_bc4_ktx2 = 7,	//luminance only BC4 .ktx2 with its mip chain. Decodes to (l, l, l, 1), KTXswizzle rrr1
+	tfx_image_format_la_bc5_ktx2 = 8,	//luminance in red and alpha in green, BC5 .ktx2 with its mip chain. Decodes to (l, l, l, a), KTXswizzle rrrg
+	tfx_image_format_rgba_bc7_ktx2 = 9,	//4 channel rgba BC7 .ktx2 with its mip chain
 } tfx_image_format;
 
 typedef enum {
