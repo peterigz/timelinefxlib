@@ -237,6 +237,18 @@ typedef enum tfx_color_format {
 	tfx_color_format_rgba32f,
 } tfx_color_format;
 
+//Image formats, can be used in a shape loader to determine how the image is loaded and used
+typedef enum tfx_image_format {
+	//Any effect library created before file format 6 (editor version alpha 35 or before)
+	//will have unknown format and will be auto determined.
+	tfx_image_format_unknown = 0,
+	tfx_image_format_rgba8_png = 1, 	//4 channel rgba .png
+	tfx_image_format_la8_png = 2,		//2 channel luminance and alpha .png
+	tfx_image_format_l8_png = 3,		//luminance only .png
+	tfx_image_format_a8_png = 4,		//alpha only .png
+	tfx_image_format_rgba8_raw = 5,		//4 channel rgba raw bitmap
+} tfx_image_format;
+
 typedef enum {
 	tfxStageSetup_none,
 	tfxStageSetup_group_sprites_by_effect,
@@ -1001,6 +1013,7 @@ tfxAPI void tfx_SetGPUImageTextureInfo(tfx_gpu_image_data_t *image, float x, flo
 tfxAPI int tfx_GetImageFrameCount(tfx_image_data_t *image);
 tfxAPI int tfx_GetImageWidth(tfx_image_data_t *image);
 tfxAPI int tfx_GetImageHeight(tfx_image_data_t *image);
+tfxAPI tfx_image_format tfx_GetImageFormat(tfx_image_data_t *image);
 tfxAPI void* tfx_GetBitmapData(tfx_bitmap_t *bitmap);
 tfxAPI size_t tfx_GetBitmapSize(tfx_bitmap_t *bitmap);
 tfxAPI int tfx_GetBitmapWidth(tfx_bitmap_t *bitmap);

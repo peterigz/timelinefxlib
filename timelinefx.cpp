@@ -46,6 +46,7 @@ tfx__pin_image_data_offset(image_size, 280);
 tfx__pin_image_data_offset(image_index, 288);
 tfx__pin_image_data_offset(animation_frames, 292);
 tfx__pin_image_data_offset(compute_shape_index, 296);
+tfx__pin_image_data_offset(format, 300);
 #ifndef tfxCUSTOM_IMAGE_DATA
 static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 304, "tfx_image_data_t size changed; the C API reads this struct through tfx_GetLibraryImage");
 #endif
@@ -4580,6 +4581,20 @@ int tfx_GetImageWidth(tfx_image_data_t *image) {
 int tfx_GetImageHeight(tfx_image_data_t *image) {
 	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
 	return (int)image->image_size.y;
+}
+
+tfx_image_format tfx_GetImageFormat(tfx_image_data_t *image) {
+	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_image_data_t
+	return image->format;
+}
+
+//Only png and headerless rgba8 have ever been written, so anything without the png signature is raw
+tfx_image_format tfx__detect_image_format(const void *image_data, tfxU64 image_size) {
+	static const unsigned char png_signature[8] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+	if (image_data && image_size >= sizeof(png_signature) && memcmp(image_data, png_signature, sizeof(png_signature)) == 0) {
+		return tfx_image_format_rgba8_png;
+	}
+	return tfx_image_format_rgba8_raw;
 }
 
 void *tfx_GetBitmapData(tfx_bitmap_t *bitmap) {
@@ -10426,9 +10441,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
-					//Pair index 5 used to be import_filter which has now been removed
-					//Gets written as 0 by default and is not used for now. Will be completely removed
-					//or replaced with something else in the future.
+					//Pair index 5 used to be import_filter and holds the shape format from file version 6 on
 					tfx_image_data_t image_data = {};
 					image_data.name.Set(pair[0].c_str());
 					image_data.shape_index = atoi(pair[1].c_str());
@@ -10437,6 +10450,9 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 					if (pair.current_size > 6) {
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
+					if (package->header.file_version >= 6 && pair.current_size > 5) {
+						image_data.format = (tfx_image_format)atoi(pair[5].c_str());
+					}
 
 					//The optional eighth field names the package entry whenever it had to differ from the shape name
 					const char *shape_entry_name = pair.current_size > 7 ? pair[7].c_str() : image_data.name.c_str();
@@ -10444,6 +10460,9 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 					if (shape_entry) {
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						TFX_ASSERT(image_data.image_hash != 0);
+						if (image_data.format == tfx_image_format_unknown) {
+							image_data.format = tfx__detect_image_format(shape_entry->data.data, shape_entry->file_size);
+						}
 
 						shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
@@ -10735,6 +10754,10 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 					if (pair.current_size > 6) {
 						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
+					//Field five held import_filter until file version 6 gave it to the shape format
+					if (package->header.file_version >= 6 && pair.current_size > 5) {
+						image_data.format = (tfx_image_format)atoi(pair[5].c_str());
+					}
 
 					//A reload empties the library but keeps its shapes, so the ones the file still names are
 					//already here with the host's own pointer in them. Loading one again would hand the host a
@@ -10760,10 +10783,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 						}
 					} else if (shape_entry) {
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
-						if (image_data.image_hash == 0) {
-							image_data.image_hash = image_data.image_hash;
+						if (image_data.format == tfx_image_format_unknown) {
+							image_data.format = tfx__detect_image_format(shape_entry->data.data, shape_entry->file_size);
 						}
-						TFX_ASSERT(image_data.image_hash == image_data.image_hash);
 
 						if (shape_loader && shape_entry->data.data) {
 							shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
@@ -11094,6 +11116,10 @@ tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library di
 			tfxPrint("There was an error loading a new shape on a refresh of the library. It will need to be reloaded.");
 			result->flags |= tfxRefreshFlags_needs_reload;
 			continue;
+		}
+		//The disk library was read for metadata only, so a pre version 6 row has no format on it yet
+		if (image.format == tfx_image_format_unknown) {
+			image.format = tfx__detect_image_format(data, size);
 		}
 		if (shape_loader) {
 			shape_loader(image.name.c_str(), &image, data, (int)size, user_data);
@@ -13002,7 +13028,7 @@ bool tfx_IsFiniteEffect(tfx_effect_template effect_template) {
 
 float tfx_GetEffectLifetime(tfx_effect_template effect_template) {
 	TFX_ASSERT_HANDLE(effect_template);
-	return tfx__get_effect_lifetime(effect_template, 16.666666667f);
+	return tfx__get_effect_lifetime(effect_template->effect, 16.666666667f);
 }
 
 float tfx_GetBookmarkTime(tfx_effect_template effect_template, tfxU32 bookmark_index) {

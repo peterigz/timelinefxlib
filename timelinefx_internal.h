@@ -6054,7 +6054,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 5;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block.
+const tfxU32 tfxFILE_VERSION = 6;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6394,6 +6394,8 @@ typedef struct tfx_image_data_s {
 	//The number of frames in the image, can be one or more
 	float animation_frames;
 	tfxU32 compute_shape_index;
+	//How raw_image_data is encoded and what its channels mean. Set by tfx before shape_loader is called
+	tfx_image_format format;
 	//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
 	//Just define tfxCUSTOM_IMAGE_DATA before you include timelinefx.h
 #ifdef tfxCUSTOM_IMAGE_DATA
@@ -10187,6 +10189,8 @@ tfxINTERNAL void tfx__initialise_ribbon_graphs(tfx_graph_list_t *graph_list, tfx
 tfxINTERNAL void tfx__initialise_force_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size = 2);
 tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data = nullptr, bool shapes_from_recorded_hashes = false);
 tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, tfx_uv_lookup uv_lookup);
+//Works out a shape's format from its bytes, for library files written before file version 6 recorded one
+tfxAPI_EDITOR tfx_image_format tfx__detect_image_format(const void *image_data, tfxU64 image_size);
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
