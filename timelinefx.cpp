@@ -476,73 +476,7 @@ void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, boo
 		return result;
 	}
 
-	tfx_mat4_t tfx__transform_matrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-		tfx_mat4_t res = tfx__create_matrix4(0.f);
 
-		tfx128 in_row[4];
-		in_row[0] = _mm_load_ps(&in->v[0].x);
-		in_row[1] = _mm_load_ps(&in->v[1].x);
-		in_row[2] = _mm_load_ps(&in->v[2].x);
-		in_row[3] = _mm_load_ps(&in->v[3].x);
-
-		tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
-		tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
-		tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
-		tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
-
-		for (int r = 0; r <= 3; ++r)
-		{
-
-			tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
-			tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
-			tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
-			tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
-
-			float tmp[4];
-			_mm_store_ps(tmp, row1result);
-			res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row2result);
-			res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row3result);
-			res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row4result);
-			res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		}
-		return res;
-	}
-
-	tfx_vec4_t tfx__transform_matrix4_vec4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
-		tfx_vec4_t v;
-
-		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-		tfx__readbarrier;
-
-		tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
-		tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
-		tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
-		tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
-
-		tfx__readbarrier;
-
-		tfx128 row1result = _mm_mul_ps(v4, mrow1);
-		tfx128 row2result = _mm_mul_ps(v4, mrow2);
-		tfx128 row3result = _mm_mul_ps(v4, mrow3);
-		tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row4result);
-		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		return v;
-	}
 
 #elif defined(tfxARM)
 
@@ -734,67 +668,7 @@ void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, boo
 		return vaddq_f32(xx, yy);
 	}
 
-	tfx_mat4_t tfx__transform_matrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-		tfx_mat4_t res = tfx__create_matrix4(0.f);
 
-		tfx128 in_row[4];
-		in_row[0] = vld1q_f32(&in->v[0].x);
-		in_row[1] = vld1q_f32(&in->v[1].x);
-		in_row[2] = vld1q_f32(&in->v[2].x);
-		in_row[3] = vld1q_f32(&in->v[3].x);
-
-		tfx128 m_row1 = tfx128Set(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
-		tfx128 m_row2 = tfx128Set(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
-		tfx128 m_row3 = tfx128Set(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
-		tfx128 m_row4 = tfx128Set(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
-
-		for (int r = 0; r <= 3; ++r)
-		{
-			tfx128 row1result = vmulq_f32(in_row[r], m_row1);
-			tfx128 row2result = vmulq_f32(in_row[r], m_row2);
-			tfx128 row3result = vmulq_f32(in_row[r], m_row3);
-			tfx128 row4result = vmulq_f32(in_row[r], m_row4);
-
-			float tmp[4];
-			vst1q_f32(tmp, row1result);
-			res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			vst1q_f32(tmp, row2result);
-			res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			vst1q_f32(tmp, row3result);
-			res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			vst1q_f32(tmp, row4result);
-			res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		}
-		return res;
-	}
-
-	tfx_vec4_t tfx__transform_matrix4_vec4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
-		tfx_vec4_t v;
-
-		tfx128 v4 = vld1q_f32(&vec.x);
-
-		tfx128 mrow1 = vld1q_f32(&mat->v[0].x);
-		tfx128 mrow2 = vld1q_f32(&mat->v[1].x);
-		tfx128 mrow3 = vld1q_f32(&mat->v[2].x);
-		tfx128 mrow4 = vld1q_f32(&mat->v[3].x);
-
-		tfx128 row1result = vmulq_f32(v4, mrow1);
-		tfx128 row2result = vmulq_f32(v4, mrow2);
-		tfx128 row3result = vmulq_f32(v4, mrow3);
-		tfx128 row4result = vmulq_f32(v4, mrow4);
-
-		float tmp[4];
-		vst1q_f32(tmp, row1result);
-		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		vst1q_f32(tmp, row2result);
-		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		vst1q_f32(tmp, row3result);
-		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		vst1q_f32(tmp, row4result);
-		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		return v;
-	}
 
 #endif
 
@@ -1182,32 +1056,17 @@ tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in)
 float tfx_DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 float tfx_RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
 
-float tfx__length_vec4_nosqr(tfx_vec4_t const *v) {
-	return v->x * v->x + v->y * v->y + v->z * v->z + v->w * v->w;
-}
 
 float tfx__length_vec3(tfx_vec3_t const *v) {
 	return sqrtf(tfx__length_vec3_nosqr(v));
 }
 
-float tfx__length_vec4(tfx_vec4_t const *v) {
-	return sqrtf(tfx__length_vec4_nosqr(v));
-}
-
-float tfx__has_length_vec3(tfx_vec3_t const *v) {
-	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
-}
 
 tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v) {
 	float length = tfx__length_vec3(v);
 	return length > 0.f ? tfx_vec3_t(v->x / length, v->y / length, v->z / length) : *v;
 }
 
-tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v) {
-	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
-	float length = tfx__length_vec4(v);
-	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
-}
 
 tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t a, tfx_vec3_t b) {
 	tfx_vec3_t result;
@@ -1217,34 +1076,10 @@ tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t a, tfx_vec3_t b) {
 	return(result);
 }
 
-float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b) {
-	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
-}
 
 // tfx__dot_product_vec2 is inline-defined in timelinefx.h (next to tfx__dot_product_vec3);
 // definition removed here to avoid a duplicate.
 
-void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle) {
-	float half_angle = angle / 2.f;
-	q->w = cosf(half_angle);
-	q->x = 0.f;
-	q->y = 0.f;
-	q->z = sinf(half_angle);
-}
-
-tfx_vec2_t tfx__rotate_vector_quaternion2d(tfx_quaternion_t *q, tfx_vec2_t v) {
-	float c = q->w;
-	float s = q->z;
-
-	float c2 = c * c;
-	float s2 = s * s;
-	float sc = 2.f * s * c;
-
-	float rotated_x = c2 * v.x - (sc * v.y + s2 * v.x);
-	float rotated_y = sc * v.x + (c2 * v.y - s2 * v.y);
-
-	return tfx_vec2_t(rotated_x, rotated_y);
-}
 
 tfx_vec3_t tfx__rotate_vector_quaternion(tfx_quaternion_t *quat, tfx_vec3_t point) {
 	tfx_vec3_t cross = tfx__cross_product_vec3(point, quat->xyz()) + (point * quat->w);
@@ -1496,85 +1331,15 @@ void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x
 
 //Quake 3 inverse square root
 
-float tfx__vec2_length_fast(tfx_vec2_t const *v) {
-	return 1.f / tfx__quake_sqrt(tfx__dot_product_vec2(v, v));
-}
 
 float tfx__vec3_length_fast(tfx_vec3_t const *v) {
 	return 1.f / tfx__quake_sqrt(tfx__dot_product_vec3(v, v));
 }
 
-tfx_mat3_t tfx__create_matrix3(float v) {
-	tfx_mat3_t R =
-	{ {
-		{v, 0, 0},
-		{0, v, 0},
-		{0, 0, v}},
-	};
-	return(R);
-}
 
-tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r) {
-	float const a = r;
-	float const c = cosf(a);
-	float const s = sinf(a);
 
-	tfx_mat3_t result;
-	result.v[0] = m->v[0] * c + m->v[1] * s;
-	result.v[1] = m->v[0] * -s + m->v[1] * c;
-	result.v[2] = m->v[2];
-	return result;
-}
 
-tfx_mat4_t tfx__create_matrix4(float v) {
-	tfx_mat4_t R =
-	{ {
-		{v, 0, 0, 0},
-		{0, v, 0, 0},
-		{0, 0, v, 0},
-		{0, 0, 0, v}},
-	};
-	return(R);
-}
 
-tfx_mat4_t tfx__matrix4_rotate_x(float angle) {
-	float c = cosf(angle);
-	float s = sinf(angle);
-	tfx_mat4_t r =
-	{ {
-		{1, 0, 0, 0},
-		{0, c,-s, 0},
-		{0, s, c, 0},
-		{0, 0, 0, 1}},
-	};
-	return r;
-}
-
-tfx_mat4_t tfx__matrix4_rotate_y(float angle) {
-	float c = cosf(angle);
-	float s = sinf(angle);
-	tfx_mat4_t r =
-	{ {
-		{ c, 0, s, 0},
-		{ 0, 1, 0, 0},
-		{-s, 0, c, 0},
-		{ 0, 0, 0, 1}},
-	};
-	return r;
-}
-
-tfx_mat4_t tfx__matrix4_rotate_z(float angle) {
-	float c = cosf(angle);
-	float s = sinf(angle);
-	tfx_mat4_t r =
-	{ {
-		{c, -s, 0, 0},
-		{s,  c, 0, 0},
-		{0,  0, 1, 0},
-		{0,  0, 0, 1}},
-	};
-	return r;
-}
 
 void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat q_x = tfxWideSetSingle(q->x);
@@ -1591,14 +1356,6 @@ void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat
 	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
-void tfx__transform_matrix4_vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
-	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
-	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
-	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
-	*x = xr;
-	*y = yr;
-}
 
 tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
 	tfx_vec3_t converted;
@@ -1629,11 +1386,6 @@ tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	return ((tfxU32)(uint16_t)x_scaled) | ((tfxU32)(uint16_t)y_scaled << 16);
 }
 
-tfxU32 tfx__pack16bit_unorm(float x, float y) {
-	tfxU32 x_scaled = (tfxU32)(x * 65535.0);
-	tfxU32 y_scaled = (tfxU32)(y * 65535.0);
-	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
-}
 
 tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z) {
 	int x_scaled = (int)(v_x * 127.0f);
@@ -1701,9 +1453,6 @@ tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat con
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
 }
 
-tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in) {
-	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide.m);
-}
 
 tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 packed) {
 	int16_t x = static_cast<int16_t>(packed & 0xFFFF);
@@ -1714,22 +1463,11 @@ tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 packed) {
 	return { w / 32767.0f, x / 32767.0f, y / 32767.0f, z / 32767.0f };
 }
 
-tfx_vec2_t tfx__interpolate_vec2(float tween, tfx_vec2_t from, tfx_vec2_t to) {
-	return to * tween + from * (1.f - tween);
-}
 
 tfx_vec3_t tfx__interpolate_vec3(float tween, tfx_vec3_t from, tfx_vec3_t to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfx_rgba8_t tfx__interpolate_rgba8(float tween, tfx_rgba8_t from, tfx_rgba8_t to) {
-	tfx_rgba8_t out;
-	out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
-	out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
-	out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
-	out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
-	return out;
-}
 
 float tfx__gamma_correct(float color, float gamma) {
 	return powf(color, gamma);
@@ -1858,13 +1596,6 @@ float tfx__get_linear_rgb_graph_value(tfx_graph_t *graph, float t) {
 	return prev->value;
 }
 
-tfxWideFloat tfx__wide_interpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
-	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE.m, tween);
-	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
-	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
-	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
-	return result;
-}
 
 float tfx__interpolate_float(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
@@ -2088,16 +1819,6 @@ void tfx__add_entry_to_package(tfx_package package, tfx_package_entry_info_t fil
 	package->inventory.entry_count++;
 }
 
-void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data) {
-	TFX_ASSERT_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
-	tfx_package_entry_info_t entry;
-	entry.file_name.Set(file_name);
-	entry.data = *data;
-	entry.file_size = data->size;
-
-	package->inventory.entries.Insert(entry.file_name.c_str(), entry);
-	package->inventory.entry_count++;
-}
 
 void tfx__free_package(tfx_package package) {
 	TFX_ASSERT_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
@@ -2439,67 +2160,9 @@ tfxErrorFlags tfx__load_file_from_package(const char *package_file_name, const c
 //tfx__load_effect_library_package stays the one and only reader of the effect format.
 
 #ifdef _WIN32
-tfxINTERNAL bool tfx__list_folder(const char *path, tfx_vector_t<tfx_str256_t> *files, tfx_vector_t<tfx_str256_t> *folders) {
-	tfx_str512_t search;
-	search.Setf("%s/*", path);
-	WIN32_FIND_DATAA find_data;
-	HANDLE find = FindFirstFileA(search.c_str(), &find_data);
-	if (find == INVALID_HANDLE_VALUE) {
-		return false;
-	}
-	do {
-		if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
-			continue;
-		}
-		tfx_str256_t entry_name;
-		entry_name.Set(find_data.cFileName);
-		if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-			folders->push_back(entry_name);
-		} else {
-			files->push_back(entry_name);
-		}
-	} while (FindNextFileA(find, &find_data));
-	FindClose(find);
-	return true;
-}
 #else
-tfxINTERNAL bool tfx__list_folder(const char *path, tfx_vector_t<tfx_str256_t> *files, tfx_vector_t<tfx_str256_t> *folders) {
-	DIR *directory = opendir(path);
-	if (!directory) {
-		return false;
-	}
-	struct dirent *directory_entry = nullptr;
-	while ((directory_entry = readdir(directory)) != nullptr) {
-		if (strcmp(directory_entry->d_name, ".") == 0 || strcmp(directory_entry->d_name, "..") == 0) {
-			continue;
-		}
-		tfx_str512_t entry_path;
-		entry_path.Setf("%s/%s", path, directory_entry->d_name);
-		tfx_str256_t entry_name;
-		entry_name.Set(directory_entry->d_name);
-		if (tfx__path_is_folder(entry_path.c_str())) {
-			folders->push_back(entry_name);
-		} else {
-			files->push_back(entry_name);
-		}
-	}
-	closedir(directory);
-	return true;
-}
 #endif
 
-//Directory order is not defined by either OS, so it is sorted to keep loads reproducible
-tfxINTERNAL void tfx__sort_file_names(tfx_vector_t<tfx_str256_t> *names) {
-	for (tfxU32 i = 1; i < names->current_size; ++i) {
-		tfx_str256_t key = (*names)[i];
-		int j = (int)i - 1;
-		while (j >= 0 && strcmp((*names)[j].c_str(), key.c_str()) > 0) {
-			(*names)[j + 1] = (*names)[j];
-			--j;
-		}
-		(*names)[j + 1] = key;
-	}
-}
 
 bool tfx__names_match_ignoring_case(const char *left, const char *right) {
 	while (*left && *right) {
@@ -2512,23 +2175,6 @@ bool tfx__names_match_ignoring_case(const char *left, const char *right) {
 	return *left == *right;
 }
 
-tfxINTERNAL bool tfx__file_name_has_extension(const char *file_name, const char *extension) {
-	size_t name_length = strlen(file_name);
-	size_t extension_length = strlen(extension);
-	if (name_length <= extension_length) {
-		return false;
-	}
-	return tfx__names_match_ignoring_case(file_name + name_length - extension_length, extension);
-}
-
-tfxINTERNAL void tfx__append_bytes_to_stream(tfx_stream_t *destination, const void *source, tfxU64 length) {
-	if (length == 0) {
-		return;
-	}
-	tfxU64 offset = destination->size;
-	destination->Resize(offset + length);
-	memcpy(destination->data + offset, source, length);
-}
 
 //Only the two version lines are read. This is the poll a host makes to ask whether anything changed at
 //all, so reading a library that can run to megabytes in order to look at the first line would be the
@@ -2778,10 +2424,6 @@ bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 	return true;
 }
 
-bool tfx__is_ordered_effect(tfx_effect_descriptor effect) {
-	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | tfxEffectPropertyFlags_depth_draw_order;
-	return (effect->effect_flags & ordered_flags) > 0;
-}
 
 bool tfx__has_emission_range(tfx_effect_descriptor emitter) {
 	//This is not 100% accurate that the emitter will spawn particles with velocity, but it's close enough for what we need it for.
@@ -2801,9 +2443,6 @@ tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor
 	return &effect->library->preview_camera_settings[effect->preview_camera_settings];
 }
 
-float tfx__get_effect_loop_length(tfx_effect_descriptor effect) {
-	return effect->state_properties.loop_length;
-}
 
 float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect) {
 	float loop_length = effect->state_properties.loop_length;
@@ -2902,18 +2541,6 @@ tfx_effect_descriptor tfx__add_effect_to_emitter(tfx_effect_descriptor emitter, 
 	return effect;
 }
 
-tfx_effect_descriptor tfx__add_effect(tfx_effect_descriptor emitter) {
-	TFX_ASSERT_HANDLE(emitter);	//Not a valid emitter
-	TFX_ASSERT(emitter->type == tfxEmitterType);
-	tfx_effect_descriptor new_effect = tfx_CreateEffectDescriptor(tfxEffectType);
-	new_effect->library = emitter->library;
-	new_effect->uid = ++emitter->library->uid;
-	new_effect->name.Set("New Effect");
-	emitter->children.push_back(new_effect);
-	tfx__update_library_effect_paths(emitter->library);
-	tfx__reindex_effect(emitter);
-	return new_effect;
-}
 
 tfxU32 tfx__count_all_effects(tfx_effect_descriptor effect, tfxU32 amount) {
 	TFX_ASSERT_HANDLE(effect);	//Not a valid emitter
@@ -2923,18 +2550,6 @@ tfxU32 tfx__count_all_effects(tfx_effect_descriptor effect, tfxU32 amount) {
 	return ++amount;
 }
 
-int tfx__get_effect_depth(tfx_effect_descriptor effect) {
-	TFX_ASSERT_HANDLE(effect);	//Not a valid emitter
-	tfx_effect_descriptor current_parent = effect->parent;
-	int depth = 0;
-	while (current_parent) {
-		if (current_parent->type == tfxEmitterType) {
-			depth++;
-		}
-		current_parent = current_parent->parent;
-	}
-	return depth;
-}
 
 template<typename T>
 void tfx__clear_wrap_bit(T* instance, tfx_sprite_data_t *sprite_data) {
@@ -3657,12 +3272,6 @@ bool tfx__is_root_effect(tfx_effect_descriptor effect) {
 	return false;
 }
 
-void tfx__reset_effect_parents(tfx_effect_descriptor effect) {
-	effect->parent = nullptr;
-	for (auto &child : effect->children) {
-		tfx__reset_effect_parents(child);
-	}
-}
 
 void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right) {
 	tfx_depth_index_t temp = *right;
@@ -3978,9 +3587,6 @@ void tfx__do_not_render_all_emitters_except(tfx_effect_descriptor effect, tfx_ef
 	}
 }
 
-void tfx__enable_emitter(tfx_effect_descriptor effect) {
-	effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
-}
 
 void tfx__disable_all_emitters(tfx_effect_descriptor effect) {
 	for (tfx_effect_descriptor child : effect->children) {
@@ -4020,10 +3626,6 @@ bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor) {
 	return (descriptor->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden) > 0;
 }
 
-tfx_graph_list_t *tfx__get_descriptor_graph_list(tfx_effect_descriptor emitter) {
-	TFX_ASSERT(emitter->state_properties.graph_list_index != tfxINVALID);    //Must be a valid emitter_attributes index into the library;
-	return &emitter->library->graphs[emitter->state_properties.graph_list_index];
-}
 
 tfx_graph_list_t *tfx__get_library_graph_list(tfx_library_t *library, tfxU32 index) {
 	TFX_ASSERT(index < library->graphs.current_size);    //Must be a valid emitter_attributes index into the library;
@@ -4049,11 +3651,6 @@ tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor effect, tfx_gra
 	}
 }
 
-void tfx__free_attribute_graphs(tfx_effect_descriptor effect) {
-	tfx_library library = effect->library;
-	tfx__free_library_graphs(&library->graphs[effect->state_properties.graph_list_index]);
-	tfx__free_library_graphs(&library->graphs[effect->state_properties.transform_index]);
-}
 
 void tfx__initialise_path(tfx_emitter_path_t *path) {
 	memset((void *)path, 0, sizeof(tfx_emitter_path_t));
@@ -4065,9 +3662,6 @@ void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_
 	dst->buffers.nodes.copy(src->buffers.nodes);
 }
 
-bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs) {
-	return graphs->graphs[tfxTransform_translate_x].nodes.current_size + graphs->graphs[tfxTransform_translate_y].nodes.current_size + graphs->graphs[tfxTransform_translate_z].nodes.current_size > 0;
-}
 
 tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.path_attributes == tfxINVALID) {
@@ -5030,17 +4624,7 @@ void tfx__free_library_shared_properties(tfx_library library, tfxU32 index) {
 	library->free_shared_emitter_properties.push_back(index);
 }
 
-void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index) {
-	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
-	TFX_ASSERT(index < library->particle_gpu_properties.current_size);
-	library->free_particle_gpu_properties.push_back(index);
-}
 
-void tfx__init_graph_list(tfx_graph_list_t *graph_list) {
-	for (tfx_graph_t &graph : graph_list->graphs) {
-		tfx__init_graph(&graph, 8);
-	}
-}
 
 tfxU32 tfx__clone_library_transform_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
@@ -7162,9 +6746,6 @@ void tfx__assign_property_line(tfx_effect_descriptor effect, tfx_vector_t<tfx_st
 	return;
 }
 
-void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
-	if (*field == "path_hash") metrics->path_hash = value;
-}
 
 void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_length_in_time") metrics->animation_length_in_time = value;
@@ -7944,9 +7525,6 @@ void tfx__stream_graph_properties(const char *name, tfx_effect_descriptor descri
 	);
 }
 
-bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right) {
-	return left->frame < right->frame;
-}
 
 bool tfx__is_lerp_graph(tfx_graph_t *graph) {
 	//A force's wave curve is sampled per particle by the wide sampler like the GPU lookup graphs are, so it needs
@@ -7983,21 +7561,12 @@ bool tfx__is_factor_graph(tfx_graph_t *graph) {
 	return (int)graph->type >= (int)tfxFactor_start && (int)graph->type <= (int)tfxFactor_end;
 }
 
-bool tfx__color_graph(tfx_graph_t *graph) {
-	return (int)graph->type >= (int)tfxOvertime_color_start && (int)graph->type <= (int)tfxOvertime_color_end;
-}
 
 bool tfx__gpu_overtime_graph(tfx_graph_t *graph) {
 	return (int)graph->type >= (int)tfxGPU_lookup_start && (int)graph->type <= (int)tfxGPU_lookup_end;
 }
 
-bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
-	return graph->type == tfxOvertime_blendfactor;
-}
 
-bool tfx__is_global_graph(tfx_graph_t *graph) {
-	return (int)graph->type >= (int)tfxGlobal_start && (int)graph->type <= (int)tfxGlobal_end;
-}
 
 bool tfx__is_angle_graph(tfx_graph_t *graph) {
 	return (graph->type == tfxTransform_roll || graph->type == tfxTransform_pitch || graph->type == tfxTransform_yaw || graph->type == tfxProperty_emission_pitch || graph->type == tfxProperty_emission_yaw
@@ -8005,9 +7574,6 @@ bool tfx__is_angle_graph(tfx_graph_t *graph) {
 		|| graph->type == tfxVariation_roll_spin || graph->type == tfxVariation_pitch_spin || graph->type == tfxVariation_yaw_spin || graph->type == tfxOvertime_direction || graph->type == tfxOverlength_ribbon_fixed_angle);
 }
 
-bool tfx__is_translation_graph(tfx_graph_t *graph) {
-	return graph->type == tfxTransform_translate_x || graph->type == tfxTransform_translate_y || graph->type == tfxTransform_translate_z;
-}
 
 void tfx__multiply_all_graph_values(tfx_graph_t *graph, float scalar) {
 	for (tfxBucketLoop(graph->nodes, i)) {
@@ -8155,44 +7721,6 @@ void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is
 	}
 }
 
-bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort) {
-	float old_frame = node->frame;
-	float old_value = node->value;
-
-	node->frame += frame;
-	node->value += value;
-
-	if (&graph->nodes[0] == node) {
-		node->frame = tfx__get_min_graph_values(graph->graph_preset).x;
-		tfx__clamp_node(graph, node);
-	}
-	else {
-		tfx__clamp_node(graph, node);
-	}
-
-	if (node->flags & tfxAttributeNodeFlags_curves_initialised) {
-		node->left.y += node->value - old_value;
-		node->left.x += node->frame - old_frame;
-		node->right.y += node->value - old_value;
-		node->right.x += node->frame - old_frame;
-		tfx__clamp_node_curve(graph, &node->right, node);
-		tfx__clamp_node_curve(graph, &node->left, node);
-		tfx__set_node_curve_frames(graph);
-	} else {
-		tfx__unset_curves(graph, node->index);
-	}
-
-	if (sort) {
-		if (tfx__sort_graph(graph)) {
-			tfx__reindex_graph(graph);
-			tfx__constrain_graph_curves(graph);
-			return true;
-		}
-	}
-
-	tfx__constrain_graph_curves(graph);
-	return false;
-}
 
 //The lowest and highest y a cubic bezier segment reaches, which is not just its end points once a handle sits outside them
 tfxINTERNAL void tfx__bezier_y_extents(float p0, float c1, float c2, float p3, float *lowest, float *highest) {
@@ -8440,31 +7968,6 @@ void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
 	tfx__reindex_graph(graph);
 }
 
-tfx_attribute_node_t *tfx__add_graph_coord_node(tfx_graph_t *graph, float _frame, float _value) {
-	tfx_attribute_node_t node;
-
-	if (graph->nodes.size())
-		node.frame = _frame;
-	else
-		node.frame = 0.f;
-
-	node.value = _value;
-	node.flags = 0;
-	node.left.x = 0.f;
-	node.left.y = 0.f;
-	node.right.x = 0.f;
-	node.right.y = 0.f;
-	node.uid = graph->uid_counter++;
-	tfx__clamp_node(graph, &node);
-	tfx_attribute_node_t &n = graph->nodes.push_back(node);
-	if (tfx__sort_graph(graph)) {
-		tfx__reindex_graph(graph);
-		return graph->nodes.find(&n);
-	}
-
-	tfx__reindex_graph(graph);
-	return &n;
-}
 
 tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float _frame, float _value) {
 	tfx_attribute_node_t node;
@@ -8506,35 +8009,12 @@ tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float _frame, f
 	return r_value;
 }
 
-void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 i, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
-	if (!graph->nodes.empty() && i < graph->nodes.size()) {
-		graph->nodes[i].frame = _frame;
-		graph->nodes[i].value = _value;
-		graph->nodes[i].flags = flags;
-		graph->nodes[i].left.x = _c0x ? _c0x : _frame;
-		graph->nodes[i].left.y = _c0y ? _c0y : _value;
-		graph->nodes[i].right.x = _c1x ? _c1x : _frame;
-		graph->nodes[i].right.y = _c1y ? _c1y : _value;
-		if (tfx__sort_graph(graph)) {
-			tfx__reindex_graph(graph);
-		}
-	}
-}
-
-tfx_attribute_node_t *tfx__graph_node_by_index(tfx_graph_t *graph, tfxU32 index) {
-	TFX_ASSERT(graph->nodes.current_size > index);    //Index is out of bounds
-	return &graph->nodes[index];
-}
 
 float tfx__graph_value_by_index(tfx_graph_t *graph, tfxU32 index) {
 	TFX_ASSERT(graph->nodes.current_size > index);    //Index is out of bounds
 	return graph->nodes[index].value;
 }
 
-float tfx__graph_frame_by_index(tfx_graph_t *graph, tfxU32 index) {
-	TFX_ASSERT(graph->nodes.current_size > index);    //Index is out of bounds
-	return graph->nodes[index].frame;
-}
 
 float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age) {
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
@@ -8581,24 +8061,6 @@ tfx_attribute_node_t *tfx__get_graph_first_node(tfx_graph_t *graph) {
 	return &graph->nodes.front();
 }
 
-float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *random) {
-	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
-	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
-		curr = &graph->nodes[i];
-		if (age < curr->frame) {
-			float t = (age - prev->frame) / (curr->frame - prev->frame);
-			float ti = 1.f - t;
-			float t2 = t * t;
-			float ti2 = ti * ti;
-			float t_ti2 = t * ti2;
-			float t2_ti = t2 * ti;
-			float bezier_value = ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
-			return tfx_RandomRangeZeroToMax(random, bezier_value);
-		}
-		prev = curr;
-	}
-	return tfx_RandomRangeZeroToMax(random, prev->value);
-}
 
 float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float t) {
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
@@ -8625,11 +8087,6 @@ float *tfx__link_graph_first_value(tfx_graph_t *graph) {
 	return nullptr;
 }
 
-float *tfx__link_graph_last_value(tfx_graph_t *graph) {
-	if (graph->nodes.size())
-		return &graph->nodes.back().value;
-	return nullptr;
-}
 
 float tfx__get_graph_last_value(tfx_graph_t *graph) {
 	if (graph->nodes.size())
@@ -8681,63 +8138,17 @@ float tfx__get_graph_last_frame(tfx_graph_t *graph, float update_frequency) {
 	return 0.f;
 }
 
-tfx_attribute_node_t *tfx__find_graph_node_by_uid(tfx_graph_t *graph, tfxU32 uid) {
-	for (tfx_attribute_node_t &node : graph->nodes) {
-		if (node.uid == uid) {
-			return &node;
-		}
-	}
-	return nullptr;
-}
 
 tfx_attribute_node_t *tfx__find_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *n) {
 	return graph->nodes.find(n);
 }
 
-void tfx__validate_graph_curves(tfx_graph_t *graph) {
-	tfxU32 index = 0;
-	tfxU32 last_index = graph->nodes.size() - 1;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve) {
-			if (index < last_index) {
-				if (graph->nodes[index + 1].frame < graph->nodes[i].right.x) {
-					graph->nodes[i].right.x = graph->nodes[index + 1].frame;
-					tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
-				}
-			}
-			if (index > 0) {
-				if (graph->nodes[index - 1].frame > graph->nodes[i].left.x) {
-					graph->nodes[i].left.x = graph->nodes[index - 1].frame;
-					tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
-				}
-			}
-			if (graph->nodes[i].left.x > graph->nodes[i].frame) {
-				graph->nodes[i].left.x = graph->nodes[i].frame;
-				tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
-			}
-			if (graph->nodes[i].right.x < graph->nodes[i].frame) {
-				graph->nodes[i].right.x = graph->nodes[i].frame;
-				tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
-			}
-		}
-		index++;
-	}
-}
 
 void tfx__delete_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *n) {
 	graph->nodes.erase(n);
 	tfx__reindex_graph(graph);
 }
 
-void tfx__delete_graph_node_at_frame(tfx_graph_t *graph, float frame) {
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (graph->nodes[i].frame == frame) {
-			graph->nodes.erase(&graph->nodes[i]);
-			tfx__reindex_graph(graph);
-			return;
-		}
-	}
-}
 
 void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node) {
 	graph->nodes.clear();
@@ -9307,21 +8718,6 @@ tfx_bitmap_t tfx__create_bitmap(int width, int height, tfx_color_format format) 
 	return bitmap;
 }
 
-void tfx__plot_bitmap_rgba8(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color) {
-	TFX_ASSERT(image->format == tfx_color_format_rgba8);
-
-    tfx_size pos = y * image->stride + (x * image->bytes_per_pixel);
-
-    if (pos >= image->size) {
-        return;
-    }
-
-	*(image->data + pos) = color.r;
-	*(image->data + pos + 1) = color.g;
-	*(image->data + pos + 2) = color.b;
-	*(image->data + pos + 3) = color.a;
-
-}
 void tfx__plot_bitmap_rgba16f(tfx_bitmap_t *image, int x, int y, tfx_rgba16f_t color) {
 	TFX_ASSERT(image->format == tfx_color_format_rgba16f);
 
@@ -9810,9 +9206,6 @@ bool tfx__is_global_percentage_graph_type(tfx_graph_type type) {
 	return (int)type >= (int)tfxGlobal_start && (int)type <= (int)tfxGlobal_end;
 }
 
-bool tfx__is_emitter_size_graph_type(tfx_graph_type type) {
-	return type >= tfxProperty_emitter_width && type <= tfxProperty_emitter_depth;
-}
 
 bool tfx__is_angle_graph_type(tfx_graph_type type) {
 	return (type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
@@ -9828,29 +9221,7 @@ bool tfx__is_everythine_else_graph_type(tfx_graph_type type) {
 	return !tfx__is_overtime_graph_type(type) && !tfx__is_overtime_percentage_graph_type(type) && !tfx__is_global_graph_type(type) && !tfx__is_angle_graph_type(type) && !tfx__is_overtime_graph_type(type);
 }
 
-bool tfx__has_node_at_frame(tfx_graph_t *graph, float frame) {
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (graph->nodes[i].frame == frame) return true;
-	}
-	return false;
-}
 
-bool tfx__has_key_frames(tfx_effect_descriptor effect) {
-	TFX_ASSERT(effect->state_properties.transform_index < effect->library->graphs.size());        //Must be a valid index into the library graphs
-	tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.transform_index];
-	tfxU32 size = graph_list.graphs[tfxTransform_translate_x].nodes.size() +
-		graph_list.graphs[tfxTransform_translate_y].nodes.size() +
-		graph_list.graphs[tfxTransform_translate_z].nodes.size();
-	return size > 0;
-}
-
-bool tfx__has_more_than_one_key_frame(tfx_effect_descriptor effect) {
-	TFX_ASSERT(effect->state_properties.transform_index < effect->library->graphs.size());        //Must be a valid index into the library graphs
-	tfx_graph_list_t &graph_list = effect->library->graphs[effect->state_properties.transform_index];
-	return graph_list.graphs[tfxTransform_translate_x].nodes.size() > 1 || 
-		graph_list.graphs[tfxTransform_translate_y].nodes.size()  > 1 ||
-		graph_list.graphs[tfxTransform_translate_z].nodes.size() > 1;
-}
 
 bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->ValidName(key);
@@ -9903,13 +9274,6 @@ void tfx__add_data_value_bool(tfx_storage_map_t<tfx_data_entry_t> *config, const
 	config->Insert(key, entry);
 }
 
-void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, double value) {
-	tfx_data_entry_t entry;
-	entry.type = tfxDouble;
-	entry.key.Set(key);
-	entry.double_value = value;
-	config->Insert(key, entry);
-}
 
 void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, float value) {
 	tfx_data_entry_t entry;
@@ -9923,9 +9287,6 @@ const char* tfx__get_data_str_value(tfx_storage_map_t<tfx_data_entry_t> *config,
 	return config->At(key).str_value.c_str();
 }
 
-int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
-	return config->At(key).int_value;
-}
 
 tfx_rgba8_t tfx__get_data_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->At(key).color_value;
@@ -10073,15 +9434,6 @@ void tfx__split_string_vec(const char *str, int length, tfx_vector_t<tfx_str256_
 	}
 }
 
-bool tfx__string_is_uint(const char *s) {
-	if (!s) return false;  
-	for (size_t i = 0; s[i] != '\0'; i++) {
-		if (!isdigit((unsigned char)s[i])) {
-			return false;
-		}
-	}
-	return true;
-}
 
 bool tfx__line_is_uint(tfx_line_t *line) {
 	if (!line->length) return false;
@@ -10156,61 +9508,6 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 	return shape_count;
 }
 
-int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats_t *stats) {
-	int context = 0;
-	int error = 0;
-
-	tfx_package package = tfx__create_package("");
-	error = tfx__load_package_file(filename, package);
-
-	tfx_package_entry_info_t *data = tfx__get_package_file(package, "data.txt");
-
-	if (!data)
-		error = -5;
-
-	if (error < 0) {
-		tfx__free_package(package);
-		return error;
-	}
-
-	memset(stats, 0, sizeof(tfx_effect_library_stats_t));
-
-	tmpStack(tfx_str256_t, pair);
-	while (!data->data.EoF()) {
-		pair.clear();
-		tfx_line_t line = data->data.ReadLine();
-		bool context_set = false;
-		if (tfx__line_is_uint(&line)) {
-			context_set = true;
-		}
-		if (context_set == false) {
-			tfx__split_string_stack(line.start, line.length, &pair);
-			if (pair.size() != 2) {
-				pair.clear();
-				tfx__split_string_stack(line.start, line.length, &pair, 44);
-				if (pair.size() < 2) {
-					error = 1;
-					break;
-				}
-			}
-			if (context == tfxStartShapes) {
-				if (pair.size() >= 5) {
-					int frame_count = atoi(pair[2].c_str());
-					stats->total_shapes += frame_count;
-				}
-			} else if (context == tfxStartEmitter) {
-				stats->total_particle_emitters++;
-			} else if (context == tfxStartRibbonEmitter) {
-				stats->total_ribbon_emitters++;
-			} else if (context == tfxStartEffect) {
-				stats->total_effects++;
-			}
-		}
-	}
-
-	pair.free();
-	return error;
-}
 
 tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	tfx_effect_library_stats_t stats;
@@ -11023,30 +10320,6 @@ tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
 }
 
 
-tfxINTERNAL bool tfx__key_in_list(tfx_vector_t<tfxKey> *list, tfxKey key) {
-	for (tfxU32 index = 0; index != list->current_size; ++index) {
-		if ((*list)[index] == key) {
-			return true;
-		}
-	}
-	return false;
-}
-
-//True when one descriptor is the other, or holds it somewhere below. Both directions matter: freeing a
-//root takes its sub effects with it, and freeing a sub effect breaks the root that spawns it.
-tfxINTERNAL bool tfx__descriptors_overlap(tfx_effect_descriptor first, tfx_effect_descriptor second) {
-	for (tfx_effect_descriptor current = first; current; current = current->parent) {
-		if (current == second) {
-			return true;
-		}
-	}
-	for (tfx_effect_descriptor current = second; current; current = current->parent) {
-		if (current == first) {
-			return true;
-		}
-	}
-	return false;
-}
 
 tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect) {
 	if (!disk_effect) {
@@ -11061,14 +10334,6 @@ tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_
 	}
 }
 
-tfxINTERNAL void tfx__tmp_print_effects(tfx_library library) {
-	for (tfx_effect_descriptor effect : library->effects) {
-		tfxPrint("%s, %u", effect->name.c_str(), effect->state_properties.property_index);
-		for (tfx_effect_descriptor emitter : effect->children) {
-			tfxPrint("   - %s, %u, %u", emitter->name.c_str(), emitter->state_properties.property_index, emitter->state_properties.shared_index);
-		}
-	}
-}
 
 //Called by tfx_RefreshLibrary to update the library with what shapes were removed or added
 tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library disk_library, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data, bool is_folder, tfx_refresh_result_t *result) {
@@ -13178,12 +12443,6 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.path_state.path_quaternions = nullptr;
 	tfxEmitterStateFlags &state_flags = emitter.state_flags;
 	state_flags = src_emitter->state_flags;
-	/*
-	Remove if not needed
-	if (!(pm->flags & tfxStageFlags_disable_spawning)) {
-		state_flags &= ~tfxEmitterStateFlags_is_single;
-	}
-	*/
 	state_flags |= tfxEmitterStateFlags_no_tween_this_update;
 
 	if (shared_properties->emission_type == tfxPath) {
@@ -13989,55 +13248,8 @@ bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter) {
 	return need_restart;
 }
 
-bool tfx__refresh_live_effects(tfx_stage pm) {
-	(void)pm;
-	return false;
-}
 
-int tfx__add_compute_controller(tfx_stage pm) {
-	//Compute slots should only ever be added for the bottom emitter that has no sub effects
-	unsigned int free_slot;
-	if (!pm->free_compute_controllers.empty()) {
-		free_slot = pm->free_compute_controllers.pop_back();
-	}
-	else {
-		free_slot = pm->highest_compute_controller_index++;
-	}
-	if (free_slot >= pm->max_compute_controllers)
-		return -1;
-	return free_slot;
-}
 
-void tfx__reset_particle_ptr(tfx_stage pm, void *ptr) {
-	pm->new_compute_particle_ptr = ptr;
-	pm->new_compute_particle_index = 0;
-}
-
-void tfx__reset_controller_ptr(tfx_stage pm, void *ptr) {
-	pm->compute_controller_ptr = ptr;
-}
-
-void tfx__update_compute(tfx_stage pm, void *sampled_particles, unsigned int sample_size) {
-	for (tfxU32 i = 0; i != sample_size; ++i) {
-		if (pm->compute_global_state.current_length == 0)
-			break;
-		tfx_compute_particle_t *sample = static_cast<tfx_compute_particle_t *>(sampled_particles) + i;
-		if (sample->age > sample->max_age) {
-			pm->compute_global_state.start_index++;
-			pm->compute_global_state.start_index %= pm->compute_global_state.end_index;
-			pm->compute_global_state.current_length--;
-			sample->age = 0;
-		}
-		else {
-			break;
-		}
-	}
-}
-
-tfx_compute_particle_t *tfx__grab_compute_particle(tfx_stage pm, unsigned int layer) {
-	TFX_ASSERT(pm->new_compute_particle_ptr);        //Use must assign the compute ptr to point to an area in memory where you can stage new particles for uploading to the GPU - See ResetComputePtr
-	return (static_cast<tfx_compute_particle_t *>(pm->new_compute_particle_ptr) + pm->new_compute_particle_index++);
-}
 
 void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {
 	if (pm->free_particle_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
@@ -16240,9 +15452,6 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 	}
 }
 
-void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data) {
-
-}
 
 void tfx__control_ribbons(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
@@ -16779,10 +15988,6 @@ tfx_stage tfx__next_global_stage() {
 	return next_pm ? *next_pm : nullptr;
 }
 
-tfx_library tfx__next_global_library() {
-	tfx_library *next_library = tfxStore->libraries.next_item();
-	return next_library ? *next_library : nullptr;
-}
 
 tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 	tfx_stage pm = tfx__next_global_stage();
@@ -17147,9 +16352,6 @@ void tfx_UpdateStageBaseValues(tfx_stage pm) {
 	pm->flags |= tfxStageFlags_update_base_values;
 }
 
-bool tfx__free_pm_effect_capacity(tfx_stage pm) {
-	return pm->effects.current_size < pm->max_effects;
-}
 
 //The bookkeeping an effect slot carries over from whatever ran in it before. The depth lists index
 //particles by their slot in a bank, so they only mean anything alongside the particles they were built
@@ -17249,10 +16451,6 @@ void tfx__free_path_quaternion(tfx_stage pm, tfxU32 index) {
 	}
 }
 
-tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index) {
-	(*depth_indexes).push_back(depth_index);
-	return (*depth_indexes).current_size - 1;
-}
 
 void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]) {
 	pm->camera_front.x = front[0];
@@ -17263,13 +16461,6 @@ void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]) {
 	pm->camera_position.z = position[2];
 }
 
-void tfx__reset_particle_effect_flags(tfx_stage pm) {
-	pm->flags = 0;
-}
-
-void tfx__free_compute_slot(tfx_stage pm, unsigned int slot_id) {
-	pm->free_compute_controllers.push_back(slot_id);
-}
 
 tfxU32 tfx_GetParticleCount(tfx_stage pm) {
 	return pm->current_particle_count;
@@ -20524,6 +19715,7 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 
 //---- GPU compute particle buffer management ----
 
+
 //Compute the maximum number of simultaneously live particles an emitter can produce.
 //Used to determine each emitter's contribution to its group's ring_capacity.
 tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
@@ -20567,6 +19759,7 @@ tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
 		return tfx__Max(result, (tfxU32)1);
 	}
 }
+
 
 //Find an existing group matching (property index to identify the emitter, bucket_index), or create a new one.
 //Returns the index into pm->gpu_groups.
@@ -20866,28 +20059,7 @@ tfxWideFloat tfx__wide_ease_linear(tfxWideFloat t) {
 	return t;
 }
 
-tfxWideFloat tfx__wide_ease_in_quad(tfxWideFloat t) {
-	return tfxWideMul(t, t);
-}
 
-tfxWideFloat tfx__wide_ease_out_quad(tfxWideFloat t) {
-	return tfxWideMul(t, tfxWideSub(tfxWIDETWO.m, t));
-}
-
-tfxWideFloat tfx__wide_ease_in_out_quad(tfxWideFloat t) {
-	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
-
-	tfxWideFloat t_squared = tfxWideMul(t, t);
-	tfxWideFloat result_first = tfxWideMul(tfxWIDETWO.m, t_squared);
-
-	tfxWideFloat two_t = tfxWideMul(tfxWIDETWO.m, t);
-	tfxWideFloat four_minus_two_t = tfxWideSub(tfxWIDEFOUR.m, two_t);
-	tfxWideFloat result_second = tfxWideSub(tfxWideMul(t, four_minus_two_t), tfxWIDEONE.m);
-
-	tfxWideFloat masked_first = tfxWideAnd(mask, result_first);
-	tfxWideFloat masked_second = tfxWideAndNot(mask, result_second);
-	return tfxWideOr(masked_first, masked_second);
-}
 
 tfxWideFloat tfx__wide_ease_out_in(tfxWideFloat t) {
 	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
@@ -20931,78 +20103,10 @@ tfxWideFloat tfx__wide_ease_in_out_cubic(tfxWideFloat t) {
 	return tfxWideOr(masked_first, masked_second);
 }
 
-tfxWideFloat tfx__wide_ease_in_quart(tfxWideFloat t) {
-	return tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t);
-}
 
-tfxWideFloat tfx__wide_ease_out_quart(tfxWideFloat t) {
-	t = tfxWideSub(tfxWIDEONE.m, t);
-	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t));
-}
 
-tfxWideFloat tfx__wide_ease_in_out_quart(tfxWideFloat t) {
-	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
 
-	tfxWideFloat t_less_than_half = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDEEIGHT.m, t), t), t), t);
 
-	tfxWideFloat t4 = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
-	t4 = tfxWideMul(tfxWideMul(tfxWideMul(t4, t4), t4), t4);
-	tfxWideFloat t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t4, tfxWIDEHALF.m));
-
-	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
-	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
-	return tfxWideOr(masked_first, masked_second);
-}
-
-tfxWideFloat tfx__wide_ease_in_quint(tfxWideFloat t) {
-	return tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t), t);
-}
-
-tfxWideFloat tfx__wide_ease_out_quint(tfxWideFloat t) {
-	t = tfxWideSub(tfxWIDEONE.m, t);
-	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t, t), t), t), t));
-}
-
-tfxWideFloat tfx__wide_ease_in_out_quint(tfxWideFloat t) {
-	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
-
-	tfxWideFloat t_less_than_half = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(tfxWIDESIXTEEN.m, t), t), t), t), t);
-
-	tfxWideFloat t5 = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
-	t5 = tfxWideMul(tfxWideMul(tfxWideMul(tfxWideMul(t5, t5), t5), t5), t5);
-	tfxWideFloat t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t5, tfxWIDEHALF.m));
-
-	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
-	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
-	return tfxWideOr(masked_first, masked_second);
-}
-
-tfxWideFloat tfx__wide_ease_in_circular(tfxWideFloat t) {
-	t = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t, t));
-	return tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideRSqrt(t), t));
-}
-
-tfxWideFloat tfx__wide_ease_out_circular(tfxWideFloat t) {
-	t = tfxWideSub(t, tfxWIDEONE.m);
-	t = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t, t));
-	return tfxWideMul(tfxWideRSqrt(t), t);
-}
-
-tfxWideFloat tfx__wide_ease_in_out_circular(tfxWideFloat t) {
-	tfxWideFloat mask = tfxWideLessEqual(t, tfxWIDEHALF.m);
-
-	tfxWideFloat t_less_than_half = tfxWideMul(tfxWIDETWO.m, t);
-	t_less_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t_less_than_half, t_less_than_half));
-	t_less_than_half = tfxWideMul(tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideRSqrt(t_less_than_half), t_less_than_half)), tfxWIDEHALF.m);
-
-	tfxWideFloat t_more_than_half = tfxWideAdd(tfxWideMul(tfxWIDEMINUSTWO.m, t), tfxWIDETWO.m);
-	t_more_than_half = tfxWideSub(tfxWIDEONE.m, tfxWideMul(t_more_than_half, t_more_than_half));
-	t_more_than_half = tfxWideMul(tfxWideAdd(tfxWideMul(tfxWideRSqrt(t_more_than_half), t_more_than_half), tfxWIDEONE.m), tfxWIDEHALF.m);
-
-	tfxWideFloat masked_first = tfxWideAnd(mask, t_less_than_half);
-	tfxWideFloat masked_second = tfxWideAndNot(mask, t_more_than_half);
-	return tfxWideOr(masked_first, masked_second);
-}
 
 float tfx__ease_linear(float t) {
 	return t;
@@ -21016,17 +20120,7 @@ float tfx__ease_smoothstep(float t) {
 	return t * t * (3.f - 2.f * t);
 }
 
-float tfx__ease_in_quad(float t) {
-	return t * t;
-}
 
-float tfx__ease_out_quad(float t) {
-	return t * (2 - t);
-}
-
-float tfx__ease_in_out_quad(float t) {
-	return t < 0.5 ? 2 * t * t : t * (4 - 2 * t) - 1;
-}
 
 float tfx__ease_in_cubic(float t) {
 	return t * t * t;
@@ -21047,50 +20141,10 @@ float tfx__ease_out_in(float t) {
 	return t < 0.5f ? t * (2 - 2 * t) : 2 * (t - 0.5f) * (t - 0.5f) + 0.5f;
 }
 
-float tfx__ease_in_quart(float t) {
-	return t * t * t * t;
-}
 
-float tfx__ease_out_quart(float t) {
-	t = 1 - t;
-	return 1 - (t * t * t * t);
-}
 
-float tfx__ease_in_out_quart(float t) {
-	float t4 = -2 * t + 2;
-	t4 = t4 * t4 * t4 * t4;
-	return t < 0.5f ? 8 * t * t * t * t : 1 - t4 * 0.5f;
-}
 
-float tfx__ease_in_quint(float t) {
-	return t * t * t * t * t;
-}
 
-float tfx__ease_out_quint(float t) {
-	t = 1 - t;
-	return 1 - (t * t * t * t * t);
-}
-
-float tfx__ease_in_out_quint(float t) {
-	float t5 = -2 * t + 2;
-	t5 = t5 * t5 * t5 * t5;
-	return t < 0.5f ? 16 * t * t * t * t * t : 1 - t5 * 0.5f;
-}
-
-float tfx__ease_in_circular(float t) {
-	return 1 - sqrtf(1 - (t * t));
-}
-
-float tfx__ease_out_circular(float t) {
-	float t1 = t - 1;
-	return sqrtf(1 - t1 * t1);
-}
-
-float tfx__ease_in_out_circular(float t) {
-	float t2 = t * 2; t2 = t2 * t2;
-	float tm2 = -2 * t + 2; tm2 = tm2 * tm2;
-	return t < 0.5f ? (1 - sqrtf(1 - t2)) * 0.5f : (sqrtf(1 - tm2) + 1) * 0.5f;
-}
 
 tfx_wide_easing_function tfx__get_wide_easing_function(tfx_graph_easing_type type) {
 	switch (type) {
@@ -21273,19 +20327,6 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-void tfx__transform_effect(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform_t *parent, bool relative_position, bool relative_angle) {
-
-	if (relative_position) {
-		*world_rotations = parent->rotations + *local_rotations;
-		*world_position = parent->position;
-	}
-	else {
-		*world_position = *local_position;
-		*world_rotations = *local_rotations;
-	}
-
-	*q = tfx__euler_to_quaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
-}
 
 tfx_context tfxCurrentContext = nullptr;
 
@@ -21813,13 +20854,6 @@ void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_data_soa_t *
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
-void tfx__init_ribbon_segment_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount) {
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, x));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, y));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, z));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, width));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
-}
 
 void tfx__init_paths_soa(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount) {
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, x));
@@ -21921,21 +20955,6 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 	return force;
 }
 
-tfx_force_t *tfx__clone_emitter_force(tfx_effect_descriptor emitter, tfxU32 src_force_index) {
-	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
-	TFX_ASSERT(src_force_index < emitter_properties->force_count);		//Not a populated force slot
-	if (emitter_properties->force_count >= tfxMAX_FORCES) {
-		return nullptr;
-	}
-	tfx_force_t *force = &emitter_properties->forces[emitter_properties->force_count];
-	tfx_force_t *src_force = &emitter_properties->forces[src_force_index];
-	emitter_properties->force_count++;
-	*force = *src_force;
-	//The clone owns its own copy of the wave curve - sharing the source's index would have two forces
-	//editing one graph list, and the second delete would free it twice.
-	force->graph_list_index = tfx__clone_library_graph_list(emitter->library, src_force->graph_list_index, emitter->library);
-	return force;
-}
 
 void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index) {
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
@@ -21995,19 +21014,6 @@ void tfx__copy_emitter_forces(tfx_library library, tfx_particle_emitter_properti
 	to_properties->force_count = from_properties->force_count;
 }
 
-void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
-	shared_properties->spawn_amount = 1;
-	shared_properties->single_shot_limit = 0;
-	shared_properties->emission_type = tfx_emission_type::tfxPoint;
-	shared_properties->grid_points = { 10.f, 10.f, 10.f };
-	shared_properties->layer = 0;
-	shared_properties->image_hash = 1;
-	shared_properties->start_frame = 0;
-	shared_properties->frame_rate = 30.f;
-	shared_properties->paired_emitter_hash = 0;
-	shared_properties->base_noise_step = { 0.f, 0.f, 0.f };
-	shared_properties->noise_offset_variation = 0.f;
-}
 
 //Note: The force list is handed over separately so the destination keeps its own graph lists
 //See tfx__copy_emitter_forces 
@@ -22021,9 +21027,6 @@ void tfx__copy_emitter_properties(tfx_library library, tfx_particle_emitter_prop
 	to_properties->force_count = owned_force_count;
 }
 
-void tfx__copy_ribbon_properties(tfx_ribbon_emitter_properties_t *from_properties, tfx_ribbon_emitter_properties_t *to_properties) {
-	*to_properties = *from_properties;
-}
 
 void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	if (sprite_data->compressed_sprites_buffer.data == sprite_data->real_time_sprites_buffer.data) {
