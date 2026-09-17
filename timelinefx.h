@@ -258,6 +258,18 @@ typedef enum {
 	tfxStageSetup_group_sprites_by_effect,
 } tfx_stage_setup;
 
+//Which local axis of an effect is treated as the direction it faces, used by tfx_PointEffectAt. TimelineFX is
+//a +Y up library: an emitter with no rotation emits along +Y, so tfxEffectFace_up is the default face and the
+//one to use unless the effect was deliberately authored to fire along another axis.
+typedef enum {
+	tfxEffectFace_up,			//+Y, the axis emitters fire along by default
+	tfxEffectFace_down,			//-Y
+	tfxEffectFace_right,		//+X
+	tfxEffectFace_left,			//-X
+	tfxEffectFace_forwards,		//+Z
+	tfxEffectFace_backwards,	//-Z
+} tfx_effect_face;
+
 typedef enum {
 	tfxEffect_global_life_index,
 	tfxEffect_global_amount_index,
@@ -1820,7 +1832,7 @@ tfxAPI void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm);
 
 /*
 Set the roll of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current roll of the effect that was
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed. 
 *                        set in the TimelineFX editor.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param roll            A float of the amount that you want to set the roll too
@@ -1829,7 +1841,7 @@ tfxAPI void tfx_SetEffectRoll(tfx_stage pm, tfxEffectID effect_index, float roll
 
 /*
 Set the pitch of a effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current pitch of the effect that was
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed. 
 *                        set in the TimelineFX editor.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param pitch            A float of the amount that you want to set the pitch too
@@ -1838,12 +1850,29 @@ tfxAPI void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pit
 
 /*
 Set the yaw of a effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current yaw of the effect that was
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed. 
 *                        set in the TimelineFX editor.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param yaw            A float of the amount that you want to set the yaw too
+* @param yaw             A float of the amount that you want to set the yaw too
 */
 tfxAPI void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw);
+
+/*
+Orient an effect towards a specific point
+* @param tfx_stage       A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current yaw of the effect that was
+*                        set in the TimelineFX editor.
+* @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param x, y, z         The coordinates that you want to point the effect at
+* @param face            The local axis of the effect that should end up aiming at those coordinates. Use tfxEffectFace_up
+*                        unless the effect was authored to fire along a different axis.
+*                        Aiming only fixes two of the three angles, so the third is left as it is for you to drive: the
+*                        up/down/left/right faces preserve the effect's roll, the forwards/backwards faces preserve its yaw.
+*                        Note that this overrides the effect's authored pitch, yaw and roll graphs together, so once you
+*                        call this you own all three angles for the lifetime of the effect.
+*                        Coordinates are in the library's own +Y up space. If your renderer is Z up then convert the target
+*                        point into that space first, the same way you convert the effect's position going in.
+*/
+tfxAPI void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z, tfx_effect_face face);
 
 /*
 Set the width of an effect

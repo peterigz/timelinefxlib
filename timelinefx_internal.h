@@ -3222,7 +3222,7 @@ typedef enum {
 	tfxEffectPropertyFlags_global_uniform_size                  = 1 << 6,		//Keep the global particle size uniform
 	tfxEffectPropertyFlags_is_in_folder                         = 1 << 7,		//This effect is located inside a folder. 
 	tfxEffectPropertyFlags_marked_for_deletion                  = 1 << 8,		//Marked for deletion after a library refresh
-	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//Marked for deletion after a library refresh
+	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//The effect was updated after a library refresh
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
 	tfxEffectPropertyFlags_is_ordered						    = tfxEffectPropertyFlags_depth_draw_order | tfxEffectPropertyFlags_age_order,
 } tfx_effect_property_flag_bits;

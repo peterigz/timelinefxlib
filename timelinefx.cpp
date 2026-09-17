@@ -21272,10 +21272,63 @@ void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pitch) {
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
-void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float pitch) {
+void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_rotations.pitch = pitch;
+	pm->effects[effect_index].local_rotations.yaw = yaw;
 	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
+}
+
+void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z, tfx_effect_face face) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	tfx_effect_state_t &effect = pm->effects[effect_index];
+
+	tfx_vec3_t direction = tfx_vec3_t(x, y, z) - effect.world_position;
+	float distance = tfx__length_vec3(&direction);
+	if (distance == 0.f) {
+		return;
+	}
+	direction = direction / distance;
+
+	tfx_vec3_t face_axis;
+	switch (face) {
+	case tfxEffectFace_down:		face_axis = tfx_vec3_t(0.f, -1.f, 0.f); break;
+	case tfxEffectFace_right:		face_axis = tfx_vec3_t(1.f, 0.f, 0.f); break;
+	case tfxEffectFace_left:		face_axis = tfx_vec3_t(-1.f, 0.f, 0.f); break;
+	case tfxEffectFace_forwards:	face_axis = tfx_vec3_t(0.f, 0.f, 1.f); break;
+	case tfxEffectFace_backwards:	face_axis = tfx_vec3_t(0.f, 0.f, -1.f); break;
+	default:						face_axis = tfx_vec3_t(0.f, 1.f, 0.f); break;
+	}
+
+	if (face == tfxEffectFace_forwards || face == tfxEffectFace_backwards) {
+		//Yaw spins about Z so it cannot move a Z facing axis at all. Solve roll alongside pitch and leave yaw free.
+		float face_sign = face_axis.z;
+		float sine_pitch = direction.x * face_sign;
+		sine_pitch = tfx__Clamp(-1.f, 1.f, sine_pitch);
+		effect.local_rotations.pitch = -asinf(sine_pitch);
+		effect.local_rotations.roll = -atan2f(-direction.y * face_sign, direction.z * face_sign);
+	} else {
+		//Undo the roll on the target first so that whatever roll the effect already has is preserved.
+		float cosine_roll = cosf(effect.local_rotations.roll);
+		float sine_roll = sinf(effect.local_rotations.roll);
+		tfx_vec3_t unrolled_direction = tfx_vec3_t(direction.x,
+			direction.y * cosine_roll - direction.z * sine_roll,
+			direction.y * sine_roll + direction.z * cosine_roll);
+
+		//Yaw is whatever lifts the face to the target's height, pitch then swings it round to the target in the xz plane.
+		float clamped_height = tfx__Clamp(-1.f, 1.f, unrolled_direction.y);
+		float yaw = asinf(clamped_height) - atan2f(face_axis.y, face_axis.x);
+		float cosine_yaw = cosf(yaw);
+		float sine_yaw = sinf(yaw);
+		tfx_vec3_t yawed_face = tfx_vec3_t(face_axis.x * cosine_yaw - face_axis.y * sine_yaw,
+			face_axis.x * sine_yaw + face_axis.y * cosine_yaw,
+			face_axis.z);
+
+		effect.local_rotations.pitch = -atan2f(yawed_face.z * unrolled_direction.x - yawed_face.x * unrolled_direction.z,
+			yawed_face.x * unrolled_direction.x + yawed_face.z * unrolled_direction.z);
+		effect.local_rotations.yaw = -yaw;
+	}
+
+	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
