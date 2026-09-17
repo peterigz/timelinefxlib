@@ -20702,6 +20702,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	const tfxWideInt count_mask = tfxWideSetSinglei(0xFF);
+	const tfxWideInt has_single_shot_limit = tfxWideGreateri(single_shot_limit, tfxWideSetZeroi);
 	const tfxWideInt remove = tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_remove);
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
@@ -20735,8 +20736,10 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(tfxWideMul(age, inv_max_age), tfxWIDEONE.m));
-		flags_single_loop_count = tfxWideAddi(flags_single_loop_count, tfxWideAndi(tfxWIDEONEi.m, expired));
-		tfxWideInt loop_limit = tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), single_shot_limit);
+		//Saturate at 0xFF so the count never carries into the flag bits above it
+		tfxWideInt count_not_full = tfxWideXOri(tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), count_mask), tfxWideSetSinglei(-1));
+		flags_single_loop_count = tfxWideAddi(flags_single_loop_count, tfxWideAndi(tfxWIDEONEi.m, tfxWideAndi(expired, count_not_full)));
+		tfxWideInt loop_limit = tfxWideAndi(tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), single_shot_limit), has_single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi)));
