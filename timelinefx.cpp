@@ -2785,6 +2785,10 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx
 				float radius_z = emitter.emitter_size.z * .5f;
 				to_handle = tfx__cylinder_surface_normal(local_position.x - emitter.handle.x, local_position.z - emitter.handle.z, radius_x, radius_z);
 			}
+			else if (emission_type == tfxDisc) {
+				//A flat disc has no curved surface to take a normal from, so Surface fires perpendicular off its face
+				to_handle = tfx_vec3_t(0.f, 1.f, 0.f);
+			}
 		}
 		else if (emission_direction == tfxSurface) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
@@ -2794,6 +2798,11 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx
 				float radius_x = emitter.emitter_size.x * .5f;
 				float radius_z = emitter.emitter_size.z * .5f;
 				to_handle = tfx__cylinder_surface_normal(local_position.x - emitter.world_position.x - emitter.handle.x, local_position.z - emitter.world_position.z - emitter.handle.z, radius_x, radius_z);
+			}
+			else if (emission_type == tfxDisc) {
+				//The face normal is authored in the emitters own frame, so it needs the emitter rotation to reach world space
+				to_handle = tfx_vec3_t(0.f, 1.f, 0.f);
+				apply_world_rotation = true;
 			}
 		}
 		else {
@@ -17220,6 +17229,11 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 			float area = tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.y) * tfxMax(0.1f, emitter.emitter_size.z);
 			emitter.spawn_quantity = (emitter.spawn_quantity / 50.0) * area;
 		}
+		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && shared_properties->emission_type == tfxDisc) {
+			//Height is not part of a disc, so only the two axes it spans scale the amount
+			float area = tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.z);
+			emitter.spawn_quantity = (emitter.spawn_quantity / 50.0) * area;
+		}
 		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && shared_properties->emission_type == tfxLine) {
 			emitter.spawn_quantity = (emitter.spawn_quantity / 100.0) * emitter.emitter_size.y;
 		}
@@ -17253,6 +17267,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 				emitter.spawn_quantity = x * y;
 				break;
 			case tfx_emission_type::tfxEllipse:
+			case tfx_emission_type::tfxDisc:
 				emitter.spawn_quantity = x;
 				break;
 			case tfx_emission_type::tfxLine:
@@ -17477,6 +17492,8 @@ void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data) {
 		tfx__spawn_particle_area(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxEllipse) {
 		tfx__spawn_particle_ellipsoid(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type == tfxDisc) {
+		tfx__spawn_particle_disc(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxLine && !(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
 		tfx__spawn_particle_line(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxLine && (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
@@ -18681,6 +18698,98 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 
 }
 
+
+void tfx__spawn_particle_disc(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_random_t random = entry->random;
+	double tween = entry->tween;
+	tfx_stage_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_library library = emitter.library;
+	tfx_AlterRandomSeedU32(&random, 21 + emitter.seed_index);
+	float arc_size = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.age, emitter.oscillator_time);
+	float arc_offset = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.age, emitter.oscillator_time);
+
+	//Unlike the ellipsoid, which carves a polar band out of a sphere, arc_offset and arc_size keep their original 2d
+	//meaning here and sweep a pie wedge of the disc. The default arc_size of 2PI leaves the disc whole.
+	arc_size = tfx__Clamp(0.f, tfxPI2, arc_size);
+	bool fill_area = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) != 0;
+	bool uniform_distribution = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution) != 0;
+	//Only the rim can be divided into grid points, a filled disc has no edge to step around
+	bool spawn_on_grid = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) != 0 && !fill_area;
+	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
+	const float grid_segment_size = arc_size / tfxMax(grid_points.x, 1.f);
+
+	tfx_random_t distribution_random = entry->random;
+	tfx_AlterRandomSeedU32(&distribution_random, 22 + emitter.seed_index);
+	float theta_offset = tfx_GenerateRandom(&distribution_random);
+	float radius_offset = tfx_GenerateRandom(&distribution_random);
+
+	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		float &local_position_x = entry->particle_data->position_x[index];
+		float &local_position_y = entry->particle_data->position_y[index];
+		float &local_position_z = entry->particle_data->position_z[index];
+
+		local_position_x = local_position_y = local_position_z = 0;
+
+		tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
+
+		//Filling uses sqrt(u), the inverse cdf for an even spread over a 2d area; the cbrt that fills a volume would bunch particles at the rim
+		float theta, radius;
+		if (spawn_on_grid) {
+			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) {
+				emitter.grid_coords.x = (float)tfx_RandomRangeZeroToMaxUInt(&random, (tfxU32)grid_points.x);
+			}
+			else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
+				emitter.grid_coords.x--;
+				if (emitter.grid_coords.x < 0.f) {
+					emitter.grid_coords.x = grid_points.x - 1;
+				}
+			}
+
+			theta = arc_offset + emitter.grid_coords.x * grid_segment_size;
+			radius = 1.f;
+
+			if (!(emitter.state_properties.shared_flags & (tfxSharedEmitterPropertyFlags_grid_spawn_random | tfxSharedEmitterPropertyFlags_grid_spawn_clockwise))) {
+				emitter.grid_coords.x++;
+				if (emitter.grid_coords.x >= grid_points.x) {
+					emitter.grid_coords.x = 0.f;
+				}
+			}
+		}
+		else if (uniform_distribution) {
+			tfxU32 sequence_index = entry->particle_uid + i + 1;
+			float unit_theta = tfx__radical_inverse(sequence_index, 2) + theta_offset;
+			float unit_radius = tfx__radical_inverse(sequence_index, 3) + radius_offset;
+			if (unit_theta >= 1.f) unit_theta -= 1.f;
+			if (unit_radius >= 1.f) unit_radius -= 1.f;
+			theta = arc_offset + unit_theta * arc_size;
+			radius = fill_area ? sqrtf(unit_radius) : 1.f;
+		} else {
+			theta = arc_offset + tfx_RandomRangeZeroToMax(&random, arc_size);
+			radius = fill_area ? sqrtf(tfx_RandomRangeZeroToMax(&random, 1.f)) : 1.f;
+		}
+
+		//The disc lies in the x-z plane so that +y stays the axis the emitter rotation turns it about, matching the ellipsoid
+		local_position_x = half_emitter_size.x * radius * cosf(theta);
+		local_position_z = half_emitter_size.z * radius * -sinf(theta);
+
+		//----TForm and Emission
+		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
+		}
+
+		tween += entry->qty_step_size;
+	}
+
+}
 void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);

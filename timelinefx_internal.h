@@ -2871,6 +2871,7 @@ typedef enum {
 	tfxPath,
 	tfxOtherEmitter,
 	tfxSpawnOnRibbon,
+	tfxDisc,
 	tfxEmissionTypeMax,
 } tfx_emission_type;
 
@@ -9186,6 +9187,7 @@ tfxINTERNAL void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_disc(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data);
