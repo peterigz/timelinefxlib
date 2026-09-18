@@ -775,6 +775,20 @@ float tfx_RandomRangeZeroToMax(tfx_random_t *random, float max) {
 	return tfx_GenerateRandom(random) * max;
 };
 
+//Digit reversed index in the given base, spreading consecutive indexes far apart without the constant step size
+//that makes an additive sequence lay its samples out along spiral arms
+tfxINTERNAL float tfx__radical_inverse(tfxU32 index, tfxU32 base) {
+	float inverse_base = 1.f / (float)base;
+	float digit_scale = inverse_base;
+	float result = 0.f;
+	while (index) {
+		result += (float)(index % base) * digit_scale;
+		digit_scale *= inverse_base;
+		index /= base;
+	}
+	return result;
+}
+
 float tfx_RandomRangeFromTo(tfx_random_t *random, float from, float to) {
 	float a = tfx_GenerateRandom(random);
 	float range = to - from;
@@ -5512,6 +5526,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("grid_spawn_clockwise", tfxBool);
 	names_and_types.Insert("fill_area", tfxBool);
 	names_and_types.Insert("grid_spawn_random", tfxBool);
+	names_and_types.Insert("uniform_distribution", tfxBool);
 	names_and_types.Insert("area_open_ends", tfxBool);
 	names_and_types.Insert("emitter_handle_auto_center", tfxBool);
 	names_and_types.Insert("edge_traversal", tfxBool);
@@ -6632,6 +6647,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "grid_spawn_clockwise") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise);
 	else if (property_name == "fill_area") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area);
 	else if (property_name == "grid_spawn_random") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
+	else if (property_name == "uniform_distribution") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution);
 	else if (property_name == "area_open_ends") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends);
 	else if (property_name == "emitter_handle_auto_center") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center);
 	else if (property_name == "edge_traversal") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal);
@@ -6982,6 +6998,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_fill_area; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_fill_area; }
 	} else if (*field == "grid_spawn_random") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_grid_spawn_random; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_grid_spawn_random; }
+	} else if (*field == "uniform_distribution") {
+		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_uniform_distribution; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_uniform_distribution; }
 	} else if (*field == "area_open_ends") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_area_open_ends; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_area_open_ends; }
 	} else if (*field == "emitter_handle_auto_center") {
@@ -7060,6 +7078,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
 	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
 	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
+	file->AddLine("uniform_distribution=%i", (shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution));
 	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
 	file->AddLine("random_color=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_color));
 	file->AddLine("exclude_from_global_hue=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_color));
@@ -13105,6 +13124,7 @@ static const tfx_property_tier_t tfx__property_change_tiers[] = {
 	{ "grid_rows",                      tfx_change_tier_resim_on_pause },
 	{ "grid_spawn_clockwise",           tfx_change_tier_resim_on_pause },
 	{ "grid_spawn_random",              tfx_change_tier_resim_on_pause },
+	{ "uniform_distribution",           tfx_change_tier_resim_on_pause },
 	{ "guaranteed_draw_order",          tfx_change_tier_resim },
 	{ "image_animate",                  tfx_change_tier_redraw },
 	{ "image_frame_rate",               tfx_change_tier_redraw },
@@ -18594,6 +18614,16 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 	float dome_cosine_upper = cosf(dome_polar_start);
 	float dome_cosine_lower = cosf(dome_polar_end);
 	bool fill_area = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) != 0;
+	bool uniform_distribution = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution) != 0;
+
+	//Shifting the whole sequence by a per instance offset keeps its even spacing but moves the arrangement, so each
+	//restart lays the particles out differently. Drawn from its own copy of the stream so that the random branch below
+	//still consumes exactly what it did before. tfx_SetStageSeed pins these along with everything else for a bake.
+	tfx_random_t distribution_random = entry->random;
+	tfx_AlterRandomSeedU32(&distribution_random, 27 + emitter.seed_index);
+	float theta_offset = tfx_GenerateRandom(&distribution_random);
+	float phi_offset = tfx_GenerateRandom(&distribution_random);
+	float radius_offset = tfx_GenerateRandom(&distribution_random);
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -18611,12 +18641,27 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 		//for a uniform volume distribution; the shell keeps the radius at 1. Sampling the dome directly keeps the cost constant and
 		//the distribution exactly uniform no matter how small the dome becomes - a rejection approach would discard nearly every
 		//sample as the band narrows.
-		float theta = tfx_RandomRangeZeroToMax(&random, tfxPI2);
-		float cos_phi = tfx_RandomRangeFromTo(&random, dome_cosine_lower, dome_cosine_upper);
+		float theta, cos_phi, radius;
+		if (uniform_distribution) {
+			//Index 1 up so the first particle is not the degenerate all zero sample of the sequence
+			tfxU32 sequence_index = entry->particle_uid + i + 1;
+			float unit_theta = tfx__radical_inverse(sequence_index, 2) + theta_offset;
+			float unit_phi = tfx__radical_inverse(sequence_index, 3) + phi_offset;
+			float unit_radius = tfx__radical_inverse(sequence_index, 5) + radius_offset;
+			if (unit_theta >= 1.f) unit_theta -= 1.f;
+			if (unit_phi >= 1.f) unit_phi -= 1.f;
+			if (unit_radius >= 1.f) unit_radius -= 1.f;
+			theta = unit_theta * tfxPI2;
+			cos_phi = dome_cosine_lower + unit_phi * (dome_cosine_upper - dome_cosine_lower);
+			radius = fill_area ? powf(unit_radius, 1.f / 3.f) : 1.f;
+		} else {
+			theta = tfx_RandomRangeZeroToMax(&random, tfxPI2);
+			cos_phi = tfx_RandomRangeFromTo(&random, dome_cosine_lower, dome_cosine_upper);
+			radius = fill_area ? powf(tfx_RandomRangeZeroToMax(&random, 1.f), 1.f / 3.f) : 1.f;
+		}
 		float sin_phi = sqrtf(tfx__Max(0.f, 1.f - cos_phi * cos_phi));
 		float sin_theta = sinf(theta);
 		float cos_theta = cosf(theta);
-		float radius = fill_area ? powf(tfx_RandomRangeZeroToMax(&random, 1.f), 1.f / 3.f) : 1.f;
 		local_position_x = half_emitter_size.x * radius * sin_phi * cos_theta;
 		local_position_y = half_emitter_size.y * radius * cos_phi;
 		local_position_z = half_emitter_size.z * radius * sin_phi * sin_theta;

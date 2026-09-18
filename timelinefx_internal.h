@@ -3266,6 +3266,7 @@ typedef enum {
 	tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments	= 1 << 17,		//Emitter will be excluded from effect hue adjustments if this flag is checked
 	tfxSharedEmitterPropertyFlags_hidden						= 1 << 18,		//Flagged when hidden from showing in the editor. This is mainly used in the undo/history system.
 	tfxSharedEmitterPropertyFlags_do_not_render					= 1 << 19,		//particles will be processed but their scale will be set to 0 so that they're not rendered.
+	tfxSharedEmitterPropertyFlags_uniform_distribution			= 1 << 20,		//Place particles with a low discrepancy sequence rather than random sampling so that they spread evenly instead of clumping
 } tfx_shared_emitter_flag_bits;
 
 typedef enum {
