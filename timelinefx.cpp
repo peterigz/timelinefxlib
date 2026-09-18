@@ -1628,6 +1628,49 @@ void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotation
 	*out_position = parent->world_position + rotatevec;
 }
 
+//Solves the rotations that turn the given face axis onto a normalised direction. The existing roll in
+//rotations is read and preserved for every face but the Z facing ones, which have to solve roll themselves.
+tfxINTERNAL void tfx__solve_face_rotations(tfx_vec3_t direction, tfx_effect_face face, tfx_vec3_t *rotations) {
+	tfx_vec3_t face_axis;
+	switch (face) {
+	case tfxEffectFace_down:		face_axis = tfx_vec3_t(0.f, -1.f, 0.f); break;
+	case tfxEffectFace_right:		face_axis = tfx_vec3_t(1.f, 0.f, 0.f); break;
+	case tfxEffectFace_left:		face_axis = tfx_vec3_t(-1.f, 0.f, 0.f); break;
+	case tfxEffectFace_forwards:	face_axis = tfx_vec3_t(0.f, 0.f, 1.f); break;
+	case tfxEffectFace_backwards:	face_axis = tfx_vec3_t(0.f, 0.f, -1.f); break;
+	default:						face_axis = tfx_vec3_t(0.f, 1.f, 0.f); break;
+	}
+
+	if (face == tfxEffectFace_forwards || face == tfxEffectFace_backwards) {
+		//Yaw spins about Z so it cannot move a Z facing axis at all. Solve roll alongside pitch and leave yaw free.
+		float face_sign = face_axis.z;
+		float sine_pitch = direction.x * face_sign;
+		sine_pitch = tfx__Clamp(-1.f, 1.f, sine_pitch);
+		rotations->pitch = -asinf(sine_pitch);
+		rotations->roll = -atan2f(-direction.y * face_sign, direction.z * face_sign);
+	} else {
+		//Undo the roll on the target first so that whatever roll is already set is preserved.
+		float cosine_roll = cosf(rotations->roll);
+		float sine_roll = sinf(rotations->roll);
+		tfx_vec3_t unrolled_direction = tfx_vec3_t(direction.x,
+			direction.y * cosine_roll - direction.z * sine_roll,
+			direction.y * sine_roll + direction.z * cosine_roll);
+
+		//Yaw is whatever lifts the face to the target's height, pitch then swings it round to the target in the xz plane.
+		float clamped_height = tfx__Clamp(-1.f, 1.f, unrolled_direction.y);
+		float yaw = asinf(clamped_height) - atan2f(face_axis.y, face_axis.x);
+		float cosine_yaw = cosf(yaw);
+		float sine_yaw = sinf(yaw);
+		tfx_vec3_t yawed_face = tfx_vec3_t(face_axis.x * cosine_yaw - face_axis.y * sine_yaw,
+			face_axis.x * sine_yaw + face_axis.y * cosine_yaw,
+			face_axis.z);
+
+		rotations->pitch = -atan2f(yawed_face.z * unrolled_direction.x - yawed_face.x * unrolled_direction.z,
+			yawed_face.x * unrolled_direction.x + yawed_face.z * unrolled_direction.z);
+		rotations->yaw = -yaw;
+	}
+}
+
 tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
 	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher);
 }
@@ -5560,6 +5603,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("use_color_hint", tfxBool);
 	names_and_types.Insert("hidden", tfxBool);
 	names_and_types.Insert("use_path_as_trajectory", tfxBool);
+	names_and_types.Insert("orient_to_camera", tfxBool);
 	names_and_types.Insert("resimulate_on_edit", tfxBool);
 	names_and_types.Insert("version", tfxUInt);
 
@@ -6676,6 +6720,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "alt_color_lifetime_sampling") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
 	else if (property_name == "alt_size_lifetime_sampling") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
 	else if (property_name == "use_path_as_trajectory") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory);
+	else if (property_name == "orient_to_camera") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera);
 	else if (property_name == "spawn_location_source") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
 	else if (property_name == "use_color_hint") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
 	else if (property_name == "static_ribbon") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_static);
@@ -7047,6 +7092,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
 	} else if (*field == "use_path_as_trajectory") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_use_path_as_trajectory; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_use_path_as_trajectory; }
+	} else if (*field == "orient_to_camera") {
+		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_orient_to_camera; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_orient_to_camera; }
 	} else if (*field == "spawn_location_source") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
 	} else if (*field == "use_color_hint") {
@@ -7144,6 +7191,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_path_as_trajectory=%i", (flags & tfxEmitterPropertyFlags_use_path_as_trajectory));
+	file->AddLine("orient_to_camera=%i", (flags & tfxEmitterPropertyFlags_orient_to_camera));
 	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->state_properties.graph_list_index].color_ramps.interpolation_mode);
 }
 
@@ -12464,6 +12512,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.qty_step_size = 0.f;
 	emitter.emitter_size = 0.f;
 	emitter.world_rotations = 0.f;
+	emitter.creation_rotations = tfx_vec3_t();
 	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
 	emitter.spawn_locations_index = tfxINVALID;
@@ -12472,6 +12521,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	tfxEmitterStateFlags &state_flags = emitter.state_flags;
 	state_flags = src_emitter->state_flags;
 	state_flags |= tfxEmitterStateFlags_no_tween_this_update;
+	state_flags |= emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxEmitterStateFlags_orient_to_camera_pending : 0;
 
 	if (shared_properties->emission_type == tfxPath) {
 		TFX_ASSERT(emitter.state_properties.path_attributes != tfxINVALID);
@@ -13144,6 +13194,7 @@ static const tfx_property_tier_t tfx__property_change_tiers[] = {
 	{ "match_amount_to_grid_points",    tfx_change_tier_resim },
 	{ "noise_base_offset_range",        tfx_change_tier_resim },
 	{ "noise_offset_variation",         tfx_change_tier_resim_on_pause },
+	{ "orient_to_camera",               tfx_change_tier_resim },
 	{ "path_rotation_lifetime",         tfx_change_tier_resim_on_pause },
 	{ "path_rotation_range_yaw_only",   tfx_change_tier_resim_on_pause },
 	{ "path_rotation_stagger",          tfx_change_tier_resim_on_pause },
@@ -17066,6 +17117,24 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	if (ordered_effect) {
 		spawn_work_entry->depth_indexes = &instance_data.depth_indexes[layer][instance_data.current_depth_buffer_index[layer]];
 	}
+
+	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
+		//The emitter's world position doesn't depend on its own rotation, so it can be resolved here before the transform
+		tfx_vec3_t translated_position = emitter.local_position + translation;
+		tfx_vec3_t world_position = parent_effect.world_position + tfx__rotate_vector_quaternion(&parent_effect.rotation, translated_position);
+		tfx_vec3_t direction = pm->camera_position - world_position;
+		float distance = tfx__length_vec3(&direction);
+		if (distance > 0.f) {
+			//Solve in the parent's local space so the aim survives whatever rotation the effect has
+			tfx_quaternion_t inverse_parent_rotation = tfx_quaternion_t(parent_effect.rotation.w, -parent_effect.rotation.x, -parent_effect.rotation.y, -parent_effect.rotation.z);
+			tfx_vec3_t local_direction = tfx__rotate_vector_quaternion(&inverse_parent_rotation, direction / distance);
+			tfx_vec3_t creation_rotations = tfx_vec3_t();
+			tfx__solve_face_rotations(local_direction, tfxEffectFace_up, &creation_rotations);
+			emitter.creation_rotations = creation_rotations;
+			emitter.state_flags &= ~tfxEmitterStateFlags_orient_to_camera_pending;
+		}
+	}
+	local_rotations += emitter.creation_rotations;
 
 	tfx__transform_3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
 
@@ -21443,44 +21512,7 @@ void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y,
 	}
 	direction = direction / distance;
 
-	tfx_vec3_t face_axis;
-	switch (face) {
-	case tfxEffectFace_down:		face_axis = tfx_vec3_t(0.f, -1.f, 0.f); break;
-	case tfxEffectFace_right:		face_axis = tfx_vec3_t(1.f, 0.f, 0.f); break;
-	case tfxEffectFace_left:		face_axis = tfx_vec3_t(-1.f, 0.f, 0.f); break;
-	case tfxEffectFace_forwards:	face_axis = tfx_vec3_t(0.f, 0.f, 1.f); break;
-	case tfxEffectFace_backwards:	face_axis = tfx_vec3_t(0.f, 0.f, -1.f); break;
-	default:						face_axis = tfx_vec3_t(0.f, 1.f, 0.f); break;
-	}
-
-	if (face == tfxEffectFace_forwards || face == tfxEffectFace_backwards) {
-		//Yaw spins about Z so it cannot move a Z facing axis at all. Solve roll alongside pitch and leave yaw free.
-		float face_sign = face_axis.z;
-		float sine_pitch = direction.x * face_sign;
-		sine_pitch = tfx__Clamp(-1.f, 1.f, sine_pitch);
-		effect.local_rotations.pitch = -asinf(sine_pitch);
-		effect.local_rotations.roll = -atan2f(-direction.y * face_sign, direction.z * face_sign);
-	} else {
-		//Undo the roll on the target first so that whatever roll the effect already has is preserved.
-		float cosine_roll = cosf(effect.local_rotations.roll);
-		float sine_roll = sinf(effect.local_rotations.roll);
-		tfx_vec3_t unrolled_direction = tfx_vec3_t(direction.x,
-			direction.y * cosine_roll - direction.z * sine_roll,
-			direction.y * sine_roll + direction.z * cosine_roll);
-
-		//Yaw is whatever lifts the face to the target's height, pitch then swings it round to the target in the xz plane.
-		float clamped_height = tfx__Clamp(-1.f, 1.f, unrolled_direction.y);
-		float yaw = asinf(clamped_height) - atan2f(face_axis.y, face_axis.x);
-		float cosine_yaw = cosf(yaw);
-		float sine_yaw = sinf(yaw);
-		tfx_vec3_t yawed_face = tfx_vec3_t(face_axis.x * cosine_yaw - face_axis.y * sine_yaw,
-			face_axis.x * sine_yaw + face_axis.y * cosine_yaw,
-			face_axis.z);
-
-		effect.local_rotations.pitch = -atan2f(yawed_face.z * unrolled_direction.x - yawed_face.x * unrolled_direction.z,
-			yawed_face.x * unrolled_direction.x + yawed_face.z * unrolled_direction.z);
-		effect.local_rotations.yaw = -yaw;
-	}
+	tfx__solve_face_rotations(direction, face, &effect.local_rotations);
 
 	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }

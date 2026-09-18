@@ -3244,6 +3244,7 @@ typedef enum {
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		    = 1 << 13,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_relative_angle					    = 1 << 14,       //Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_use_path_as_trajectory				= 1 << 15,		//When using path emission type, all particles will be spawned at the start of the path only and travel along the path. Only available when traverse edge is active
+	tfxEmitterPropertyFlags_orient_to_camera					= 1 << 16,		//Turn the emitter to face the stage camera once when it's created. It does not keep tracking the camera after that
 } tfx_particle_emitter_flag_bits;
 
 typedef enum {
@@ -3322,6 +3323,7 @@ typedef enum {
 	tfxEmitterStateFlags_align_with_velocity                    = 1 << 21,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw                 = 1 << 24,      //For 3d emitters that have free alignment and not always facing the camera
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
+	tfxEmitterStateFlags_orient_to_camera_pending               = 1 << 26,      //The camera facing rotation hasn't been latched yet. Cleared on the emitter's first update once the parent effect has a world transform
 	tfxEmitterStateFlags_has_rotated_path                       = 1 << 27,
 	tfxEmitterStateFlags_wrap_single_sprite                     = 1 << 30,
 	tfxEmitterStateFlags_src_ribbon_is_also_relative	        = 1 << 31,	    //Flagged when emission type is spawn on ribbon and both the emitter and ribbon emitter are relative.
@@ -6205,9 +6207,11 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_vec3_t local_position;						
 	tfx_vec3_t world_position;					
 	tfx_vec3_t captured_position;	
-	tfx_vec3_t world_rotations;		
+	tfx_vec3_t world_rotations;
 	tfx_quaternion_t captured_rotation;
 	tfx_quaternion_t rotation;
+	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
+	tfx_vec3_t creation_rotations;
 
 	float oscillator_time;
 
