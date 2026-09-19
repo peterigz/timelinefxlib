@@ -1617,6 +1617,8 @@ tfx_allocator *tfxGetAllocator();
 #define tfxMAX_FRAME 20000.f
 #define tfxCOLOR_RAMP_WIDTH 256
 #define tfxINVALID 0xFFFFFFFF
+#define tfxSPAWN_LOCATION_SLOT_BITS 20
+#define tfxSPAWN_LOCATION_SLOT_MASK ((1u << tfxSPAWN_LOCATION_SLOT_BITS) - 1)
 #define tfxUNINIT_MAGIC 0xDEADBEEF
 #define tfxSTRUCT_IDENTIFIER 0x71F8
 #define tfxINIT_MAGIC(struct_type) (struct_type | tfxSTRUCT_IDENTIFIER);
@@ -3224,6 +3226,7 @@ typedef enum {
 	tfxEffectPropertyFlags_is_in_folder                         = 1 << 7,		//This effect is located inside a folder. 
 	tfxEffectPropertyFlags_marked_for_deletion                  = 1 << 8,		//Marked for deletion after a library refresh
 	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//The effect was updated after a library refresh
+	tfxEffectPropertyFlags_user_spawn_locations                 = 1 << 10,		//The effect and it's emitters spawns at locations provided by the user
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
 	tfxEffectPropertyFlags_is_ordered						    = tfxEffectPropertyFlags_depth_draw_order | tfxEffectPropertyFlags_age_order,
 } tfx_effect_property_flag_bits;
@@ -3362,6 +3365,7 @@ typedef enum {
 	tfxEffectStateFlags_override_size_multiplier                = 1 << 10,      //Flagged when any of the effect size multipliers are overridden
 	tfxEffectStateFlags_warming_up                              = 1 << 11,      //Set on each effect currently being warmed up so shared ribbon-bucket walkers can filter to just the warming subset
 	tfxEffectStateFlags_pending_warmup                          = 1 << 12,      //Set when an effect has a queued entry in pm->warmup_effects[0]; used by tfx__add_warmup_effect to coalesce duplicate adds
+	tfxEffectStateFlags_user_spawn_locations                    = 1 << 13,      //Point emitters spawn at the locations added with tfx_AddSpawnLocation, other shapes don't spawn
 	tfxEffectStateFlags_no_tween                                = 1 << 20
 } tfx_effect_state_flag_bits;
 
@@ -6296,6 +6300,9 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 #endif
 	tfxU32 emitter_start_size;
 
+	//Owned by the effect slot rather than the effect so it survives the effect expiring and gets reused with the slot
+	struct tfx_user_spawn_locations_s *user_spawn_locations;
+
 } tfx_effect_state_t;
 
 typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
@@ -6601,7 +6608,10 @@ typedef struct tfx_particle_soa_s {
 	tfxU64 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
-	float *path_offset;
+	union {
+		float *path_offset;
+		tfxU32 *spawn_location;			//Relative particles of a user spawn locations effect: the slot and generation of the location they follow
+	};
 	tfxU32 *flags_single_loop_count;	//Packed flags and single loop count
 	union {
 		float *base_velocity;
@@ -6851,6 +6861,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxParticleEmitterFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
+	struct tfx_user_spawn_locations_s *user_spawn_locations;	//Set when this emitter spawns at the locations given by the user
 	tfxU32 spawn_points_ready;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
@@ -7117,7 +7128,51 @@ typedef struct tfx_warmup_entry_s {
 	float millisecs;
 } tfx_warmup_entry_t;
 
-//Use the effect manager to add multiple effects to your scene 
+typedef enum {
+	tfxUserSpawnLocationFlags_active = 1 << 0,
+	tfxUserSpawnLocationFlags_transient = 1 << 1,		//Removed automatically after the update it was added in
+	tfxUserSpawnLocationFlags_new = 1 << 2,			//Added since the last update, single shot emitters only spawn at these
+	tfxUserSpawnLocationFlags_listed = 1 << 3,			//Scratch flag for removing duplicate slots from active_slots
+} tfx_user_spawn_location_flag_bits;
+
+typedef struct tfx_user_spawn_location_s {
+	tfx_vec3_t position;
+	tfx_vec3_t captured_position;
+	float age;
+	tfxU32 flags;
+	tfxU32 generation;								//The slot generation when it was added, stale once the user removes it
+} tfx_user_spawn_location_t;
+
+typedef enum {
+	tfx_user_spawn_location_command_add,
+	tfx_user_spawn_location_command_update,
+	tfx_user_spawn_location_command_remove,
+	tfx_user_spawn_location_command_clear,
+} tfx_user_spawn_location_command_type;
+
+typedef struct tfx_user_spawn_location_command_s {
+	tfx_vec3_t position;
+	tfxU32 slot;
+	tfxU32 generation;
+	tfxU32 flags;
+	tfx_user_spawn_location_command_type type;
+} tfx_user_spawn_location_command_t;
+
+#ifdef __cplusplus
+//The spawn locations a user has given to one effect. locations and active_slots are only changed in tfx_UpdateStage
+//while no update is running, the update only reads them. The rest belong to the thread calling the tfx_*SpawnLocation api.
+typedef struct tfx_user_spawn_locations_s {
+	tfx_vector_t<tfx_user_spawn_location_t> locations;		//Indexed by slot, so a slot never moves while it's in use
+	tfx_vector_t<tfxU32> active_slots;
+	tfx_vector_t<tfxU32> generations;
+	tfx_vector_t<tfxU32> free_slots;
+	tfx_vector_t<tfx_user_spawn_location_command_t> commands;
+	tfxU32 new_location_count;
+	tfxEffectID effect_id;
+} tfx_user_spawn_locations_t;
+#endif
+
+//Use the effect manager to add multiple effects to your scene
 #ifdef __cplusplus
 typedef struct tfx_stage_s {
 	tfxU32 magic;
@@ -7158,6 +7213,7 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t *> deffered_ribbon_spawn_work;
+	tfx_vector_t<tfx_user_spawn_locations_t *> user_spawn_location_lists;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_vector_t<tfxU32> free_compute_controllers;
 
@@ -7462,7 +7518,6 @@ tfxAPI_EDITOR tfxErrorFlags tfx__read_package_library_version(const char *path, 
 
 //The change tier of a graph or a named property. One table, so the widgets and a reload diff agree.
 tfxAPI_EDITOR tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope);
-tfxAPI_EDITOR tfx_change_tier tfx__get_property_change_tier(const char *property_name);
 
 tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -9184,6 +9239,7 @@ tfxINTERNAL void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *data);
@@ -9347,6 +9403,10 @@ tfxINTERNAL void tfx__free_particle_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_all_particle_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_spawn_location_lists(tfx_stage pm);
+tfxINTERNAL void tfx__free_all_user_spawn_locations(tfx_stage pm);
+tfxINTERNAL void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length);
+tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
+tfxINTERNAL tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
 tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);

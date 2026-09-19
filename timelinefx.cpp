@@ -114,7 +114,7 @@ void tfxAddHostMemoryPool(size_t size) {
 void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 13312136) {
+	if (offset_from_allocator == 25794944) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -128,7 +128,7 @@ void *tfxAllocate(size_t size) {
 void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 13312136) {
+	if (offset_from_allocator == 25794944) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -143,7 +143,7 @@ void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
 	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 13312136) {
+	if (offset_from_allocator == 25794944) {
 		int d = 0;
 	}
 	if (!allocation) {
@@ -5594,6 +5594,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("draw_order_by_depth", tfxBool);
 	names_and_types.Insert("guaranteed_draw_order", tfxBool);
 	names_and_types.Insert("include_in_sprite_data_export", tfxBool);
+	names_and_types.Insert("user_spawn_locations", tfxBool);
 	names_and_types.Insert("use_path_for_direction", tfxBool);
 	names_and_types.Insert("alt_velocity_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_color_lifetime_sampling", tfxBool);
@@ -6716,6 +6717,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "draw_order_by_depth") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 	else if (property_name == "guaranteed_draw_order") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	else if (property_name == "include_in_sprite_data_export") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
+	else if (property_name == "user_spawn_locations") value.Setf("%i", effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
 	else if (property_name == "alt_velocity_lifetime_sampling") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling);
 	else if (property_name == "alt_color_lifetime_sampling") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
 	else if (property_name == "alt_size_lifetime_sampling") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
@@ -7084,6 +7086,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order; }
 	} else if (*field == "include_in_sprite_data_export") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
+	} else if (*field == "user_spawn_locations") {
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_user_spawn_locations; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_user_spawn_locations; }
 	} else if (*field == "alt_velocity_lifetime_sampling") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
 	} else if (*field == "alt_color_lifetime_sampling") {
@@ -7429,6 +7433,7 @@ void tfx__stream_effect_properties(tfx_effect_descriptor effect, tfx_stream_t *f
 	file->AddLine("draw_order_by_depth=%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 	file->AddLine("guaranteed_draw_order=%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	file->AddLine("include_in_sprite_data_export=%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
+	file->AddLine("user_spawn_locations=%i", effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
 
 	file->AddLine("sort_passes=%i", effect->sort_passes);
 	file->AddLine("noise_base_offset_range=%f", effect->noise_base_offset_range);
@@ -12485,6 +12490,17 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 	}
 	effect_state->bookmarks_crossed = 0;
 
+	if (effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations) {
+		if (!effect_state->user_spawn_locations) {
+			tfx_user_spawn_locations_t *user_location_list = (tfx_user_spawn_locations_t *)tfxALLOCATE(sizeof(tfx_user_spawn_locations_t));
+			memset((void *)user_location_list, 0, sizeof(tfx_user_spawn_locations_t));
+			pm->user_spawn_location_lists.push_back(user_location_list);
+			effect_state->user_spawn_locations = user_location_list;
+		}
+		effect_state->user_spawn_locations->effect_id = effect_id;
+		effect_state->state_flags |= tfxEffectStateFlags_user_spawn_locations;
+	}
+
 	if (effect->warmup_time > 0) {
 		tfx__add_warmup_effect(pm, effect_id, effect->warmup_time);
 	}
@@ -12820,6 +12836,10 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 	}
     pm->effects_in_use[buffer].push_back(parent_index);
 
+	//A recycled slot still holds the locations of the effect that used it last
+	if (pm->effects[parent_index.index].user_spawn_locations) {
+		tfx__clear_user_spawn_locations(pm->effects[parent_index.index].user_spawn_locations);
+	}
 	tfx__reset_effect_state(pm, parent_index.index, effect);
 	tfx__build_stage_effect_emitters(pm, parent_index.index, effect);
 	tfx__sync_unlock(&pm->add_effect_mutex);
@@ -13161,74 +13181,6 @@ tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effec
 	}
 }
 
-//The same question for the scalar and flag properties, keyed by the name they are written under in the
-//effect data, so the diff and the widgets look them up identically.
-typedef struct tfx_property_tier_s {
-	const char *name;
-	tfx_change_tier tier;
-} tfx_property_tier_t;
-
-static const tfx_property_tier_t tfx__property_change_tiers[] = {
-	{ "alt_color_lifetime_sampling",    tfx_change_tier_resim_on_pause },
-	{ "alt_size_lifetime_sampling",     tfx_change_tier_resim_on_pause },
-	{ "alt_velocity_lifetime_sampling", tfx_change_tier_resim_on_pause },
-	{ "area_open_ends",                 tfx_change_tier_resim_on_pause },
-	{ "delay_spawning",                 tfx_change_tier_resim },
-	{ "draw_order_by_age",              tfx_change_tier_resim },
-	{ "draw_order_by_depth",            tfx_change_tier_resim },
-	{ "emitter_handle_auto_center",     tfx_change_tier_resim_on_pause },
-	{ "exclude_from_global_hue",        tfx_change_tier_nosim },
-	{ "fill_area",                      tfx_change_tier_resim_on_pause },
-	{ "grid_columns",                   tfx_change_tier_resim_on_pause },
-	{ "grid_rows",                      tfx_change_tier_resim_on_pause },
-	{ "grid_spawn_clockwise",           tfx_change_tier_resim_on_pause },
-	{ "grid_spawn_random",              tfx_change_tier_resim_on_pause },
-	{ "uniform_distribution",           tfx_change_tier_resim_on_pause },
-	{ "guaranteed_draw_order",          tfx_change_tier_resim },
-	{ "image_animate",                  tfx_change_tier_redraw },
-	{ "image_frame_rate",               tfx_change_tier_redraw },
-	{ "image_play_once",                tfx_change_tier_redraw },
-	{ "image_random_start_frame",       tfx_change_tier_redraw },
-	{ "image_reverse_animation",        tfx_change_tier_redraw },
-	{ "loop_length",                    tfx_change_tier_resim_on_pause },
-	{ "match_amount_to_grid_points",    tfx_change_tier_resim },
-	{ "noise_base_offset_range",        tfx_change_tier_resim },
-	{ "noise_offset_variation",         tfx_change_tier_resim_on_pause },
-	{ "orient_to_camera",               tfx_change_tier_resim },
-	{ "path_rotation_lifetime",         tfx_change_tier_resim_on_pause },
-	{ "path_rotation_range_yaw_only",   tfx_change_tier_resim_on_pause },
-	{ "path_rotation_stagger",          tfx_change_tier_resim_on_pause },
-	{ "random_color",                   tfx_change_tier_resim_on_pause },
-	{ "relative_position",              tfx_change_tier_resim },
-	{ "ribbon_lag",                     tfx_change_tier_resim },
-	{ "ribbon_lag_time",                tfx_change_tier_resim },
-	{ "ribbon_noise",                   tfx_change_tier_resim },
-	{ "ribbon_noise_frequency",         tfx_change_tier_nosim },
-	{ "ribbon_noise_lock_rate",         tfx_change_tier_nosim },
-	{ "ribbon_noise_octaves",           tfx_change_tier_nosim },
-	{ "ribbon_noise_phase_range",       tfx_change_tier_nosim },
-	{ "ribbon_noise_speed",             tfx_change_tier_nosim },
-	{ "ribbon_path_morph",              tfx_change_tier_resim },
-	{ "run_on_gpu",                     tfx_change_tier_resim },
-	{ "single",                         tfx_change_tier_resim },
-	{ "sort_passes",                    tfx_change_tier_resim },
-	{ "spawn_amount",                   tfx_change_tier_resim },
-	{ "spawn_on_grid",                  tfx_change_tier_resim_on_pause },
-	{ "static_ribbon",                  tfx_change_tier_resim },
-	{ "use_spawn_ratio",                tfx_change_tier_resim_on_pause },
-	{ "warmup_time",                    tfx_change_tier_resim },
-	{ "wrap_single_sprite",             tfx_change_tier_resim_on_pause },
-};
-
-tfx_change_tier tfx__get_property_change_tier(const char *property_name) {
-	for (int index = 0; index != (int)(sizeof(tfx__property_change_tiers) / sizeof(tfx_property_tier_t)); ++index) {
-		if (strcmp(tfx__property_change_tiers[index].name, property_name) == 0) {
-			return tfx__property_change_tiers[index].tier;
-		}
-	}
-	return tfx_change_tier_resim_on_pause;
-}
-
 //Applies an edited descriptor's properties to every emitter already running from it, without respawning.
 //Takes either an emitter or a ribbon emitter: they patch different live state, but a caller refreshing a
 //library after a reload should not have to know which it is holding.
@@ -13327,9 +13279,6 @@ bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter) {
 	}
 	return need_restart;
 }
-
-
-
 
 void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {
 	if (pm->free_particle_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
@@ -14141,6 +14090,7 @@ void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 		pm->manager_work.pm = pm;
 		tfx__wait_for_stage_update_locked(pm);
 		tfx__sync_unlock(&pm->update_thread_mutex);
+		tfx__apply_user_spawn_locations(pm, (float)tfx__Min(elapsed_time, (double)pm->max_frame_length));
 		tfx__update_stage(pm);
 	} else {
 		tfx__sync_lock(&pm->update_thread_mutex);
@@ -14155,6 +14105,8 @@ void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 		//timing as before: the join point is the start of the NEXT tfx_UpdateStage (or an
 		//explicit tfx_CompleteStageWork), never the end of this one.
 		tfx__wait_for_stage_update_locked(pm);
+		//No update is running now so this is the one point where the update's view of the locations can change
+		tfx__apply_user_spawn_locations(pm, (float)tfx__Min(elapsed_time, (double)pm->max_frame_length));
 		bool spawned = tfx__ensure_update_thread_locked(pm);
 		if (spawned) {
 			//Publish the work and wake the thread. This does NOT wait for it - the update
@@ -14417,6 +14369,51 @@ void tfx_ListEffectNames(tfx_library library) {
 	}
 }
 
+//Relative particles of a point emitter in a user spawn locations effect follow the location they spawned at rather than the emitter
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__relative_user_spawn_locations(tfx_stage pm, const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
+	const tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
+	if (emission_type == tfxPoint && effect.state_flags & tfxEffectStateFlags_user_spawn_locations && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+		return effect.user_spawn_locations;
+	}
+	return nullptr;
+}
+
+tfxINTERNAL inline bool tfx__user_spawn_location_is_live(tfx_user_spawn_locations_t *user_location_list, tfxU32 local_id) {
+	tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
+	if (slot >= user_location_list->locations.current_size) {
+		return false;
+	}
+	tfx_user_spawn_location_t &location = user_location_list->locations[slot];
+	return (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
+}
+
+//alive is optional, lanes are all bits set where the location the particle follows still exists
+tfxINTERNAL inline void tfx__gather_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, bool captured, tfxWideFloat *location_x, tfxWideFloat *location_y, tfxWideFloat *location_z, tfxWideInt *alive = nullptr) {
+	tfxWideArray gathered_x;
+	tfxWideArray gathered_y;
+	tfxWideArray gathered_z;
+	tfxWideArrayi gathered_alive;
+	for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+		gathered_alive.a[lane] = alive && tfx__user_spawn_location_is_live(user_location_list, particle_locations[index + lane]) ? -1 : 0;
+		tfxU32 slot = particle_locations[index + lane] & tfxSPAWN_LOCATION_SLOT_MASK;
+		//Padding lanes and removed locations still get here, they're hidden by the remove flag
+		tfx_vec3_t position = {};
+		if (slot < user_location_list->locations.current_size) {
+			tfx_user_spawn_location_t &location = user_location_list->locations[slot];
+			position = captured ? location.captured_position : location.position;
+		}
+		gathered_x.a[lane] = position.x;
+		gathered_y.a[lane] = position.y;
+		gathered_z.a[lane] = position.z;
+	}
+	*location_x = gathered_x.m;
+	*location_y = gathered_y.m;
+	*location_z = gathered_z.m;
+	if (alive) {
+		*alive = gathered_alive.m;
+	}
+}
+
 void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
@@ -14437,6 +14434,7 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
+	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
 	
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -14444,7 +14442,19 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 		tfxWideFloat position_y = tfxWideLoad(&bank.position_y[index]);
 		tfxWideFloat position_z = tfxWideLoad(&bank.position_z[index]);
 
-		if (transform_relative) {
+		if (user_location_list) {
+			tfxWideFloat location_x;
+			tfxWideFloat location_y;
+			tfxWideFloat location_z;
+			tfx__gather_user_spawn_locations(user_location_list, bank.spawn_location, index, true, &location_x, &location_y, &location_z);
+			position_x = tfxWideAdd(position_x, e_handle_x);
+			position_y = tfxWideAdd(position_y, e_handle_y);
+			position_z = tfxWideAdd(position_z, e_handle_z);
+			tfx__wide_transform_quaternion_vec3(&emitter.captured_rotation, &position_x, &position_y, &position_z);
+			position_x = tfxWideAdd(tfxWideMul(position_x, e_scale), location_x);
+			position_y = tfxWideAdd(tfxWideMul(position_y, e_scale), location_y);
+			position_z = tfxWideAdd(tfxWideMul(position_z, e_scale), location_z);
+		} else if (transform_relative) {
 			position_x = tfxWideAdd(position_x, e_handle_x);
 			position_y = tfxWideAdd(position_y, e_handle_y);
 			position_z = tfxWideAdd(position_z, e_handle_z);
@@ -14903,6 +14913,7 @@ typedef struct tfx_instance_block_s {
 	tfxWideArrayi packed_curved_alpha_life;
 	tfxWideArrayi image_indexes;
 	tfxWideArrayi capture_flags;
+	tfxWideArrayi location_alive;		//Only set for relative particles following user spawn locations
 } tfx_instance_block_t;
 
 //Everything the fused pass hoists out of the block loop: the emitter constants broadcast to wide, the
@@ -14928,6 +14939,7 @@ typedef struct tfx_instance_pass_s {
 	bool transform_relative;
 	bool transform_relative_path;
 	bool transform_relative_other_emitter;
+	tfx_user_spawn_locations_t *user_spawn_locations;
 	bool align_to_rotated_emission;
 	bool is_spawn_location_source;
 
@@ -15019,6 +15031,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
 	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
 	pass->transform_relative_other_emitter = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxOtherEmitter;
+	pass->user_spawn_locations = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
 	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
 
@@ -15100,7 +15113,21 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 	block->position_z.m = tfxWideLoad(&bank.position_z[index]);
 	tfx__readbarrier;
 
-	if (pass->transform_relative) {
+	if (pass->user_spawn_locations) {
+		tfxWideFloat location_x;
+		tfxWideFloat location_y;
+		tfxWideFloat location_z;
+		//The age pass that removes particles of a removed location runs after this, and a slot freed this update can
+		//already hold a new location, so hide them now or they're drawn and interpolated to the new location for a frame
+		tfx__gather_user_spawn_locations(pass->user_spawn_locations, bank.spawn_location, index, false, &location_x, &location_y, &location_z, &block->location_alive.m);
+		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
+		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
+		block->position_z.m = tfxWideAdd(block->position_z.m, pass->handle_z);
+		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &block->position_x.m, &block->position_y.m, &block->position_z.m);
+		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), location_x);
+		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), location_y);
+		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), location_z);
+	} else if (pass->transform_relative) {
 		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
 		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
 		block->position_z.m = tfxWideAdd(block->position_z.m, pass->handle_z);
@@ -15271,7 +15298,10 @@ tfxINTERNAL inline void tfx__block_particle_size(const tfx_instance_pass_t *pass
 
 	//Zero scale for particles flagged as removed so they are invisible while still occupying the ring buffer
 	const tfxWideInt particle_flags = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
-	const tfxWideInt alive = tfxWideEqualsi(tfxWideAndi(particle_flags, pass->remove_flag), tfxWideSetZeroi);
+	tfxWideInt alive = tfxWideEqualsi(tfxWideAndi(particle_flags, pass->remove_flag), tfxWideSetZeroi);
+	if (pass->user_spawn_locations) {
+		alive = tfxWideAndi(alive, block->location_alive.m);
+	}
 	scale_x = tfxWideAnd(scale_x, tfxWideCast(alive));
 	scale_y = tfxWideAnd(scale_y, tfxWideCast(alive));
 
@@ -15492,6 +15522,7 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 	const bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position
 		&& emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon)
 		|| emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
+	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -15505,7 +15536,19 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
 		tfx__readbarrier;
 
-		if (transform_relative) {
+		if (user_location_list) {
+			tfxWideFloat location_x;
+			tfxWideFloat location_y;
+			tfxWideFloat location_z;
+			tfx__gather_user_spawn_locations(user_location_list, bank.spawn_location, index, false, &location_x, &location_y, &location_z);
+			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
+			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
+			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
+			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
+			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), location_x);
+			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), location_y);
+			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), location_z);
+		} else if (transform_relative) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
@@ -15879,6 +15922,7 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 	}
 
 	pm->emitters.clear();
+	tfx__free_all_user_spawn_locations(pm);
 	pm->effects.clear();
 }
 
@@ -16271,6 +16315,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->free_particle_indexes.clear();
 	pm->emitters.clear();
 	pm->ribbon_emitters.clear();
+	tfx__free_all_user_spawn_locations(pm);
 	pm->effects.clear();
 	pm->particle_id = 0;
 	pm->spawn_work.clear();
@@ -16366,6 +16411,7 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->free_ribbon_emitters.free();
 	pm->particle_indexes.free();
 	pm->free_particle_indexes.free();
+	tfx__free_all_user_spawn_locations(pm);
 	pm->effects.free();
 	pm->emitters.free();
 	pm->gpu_ribbon_emitters.free();
@@ -16474,6 +16520,7 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
 	tfx_effect_state_t &effect = pm->effects.back();
 	effect.emitter_indexes[0].init();
 	effect.emitter_indexes[1].init();
+	effect.user_spawn_locations = nullptr;
     parent_index.index = pm->effects.current_size - 1;
     parent_index.depth = 0.f;
     tfx__readbarrier;
@@ -16789,7 +16836,9 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 		}
 	}
 
-	if (effect.active_emitters == 0) {
+	//Having no locations doesn't finish a user spawn effect, only expiring it does
+	bool waiting_for_locations = effect.state_flags & tfxEffectStateFlags_user_spawn_locations && !(effect.state_flags & tfxEmitterStateFlags_stop_spawning);
+	if (effect.active_emitters == 0 && !waiting_for_locations) {
 		effect.timeout_counter += (float)pm->frame_length;
 	}
 	else {
@@ -17055,6 +17104,11 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
 
+	spawn_work_entry->user_spawn_locations = nullptr;
+	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && spawn_work_entry->shared_properties->emission_type == tfxPoint) {
+		spawn_work_entry->user_spawn_locations = parent_effect.user_spawn_locations;
+	}
+
 	tfx_vec3_t local_rotations;
 	tfx_library library = emitter.library;
 	tfx_vec3_t translation;
@@ -17255,6 +17309,13 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	emitter.spawn_quantity *= tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], emitter.age, emitter.oscillator_time);
 
 	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
+		return 0;
+	}
+
+	if (entry->user_spawn_locations) {
+		tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
+		emitter.spawn_quantity *= emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single ? user_location_list.new_location_count : user_location_list.active_slots.current_size;
+	} else if (parent->state_flags & tfxEffectStateFlags_user_spawn_locations && shared_properties->emission_type != tfxOtherEmitter && shared_properties->emission_type != tfxSpawnOnRibbon) {
 		return 0;
 	}
 
@@ -17528,7 +17589,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		}
 	}
 
-	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter) {
+	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations) {
 		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
 }
@@ -17555,6 +17616,8 @@ void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data) {
 		}
 	} else if (work_entry->emission_type == tfxSpawnOnRibbon) {
 		tfx__spawn_particle_other_ribbon_emitter(&pm->work_queue, work_entry);
+	} else if (work_entry->user_spawn_locations) {
+		tfx__spawn_particle_user_locations(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxPoint) {
 		tfx__spawn_particle_point(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxArea) {
@@ -18015,6 +18078,54 @@ void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data) {
 		}
 	}
 
+}
+
+void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_stage_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
+	const bool new_locations_only = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	const tfxU32 location_count = user_location_list.active_slots.current_size;
+	TFX_ASSERT(location_count > 0 && (!new_locations_only || user_location_list.new_location_count > 0));	//The spawn amount is scaled by the location count so this should never spawn without any
+
+	const bool relative = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) > 0;
+	tfx_vec3_t handle_offset = {};
+	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
+		handle_offset = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
+	}
+
+	//Carried over between frames so a low spawn rate still reaches every location in turn
+	tfxU32 cursor = (tfxU32)emitter.grid_coords.x;
+	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		tfxU32 slot;
+		tfx_user_spawn_location_t *location;
+		do {
+			if (cursor >= location_count) {
+				cursor = 0;
+			}
+			slot = user_location_list.active_slots[cursor++];
+			location = &user_location_list.locations[slot];
+		} while (new_locations_only && !(location->flags & tfxUserSpawnLocationFlags_new));
+
+		if (relative) {
+			//The transform adds the handle and the location's position every frame
+			entry->particle_data->position_x[index] = 0.f;
+			entry->particle_data->position_y[index] = 0.f;
+			entry->particle_data->position_z[index] = 0.f;
+			entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(slot, location->generation);
+			continue;
+		}
+
+		float tween = 1.f - entry->particle_data->age[index] / (float)pm.frame_length;
+		tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, location->captured_position, location->position);
+		entry->particle_data->position_x[index] = lerp_position.x + handle_offset.x;
+		entry->particle_data->position_y[index] = lerp_position.y + handle_offset.y;
+		entry->particle_data->position_z[index] = lerp_position.z + handle_offset.z;
+	}
+	emitter.grid_coords.x = (float)cursor;
 }
 
 void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data) {
@@ -20133,6 +20244,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 
 	bool is_ordered = effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order || effect.effect_flags & tfxEffectPropertyFlags_age_order;
 	bool is_single = (emitter.state_flags & tfxEmitterStateFlags_is_single) != 0;
+	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, work_entry->shared_properties->emission_type);
 
 	//Ring-buffer head-bump: count consecutive particles at the head that are GUARANTEED expired
 	//(age >= max_life). This is computed inside the SIMD loop to avoid a second pass.
@@ -20166,6 +20278,15 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfxWideStore(&bank.age[index], age);
 		tfxWideStore(&bank.life[index], tfxWideMul(age, inv_max_age));
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags_single_loop_count);
+
+		if (user_location_list) {
+			//A relative particle has nothing to follow once its location is removed
+			for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+				if (!tfx__user_spawn_location_is_live(user_location_list, bank.spawn_location[index + lane])) {
+					bank.flags_single_loop_count[index + lane] |= tfxParticleFlags_remove;
+				}
+			}
+		}
 
 		//Integrate head-bump: while all lanes in this block are past max_life, advance
 		//bump_count. Stop (and count partial) as soon as we see the first alive lane.
@@ -20253,6 +20374,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 				if (emitter.state_flags & tfxEmitterStateFlags_has_path) {
 					bank.path_position[next_index] = bank.path_position[index];
 					bank.path_offset[next_index] = bank.path_offset[index];
+				} else if (user_location_list) {
+					bank.spawn_location[next_index] = bank.spawn_location[index];
 				}
 				if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_rotated_path_or_line) {
 					bank.quaternion[next_index] = bank.quaternion[index];
@@ -21420,6 +21543,214 @@ void tfx_SetEffectPosition(tfx_stage pm, tfxEffectID effect_index, float x, floa
 void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
+}
+
+//A spawn location id is the effect index in the upper 32 bits, then the slot's generation and the slot itself, so an id goes stale when its slot is reused
+tfxINTERNAL tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation) {
+	return slot | (generation << tfxSPAWN_LOCATION_SLOT_BITS);
+}
+
+tfxINTERNAL tfxSpawnLocationID tfx__make_spawn_location_id(tfxEffectID effect_index, tfxU32 slot, tfxU32 generation) {
+	return ((tfxU64)effect_index << 32) | tfx__spawn_location_local_id(slot, generation);
+}
+
+tfxINTERNAL tfxEffectID tfx__spawn_location_effect_index(tfxSpawnLocationID location_id) {
+	return (tfxEffectID)(location_id >> 32);
+}
+
+tfxINTERNAL tfxU32 tfx__spawn_location_slot(tfxSpawnLocationID location_id) {
+	return (tfxU32)location_id & tfxSPAWN_LOCATION_SLOT_MASK;
+}
+
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_user_spawn_locations(tfx_stage pm, tfxEffectID effect_index) {
+	if (effect_index >= pm->effects.current_size) {
+		return nullptr;
+	}
+	tfx_effect_state_t &effect = pm->effects[effect_index];
+	if (!(effect.effect_flags & tfxEffectPropertyFlags_user_spawn_locations)) {
+		return nullptr;
+	}
+	return effect.user_spawn_locations;
+}
+
+//Returns the effect's locations if the id still refers to one of them. Stale ids are expected so they're not asserted
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_spawn_location_owner(tfx_stage pm, tfxSpawnLocationID location_id) {
+	if (location_id == tfxINVALID_SPAWN_LOCATION) {
+		return nullptr;
+	}
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, tfx__spawn_location_effect_index(location_id));
+	if (!user_location_list) {
+		return nullptr;
+	}
+	tfxU32 slot = tfx__spawn_location_slot(location_id);
+	if (slot >= user_location_list->generations.current_size || tfx__spawn_location_local_id(slot, user_location_list->generations[slot]) != (tfxU32)location_id) {
+		return nullptr;
+	}
+	return user_location_list;
+}
+
+tfxINTERNAL void tfx__free_spawn_location_slot(tfx_user_spawn_locations_t *user_location_list, tfxU32 slot) {
+	user_location_list->generations[slot]++;
+	user_location_list->free_slots.push_back(slot);
+}
+
+void tfx__clear_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list) {
+	user_location_list->free_slots.clear();
+	for (tfxU32 slot = user_location_list->generations.current_size; slot-- > 0;) {
+		tfx__free_spawn_location_slot(user_location_list, slot);
+	}
+	user_location_list->commands.clear();
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_clear;
+	user_location_list->commands.push_back(command);
+}
+
+void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
+	tfxPROFILE;
+	for (tfx_user_spawn_locations_t *user_location_list : pm->user_spawn_location_lists) {
+		tfx_vector_t<tfx_user_spawn_location_t> &locations = user_location_list->locations;
+		for (tfxU32 slot : user_location_list->active_slots) {
+			tfx_user_spawn_location_t &location = locations[slot];
+			if (location.flags & tfxUserSpawnLocationFlags_transient) {
+				location.flags = 0;
+				//Otherwise the user already removed it and freed the slot
+				if (user_location_list->generations[slot] == location.generation) {
+					tfx__free_spawn_location_slot(user_location_list, slot);
+				}
+				continue;
+			}
+			location.captured_position = location.position;
+			location.age += frame_length;
+			location.flags &= ~tfxUserSpawnLocationFlags_new;
+		}
+
+		for (tfx_user_spawn_location_command_t &command : user_location_list->commands) {
+			if (command.type == tfx_user_spawn_location_command_add) {
+				if (command.slot >= locations.current_size) {
+					tfxU32 old_size = locations.current_size;
+					locations.resize(command.slot + 1);
+					memset((void *)&locations[old_size], 0, sizeof(tfx_user_spawn_location_t) * (locations.current_size - old_size));
+				}
+				tfx_user_spawn_location_t &location = locations[command.slot];
+				location.position = command.position;
+				location.captured_position = command.position;
+				location.age = 0.f;
+				location.flags = command.flags | tfxUserSpawnLocationFlags_active | tfxUserSpawnLocationFlags_new;
+				location.generation = command.generation;
+				user_location_list->active_slots.push_back(command.slot);
+			} else if (command.slot >= locations.current_size) {
+				continue;
+			} else if (command.type == tfx_user_spawn_location_command_update) {
+				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
+					locations[command.slot].position = command.position;
+				}
+			} else if (command.type == tfx_user_spawn_location_command_remove) {
+				locations[command.slot].flags = 0;
+			} else if (command.type == tfx_user_spawn_location_command_clear) {
+				for (tfxU32 slot : user_location_list->active_slots) {
+					locations[slot].flags = 0;
+				}
+			}
+		}
+		user_location_list->commands.clear();
+
+		//A slot removed and added again in the same frame is listed twice
+		tfxU32 kept = 0;
+		user_location_list->new_location_count = 0;
+		for (tfxU32 slot : user_location_list->active_slots) {
+			tfx_user_spawn_location_t &location = locations[slot];
+			if (!(location.flags & tfxUserSpawnLocationFlags_active) || location.flags & tfxUserSpawnLocationFlags_listed) {
+				continue;
+			}
+			location.flags |= tfxUserSpawnLocationFlags_listed;
+			user_location_list->new_location_count += (location.flags & tfxUserSpawnLocationFlags_new) > 0;
+			user_location_list->active_slots[kept++] = slot;
+		}
+		user_location_list->active_slots.current_size = kept;
+		for (tfxU32 slot : user_location_list->active_slots) {
+			locations[slot].flags &= ~tfxUserSpawnLocationFlags_listed;
+		}
+	}
+}
+
+void tfx__free_all_user_spawn_locations(tfx_stage pm) {
+	for (tfx_user_spawn_locations_t *user_location_list : pm->user_spawn_location_lists) {
+		user_location_list->locations.free();
+		user_location_list->active_slots.free();
+		user_location_list->generations.free();
+		user_location_list->free_slots.free();
+		user_location_list->commands.free();
+		tfxFREE(user_location_list);
+	}
+	pm->user_spawn_location_lists.free();
+	for (tfx_effect_state_t &effect : pm->effects) {
+		effect.user_spawn_locations = nullptr;
+	}
+}
+
+tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], bool transient) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_VALIDATE_EFFECT(pm, effect_index, tfxINVALID_SPAWN_LOCATION);
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, effect_index);
+	if (!user_location_list) {
+		return tfxINVALID_SPAWN_LOCATION;
+	}
+	tfxU32 slot;
+	if (!user_location_list->free_slots.empty()) {
+		slot = user_location_list->free_slots.pop_back();
+	} else {
+		slot = user_location_list->generations.current_size;
+		TFX_ASSERT(slot < tfxSPAWN_LOCATION_SLOT_MASK);	//Too many spawn locations in one effect
+		user_location_list->generations.push_back(0);
+	}
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_add;
+	command.slot = slot;
+	command.generation = user_location_list->generations[slot];
+	command.position = { position[0], position[1], position[2] };
+	command.flags = transient ? tfxUserSpawnLocationFlags_transient : 0;
+	user_location_list->commands.push_back(command);
+	return tfx__make_spawn_location_id(effect_index, slot, user_location_list->generations[slot]);
+}
+
+void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	if (!user_location_list) {
+		return;
+	}
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_update;
+	command.slot = tfx__spawn_location_slot(location_id);
+	command.position = { position[0], position[1], position[2] };
+	user_location_list->commands.push_back(command);
+}
+
+void tfx_RemoveSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	if (!user_location_list) {
+		return;
+	}
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_remove;
+	command.slot = tfx__spawn_location_slot(location_id);
+	user_location_list->commands.push_back(command);
+	tfx__free_spawn_location_slot(user_location_list, command.slot);
+}
+
+void tfx_ClearSpawnLocations(tfx_stage pm, tfxEffectID effect_index) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, effect_index);
+	if (user_location_list) {
+		tfx__clear_user_spawn_locations(user_location_list);
+	}
+}
+
+bool tfx_SpawnLocationIsValid(tfx_stage pm, tfxSpawnLocationID location_id) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	return tfx__get_spawn_location_owner(pm, location_id) != nullptr;
 }
 
 void tfx_SetAnimationPosition(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float position[3]) {

@@ -135,6 +135,8 @@ typedef uint64_t tfxU64;
 typedef int64_t tfxS64;
 typedef tfxU32 tfxEffectID;
 typedef tfxU32 tfxAnimationID;
+typedef tfxU64 tfxSpawnLocationID;
+#define tfxINVALID_SPAWN_LOCATION 0xFFFFFFFFFFFFFFFFull
 typedef tfxU64 tfxKey;
 typedef tfxU32 tfxParticleID;
 typedef short tfxShort;
@@ -1779,6 +1781,57 @@ Set the position of an effect
 * @param position        A float[3] array containing the x, y and z coordinates
 */
 tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]);
+
+/*
+Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Point emitters in the
+effect spawn at every location the effect has, emitters with any other emission type don't spawn at all, apart from Other Emitter and Spawn
+on Ribbon emitters which still spawn from their source emitter. Use this to have one effect handle lots of sources, for example the smoke
+trails of every ship in a fleet, which is much cheaper than an effect per ship.
+Locations persist until you remove them. Changes are applied the next time tfx_UpdateStage is called, so it's safe to call this while the
+previous update is still running, but only from the thread that calls tfx_UpdateStage.
+Locations are in world space. Particles from emitters set to relative position follow the location they spawned at (position only, the
+effect rotation still applies) and are removed along with it, which suits things like a glow on each ship. Relative particles at a transient
+location only last one update. The spawn amount of an emitter is per location.
+Single shot emitters spawn their particles once at each new location.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_index      The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param position          A float[3] array containing the x, y and z coordinates
+* @param transient         If true the location is removed automatically after the next update so you don't need to keep the id. Useful for
+                           one off bursts like impacts
+* @returns                 A tfxSpawnLocationID to use with tfx_UpdateSpawnLocation and tfx_RemoveSpawnLocation. It includes the effect so
+                           you don't need to keep the effect index with it. tfxINVALID_SPAWN_LOCATION if the effect doesn't spawn at user locations
+*/
+tfxAPI tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], bool transient);
+
+/*
+Move a spawn location. Particles spawned this update are spread along the line between the old and new position.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param position          A float[3] array containing the x, y and z coordinates
+*/
+tfxAPI void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]);
+
+/*
+Remove a spawn location. Particles already spawned there live out their life, except relative ones which are removed with it. The id is
+invalid straight away.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI void tfx_RemoveSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id);
+
+/*
+Remove all the spawn locations from an effect.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_index      The index of the effect
+*/
+tfxAPI void tfx_ClearSpawnLocations(tfx_stage pm, tfxEffectID effect_index);
+
+/*
+Check whether a spawn location id still refers to a location in the effect.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI bool tfx_SpawnLocationIsValid(tfx_stage pm, tfxSpawnLocationID location_id);
 
 /*
 Move an Effect by a specified amount relative to the effect's current position
