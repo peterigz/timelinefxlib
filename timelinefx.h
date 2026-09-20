@@ -1783,15 +1783,17 @@ Set the position of an effect
 tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]);
 
 /*
-Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Point emitters in the
-effect spawn at every location the effect has, emitters with any other emission type don't spawn at all, apart from Other Emitter and Spawn
-on Ribbon emitters which still spawn from their source emitter. Use this to have one effect handle lots of sources, for example the smoke
-trails of every ship in a fleet, which is much cheaper than an effect per ship.
+Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Point emitters and
+ribbon emitters in the effect spawn at every location the effect has, emitters with any other emission type don't spawn at all, apart from
+Other Emitter and Spawn on Ribbon emitters which still spawn from their source emitter. Use this to have one effect handle lots of sources,
+for example the smoke trails of every ship in a fleet, which is much cheaper than an effect per ship.
 Locations persist until you remove them. Changes are applied the next time tfx_UpdateStage is called, so it's safe to call this while the
 previous update is still running, but only from the thread that calls tfx_UpdateStage.
 Locations are in world space. Particles from emitters set to relative position follow the location they spawned at (position only, the
 effect rotation still applies) and are removed along with it, which suits things like a glow on each ship. Relative particles at a transient
 location only last one update.
+Ribbons are always world space here: a ribbon is anchored where its location was when it spawned and stays there for its life, so relative
+position is ignored for a ribbon emitter spawning at user locations, and so is ribbon lag, which needs it.
 The spawn amount of an emitter is per location and is taken from its amount graph at that location's age, so a burst that fades out does so
 at every location in turn. An emitter's delay also counts from when the location was added, and single shot emitters fire once per location.
 Every other graph is sampled at the effect's or emitter's own age as it would be for any effect, so it affects the particles of all the

@@ -6464,6 +6464,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
+	float user_spawn_amount_carry;					//Fraction of a ribbon carried to the next update when spawning at user locations
 	tfx_effect_descriptor source_ribbon;
 	tfx_library library;
 
@@ -6771,6 +6772,13 @@ typedef struct tfx_ribbon_data_push_s {
 } tfx_ribbon_data_push_t;
 
 
+//One location's share of an emitter's spawn this update. Particles of a run are contiguous in the bank
+typedef struct tfx_user_spawn_run_s {
+	tfxU32 slot;
+	tfxU32 count;
+	float weight;							//The location's spawn amount, what the emitter's amount is shared out by
+} tfx_user_spawn_run_t;
+
 typedef struct tfx_ribbon_bucket_s {
 	tfx_ribbon_bucket_globals_t globals;
 	tfx_ribbon_buffer_info_t buffer_info;
@@ -6786,12 +6794,16 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t<tfxU32> free_ribbons;
 	tfx_vector_t<tfxU32> ribbon_emitter_indexes[2];
 	tfx_vector_t<tfxU32> control_ribbon_queue;
+	//One thread walks a bucket, so the runs of its user spawn emitters live here rather than in the shared
+	//pm->user_spawn_runs that the particle side fills from the single threaded emitter update
+	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 #else
 	tfx_vector_t segments;
 	tfx_vector_t free_ribbons;
 	tfx_vector_t ribbon_emitter_indexes[2];
 	tfx_vector_t control_ribbon_queue;
+	tfx_vector_t user_spawn_runs;
 	tfx_storage_map_t cached_static_path_segments;
 #endif
 	tfxRibbonBucketFlags flags;
@@ -6900,6 +6912,9 @@ typedef struct tfx_ribbon_work_entry_s {
 	double tween;
 	double qty_step_size;
 	float overall_scale;
+	struct tfx_user_spawn_locations_s *user_spawn_locations;	//Set when this ribbon emitter spawns at the locations given by the user
+	tfxU32 user_spawn_run_start;
+	tfxU32 user_spawn_run_count;
 }tfx_ribbon_work_entry_t;
 
 typedef struct tfx_control_work_entry_s {
@@ -7151,13 +7166,6 @@ typedef enum {
 	tfx_user_spawn_location_command_remove,
 	tfx_user_spawn_location_command_clear,
 } tfx_user_spawn_location_command_type;
-
-//One location's share of an emitter's spawn this update. Particles of a run are contiguous in the bank
-typedef struct tfx_user_spawn_run_s {
-	tfxU32 slot;
-	tfxU32 count;
-	float weight;							//The location's spawn amount, what the emitter's amount is shared out by
-} tfx_user_spawn_run_t;
 
 typedef struct tfx_user_spawn_location_command_s {
 	tfx_vec3_t position;
@@ -9231,7 +9239,7 @@ tfxINTERNAL void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon
 tfxINTERNAL void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
-tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
+tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
 tfxINTERNAL void tfx__update_effect_state(tfx_stage pm, tfxU32 index);
