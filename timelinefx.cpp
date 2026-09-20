@@ -14395,6 +14395,20 @@ tfxINTERNAL inline bool tfx__user_spawn_location_is_live(tfx_user_spawn_location
 	return (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
 }
 
+//Only called when one of the effect's locations has an orientation, so the common case never touches this
+tfxINTERNAL inline void tfx__gather_user_spawn_rotations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, tfxWideInt *rotation_xy, tfxWideInt *rotation_zw) {
+	tfxWideArrayi gathered_xy;
+	tfxWideArrayi gathered_zw;
+	for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+		tfxU32 slot = particle_locations[index + lane] & tfxSPAWN_LOCATION_SLOT_MASK;
+		tfxU64 rotation = slot < user_location_list->locations.current_size ? user_location_list->locations[slot].packed_rotation : tfxPACKED_W_QUATERNION;
+		gathered_xy.a[lane] = (int)(tfxU32)(rotation & 0xFFFFFFFF);
+		gathered_zw.a[lane] = (int)(tfxU32)(rotation >> 32);
+	}
+	*rotation_xy = gathered_xy.m;
+	*rotation_zw = gathered_zw.m;
+}
+
 //alive is optional, lanes are all bits set where the location the particle follows still exists
 tfxINTERNAL inline void tfx__gather_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, bool captured, tfxWideFloat *location_x, tfxWideFloat *location_y, tfxWideFloat *location_z, tfxWideInt *alive = nullptr) {
 	tfxWideArray gathered_x;
@@ -14948,6 +14962,7 @@ typedef struct tfx_instance_pass_s {
 	bool transform_relative_path;
 	bool transform_relative_other_emitter;
 	tfx_user_spawn_locations_t *user_spawn_locations;
+	bool user_spawn_rotation;			//Any of the effect's locations has an orientation, so the particles take it live
 	bool align_to_rotated_emission;
 	bool is_spawn_location_source;
 
@@ -15040,6 +15055,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
 	pass->transform_relative_other_emitter = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxOtherEmitter;
 	pass->user_spawn_locations = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
+	pass->user_spawn_rotation = pass->user_spawn_locations && pass->user_spawn_locations->has_rotation;
 	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
 
@@ -15132,6 +15148,13 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
 		block->position_z.m = tfxWideAdd(block->position_z.m, pass->handle_z);
 		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &block->position_x.m, &block->position_y.m, &block->position_z.m);
+		if (pass->user_spawn_rotation) {
+			//After the emitter rotation, so the emitter keeps its own angle and the location turns the whole thing into its frame
+			tfxWideArrayi rotation_xy;
+			tfxWideArrayi rotation_zw;
+			tfx__gather_user_spawn_rotations(pass->user_spawn_locations, bank.spawn_location, index, &rotation_xy.m, &rotation_zw.m);
+			tfx__wide_transform_packed_quaternion_vec3(&rotation_xy.m, &rotation_zw.m, &block->position_x.m, &block->position_y.m, &block->position_z.m);
+		}
 		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), location_x);
 		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), location_y);
 		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), location_z);
@@ -17665,6 +17688,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	}
 
 	work_entry->emission_type = shared_properties.emission_type;
+	work_entry->user_spawn_rotation = emitter.rotation;
 	work_entry->tween = tween;
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
@@ -17717,6 +17741,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		tfx__share_user_spawn_amount(pm, work_entry, emitter);
 		work_entry->user_spawn_cursor = 0;
 		work_entry->user_spawn_run_end = work_entry->user_spawn_run_count ? pm->user_spawn_runs[work_entry->user_spawn_run_start].count : 0;
+		if (work_entry->user_spawn_run_count && work_entry->user_spawn_locations->has_rotation) {
+			work_entry->user_spawn_rotation = tfx__unpack16bit_quaternion(work_entry->user_spawn_locations->locations[pm->user_spawn_runs[work_entry->user_spawn_run_start].slot].packed_rotation) * emitter.rotation;
+		}
 	}
 
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
@@ -17846,6 +17873,9 @@ void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, t
 	tfx__spawn_particle_image_frame(&pm->work_queue, work_entry);
 	tfx__spawn_particle_size(&pm->work_queue, work_entry);
 	tfx__spawn_particle_spin(&pm->work_queue, work_entry);
+	if (work_entry->user_spawn_locations) {
+		tfx__spawn_particle_user_location_tweaks(&pm->work_queue, work_entry);
+	}
 }
 
 void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
@@ -18240,9 +18270,16 @@ tfxINTERNAL tfx_vec3_t tfx__spawn_anchor(tfx_spawn_work_entry_t *entry, const tf
 		return tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 	}
 	const tfx_user_spawn_run_t *runs = &entry->pm->user_spawn_runs[entry->user_spawn_run_start];
-	while (particle_index >= entry->user_spawn_run_end) {
-		entry->user_spawn_cursor++;
-		entry->user_spawn_run_end += runs[entry->user_spawn_cursor].count;
+	if (particle_index >= entry->user_spawn_run_end) {
+		while (particle_index >= entry->user_spawn_run_end) {
+			entry->user_spawn_cursor++;
+			entry->user_spawn_run_end += runs[entry->user_spawn_cursor].count;
+		}
+		if (entry->user_spawn_locations->has_rotation) {
+			//The emitter's own angle first, then the location turns the whole thing into its frame. Rebuilt once a run, so the
+			//offset still costs the one rotate per particle it always did
+			entry->user_spawn_rotation = tfx__unpack16bit_quaternion(entry->user_spawn_locations->locations[runs[entry->user_spawn_cursor].slot].packed_rotation) * emitter.rotation;
+		}
 	}
 	const tfx_user_spawn_run_t &run = runs[entry->user_spawn_cursor];
 	const tfx_user_spawn_location_t &location = entry->user_spawn_locations->locations[run.slot];
@@ -18275,6 +18312,43 @@ void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data)
 		}
 	}
 	TFX_ASSERT(particle == entry->amount_to_spawn);
+}
+
+//The per location size and velocity factors, and for a non relative emitter the emission direction, which is already in world space by the
+//time it gets here so the location's rotation goes on top of it. Relative emitters take their rotation live in the transform instead
+void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_stage_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
+	const bool rotate_emission = user_location_list.has_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
+	if (!user_location_list.has_factors && !rotate_emission) {
+		return;
+	}
+
+	tfxU32 particle = 0;
+	for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
+		const tfx_user_spawn_run_t &run = pm.user_spawn_runs[entry->user_spawn_run_start + run_index];
+		const tfx_user_spawn_location_t &location = user_location_list.locations[run.slot];
+		const bool rotate_run = rotate_emission && location.packed_rotation != tfxPACKED_W_QUATERNION;
+		tfx_quaternion_t rotation = rotate_run ? tfx__unpack16bit_quaternion(location.packed_rotation) : tfx_quaternion_t();
+		for (tfxU32 i = 0; i != run.count; ++i) {
+			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
+			if (location.size_factor != 1.f) {
+				entry->particle_data->base_size_x[index] *= location.size_factor;
+				entry->particle_data->base_size_y[index] *= location.size_factor;
+			}
+			if (location.velocity_factor != 1.f) {
+				entry->particle_data->base_velocity[index] *= location.velocity_factor;
+			}
+			if (rotate_run) {
+				tfx_vec3_t normal = tfx__unpack10bit_unsigned(entry->particle_data->velocity_normal[index]);
+				normal = tfx__rotate_vector_quaternion(&rotation, normal);
+				entry->particle_data->velocity_normal[index] = tfx__pack10bit_unsigned(&normal);
+			}
+		}
+	}
 }
 
 void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data) {
@@ -18693,7 +18767,7 @@ void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19002,7 +19076,7 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19093,7 +19167,7 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19186,7 +19260,7 @@ void tfx__spawn_particle_disc(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19226,7 +19300,7 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19778,7 +19852,7 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -19877,7 +19951,7 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overall_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overall_scale;
@@ -21878,6 +21952,9 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				tfx_user_spawn_location_t &location = locations[command.slot];
 				location.position = command.position;
 				location.captured_position = command.position;
+				location.packed_rotation = tfxPACKED_W_QUATERNION;
+				location.size_factor = 1.f;
+				location.velocity_factor = 1.f;
 				location.age = 0.f;
 				location.previous_age = -1.f;
 				location.flags = command.flags | tfxUserSpawnLocationFlags_active;
@@ -21888,6 +21965,12 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 			} else if (command.type == tfx_user_spawn_location_command_update) {
 				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
 					locations[command.slot].position = command.position;
+				}
+			} else if (command.type == tfx_user_spawn_location_command_tweaks) {
+				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
+					locations[command.slot].packed_rotation = command.packed_rotation;
+					locations[command.slot].size_factor = command.size_factor;
+					locations[command.slot].velocity_factor = command.velocity_factor;
 				}
 			} else if (command.type == tfx_user_spawn_location_command_remove) {
 				locations[command.slot].flags = 0;
@@ -21910,8 +21993,12 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 			user_location_list->active_slots[kept++] = slot;
 		}
 		user_location_list->active_slots.current_size = kept;
+		user_location_list->has_rotation = false;
+		user_location_list->has_factors = false;
 		for (tfxU32 slot : user_location_list->active_slots) {
 			locations[slot].flags &= ~tfxUserSpawnLocationFlags_listed;
+			user_location_list->has_rotation |= locations[slot].packed_rotation != tfxPACKED_W_QUATERNION;
+			user_location_list->has_factors |= locations[slot].size_factor != 1.f || locations[slot].velocity_factor != 1.f;
 		}
 	}
 }
@@ -21966,6 +22053,25 @@ void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float
 	command.type = tfx_user_spawn_location_command_update;
 	command.slot = tfx__spawn_location_slot(location_id);
 	command.position = { position[0], position[1], position[2] };
+	user_location_list->commands.push_back(command);
+}
+
+void tfx_SetSpawnLocationTweaks(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4], float size_factor, float velocity_factor) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	if (!user_location_list) {
+		return;
+	}
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_tweaks;
+	command.slot = tfx__spawn_location_slot(location_id);
+	command.packed_rotation = tfxPACKED_W_QUATERNION;
+	if (rotation) {
+		//The api takes x, y, z, w, tfx_quaternion_t stores w first
+		command.packed_rotation = tfx__pack16bit_quaternion(tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]));
+	}
+	command.size_factor = size_factor;
+	command.velocity_factor = velocity_factor;
 	user_location_list->commands.push_back(command);
 }
 

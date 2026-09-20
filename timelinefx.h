@@ -1823,6 +1823,26 @@ Move a spawn location. Particles spawned this update are spread along the line b
 tfxAPI void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]);
 
 /*
+Per location adjustments to what an emitter spawns there, so one effect can drive sources that differ from each other. Defaults are an
+identity rotation and factors of 1, which is what a location has until you call this.
+The rotation orients the emitter at that location: the shape it spawns in and the direction its particles are emitted, so an area emitter's
+box turns with it and a point emitter's emission direction turns with it. Line emitters that traverse their edge or use their path as a
+trajectory take the rotation but not the direction, theirs is fixed along the line.
+When the rotation takes effect depends on whether the emitter is set to relative position, matching what relative already means for the
+location's position. Relative emitters are attached, so they turn with the location and keep turning as it does, which is what lets you aim
+a beam at something. Emitters that aren't relative take the rotation as each particle spawns, so turning a location aims what it spawns from
+then on and leaves what it already spawned where it was, which is what you want for a trail.
+The size and velocity factors scale an emitter's base size and base velocity for the particles spawned at that location. Both are applied as
+each particle spawns, so changing them never disturbs particles that are already alive.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param rotation          A float[4] quaternion as x, y, z, w. Pass a null pointer to leave the rotation alone
+* @param size_factor       Multiplier for the base size of particles spawned here
+* @param velocity_factor   Multiplier for the base velocity of particles spawned here
+*/
+tfxAPI void tfx_SetSpawnLocationTweaks(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4], float size_factor, float velocity_factor);
+
+/*
 Remove a spawn location. Particles already spawned there live out their life, except relative ones which are removed with it. The id is
 invalid straight away.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
