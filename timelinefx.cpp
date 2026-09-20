@@ -12513,6 +12513,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.parent_index = parent_index;
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
 	emitter.grid_coords = tfx_vec3_t();
+	emitter.user_spawn_amount_carry = 0.f;
 
 	emitter.state_properties = src_emitter->state_properties;
 	TFX_ASSERT(src_emitter->state_properties.image);
@@ -14372,10 +14373,18 @@ void tfx_ListEffectNames(tfx_library library) {
 	}
 }
 
-//Relative particles of a point emitter in a user spawn locations effect follow the location they spawned at rather than the emitter
+//Emitters that spawn at the effect's user locations. The path family is out: those take their position from path traversal in the control
+//pass and own path_offset, which unions with the id of the location a particle follows. Edge traversal is out for the same reason, its loop
+//and kill wrap the stored position against the emitter's own size. Other Emitter and Spawn on Ribbon keep spawning from their own source
+tfxINTERNAL bool tfx__can_spawn_at_user_locations(tfx_emission_type emission_type, tfxU32 property_flags) {
+	return emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon && emission_type != tfxPath
+		&& !(property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal);
+}
+
+//Relative particles in a user spawn locations effect follow the location they spawned at rather than the emitter
 tfxINTERNAL tfx_user_spawn_locations_t *tfx__relative_user_spawn_locations(tfx_stage pm, const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
 	const tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
-	if (emission_type == tfxPoint && effect.state_flags & tfxEffectStateFlags_user_spawn_locations && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+	if (tfx__can_spawn_at_user_locations(emission_type, emitter.state_properties.property_flags) && effect.state_flags & tfxEffectStateFlags_user_spawn_locations && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		return effect.user_spawn_locations;
 	}
 	return nullptr;
@@ -17216,7 +17225,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
 
 	spawn_work_entry->user_spawn_locations = nullptr;
-	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && spawn_work_entry->shared_properties->emission_type == tfxPoint) {
+	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(spawn_work_entry->shared_properties->emission_type, emitter.state_properties.property_flags)) {
 		spawn_work_entry->user_spawn_locations = parent_effect.user_spawn_locations;
 	}
 
@@ -17413,7 +17422,7 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 
 tfxINTERNAL void tfx__share_user_spawn_amount(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
 	const bool single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
-	work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&pm->user_spawn_runs, work_entry->user_spawn_run_start, work_entry->user_spawn_run_count, work_entry->amount_to_spawn, single, &emitter.grid_coords.x);
+	work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&pm->user_spawn_runs, work_entry->user_spawn_run_start, work_entry->user_spawn_run_count, work_entry->amount_to_spawn, single, &emitter.user_spawn_amount_carry);
 }
 
 //A ribbon emitter spawns at the same locations under the same rules, but its ribbons are always world space: the GPU's relative path adds
@@ -17464,6 +17473,9 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	if (entry->user_spawn_locations) {
 		emitter.spawn_quantity = tfx__user_spawn_location_weights(pm, entry, emitter, parent);
 	} else if (parent->state_flags & tfxEffectStateFlags_user_spawn_locations && shared_properties->emission_type != tfxOtherEmitter && shared_properties->emission_type != tfxSpawnOnRibbon) {
+		//Cleared as well as returning 0 because a single emitter takes its amount straight from the quantity without clamping it
+		//to the max spawn count this returns
+		emitter.spawn_quantity = 0;
 		return 0;
 	}
 
@@ -17594,6 +17606,8 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	if (entry->user_spawn_locations) {
 		ribbon_emitter.spawn_quantity = tfx__user_spawn_ribbon_weights(entry, ribbon_emitter, parent);
 	} else if (parent->state_flags & tfxEffectStateFlags_user_spawn_locations) {
+		//Cleared as well as returning 0 because a single emitter takes its amount straight from the quantity
+		ribbon_emitter.spawn_quantity = 0;
 		return 0;
 	}
 
@@ -17696,6 +17710,8 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	if (work_entry->user_spawn_locations) {
 		tfx__share_user_spawn_amount(pm, work_entry, emitter);
+		work_entry->user_spawn_cursor = 0;
+		work_entry->user_spawn_run_end = work_entry->user_spawn_run_count ? pm->user_spawn_runs[work_entry->user_spawn_run_start].count : 0;
 	}
 
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
@@ -17771,6 +17787,10 @@ void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, t
 	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 		tfx__spawn_particle_init_spawn_points(&pm->work_queue, work_entry);
 	}
+	//Point emitters get their ages and positions together below, every other shape spawns as it normally would around the location
+	if (work_entry->user_spawn_locations && work_entry->emission_type != tfxPoint) {
+		tfx__spawn_particle_user_location_ages(&pm->work_queue, work_entry);
+	}
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
 			tfx__spawn_particle_other_emitter_single(&pm->work_queue, work_entry);
@@ -17779,7 +17799,7 @@ void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, t
 		}
 	} else if (work_entry->emission_type == tfxSpawnOnRibbon) {
 		tfx__spawn_particle_other_ribbon_emitter(&pm->work_queue, work_entry);
-	} else if (work_entry->user_spawn_locations) {
+	} else if (work_entry->user_spawn_locations && work_entry->emission_type == tfxPoint) {
 		tfx__spawn_particle_user_locations(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxPoint) {
 		tfx__spawn_particle_point(&pm->work_queue, work_entry);
@@ -18207,6 +18227,51 @@ void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data) 
 	}
 }
 
+//The world space position a particle spawns around: the emitter's, or the location of the run the particle belongs to when the effect
+//spawns at user locations, which instances the emitter's shape at every location. Runs are contiguous and filled in order so the cursor
+//only ever moves forwards
+tfxINTERNAL tfx_vec3_t tfx__spawn_anchor(tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter, tfxU32 particle_index, float tween) {
+	if (!entry->user_spawn_run_count) {
+		return tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
+	}
+	const tfx_user_spawn_run_t *runs = &entry->pm->user_spawn_runs[entry->user_spawn_run_start];
+	while (particle_index >= entry->user_spawn_run_end) {
+		entry->user_spawn_cursor++;
+		entry->user_spawn_run_end += runs[entry->user_spawn_cursor].count;
+	}
+	const tfx_user_spawn_run_t &run = runs[entry->user_spawn_cursor];
+	const tfx_user_spawn_location_t &location = entry->user_spawn_locations->locations[run.slot];
+	//Each location's particles spread over the whole update, matching the ages tfx__spawn_particle_user_location_ages gave them
+	float location_tween = 1.f - (float)(particle_index - (entry->user_spawn_run_end - run.count)) / (float)run.count;
+	return tfx__interpolate_vec3(location_tween, location.captured_position, location.position);
+}
+
+//Spreads each location's particles over the whole update rather than the slice of it their place in the bank would give them, otherwise a
+//location that moves leaves its particles bunched together. Relative particles also record the location they follow. Point emitters do the
+//same thing inline in tfx__spawn_particle_user_locations, where the position is all they need
+void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_stage_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
+	const bool relative = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) > 0;
+
+	tfxU32 particle = 0;
+	for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
+		const tfx_user_spawn_run_t &run = pm.user_spawn_runs[entry->user_spawn_run_start + run_index];
+		const tfx_user_spawn_location_t &location = user_location_list.locations[run.slot];
+		for (tfxU32 i = 0; i != run.count; ++i) {
+			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
+			entry->particle_data->age[index] = (float)pm.frame_length * (float)i / (float)run.count;
+			if (relative) {
+				entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
+			}
+		}
+	}
+	TFX_ASSERT(particle == entry->amount_to_spawn);
+}
+
 void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
@@ -18621,7 +18686,7 @@ void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -18930,7 +18995,7 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -19021,7 +19086,7 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -19114,7 +19179,7 @@ void tfx__spawn_particle_disc(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -19154,7 +19219,7 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 		emitter.grid_coords.x++;
 
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -19706,7 +19771,7 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 		local_position_y = tfxIcospherePoints[sub_division][ico_point].y * half_emitter_size.y;
 		local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;
@@ -19805,7 +19870,7 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overall_scale;

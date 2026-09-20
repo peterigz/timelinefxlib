@@ -6235,6 +6235,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 
 	//Control Data (May change frame by frame
 	tfx_vec3_t grid_coords;
+	float user_spawn_amount_carry;					//Fraction of a particle carried to the next update when spawning at user locations
 	tfx_vec3_t grid_direction;
 	tfx_vec3_t emitter_size;
 	float emission_alternator;
@@ -6875,6 +6876,8 @@ typedef struct tfx_spawn_work_entry_s {
 	tfx_particle_soa_t *particle_data;
 	struct tfx_user_spawn_locations_s *user_spawn_locations;	//Set when this emitter spawns at the locations given by the user
 	tfxU32 user_spawn_run_start;			//Into tfx_stage_t::user_spawn_runs
+	tfxU32 user_spawn_cursor;				//The run tfx__spawn_anchor is up to, only ever moves forwards
+	tfxU32 user_spawn_run_end;				//The particle index the cursor's run ends at
 	tfxU32 user_spawn_run_count;
 	tfxU32 spawn_points_ready;
 #ifdef __cplusplus
@@ -9258,6 +9261,7 @@ tfxINTERNAL void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
