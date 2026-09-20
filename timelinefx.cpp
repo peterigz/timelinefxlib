@@ -14373,12 +14373,9 @@ void tfx_ListEffectNames(tfx_library library) {
 	}
 }
 
-//Emitters that spawn at the effect's user locations. The path family is out: those take their position from path traversal in the control
-//pass and own path_offset, which unions with the id of the location a particle follows. Edge traversal is out for the same reason, its loop
-//and kill wrap the stored position against the emitter's own size. Other Emitter and Spawn on Ribbon keep spawning from their own source
 tfxINTERNAL bool tfx__can_spawn_at_user_locations(tfx_emission_type emission_type, tfxU32 property_flags) {
 	return emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon && emission_type != tfxPath
-		&& !(property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal);
+		&& !(property_flags & tfxEmitterPropertyFlags_edge_traversal);
 }
 
 //Relative particles in a user spawn locations effect follow the location they spawned at rather than the emitter
@@ -20614,6 +20611,10 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 				}
 				if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_rotated_path_or_line) {
 					bank.quaternion[next_index] = bank.quaternion[index];
+				}
+				if (emitter.state_properties.control_profile & tfxEmitterControlProfile_trajectory) {
+					//Written once at spawn and read every frame to scale the particle along the trajectory
+					bank.path_scale_variation[next_index] = bank.path_scale_variation[index];
 				}
 				bank.random_color[next_index] = bank.random_color[index];
 				bank.image_frame[next_index] = bank.image_frame[index];
