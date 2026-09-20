@@ -13656,6 +13656,7 @@ void tfx__update_stage(void *data) {
 			}
 			pm->deffered_spawn_work.clear();
 			tfx__complete_all_work(&pm->work_queue);
+			pm->user_spawn_runs.clear();
 			tfx_AdvanceRandom(&pm->threaded_random);
 
 			//Control phase — every emitter pushed onto control_emitter_queue by spawn, in parallel
@@ -13804,6 +13805,7 @@ void tfx__update_stage(void *data) {
 	pm->deffered_spawn_work.clear();
 
 	tfx__complete_all_work(&pm->work_queue);
+	pm->user_spawn_runs.clear();
 
 	tfx_ribbon_dispatch_t ribbon_dispatch{};
 	while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
@@ -16426,6 +16428,7 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->sorting_work_entry.free();
 	pm->deffered_spawn_work.free();
 	pm->deffered_ribbon_spawn_work.free();
+	pm->user_spawn_runs.free();
 	pm->free_ribbon_segment_lists.FreeAll();
 	pm->warmup_effects[0].free();
 	pm->warmup_effects[1].free();
@@ -17139,7 +17142,8 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfxU32 layer = shared_properties.layer;
 
-	if (parent_effect.age < emitter.state_properties.delay_spawning) {
+	//Each user spawn location waits out the delay from its own age instead
+	if (parent_effect.age < emitter.state_properties.delay_spawning && !spawn_work_entry->user_spawn_locations) {
 		parent_effect.active_emitters++;
 		return;
 	}
@@ -17284,6 +17288,101 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 }
 
+//How far through the emitter's amount graph a location is. Only the amount is sampled per location, everything else an emitter samples when
+//it spawns comes from its own age as usual. The emitter's age doesn't advance while it waits out its delay, so neither does the location's
+tfxINTERNAL float tfx__user_spawn_location_emitter_age(const tfx_particle_emitter_state_t &emitter, float location_age) {
+	float age = tfx__Max(location_age - emitter.state_properties.delay_spawning, 0.f);
+	float loop_length = emitter.source_emitter->state_properties.loop_length;
+	return loop_length > 0.f ? fmodf(age, loop_length) : age;
+}
+
+//Adds a run for every location that spawns this update, weighted by its amount at its own age, and returns the emitter's total amount
+tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter, tfx_effect_state_t *parent) {
+	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
+	tfx_library library = emitter.library;
+	tfx_shared_properties_t *shared_properties = entry->shared_properties;
+	tfx_graph_list_t &graph_list = library->graphs[emitter.state_properties.graph_list_index];
+	tfx_graph_t *global_amount_graph = &library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index];
+	const bool single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	const float delay = emitter.state_properties.delay_spawning;
+	entry->user_spawn_run_start = pm->user_spawn_runs.current_size;
+	double total_weight = 0.0;
+	for (tfxU32 slot : user_location_list.active_slots) {
+		tfx_user_spawn_location_t &location = user_location_list.locations[slot];
+		//Single shots fire once, in the update the location's age reaches the delay. The rest spawn from then on
+		if (location.age < delay || (single && location.previous_age >= delay)) {
+			continue;
+		}
+		float age = tfx__user_spawn_location_emitter_age(emitter, location.age);
+		float oscillator_time = age / 1000.f;
+		float weight;
+		if (single) {
+			weight = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(&entry->random, (float)shared_properties->spawn_amount_variation);
+		} else {
+			weight = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEmitter_base_amount_index], age, oscillator_time);
+			float amount_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEmitter_variation_amount_index], age, oscillator_time);
+			weight += amount_variation > 0.f ? tfx_RandomRangeFromTo(&entry->random, 1.f, amount_variation) : 0.f;
+		}
+		weight *= tfx__sample_multi_node_graph(global_amount_graph, age, oscillator_time);
+		if (weight <= 0.f) {
+			continue;
+		}
+		tfx_user_spawn_run_t run = {};
+		run.slot = slot;
+		run.weight = weight;
+		pm->user_spawn_runs.push_back(run);
+		total_weight += weight;
+	}
+	entry->user_spawn_run_count = pm->user_spawn_runs.current_size - entry->user_spawn_run_start;
+	return total_weight;
+}
+
+//Shares the update's final spawn amount out between the runs in proportion to their weight
+tfxINTERNAL void tfx__share_user_spawn_amount(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
+	tfxU32 amount = work_entry->amount_to_spawn;
+	tfxU32 run_count = work_entry->user_spawn_run_count;
+	if (amount == 0 || run_count == 0) {
+		work_entry->user_spawn_run_count = 0;
+		return;
+	}
+	tfx_user_spawn_run_t *runs = &pm->user_spawn_runs[work_entry->user_spawn_run_start];
+	double total_weight = 0.0;
+	for (tfxU32 run_index = 0; run_index != run_count; ++run_index) {
+		total_weight += runs[run_index].weight;
+	}
+	const bool single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	double weight_per_particle = total_weight / (double)amount;
+	//The fraction of a particle left over is carried to the next update so a location with less than a particle an update still gets its turn
+	double carry = single ? 0.0 : (double)emitter.grid_coords.x * weight_per_particle;
+	tfxU32 assigned = 0;
+	tfxU32 kept = 0;
+	for (tfxU32 run_index = 0; run_index != run_count; ++run_index) {
+		tfx_user_spawn_run_t run = runs[run_index];
+		carry += run.weight;
+		tfxU32 count = tfx__Min((tfxU32)(carry / weight_per_particle), amount - assigned);
+		carry -= (double)count * weight_per_particle;
+		if (count) {
+			run.count = count;
+			runs[kept++] = run;
+			assigned += count;
+		}
+	}
+	if (assigned < amount) {
+		//Rounding left some over
+		if (kept == 0) {
+			runs[0].count = 0;
+			kept = 1;
+		}
+		runs[kept - 1].count += amount - assigned;
+		carry = 0.0;
+	}
+	if (!single) {
+		float carried_fraction = (float)(carry / weight_per_particle);
+		emitter.grid_coords.x = (tfx__Clamp(0.f, 1.f, carried_fraction));
+	}
+	work_entry->user_spawn_run_count = kept;
+}
+
 tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 	tfx_random_t *random = &entry->random;
@@ -17313,8 +17412,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	}
 
 	if (entry->user_spawn_locations) {
-		tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
-		emitter.spawn_quantity *= emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single ? user_location_list.new_location_count : user_location_list.active_slots.current_size;
+		emitter.spawn_quantity = tfx__user_spawn_location_weights(pm, entry, emitter, parent);
 	} else if (parent->state_flags & tfxEffectStateFlags_user_spawn_locations && shared_properties->emission_type != tfxOtherEmitter && shared_properties->emission_type != tfxSpawnOnRibbon) {
 		return 0;
 	}
@@ -17539,6 +17637,10 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		work_entry->amount_to_spawn -= tfx__gpu_group_record_spawns(pm, work_entry->emitter_index, work_entry->amount_to_spawn, pm->gpu_current_time_ms);
 	}
 
+	if (work_entry->user_spawn_locations) {
+		tfx__share_user_spawn_amount(pm, work_entry, emitter);
+	}
+
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 
 	bool grew = false;
@@ -17582,7 +17684,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
 			TFX_ASSERT(work_entry->depth_indexes->current_size < work_entry->depth_indexes->capacity);
 			pm->deffered_spawn_work.push_back(work_entry);
-		} else if(work_entry->emission_type != tfxOtherEmitter) {
+		} else if(work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations) {
 			tfx__add_work_queue_entry(&pm->work_queue, work_entry, tfx__do_spawn_work);
 		} else {
 			pm->deffered_spawn_work.push_back(work_entry);
@@ -17604,6 +17706,10 @@ void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data) {
 		work_entry->amount_to_spawn = 0;
 		return;
 	}
+	tfx__run_spawn_pipeline(pm, work_entry, emitter);
+}
+
+void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
 	tfx__spawn_particle_age(&pm->work_queue, work_entry);
 	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 		tfx__spawn_particle_init_spawn_points(&pm->work_queue, work_entry);
@@ -18086,46 +18192,39 @@ void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data) {
 	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
-	const bool new_locations_only = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
-	const tfxU32 location_count = user_location_list.active_slots.current_size;
-	TFX_ASSERT(location_count > 0 && (!new_locations_only || user_location_list.new_location_count > 0));	//The spawn amount is scaled by the location count so this should never spawn without any
-
 	const bool relative = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) > 0;
 	tfx_vec3_t handle_offset = {};
 	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
 		handle_offset = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
 	}
 
-	//Carried over between frames so a low spawn rate still reaches every location in turn
-	tfxU32 cursor = (tfxU32)emitter.grid_coords.x;
-	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
-		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		tfxU32 slot;
-		tfx_user_spawn_location_t *location;
-		do {
-			if (cursor >= location_count) {
-				cursor = 0;
+	tfxU32 particle = 0;
+	for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
+		const tfx_user_spawn_run_t &run = pm.user_spawn_runs[entry->user_spawn_run_start + run_index];
+		tfx_user_spawn_location_t &location = user_location_list.locations[run.slot];
+		for (tfxU32 i = 0; i != run.count; ++i) {
+			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
+			//Spread this location's particles over the whole update rather than the slice of it their place in the bank would give
+			//them, otherwise a location that moves leaves its particles bunched together
+			float age = (float)pm.frame_length * (float)i / (float)run.count;
+			entry->particle_data->age[index] = age;
+			if (relative) {
+				//The transform adds the handle and the location's position every frame
+				entry->particle_data->position_x[index] = 0.f;
+				entry->particle_data->position_y[index] = 0.f;
+				entry->particle_data->position_z[index] = 0.f;
+				entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
+				continue;
 			}
-			slot = user_location_list.active_slots[cursor++];
-			location = &user_location_list.locations[slot];
-		} while (new_locations_only && !(location->flags & tfxUserSpawnLocationFlags_new));
 
-		if (relative) {
-			//The transform adds the handle and the location's position every frame
-			entry->particle_data->position_x[index] = 0.f;
-			entry->particle_data->position_y[index] = 0.f;
-			entry->particle_data->position_z[index] = 0.f;
-			entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(slot, location->generation);
-			continue;
+			float tween = pm.frame_length > 0 ? 1.f - age / (float)pm.frame_length : 1.f;
+			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, location.captured_position, location.position);
+			entry->particle_data->position_x[index] = lerp_position.x + handle_offset.x;
+			entry->particle_data->position_y[index] = lerp_position.y + handle_offset.y;
+			entry->particle_data->position_z[index] = lerp_position.z + handle_offset.z;
 		}
-
-		float tween = 1.f - entry->particle_data->age[index] / (float)pm.frame_length;
-		tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, location->captured_position, location->position);
-		entry->particle_data->position_x[index] = lerp_position.x + handle_offset.x;
-		entry->particle_data->position_y[index] = lerp_position.y + handle_offset.y;
-		entry->particle_data->position_z[index] = lerp_position.z + handle_offset.z;
 	}
-	emitter.grid_coords.x = (float)cursor;
+	TFX_ASSERT(particle == entry->amount_to_spawn);
 }
 
 void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data) {
@@ -19988,6 +20087,23 @@ void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitt
 	}
 }
 
+void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls) {
+	spawn_controls->life = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_life_index], age, oscillator_time);
+	spawn_controls->size_x = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_width_index], age, oscillator_time);
+	if (!(effect_flags & tfxEffectPropertyFlags_global_uniform_size)) {
+		spawn_controls->size_y = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_height_index], age, oscillator_time);
+	} else {
+		spawn_controls->size_y = spawn_controls->size_x;
+	}
+	spawn_controls->velocity = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_velocity_index], age, oscillator_time);
+	spawn_controls->spin = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_roll_spin_index], age, oscillator_time);
+	spawn_controls->pitch_spin = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_pitch_spin_index], age, oscillator_time);
+	spawn_controls->yaw_spin = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_yaw_spin_index], age, oscillator_time);
+	spawn_controls->intensity = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_intensity_index], age, oscillator_time);
+	spawn_controls->splatter = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_splatter_index], age, oscillator_time);
+	spawn_controls->weight = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_weight_index], age, oscillator_time);
+}
+
 void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	tfxPROFILE;
 
@@ -20006,24 +20122,8 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	tfx_graph_list_t &graph_list = library->graphs[graph_list_index];
 	tfx_graph_list_t &transform_list = library->graphs[transform_index];
 
-	tfx_parent_spawn_controls_t &spawn_controls = pm->effects[index].spawn_controls;
-	spawn_controls.life = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_life_index], age, oscillator_time);
-	if (!(pm->effects[index].effect_flags & tfxEffectPropertyFlags_global_uniform_size)) {
-		spawn_controls.size_x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_width_index], age, oscillator_time);
-		spawn_controls.size_y = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_height_index], age, oscillator_time);
-	}
-	else {
-		spawn_controls.size_x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_width_index], age, oscillator_time);
-		spawn_controls.size_y = spawn_controls.size_x;
-	}
-	spawn_controls.velocity = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_velocity_index], age, oscillator_time);
+	tfx__sample_effect_spawn_controls(&graph_list, pm->effects[index].effect_flags, age, oscillator_time, &pm->effects[index].spawn_controls);
 	noise = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_noise_index], age, oscillator_time);
-	spawn_controls.spin = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_roll_spin_index], age, oscillator_time);
-	spawn_controls.pitch_spin = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_pitch_spin_index], age, oscillator_time);
-	spawn_controls.yaw_spin = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_yaw_spin_index], age, oscillator_time);
-	spawn_controls.intensity = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_intensity_index], age, oscillator_time);
-	spawn_controls.splatter = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_splatter_index], age, oscillator_time);
-	spawn_controls.weight = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_weight_index], age, oscillator_time);
 	if (!(state_flags & tfxEffectStateFlags_override_size_multiplier)) {
 		emitter_size.x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_width_index], age, oscillator_time);
 		emitter_size.y = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_height_index], age, oscillator_time);
@@ -21620,8 +21720,8 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				continue;
 			}
 			location.captured_position = location.position;
+			location.previous_age = location.age;
 			location.age += frame_length;
-			location.flags &= ~tfxUserSpawnLocationFlags_new;
 		}
 
 		for (tfx_user_spawn_location_command_t &command : user_location_list->commands) {
@@ -21635,7 +21735,8 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				location.position = command.position;
 				location.captured_position = command.position;
 				location.age = 0.f;
-				location.flags = command.flags | tfxUserSpawnLocationFlags_active | tfxUserSpawnLocationFlags_new;
+				location.previous_age = -1.f;
+				location.flags = command.flags | tfxUserSpawnLocationFlags_active;
 				location.generation = command.generation;
 				user_location_list->active_slots.push_back(command.slot);
 			} else if (command.slot >= locations.current_size) {
@@ -21656,14 +21757,12 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 
 		//A slot removed and added again in the same frame is listed twice
 		tfxU32 kept = 0;
-		user_location_list->new_location_count = 0;
 		for (tfxU32 slot : user_location_list->active_slots) {
 			tfx_user_spawn_location_t &location = locations[slot];
 			if (!(location.flags & tfxUserSpawnLocationFlags_active) || location.flags & tfxUserSpawnLocationFlags_listed) {
 				continue;
 			}
 			location.flags |= tfxUserSpawnLocationFlags_listed;
-			user_location_list->new_location_count += (location.flags & tfxUserSpawnLocationFlags_new) > 0;
 			user_location_list->active_slots[kept++] = slot;
 		}
 		user_location_list->active_slots.current_size = kept;

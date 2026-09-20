@@ -1791,8 +1791,12 @@ Locations persist until you remove them. Changes are applied the next time tfx_U
 previous update is still running, but only from the thread that calls tfx_UpdateStage.
 Locations are in world space. Particles from emitters set to relative position follow the location they spawned at (position only, the
 effect rotation still applies) and are removed along with it, which suits things like a glow on each ship. Relative particles at a transient
-location only last one update. The spawn amount of an emitter is per location.
-Single shot emitters spawn their particles once at each new location.
+location only last one update.
+The spawn amount of an emitter is per location and is taken from its amount graph at that location's age, so a burst that fades out does so
+at every location in turn. An emitter's delay also counts from when the location was added, and single shot emitters fire once per location.
+Every other graph is sampled at the effect's or emitter's own age as it would be for any effect, so it affects the particles of all the
+locations equally. Bear in mind that the effect keeps ageing for as long as it's on the stage, so graphs meant to shape a single burst are
+best left flat here.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index      The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param position          A float[3] array containing the x, y and z coordinates

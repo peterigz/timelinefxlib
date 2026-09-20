@@ -6862,6 +6862,8 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
 	struct tfx_user_spawn_locations_s *user_spawn_locations;	//Set when this emitter spawns at the locations given by the user
+	tfxU32 user_spawn_run_start;			//Into tfx_stage_t::user_spawn_runs
+	tfxU32 user_spawn_run_count;
 	tfxU32 spawn_points_ready;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
@@ -7131,7 +7133,6 @@ typedef struct tfx_warmup_entry_s {
 typedef enum {
 	tfxUserSpawnLocationFlags_active = 1 << 0,
 	tfxUserSpawnLocationFlags_transient = 1 << 1,		//Removed automatically after the update it was added in
-	tfxUserSpawnLocationFlags_new = 1 << 2,			//Added since the last update, single shot emitters only spawn at these
 	tfxUserSpawnLocationFlags_listed = 1 << 3,			//Scratch flag for removing duplicate slots from active_slots
 } tfx_user_spawn_location_flag_bits;
 
@@ -7139,6 +7140,7 @@ typedef struct tfx_user_spawn_location_s {
 	tfx_vec3_t position;
 	tfx_vec3_t captured_position;
 	float age;
+	float previous_age;							//Before the last update, -1 until the location has been through one
 	tfxU32 flags;
 	tfxU32 generation;								//The slot generation when it was added, stale once the user removes it
 } tfx_user_spawn_location_t;
@@ -7149,6 +7151,13 @@ typedef enum {
 	tfx_user_spawn_location_command_remove,
 	tfx_user_spawn_location_command_clear,
 } tfx_user_spawn_location_command_type;
+
+//One location's share of an emitter's spawn this update. Particles of a run are contiguous in the bank
+typedef struct tfx_user_spawn_run_s {
+	tfxU32 slot;
+	tfxU32 count;
+	float weight;							//The location's spawn amount, what the emitter's amount is shared out by
+} tfx_user_spawn_run_t;
 
 typedef struct tfx_user_spawn_location_command_s {
 	tfx_vec3_t position;
@@ -7167,7 +7176,6 @@ typedef struct tfx_user_spawn_locations_s {
 	tfx_vector_t<tfxU32> generations;
 	tfx_vector_t<tfxU32> free_slots;
 	tfx_vector_t<tfx_user_spawn_location_command_t> commands;
-	tfxU32 new_location_count;
 	tfxEffectID effect_id;
 } tfx_user_spawn_locations_t;
 #endif
@@ -7214,6 +7222,8 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t *> deffered_ribbon_spawn_work;
 	tfx_vector_t<tfx_user_spawn_locations_t *> user_spawn_location_lists;
+	//Filled while emitters update one at a time and only read by the deferred spawn work after, so it can grow freely
+	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_vector_t<tfxU32> free_compute_controllers;
 
@@ -9240,6 +9250,8 @@ tfxINTERNAL void tfx__do_spawn_work(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *data);
