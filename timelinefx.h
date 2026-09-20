@@ -1785,10 +1785,10 @@ tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, fl
 /*
 Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Every emitter in the
 effect spawns at every location the effect has, with its shape placed around each one, so an area emitter gives you its whole area at each
-location rather than a single point. Path emitters and emitters set to edge traversal are the exceptions and don't spawn at all, because they
-traverse from the emitter rather than from where they spawned. A line using its path as a trajectory does work, but only with relative
-position set, since that is what anchors it to its location. Other Emitter and Spawn on Ribbon emitters carry on spawning from their source
-emitter. Use this to have one effect handle lots of sources, for example the
+location rather than a single point. Path emitters are the exception and don't spawn at all, because they take their position from traversing
+the path rather than from where they spawned. Line emitters that traverse their edge or use their path as a trajectory do work, but only with
+relative position set, since that is what anchors them to their location. Other Emitter and Spawn on Ribbon emitters carry on spawning from
+their source emitter. Use this to have one effect handle lots of sources, for example the
 smoke trails of every ship in a fleet, which is much cheaper than an effect per ship.
 Locations persist until you remove them. Changes are applied the next time tfx_UpdateStage is called, so it's safe to call this while the
 previous update is still running, but only from the thread that calls tfx_UpdateStage.

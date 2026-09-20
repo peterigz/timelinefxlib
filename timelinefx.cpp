@@ -12513,7 +12513,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.parent_index = parent_index;
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
 	emitter.grid_coords = tfx_vec3_t();
-	emitter.user_spawn_amount_carry = 0.f;
+	emitter.user_spawn_amount_phase = 0.f;
 
 	emitter.state_properties = src_emitter->state_properties;
 	TFX_ASSERT(src_emitter->state_properties.image);
@@ -12602,7 +12602,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
 
 	ribbon_emitter.amount_remainder = 0.f;
-	ribbon_emitter.user_spawn_amount_carry = 0.f;
+	ribbon_emitter.user_spawn_amount_phase = 0.f;
 	ribbon_emitter.qty_step_size = 0.f;
 	ribbon_emitter.spawn_quantity = 0.f;
 	ribbon_emitter.source_ribbon = src_emitter;
@@ -14373,15 +14373,14 @@ void tfx_ListEffectNames(tfx_library library) {
 	}
 }
 
-tfxINTERNAL bool tfx__can_spawn_at_user_locations(tfx_emission_type emission_type, tfxU32 property_flags) {
-	return emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon && emission_type != tfxPath
-		&& !(property_flags & tfxEmitterPropertyFlags_edge_traversal);
+tfxINTERNAL bool tfx__can_spawn_at_user_locations(tfx_emission_type emission_type) {
+	return emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon && emission_type != tfxPath;
 }
 
 //Relative particles in a user spawn locations effect follow the location they spawned at rather than the emitter
 tfxINTERNAL tfx_user_spawn_locations_t *tfx__relative_user_spawn_locations(tfx_stage pm, const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
 	const tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
-	if (tfx__can_spawn_at_user_locations(emission_type, emitter.state_properties.property_flags) && effect.state_flags & tfxEffectStateFlags_user_spawn_locations && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+	if (tfx__can_spawn_at_user_locations(emission_type) && effect.state_flags & tfxEffectStateFlags_user_spawn_locations && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		return effect.user_spawn_locations;
 	}
 	return nullptr;
@@ -15358,6 +15357,11 @@ tfxINTERNAL inline void tfx__block_particle_image_frame(const tfx_instance_pass_
 	//We only want to capture if single loop count is not 0.
 	block->capture_flags.m = tfxWideLoadi((tfxWideIntLoader *)&bank.flags_single_loop_count[index]);
 	block->capture_flags.m = tfxWideXOri(tfxWideAndi(block->capture_flags.m, pass->capture_after_transform_flag), pass->capture_after_transform_flag);
+	if (pass->user_spawn_locations) {
+		//A particle whose location has gone is hidden and removed this update, but it was still positioned at whatever now owns
+		//the slot. Capture it against itself so it doesn't stretch across the gap between the two locations for that one frame
+		block->capture_flags.m = tfxWideAndi(block->capture_flags.m, block->location_alive.m);
+	}
 
 	tfx__readbarrier;
 
@@ -16917,7 +16921,7 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 
 //Shares the update's final spawn amount out between the runs in proportion to their weight, returning how many runs are left once the
 //ones that got nothing are dropped
-tfxINTERNAL tfxU32 tfx__share_user_spawn_runs(tfx_vector_t<tfx_user_spawn_run_t> *run_list, tfxU32 run_start, tfxU32 run_count, tfxU32 amount, bool single, float *carry_fraction) {
+tfxINTERNAL tfxU32 tfx__share_user_spawn_runs(tfx_vector_t<tfx_user_spawn_run_t> *run_list, tfxU32 run_start, tfxU32 run_count, tfxU32 amount, bool single, float *phase) {
 	if (amount == 0 || run_count == 0) {
 		return 0;
 	}
@@ -16927,32 +16931,36 @@ tfxINTERNAL tfxU32 tfx__share_user_spawn_runs(tfx_vector_t<tfx_user_spawn_run_t>
 		total_weight += runs[run_index].weight;
 	}
 	double weight_per_particle = total_weight / (double)amount;
-	//The fraction of a particle left over is carried to the next update so a location with less than a particle an update still gets its turn
-	double carry = single ? 0.0 : (double)*carry_fraction * weight_per_particle;
+	//A run only gets a particle when the running total crosses the threshold, and the weights always add up to exactly
+	//amount * weight_per_particle, so the total comes back to where it began and the same locations cross it every update,
+	//leaving the rest with nothing. Moving the start on by the golden ratio gives each location its turn while keeping
+	//everyone's share of the amount over time
+	if (!single) {
+		*phase = fmodf(*phase + 0.6180339887f, 1.f);
+	}
+	double carry = single ? 0.0 : (double)*phase * weight_per_particle;
 	tfxU32 assigned = 0;
-	tfxU32 kept = 0;
+	tfxU32 last_assigned = 0;
 	for (tfxU32 run_index = 0; run_index != run_count; ++run_index) {
-		tfx_user_spawn_run_t run = runs[run_index];
-		carry += run.weight;
+		carry += runs[run_index].weight;
 		tfxU32 count = tfx__Min((tfxU32)(carry / weight_per_particle), amount - assigned);
 		carry -= (double)count * weight_per_particle;
+		runs[run_index].count = count;
 		if (count) {
-			run.count = count;
-			runs[kept++] = run;
 			assigned += count;
+			last_assigned = run_index;
 		}
 	}
 	if (assigned < amount) {
 		//Rounding left some over
-		if (kept == 0) {
-			runs[0].count = 0;
-			kept = 1;
-		}
-		runs[kept - 1].count += amount - assigned;
-		carry = 0.0;
+		runs[last_assigned].count += amount - assigned;
 	}
-	if (!single) {
-		*carry_fraction = tfx__Clamp(0.f, 1.f, (float)(carry / weight_per_particle));
+	//Drop the locations that got nothing. Compacting forwards never overwrites a run still to be read
+	tfxU32 kept = 0;
+	for (tfxU32 run_index = 0; run_index != run_count; ++run_index) {
+		if (runs[run_index].count) {
+			runs[kept++] = runs[run_index];
+		}
 	}
 	return kept;
 }
@@ -17185,7 +17193,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	if (ribbon_work_entry->user_spawn_locations) {
 		const bool single = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
-		ribbon_work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&ribbon_work_entry->ribbon_bucket->user_spawn_runs, ribbon_work_entry->user_spawn_run_start, ribbon_work_entry->user_spawn_run_count, ribbon_work_entry->amount_to_spawn, single, &ribbon_emitter.user_spawn_amount_carry);
+		ribbon_work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&ribbon_work_entry->ribbon_bucket->user_spawn_runs, ribbon_work_entry->user_spawn_run_start, ribbon_work_entry->user_spawn_run_count, ribbon_work_entry->amount_to_spawn, single, &ribbon_emitter.user_spawn_amount_phase);
 	}
 
 	if (!(ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_single_shot_done) && ribbon_work_entry->shared_properties->emission_type == tfxPath && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
@@ -17222,7 +17230,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
 
 	spawn_work_entry->user_spawn_locations = nullptr;
-	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(spawn_work_entry->shared_properties->emission_type, emitter.state_properties.property_flags)) {
+	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(spawn_work_entry->shared_properties->emission_type)) {
 		spawn_work_entry->user_spawn_locations = parent_effect.user_spawn_locations;
 	}
 
@@ -17419,7 +17427,7 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 
 tfxINTERNAL void tfx__share_user_spawn_amount(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
 	const bool single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
-	work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&pm->user_spawn_runs, work_entry->user_spawn_run_start, work_entry->user_spawn_run_count, work_entry->amount_to_spawn, single, &emitter.user_spawn_amount_carry);
+	work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&pm->user_spawn_runs, work_entry->user_spawn_run_start, work_entry->user_spawn_run_count, work_entry->amount_to_spawn, single, &emitter.user_spawn_amount_phase);
 }
 
 //A ribbon emitter spawns at the same locations under the same rules, but its ribbons are always world space: the GPU's relative path adds

@@ -6235,7 +6235,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 
 	//Control Data (May change frame by frame
 	tfx_vec3_t grid_coords;
-	float user_spawn_amount_carry;					//Fraction of a particle carried to the next update when spawning at user locations
+	float user_spawn_amount_phase;					//Where the spawn sharing starts scanning, moved on every update so the locations take turns
 	tfx_vec3_t grid_direction;
 	tfx_vec3_t emitter_size;
 	float emission_alternator;
@@ -6465,7 +6465,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
-	float user_spawn_amount_carry;					//Fraction of a ribbon carried to the next update when spawning at user locations
+	float user_spawn_amount_phase;					//Where the spawn sharing starts scanning, moved on every update so the locations take turns
 	tfx_effect_descriptor source_ribbon;
 	tfx_library library;
 
