@@ -14409,6 +14409,28 @@ tfxINTERNAL inline void tfx__gather_user_spawn_rotations(tfx_user_spawn_location
 	*rotation_zw = gathered_zw.m;
 }
 
+//One walk for the two masks the age pass needs: alive for the kill, and expiring so a looping single stops looping and ages out
+//instead of hanging on until its slot is freed. Reads each location's flags once for both
+tfxINTERNAL inline void tfx__gather_user_spawn_age_masks(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, tfxWideInt *alive, tfxWideInt *expiring) {
+	tfxWideArrayi gathered_alive;
+	tfxWideArrayi gathered_expiring;
+	for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+		tfxU32 local_id = particle_locations[index + lane];
+		tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
+		bool live = false;
+		tfxUserSpawnLocationFlags flags = 0;
+		if (slot < user_location_list->locations.current_size) {
+			const tfx_user_spawn_location_t &location = user_location_list->locations[slot];
+			flags = location.flags;
+			live = (flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
+		}
+		gathered_alive.a[lane] = live ? -1 : 0;
+		gathered_expiring.a[lane] = live && flags & tfxUserSpawnLocationFlags_expiring ? -1 : 0;
+	}
+	*alive = gathered_alive.m;
+	*expiring = gathered_expiring.m;
+}
+
 //alive is optional, lanes are all bits set where the location the particle follows still exists
 tfxINTERNAL inline void tfx__gather_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, bool captured, tfxWideFloat *location_x, tfxWideFloat *location_y, tfxWideFloat *location_z, tfxWideInt *alive = nullptr) {
 	tfxWideArray gathered_x;
@@ -20557,7 +20579,6 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_recording_sprites) {
 		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
 	}
-	const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
 
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
@@ -20587,25 +20608,29 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfxWideInt count_not_full = tfxWideXOri(tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), count_mask), tfxWideSetSinglei(-1));
 		flags_single_loop_count = tfxWideAddi(flags_single_loop_count, tfxWideAndi(tfxWIDEONEi.m, tfxWideAndi(expired, count_not_full)));
 		tfxWideInt loop_limit = tfxWideAndi(tfxWideEqualsi(tfxWideAndi(flags_single_loop_count, count_mask), single_shot_limit), has_single_shot_limit);
-		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
+		//A soft expiring location counts as not spawning for the particles that follow it, so its looping singles stop looping and
+		//age out naturally instead of hanging on until the slot is freed. A paused location deliberately doesn't, it's a hold
+		tfxWideInt lane_no_spawning = state_flags_no_spawning;
+		tfxWideInt location_gone = tfxWideSetZeroi;
+		if (user_location_list) {
+			tfxWideInt location_alive;
+			tfxWideInt location_expiring;
+			tfx__gather_user_spawn_age_masks(user_location_list, bank.spawn_location, index, &location_alive, &location_expiring);
+			lane_no_spawning = tfxWideOri(state_flags_no_spawning, location_expiring);
+			location_gone = tfxWideXOri(location_alive, tfxWideSetSinglei(-1));
+		}
+		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), tfxWideXOri(lane_no_spawning, tfxWideSetSinglei(-1))), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi)));
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
-		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), lane_no_spawning), expired)));
 		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, wrap)));
+		//A relative particle has nothing to follow once its location is removed
+		flags_single_loop_count = tfxWideOri(flags_single_loop_count, tfxWideAndi(remove_flag, location_gone));
 
 		tfxWideStore(&bank.age[index], age);
 		tfxWideStore(&bank.life[index], tfxWideMul(age, inv_max_age));
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags_single_loop_count[index], flags_single_loop_count);
-
-		if (user_location_list) {
-			//A relative particle has nothing to follow once its location is removed
-			for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
-				if (!tfx__user_spawn_location_is_live(user_location_list, bank.spawn_location[index + lane])) {
-					bank.flags_single_loop_count[index + lane] |= tfxParticleFlags_remove;
-				}
-			}
-		}
 
 		//Integrate head-bump: while all lanes in this block are past max_life, advance
 		//bump_count. Stop (and count partial) as soon as we see the first alive lane.
