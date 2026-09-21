@@ -12472,6 +12472,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 	effect_state->state_flags = 0;
 	effect_state->effect_flags = effect->effect_flags;
 	effect_state->local_position = tfx_vec3_t();
+	effect_state->local_rotations = tfx_vec3_t();
 	effect_state->timeout = 1000.f;
 	effect_state->timeout_counter = 0;
 	float range = effect->noise_base_offset_range;
