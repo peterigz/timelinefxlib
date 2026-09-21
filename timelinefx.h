@@ -1843,6 +1843,45 @@ each particle spawns, so changing them never disturbs particles that are already
 tfxAPI void tfx_SetSpawnLocationTweaks(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4], float size_factor, float velocity_factor);
 
 /*
+Stop a spawn location spawning without removing it. The location still exists and can still be moved, and relative particles already
+spawned there stay attached to it and live out their life as normal, so pausing a location leaves what it has already made alone.
+The location also stops ageing while it's paused, so its amount graph carries on from where it left off when you resume it, and a single
+shot emitter that hasn't reached its delay yet still fires once it does.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI void tfx_PauseSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id);
+
+/*
+Start a paused spawn location spawning again, carrying on from the age it was paused at.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI void tfx_ResumeSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id);
+
+/*
+Retire a spawn location gently. It stops spawning straight away like tfx_PauseSpawnLocation, but rather than staying put it removes itself
+once the particles already spawned there have had time to live out their life, so relative particles fade out naturally instead of vanishing
+the moment the location goes, which is what tfx_RemoveSpawnLocation does to them.
+The id stays valid while the location drains and you can carry on moving it with tfx_UpdateSpawnLocation, so something that's been destroyed
+can keep drifting while its particles follow it out. Use tfx_SpawnLocationIsValid to find out when it has gone.
+Sub effects spawned by the particles at the location aren't counted, so pass a time of your own if you have a long lived one.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param milliseconds      How long to wait before removing the location. Pass 0 to have it worked out from the longest lived emitter in the
+                           effect, which is the worst case of its base life plus variation so it always outlasts its particles
+*/
+tfxAPI void tfx_SoftExpireSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float milliseconds);
+
+/*
+Check whether a spawn location is currently spawning. False if it has been paused. Note that this doesn't tell you the emitters are
+actually putting particles out, only that the location isn't holding them back: they might be waiting out a delay or have finished.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI bool tfx_SpawnLocationIsSpawning(tfx_stage pm, tfxSpawnLocationID location_id);
+
+/*
 Remove a spawn location. Particles already spawned there live out their life, except relative ones which are removed with it. The id is
 invalid straight away.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed

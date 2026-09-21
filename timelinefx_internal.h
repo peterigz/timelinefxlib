@@ -3059,6 +3059,7 @@ typedef tfxU32 tfxEmitterPathFlags;             //tfx_emitter_path_flag_bits
 typedef tfxU32 tfxEmitterControlProfileFlags;   //tfx_emitter_control_profile_flag_bits
 typedef tfxU32 tfxContextPolicyFlags;			//tfx_context_policy_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
+typedef tfxU32 tfxUserSpawnLocationFlags;       //tfx_user_spawn_location_flag_bits
 
 typedef enum {
 	tfxSharedFlag_capture_after_transform						= 1 << 8,
@@ -7152,25 +7153,37 @@ typedef struct tfx_warmup_entry_s {
 typedef enum {
 	tfxUserSpawnLocationFlags_active = 1 << 0,
 	tfxUserSpawnLocationFlags_transient = 1 << 1,		//Removed automatically after the update it was added in
+	tfxUserSpawnLocationFlags_paused = 1 << 2,			//Still exists and is still followed, but spawns nothing and stops ageing
 	tfxUserSpawnLocationFlags_listed = 1 << 3,			//Scratch flag for removing duplicate slots from active_slots
+	tfxUserSpawnLocationFlags_expiring = 1 << 4,		//Paused, and freed once expire_countdown runs out and its particles are gone
 } tfx_user_spawn_location_flag_bits;
 
+//Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
+//for the liveness check and packed_rotation for the relative rotation. The ages are only read once per location in the runs loop
 typedef struct tfx_user_spawn_location_s {
 	tfx_vec3_t position;
 	tfx_vec3_t captured_position;
-	float age;
-	float previous_age;							//Before the last update, -1 until the location has been through one
-	tfxU32 flags;
+	tfxUserSpawnLocationFlags flags;
 	tfxU32 generation;								//The slot generation when it was added, stale once the user removes it
 	tfxU64 packed_rotation;							//16 bit snorm quaternion, identity until the user sets one
+	float age;
+	float previous_age;								//Before the last update, -1 until the location has been through one
+} tfx_user_spawn_location_t;
+
+//Per location values that the per particle gather never touches, kept in their own list indexed by the same slot so they don't widen
+//tfx_user_spawn_location_t. Only the spawn tweaks pass and the apply step read these, both of which walk locations sequentially
+typedef struct tfx_user_spawn_tweaks_s {
 	float size_factor;
 	float velocity_factor;
-} tfx_user_spawn_location_t;
+	float expire_countdown;							//Milliseconds left before a soft expiring location frees its slot
+} tfx_user_spawn_tweaks_t;
 
 typedef enum {
 	tfx_user_spawn_location_command_add,
 	tfx_user_spawn_location_command_update,
 	tfx_user_spawn_location_command_tweaks,
+	tfx_user_spawn_location_command_pause,
+	tfx_user_spawn_location_command_soft_expire,
 	tfx_user_spawn_location_command_remove,
 	tfx_user_spawn_location_command_clear,
 } tfx_user_spawn_location_command_type;
@@ -7180,9 +7193,10 @@ typedef struct tfx_user_spawn_location_command_s {
 	tfxU64 packed_rotation;
 	float size_factor;
 	float velocity_factor;
+	float expire_time;								//0 means work it out from the effect's longest lived emitter when the command is applied
 	tfxU32 slot;
 	tfxU32 generation;
-	tfxU32 flags;
+	tfxUserSpawnLocationFlags flags;
 	tfx_user_spawn_location_command_type type;
 } tfx_user_spawn_location_command_t;
 
@@ -7191,6 +7205,7 @@ typedef struct tfx_user_spawn_location_command_s {
 //while no update is running, the update only reads them. The rest belong to the thread calling the tfx_*SpawnLocation api.
 typedef struct tfx_user_spawn_locations_s {
 	tfx_vector_t<tfx_user_spawn_location_t> locations;		//Indexed by slot, so a slot never moves while it's in use
+	tfx_vector_t<tfx_user_spawn_tweaks_t> tweaks;			//Parallel to locations, same slot indexing
 	tfx_vector_t<tfxU32> active_slots;
 	tfx_vector_t<tfxU32> generations;
 	tfx_vector_t<tfxU32> free_slots;
