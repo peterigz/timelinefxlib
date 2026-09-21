@@ -910,6 +910,14 @@ typedef enum {
 
 typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
 
+typedef enum {
+	tfxSpawnLocationAdd_none = 0,
+	tfxSpawnLocationAdd_transient				= 1 << 0,		//Removed automatically after the next update, for one off bursts
+	tfxSpawnLocationAdd_no_auto_remove			= 1 << 1,		//Keep the location after a finite effect has played out, instead of removing it
+} tfx_spawn_location_add_flag_bits;
+
+typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bits
+
 typedef struct tfx_refresh_result_s {
 	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags
 	tfxU32 library_version;              //The library_version found on disk, or the loaded one if unreadable
@@ -1807,12 +1815,18 @@ best left flat here.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index      The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param position          A float[3] array containing the x, y and z coordinates
-* @param transient         If true the location is removed automatically after the next update so you don't need to keep the id. Useful for
-                           one off bursts like impacts
+* @param flags             A combination of tfxSpawnLocationAddFlags, or tfxSpawnLocationAdd_none.
+                           tfxSpawnLocationAdd_transient removes the location automatically after the next update so you don't need to keep
+                           the id at all, which is what you want for a one off burst like an impact.
+                           If the effect is finite, meaning every emitter stops spawning of its own accord, the location removes itself once
+                           the effect has played out there, so you don't have to tidy it up yourself. Pass
+                           tfxSpawnLocationAdd_no_auto_remove to keep it instead. You need that if you change the effect's life with
+                           tfx_SetEffectLifeMultiplier after adding the location, because the time is worked out from the effect as authored
+                           and a longer life would outlive it. An effect that never ends is never auto removed either way.
 * @returns                 A tfxSpawnLocationID to use with tfx_UpdateSpawnLocation and tfx_RemoveSpawnLocation. It includes the effect so
                            you don't need to keep the effect index with it. tfxINVALID_SPAWN_LOCATION if the effect doesn't spawn at user locations
 */
-tfxAPI tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], bool transient);
+tfxAPI tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], tfxSpawnLocationAddFlags flags);
 
 /*
 Move a spawn location. Particles spawned this update are spread along the line between the old and new position.

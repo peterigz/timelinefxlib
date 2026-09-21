@@ -7155,7 +7155,8 @@ typedef enum {
 	tfxUserSpawnLocationFlags_transient = 1 << 1,		//Removed automatically after the update it was added in
 	tfxUserSpawnLocationFlags_paused = 1 << 2,			//Still exists and is still followed, but spawns nothing and stops ageing
 	tfxUserSpawnLocationFlags_listed = 1 << 3,			//Scratch flag for removing duplicate slots from active_slots
-	tfxUserSpawnLocationFlags_expiring = 1 << 4,		//Paused, and freed once expire_countdown runs out and its particles are gone
+	tfxUserSpawnLocationFlags_counting_down = 1 << 4,	//expire_countdown is running, the slot frees when it reaches zero
+	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
 } tfx_user_spawn_location_flag_bits;
 
 //Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
@@ -7197,6 +7198,7 @@ typedef struct tfx_user_spawn_location_command_s {
 	tfxU32 slot;
 	tfxU32 generation;
 	tfxUserSpawnLocationFlags flags;
+	bool no_auto_remove;							//Add only, the host wants to keep the location after a finite effect has played out
 	tfx_user_spawn_location_command_type type;
 } tfx_user_spawn_location_command_t;
 
@@ -7211,6 +7213,9 @@ typedef struct tfx_user_spawn_locations_s {
 	tfx_vector_t<tfxU32> free_slots;
 	tfx_vector_t<tfx_user_spawn_location_command_t> commands;
 	tfxEffectID effect_id;
+	//How long the effect runs for at one location, 0 if it never ends. Cached per effect because working it out sweeps every
+	//emitter's spawn window and a host can add locations every frame
+	float auto_remove_time;
 	//Rebuilt each update so an emitter can skip the tweak work entirely when nobody has set any
 	bool has_rotation;
 	bool has_factors;

@@ -12498,6 +12498,8 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 			effect_state->user_spawn_locations = user_location_list;
 		}
 		effect_state->user_spawn_locations->effect_id = effect_id;
+		//Outside the allocation guard: the list lives on the effect slot, so a recycled slot must re-measure for its new effect
+		effect_state->user_spawn_locations->auto_remove_time = tfx__get_effect_lifetime(effect, pm->frame_length > 0.0 ? (float)pm->frame_length : 16.666666667f);
 		effect_state->state_flags |= tfxEffectStateFlags_user_spawn_locations;
 	}
 
@@ -21993,7 +21995,11 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				}
 				continue;
 			}
-			if (location.flags & tfxUserSpawnLocationFlags_expiring) {
+			//A soft expiring location always drains. An auto removing one is counting out the effect playing, which a pause holds,
+			//so its countdown has to stop with the age or the slot goes before the effect has finished
+			bool counting_down = location.flags & tfxUserSpawnLocationFlags_counting_down
+				&& (location.flags & tfxUserSpawnLocationFlags_expiring || !(location.flags & tfxUserSpawnLocationFlags_paused));
+			if (counting_down) {
 				user_location_list->tweaks[slot].expire_countdown -= frame_length;
 				if (user_location_list->tweaks[slot].expire_countdown <= 0.f) {
 					location.flags = 0;
@@ -22032,6 +22038,11 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				location.age = 0.f;
 				location.previous_age = -1.f;
 				location.flags = command.flags | tfxUserSpawnLocationFlags_active;
+				//A finite effect has nothing left to spawn or show once it's played out here, so the location takes itself away
+				if (user_location_list->auto_remove_time > 0.f && !command.no_auto_remove && !(command.flags & tfxUserSpawnLocationFlags_transient)) {
+					tweaks.expire_countdown = user_location_list->auto_remove_time;
+					location.flags |= tfxUserSpawnLocationFlags_counting_down;
+				}
 				location.generation = command.generation;
 				user_location_list->active_slots.push_back(command.slot);
 			} else if (command.slot >= locations.current_size) {
@@ -22056,7 +22067,11 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				//Resolved here rather than when the api was called so reading the library can't race the update thread
 				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active && !(locations[command.slot].flags & tfxUserSpawnLocationFlags_expiring)) {
 					float expire_time = command.expire_time > 0.f ? command.expire_time : tfx__user_spawn_location_expire_time(pm, user_location_list->effect_id);
-					locations[command.slot].flags |= tfxUserSpawnLocationFlags_paused | tfxUserSpawnLocationFlags_expiring;
+					//An auto removing location is already counting down to when its effect has played out, so keep whichever ends first
+					if (locations[command.slot].flags & tfxUserSpawnLocationFlags_counting_down) {
+						expire_time = tfx__Min(expire_time, user_location_list->tweaks[command.slot].expire_countdown);
+					}
+					locations[command.slot].flags |= tfxUserSpawnLocationFlags_paused | tfxUserSpawnLocationFlags_expiring | tfxUserSpawnLocationFlags_counting_down;
 					user_location_list->tweaks[command.slot].expire_countdown = expire_time;
 				}
 			} else if (command.type == tfx_user_spawn_location_command_remove) {
@@ -22106,7 +22121,7 @@ void tfx__free_all_user_spawn_locations(tfx_stage pm) {
 	}
 }
 
-tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], bool transient) {
+tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], tfxSpawnLocationAddFlags flags) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, tfxINVALID_SPAWN_LOCATION);
 	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, effect_index);
@@ -22126,7 +22141,8 @@ tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, 
 	command.slot = slot;
 	command.generation = user_location_list->generations[slot];
 	command.position = { position[0], position[1], position[2] };
-	command.flags = transient ? tfxUserSpawnLocationFlags_transient : 0;
+	command.flags = flags & tfxSpawnLocationAdd_transient ? tfxUserSpawnLocationFlags_transient : 0;
+	command.no_auto_remove = (flags & tfxSpawnLocationAdd_no_auto_remove) > 0;
 	user_location_list->commands.push_back(command);
 	return tfx__make_spawn_location_id(effect_index, slot, user_location_list->generations[slot]);
 }
