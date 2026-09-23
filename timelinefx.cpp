@@ -8962,7 +8962,10 @@ tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
 	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
 	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
+	tfx_graph_t *heat_response = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_heat_response_index] : &graph_list->graphs[tfxRibbon_overtime_heat_response_index];
+	//Must cover everything tfx__plot_color_ramp reads or lists that plot differently share a ramp row
 	tfx_vector_t<float> values;
+	values.push_back((float)graph_list->color_ramps.interpolation_mode);
 	for(tfxBucketLoop(red->nodes, i)) {
 		values.push_back(red->nodes[i].frame);
 		values.push_back(red->nodes[i].value);
@@ -8983,6 +8986,15 @@ tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
 		values.push_back(blendfactor->nodes[i].left.y);
 		values.push_back(blendfactor->nodes[i].right.x);
 		values.push_back(blendfactor->nodes[i].right.y);
+	}
+	values.push_back((float)heat_response->flags);
+	for(tfxBucketLoop(heat_response->nodes, i)) {
+		values.push_back(heat_response->nodes[i].frame);
+		values.push_back(heat_response->nodes[i].value);
+		values.push_back(heat_response->nodes[i].left.x);
+		values.push_back(heat_response->nodes[i].left.y);
+		values.push_back(heat_response->nodes[i].right.x);
+		values.push_back(heat_response->nodes[i].right.y);
 	}
 	tfxKey hash = tfx_Hash(&tfxStore->hasher, values.data, values.size_in_bytes(), 0);
 	values.free();
