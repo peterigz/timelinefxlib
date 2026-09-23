@@ -12661,7 +12661,7 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 			tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
 		}
 		tfx__free_particle_list(pm, emitter_index);
-		if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 			tfx__free_spawn_location_list(pm, emitter_index);
 		}
 		if (emitter.state_properties.gpu_group_index != tfxINVALID) {
@@ -12881,7 +12881,7 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
 			}
 			tfx__free_particle_list(pm, emitter_index);
-			if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 				tfx__free_spawn_location_list(pm, emitter_index);
 			}
 			if (emitter.state_properties.gpu_group_index != tfxINVALID) {
@@ -13443,7 +13443,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
 			}
 			tfx__free_particle_list(pm, emitter_index);
-			if (emitter.spawn_locations_index != tfxINVALID && emitter.other_emitter_index == tfxINVALID) {
+			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 				tfx__free_spawn_location_list(pm, emitter_index);
 			}
 			//Emitter is done spawning; decrement group's active count.
@@ -13481,10 +13481,10 @@ void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording
 		//tfx__control_particle_transform writes the per-slot positions in parallel batches, so the scalar
 		//current_size/start_index must be set outside that threaded path to avoid races between batches.
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[pm->emitters[index].spawn_locations_index];
-		if (bank.current_size > spawn_point_buffer.current_size) {
-			bool grew;
-			tfx__add_soa_rows_grew(&spawn_point_buffer, bank.current_size - spawn_point_buffer.current_size, true, grew);
-		}
+		//Never grow the ring here: tfx__update_emitter already mirrored the particle bank's capacity exactly and
+		//growing would use the generic 1.5x + block rounding policy instead, leaving the two rings with different
+		//capacities, which tfx__get_circular_index would then map to different slots.
+		TFX_ASSERT(spawn_point_buffer.capacity == bank.capacity);
 		spawn_point_buffer.current_size = bank.current_size;
 		spawn_point_buffer.start_index = bank.start_index;
 		TFX_ASSERT(spawn_point_buffer.current_size <= spawn_point_buffer.capacity);
@@ -16403,7 +16403,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 			tfx_effect_state_t &effect = pm->effects[index.index];
 			for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
 				tfx__free_particle_list(pm, emitter_index);
-				if (pm->emitters[emitter_index].spawn_locations_index != tfxINVALID) {
+				if (pm->emitters[emitter_index].state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && pm->emitters[emitter_index].spawn_locations_index != tfxINVALID) {
 					tfx__free_spawn_location_list(pm, emitter_index);
 				}
 			}
