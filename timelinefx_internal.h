@@ -7420,7 +7420,9 @@ typedef struct tfx_library_s {
 	bool open_library;
 	bool dirty;
 	tfxU32 version;
-	//Every template cloned out of this library. 
+	//The tfxFILE_VERSION the library was loaded from, so the editor can report what changed since
+	tfxU32 file_version;
+	//Every template cloned out of this library.
 	tfx_vector_t<tfx_effect_template> effect_templates;
 	tfx_stream_t library_file_path;
 	tfxU32 uid;

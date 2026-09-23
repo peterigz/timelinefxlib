@@ -982,6 +982,14 @@ Get the error flags from a library. When you load a library from file or memory,
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
 /*
+Get the file format version that the library was loaded from. A library that was created rather than
+loaded, or one whose file had no version line, reports the current format version and 0 respectively.
+* @param library		A handle to the library
+* @returns tfxU32		The file version found in the file
+*/
+tfxAPI tfxU32 tfx_GetLibraryFileVersion(tfx_library library);
+
+/*
 Checks the library on disk to see if it's been updated since it was loaded.
 
 In most cases the effects can be updated in place and either any live effects in a particle manager will

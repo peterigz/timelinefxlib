@@ -10250,6 +10250,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		version_read = true;
 	}
 
+	lib->file_version = package->header.file_version;
 	if (package->header.file_version < tfxFILE_VERSION) {
 		error |= tfxErrorCode_file_version_out_of_date;
 	}
@@ -10327,6 +10328,7 @@ tfx_library tfx_CreateLibrary() {
 	memset((void *)library, 0, sizeof(tfx_library_t));
 	library->magic = tfxINIT_MAGIC(tfx_struct_type_effect_library);
 	library->version = 1;
+	library->file_version = tfxFILE_VERSION;
 	tfx__init_library(library);
 	tfxStore->libraries.Insert((tfxKey)library, library);
 	return library;
@@ -10371,6 +10373,10 @@ tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_s
 
 tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 	return library->error_flags;
+}
+
+tfxU32 tfx_GetLibraryFileVersion(tfx_library library) {
+	return library->file_version;
 }
 
 //A running emitter holds a raw pointer into particle_shapes, and inserting or removing a shape moves that
