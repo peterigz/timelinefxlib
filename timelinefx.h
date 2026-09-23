@@ -594,6 +594,35 @@ typedef struct tfx_ribbon_buffer_requirements_s {
 	tfxU32 emitter_buffer_size_in_bytes;
 } tfx_ribbon_buffer_requirements_t;
 
+//Element offsets (not bytes) of one stage's data within a ribbon batch, or running totals for the whole batch
+typedef struct tfx_ribbon_batch_offsets_s {
+	tfxU32 segment_offset;
+	tfxU32 ribbon_offset;
+	tfxU32 emitter_offset;
+	tfxU32 vertex_offset;
+	tfxU32 index_offset;
+} tfx_ribbon_batch_offsets_t;
+
+//Packs the ribbons of several stages into one shared set of buffers. See tfx_BeginRibbonBatch.
+typedef struct tfx_ribbon_batch_s {
+	void *segments_dst;
+	void *ribbons_dst;
+	void *emitters_dst;
+	size_t segments_capacity;
+	size_t ribbons_capacity;
+	size_t emitters_capacity;
+	tfx_ribbon_batch_offsets_t totals;
+	tfxU32 stage_count;
+} tfx_ribbon_batch_t;
+
+typedef struct tfx_ribbon_batch_sizes_s {
+	size_t segment_buffer_size_in_bytes;
+	size_t ribbon_buffer_size_in_bytes;
+	size_t emitter_buffer_size_in_bytes;
+	size_t vertex_buffer_size_in_bytes;
+	size_t index_buffer_size_in_bytes;
+} tfx_ribbon_batch_sizes_t;
+
 typedef struct tfx_animation_buffer_metrics_s {
 	size_t sprite_data_size;
 	tfxU32 offsets_size;
@@ -634,6 +663,7 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	float time;
 	float ndc_offset_x;
 	float ndc_offset_y;
+	tfxU32 emitter_offset;			//Where this stage's emitters start in a ribbon batch's emitter buffer
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_sprite_data_push_s {
@@ -1359,6 +1389,65 @@ Implicitly completes any in-flight stage update.
 * @param emitters_dst              Destination for the ribbon emitter data (must be non-null).
 */
 tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_stage stage, void *segments_dst, void *ribbons_dst, void *emitters_dst);
+
+/*
+--------------------------------
+Ribbon batches (several stages)
+--------------------------------
+A ribbon batch packs the ribbons of any number of stages into one shared set of segment / ribbon / emitter
+buffers, so a renderer uploads once and runs one compute pass and one draw pass for all of them. Which stages go
+into the batch is decided every frame, independently of which stages were updated: a stage that wasn't updated
+this frame (paused, say) still has to be added if you want it drawn.
+
+Per-frame flow, after tfx_UpdateStage:
+
+  1. tfx_BeginRibbonBatch with your mapped staging buffers and their capacities. Size them for the worst case
+     with the tfx_GetTotal*MaxSizeInBytes helpers.
+  2. tfx_AddStageToRibbonBatch for each stage you want drawn. Keep the tfx_ribbon_batch_offsets_t it returns.
+  3. tfx_GetRibbonBatchSizes gives the exact bytes to upload and the vertex / index buffer sizes to allocate.
+  4. For the compute pass and again for the draw pass, for each added stage: create the dispatch with
+     tfx_CreateRibbonBatchDispatch(&stage_offsets), then loop tfx_NextRibbonDispatch(stage, &dispatch) exactly as
+     for a single stage. The bucket globals already carry the stage's segment and emitter offsets.
+
+A stage's bucket globals hold its batch offsets, so a stage can only be in one batch at a time, and only once.
+*/
+
+/*
+Start a ribbon batch that writes into the given mapped staging buffers.
+* @param segments_dst              Destination for ribbon segment data (tfx_ribbon_segment_t).
+* @param segments_capacity         Size of segments_dst in bytes.
+* @param ribbons_dst               Destination for ribbon instance data (tfx_ribbon_t).
+* @param ribbons_capacity          Size of ribbons_dst in bytes.
+* @param emitters_dst              Destination for ribbon emitter data (tfx_gpu_ribbon_emitter_t).
+* @param emitters_capacity         Size of emitters_dst in bytes.
+* @returns tfx_ribbon_batch_t      An empty batch.
+*/
+tfxAPI tfx_ribbon_batch_t tfx_BeginRibbonBatch(void *segments_dst, size_t segments_capacity, void *ribbons_dst, size_t ribbons_capacity, void *emitters_dst, size_t emitters_capacity);
+
+/*
+Copy a stage's ribbon data into the batch after the stages already added. Implicitly completes any in-flight
+stage update.
+* @param batch                     A batch from tfx_BeginRibbonBatch.
+* @param stage                     A handle to an initialised tfx_stage_t.
+* @param stage_offsets             Receives where this stage's data starts in the batch. Pass it to tfx_CreateRibbonBatchDispatch.
+* @returns bool                    false if the stage doesn't fit in the batch's capacities, in which case nothing was copied.
+*/
+tfxAPI bool tfx_AddStageToRibbonBatch(tfx_ribbon_batch_t *batch, tfx_stage stage, tfx_ribbon_batch_offsets_t *stage_offsets);
+
+/*
+Byte sizes of everything added to the batch: how much of each staging buffer to upload, and how big the vertex
+and index buffers written by the ribbon compute shader need to be.
+* @param batch                     A batch from tfx_BeginRibbonBatch.
+* @param vertex_size               The size of your vertex struct in bytes, or 0 for the default tfx_ribbon_vertex_t.
+*/
+tfxAPI tfx_ribbon_batch_sizes_t tfx_GetRibbonBatchSizes(const tfx_ribbon_batch_t *batch, tfxU32 vertex_size);
+
+/*
+Create a dispatch for iterating one batched stage's buckets with tfx_NextRibbonDispatch. The vertex, index and
+ribbon offsets it produces start where the stage was placed in the batch.
+* @param stage_offsets             The offsets returned by tfx_AddStageToRibbonBatch for the stage.
+*/
+tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonBatchDispatch(const tfx_ribbon_batch_offsets_t *stage_offsets);
 
 /*
 Worst-case size in bytes of the ribbon segment buffer for a single stage, based on its configured max_ribbon_segments.

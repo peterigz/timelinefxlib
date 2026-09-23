@@ -131,6 +131,7 @@ layout(push_constant) uniform push_constants
     float time;
     float ndc_offset_x;
     float ndc_offset_y;
+    uint emitter_offset;
 } pc;
 
 layout(location = 0) in vec3 vertex_position;
@@ -214,7 +215,7 @@ void main() {
 	gl_Position.y += pc.ndc_offset_y * gl_Position.w;
 	float ribbon_position = float((segment_index & 0x007FF000) >> 12) / 2047.0;
 	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[ribbon_index];
-	tfx_emitter emitter = emitters[pc.emitters_index].data[ribbon.emitter_index];
+	tfx_emitter emitter = emitters[pc.emitters_index].data[ribbon.emitter_index + pc.emitter_offset];
 	//The ribbon holds the animation frame; its emitter holds where the image starts
 	uint image_index = emitter.start_frame_index + (ribbon.texture_indexes & 0x00001FFF);
 

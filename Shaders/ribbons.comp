@@ -132,6 +132,10 @@ layout(push_constant) uniform push_constants
 	uint particle_texture_index;
 	uint color_ramp_texture_index;
     float lerp;
+    float time;
+    float ndc_offset_x;
+    float ndc_offset_y;
+    uint emitter_offset;
 } pc;
 
 layout (local_size_x = group_size) in;
@@ -464,7 +468,7 @@ void main() {
     uint global_offset =  pc.segment_offset;
 
 	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[global_ribbon_index];
-    uint emitter_index = ribbon.emitter_index;
+    uint emitter_index = ribbon.emitter_index + pc.emitter_offset;
 	//Be aware here that the shader compiler should optimise so that the lag arrays are not copied here
 	//because when we access them we use the full emitters[index].data[emitter_index]. to access them
 	tfx_emitter emitter = emitters[pc.emitters_index].data[emitter_index];

@@ -16130,6 +16130,16 @@ bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatc
 	return false;
 }
 
+static tfxU32 tfx__ribbon_bucket_vertex_count(tfx_ribbon_bucket_t *bucket) {
+	tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+	return ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count;
+}
+
+static tfxU32 tfx__ribbon_bucket_index_count(tfx_ribbon_bucket_t *bucket) {
+	tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+	return (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
+}
+
 bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
 	tfx__wait_for_stage_update(pm);
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
@@ -16143,8 +16153,8 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
 		ribbon_dispatch->index_offset = ribbon_dispatch->last_index_offset;
 		ribbon_dispatch->vertex_offset = ribbon_dispatch->last_vertex_offset;
-		ribbon_dispatch->index_count = (ribbon_count * bucket->buffer_info.index_count) - (ribbon_count * bucket->buffer_info.indices_per_segment);
-		ribbon_dispatch->vertex_count = (ribbon_count * bucket->buffer_info.vertices_per_segment * bucket->globals.segment_count);
+		ribbon_dispatch->index_count = tfx__ribbon_bucket_index_count(bucket);
+		ribbon_dispatch->vertex_count = tfx__ribbon_bucket_vertex_count(bucket);
 		ribbon_dispatch->ribbon_offset = ribbon_dispatch->last_ribbon_offset;
 		bucket->globals.camera_position = { pm->camera_position.x, pm->camera_position.y, pm->camera_position.z, 0.f };
 		bucket->globals.index_offset = ribbon_dispatch->index_offset;
@@ -16190,34 +16200,95 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 }
 
 void tfx_CopyRibbonDataToStagingBuffers(tfx_stage stage, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
-	//Make sure that you setup the ribbon buffers
-	TFX_ASSERT_HANDLE(stage); //If effect manager count is greater then 0 then stages must be an array of tfx_stage
-	TFX_ASSERT(emitters_dst);
+	TFX_ASSERT_HANDLE(stage);
+	//The caller sizes the destinations for a single stage copy, so the batch has no capacity limit
+	tfx_ribbon_batch_t batch = tfx_BeginRibbonBatch(segments_dst, SIZE_MAX, ribbons_dst, SIZE_MAX, emitters_dst, SIZE_MAX);
+	tfx_ribbon_batch_offsets_t stage_offsets;
+	tfx_AddStageToRibbonBatch(&batch, stage, &stage_offsets);
+}
+
+tfx_ribbon_batch_t tfx_BeginRibbonBatch(void *segments_dst, size_t segments_capacity, void *ribbons_dst, size_t ribbons_capacity, void *emitters_dst, size_t emitters_capacity) {
 	TFX_ASSERT(segments_dst);
 	TFX_ASSERT(ribbons_dst);
-	if (segments_dst && ribbons_dst) {
-		tfxU32 running_segment_offset = 0;
-		tfxU32 running_ribbon_offset = 0;
-		tfxU32 running_emitter_offset = 0;
-		tfx__wait_for_stage_update(stage);
-		tfx_ribbon_bucket_t *bucket = stage->ribbon_segment_buckets.next_item();
-		while (bucket) {
-			if (bucket->active_ribbons == 0) {
-				bucket = stage->ribbon_segment_buckets.next_item();
-				continue;
-			}
-			tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
-			tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
-			memcpy((tfx_ribbon_segment_t *)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
-			memcpy((tfx_ribbon_t *)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
-			bucket->globals.segment_offset = running_segment_offset - bucket->lowest_segment_index;
-			running_segment_offset += segment_count;
-			running_ribbon_offset += ribbon_count;
-			bucket = stage->ribbon_segment_buckets.next_item();
-		}
-		memcpy((tfx_gpu_ribbon_emitter_t*)emitters_dst + running_emitter_offset, stage->gpu_ribbon_emitters.data, stage->gpu_ribbon_emitters.size_in_bytes());
-		running_emitter_offset += stage->gpu_ribbon_emitters.size();
+	TFX_ASSERT(emitters_dst);
+	tfx_ribbon_batch_t batch{};
+	batch.segments_dst = segments_dst;
+	batch.ribbons_dst = ribbons_dst;
+	batch.emitters_dst = emitters_dst;
+	batch.segments_capacity = segments_capacity;
+	batch.ribbons_capacity = ribbons_capacity;
+	batch.emitters_capacity = emitters_capacity;
+	return batch;
+}
+
+bool tfx_AddStageToRibbonBatch(tfx_ribbon_batch_t *batch, tfx_stage stage, tfx_ribbon_batch_offsets_t *stage_offsets) {
+	TFX_ASSERT(batch);
+	TFX_ASSERT_HANDLE(stage);
+	TFX_ASSERT(stage_offsets);
+	tfx__wait_for_stage_update(stage);
+
+	//Measure first so that a stage that does not fit leaves the batch untouched
+	tfx_ribbon_batch_offsets_t stage_counts{};
+	for (tfx_ribbon_bucket_t &bucket : stage->ribbon_segment_buckets.data) {
+		if (bucket.active_ribbons == 0) continue;
+		stage_counts.segment_offset += bucket.highest_segment_index - bucket.lowest_segment_index;
+		stage_counts.ribbon_offset += bucket.highest_ribbon_index - bucket.lowest_ribbon_index + 1;
+		stage_counts.vertex_offset += tfx__ribbon_bucket_vertex_count(&bucket);
+		stage_counts.index_offset += tfx__ribbon_bucket_index_count(&bucket);
 	}
+	stage_counts.emitter_offset = stage->gpu_ribbon_emitters.size();
+
+	tfx_ribbon_batch_offsets_t *totals = &batch->totals;
+	if ((size_t)(totals->segment_offset + stage_counts.segment_offset) * sizeof(tfx_ribbon_segment_t) > batch->segments_capacity ||
+		(size_t)(totals->ribbon_offset + stage_counts.ribbon_offset) * sizeof(tfx_ribbon_t) > batch->ribbons_capacity ||
+		(size_t)(totals->emitter_offset + stage_counts.emitter_offset) * sizeof(tfx_gpu_ribbon_emitter_t) > batch->emitters_capacity) {
+		return false;
+	}
+
+	*stage_offsets = *totals;
+	tfxU32 segment_offset = totals->segment_offset;
+	tfxU32 ribbon_offset = totals->ribbon_offset;
+	for (tfx_ribbon_bucket_t &bucket : stage->ribbon_segment_buckets.data) {
+		if (bucket.active_ribbons == 0) continue;
+		tfxU32 ribbon_count = bucket.highest_ribbon_index - bucket.lowest_ribbon_index + 1;
+		tfxU32 segment_count = bucket.highest_segment_index - bucket.lowest_segment_index;
+		memcpy((tfx_ribbon_segment_t *)batch->segments_dst + segment_offset, bucket.segments.data + bucket.lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
+		memcpy((tfx_ribbon_t *)batch->ribbons_dst + ribbon_offset, bucket.ribbons.ribbon_instances + bucket.lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
+		bucket.globals.segment_offset = segment_offset - bucket.lowest_segment_index;
+		bucket.globals.emitter_offset = totals->emitter_offset;
+		segment_offset += segment_count;
+		ribbon_offset += ribbon_count;
+	}
+	memcpy((tfx_gpu_ribbon_emitter_t *)batch->emitters_dst + totals->emitter_offset, stage->gpu_ribbon_emitters.data, stage->gpu_ribbon_emitters.size_in_bytes());
+
+	totals->segment_offset += stage_counts.segment_offset;
+	totals->ribbon_offset += stage_counts.ribbon_offset;
+	totals->emitter_offset += stage_counts.emitter_offset;
+	totals->vertex_offset += stage_counts.vertex_offset;
+	totals->index_offset += stage_counts.index_offset;
+	batch->stage_count++;
+	return true;
+}
+
+tfx_ribbon_batch_sizes_t tfx_GetRibbonBatchSizes(const tfx_ribbon_batch_t *batch, tfxU32 vertex_size) {
+	TFX_ASSERT(batch);
+	tfx_ribbon_batch_sizes_t sizes{};
+	sizes.segment_buffer_size_in_bytes = (size_t)batch->totals.segment_offset * sizeof(tfx_ribbon_segment_t);
+	sizes.ribbon_buffer_size_in_bytes = (size_t)batch->totals.ribbon_offset * sizeof(tfx_ribbon_t);
+	sizes.emitter_buffer_size_in_bytes = (size_t)batch->totals.emitter_offset * sizeof(tfx_gpu_ribbon_emitter_t);
+	sizes.vertex_buffer_size_in_bytes = (size_t)batch->totals.vertex_offset * (vertex_size ? vertex_size : sizeof(tfx_ribbon_vertex_t));
+	sizes.index_buffer_size_in_bytes = (size_t)batch->totals.index_offset * sizeof(tfxU32);
+	return sizes;
+}
+
+tfx_ribbon_dispatch_t tfx_CreateRibbonBatchDispatch(const tfx_ribbon_batch_offsets_t *stage_offsets) {
+	TFX_ASSERT(stage_offsets);
+	tfx_ribbon_dispatch_t dispatch{};
+	dispatch.last_index_offset = stage_offsets->index_offset;
+	dispatch.last_vertex_offset = stage_offsets->vertex_offset;
+	dispatch.last_ribbon_offset = stage_offsets->ribbon_offset;
+	dispatch.last_segment_offset = stage_offsets->segment_offset;
+	return dispatch;
 }
 
 size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_stage pm) {
