@@ -3338,6 +3338,7 @@ typedef enum {
 	tfxRibbonEmitterStateFlags_none                             = 0,
 	tfxRibbonEmitterStateFlags_remove                           = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
 	tfxRibbonEmitterStateFlags_single_shot_done                 = 1 << 17,
+	tfxRibbonEmitterStateFlags_orient_to_camera_pending         = 1 << 26,      //Same as tfxEmitterStateFlags_orient_to_camera_pending
 } tfx_ribbon_emitter_state_flag_bits;
 
 typedef enum {
@@ -6452,6 +6453,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfx_vec3_t local_rotations;
 	tfx_vec3_t world_rotations;
 	tfx_quaternion_t rotation;
+	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
+	tfx_vec3_t creation_rotations;
 
 	tfx_bounding_box_t bounding_box;
 

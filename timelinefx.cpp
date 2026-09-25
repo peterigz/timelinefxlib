@@ -1671,6 +1671,24 @@ tfxINTERNAL void tfx__solve_face_rotations(tfx_vec3_t direction, tfx_effect_face
 	}
 }
 
+//Solves the orient to camera rotations for an emitter at local_position (translation included) under parent_effect.
+//Returns false while the emitter sits on the camera so the latch can wait for a usable direction.
+tfxINTERNAL bool tfx__solve_camera_facing_rotations(tfx_stage pm, tfx_effect_state_t &parent_effect, tfx_vec3_t local_position, tfx_vec3_t *creation_rotations) {
+	//The emitter's world position doesn't depend on its own rotation, so it can be resolved before the transform
+	tfx_vec3_t world_position = parent_effect.world_position + tfx__rotate_vector_quaternion(&parent_effect.rotation, local_position);
+	tfx_vec3_t direction = pm->camera_position - world_position;
+	float distance = tfx__length_vec3(&direction);
+	if (distance <= 0.f) {
+		return false;
+	}
+	//Solve in the parent's local space so the aim survives whatever rotation the effect has
+	tfx_quaternion_t inverse_parent_rotation = tfx_quaternion_t(parent_effect.rotation.w, -parent_effect.rotation.x, -parent_effect.rotation.y, -parent_effect.rotation.z);
+	tfx_vec3_t local_direction = tfx__rotate_vector_quaternion(&inverse_parent_rotation, direction / distance);
+	*creation_rotations = tfx_vec3_t();
+	tfx__solve_face_rotations(local_direction, tfxEffectFace_up, creation_rotations);
+	return true;
+}
+
 tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
 	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher);
 }
@@ -7214,6 +7232,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
 	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
 	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+	file->AddLine("orient_to_camera=%i", (emitter->state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera));
 
 	file->AddLine("image_hash=%llu", shared_properties->image_hash);
 	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
@@ -12631,6 +12650,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.source_ribbon = src_emitter;
 	ribbon_emitter.local_position = tfx_vec3_t();
 	ribbon_emitter.local_rotations = tfx_vec3_t();
+	ribbon_emitter.creation_rotations = tfx_vec3_t();
 	ribbon_emitter.age = 0.f;
 	ribbon_emitter.ribbon_property_flags = src_emitter->ribbon_flags;
 	ribbon_emitter.library = effect_state.library;
@@ -12643,7 +12663,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.lag_clock = 0.f;
 	ribbon_emitter.lag_history_head = 0;
 	ribbon_emitter.lag_history_count = 0;
-	ribbon_emitter.state_flags = 0;
+	ribbon_emitter.state_flags = ribbon_emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxRibbonEmitterStateFlags_orient_to_camera_pending : 0;
 	ribbon_emitter.samples_per_segment = 1;
 	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
 	ribbon_emitter.morph_segment_start_index = tfxINVALID;
@@ -17271,6 +17291,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	ribbon_work_entry->overall_scale = parent_effect.overall_scale;
 	ribbon_work_entry->graphs = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
 
+	if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_orient_to_camera_pending) {
+		if (tfx__solve_camera_facing_rotations(pm, parent_effect, ribbon_emitter.local_position + translation, &ribbon_emitter.creation_rotations)) {
+			ribbon_emitter.state_flags &= ~tfxRibbonEmitterStateFlags_orient_to_camera_pending;
+		}
+	}
+	local_rotations += ribbon_emitter.creation_rotations;
+
 	tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
 
 	tfx__update_ribbon_emitter_state(pm, ribbon_emitter, ribbon_emitter.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
@@ -17450,18 +17477,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 
 	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
-		//The emitter's world position doesn't depend on its own rotation, so it can be resolved here before the transform
-		tfx_vec3_t translated_position = emitter.local_position + translation;
-		tfx_vec3_t world_position = parent_effect.world_position + tfx__rotate_vector_quaternion(&parent_effect.rotation, translated_position);
-		tfx_vec3_t direction = pm->camera_position - world_position;
-		float distance = tfx__length_vec3(&direction);
-		if (distance > 0.f) {
-			//Solve in the parent's local space so the aim survives whatever rotation the effect has
-			tfx_quaternion_t inverse_parent_rotation = tfx_quaternion_t(parent_effect.rotation.w, -parent_effect.rotation.x, -parent_effect.rotation.y, -parent_effect.rotation.z);
-			tfx_vec3_t local_direction = tfx__rotate_vector_quaternion(&inverse_parent_rotation, direction / distance);
-			tfx_vec3_t creation_rotations = tfx_vec3_t();
-			tfx__solve_face_rotations(local_direction, tfxEffectFace_up, &creation_rotations);
-			emitter.creation_rotations = creation_rotations;
+		if (tfx__solve_camera_facing_rotations(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotations)) {
 			emitter.state_flags &= ~tfxEmitterStateFlags_orient_to_camera_pending;
 		}
 	}
