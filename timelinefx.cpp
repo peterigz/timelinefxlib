@@ -12906,6 +12906,11 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 		effect.emitter_indexes[1].clear();
 		effect.emitter_start_size = 0;
 		effect.active_emitters = 0;
+		//Otherwise the host's ids stay valid against a dead effect until the slot is recycled
+		if (effect.user_spawn_locations) {
+			tfx__clear_user_spawn_locations(effect.user_spawn_locations);
+		}
+		effect.effect_flags &= ~tfxEffectPropertyFlags_user_spawn_locations;
 		pm->free_effects.push_back(effect_index);
 	}
 
@@ -12961,6 +12966,9 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
 	tfx__release_stage_effect_emitters(pm, effect_id);
 	tfx__reset_effect_state(pm, effect_id, source_effect);
 	tfx__build_stage_effect_emitters(pm, effect_id, source_effect);
+	if (effect.user_spawn_locations) {
+		effect.user_spawn_locations->flags |= tfxUserSpawnLocationListFlags_restart_pending;
+	}
 
 	effect.local_position = local_position;
 	effect.local_rotations = local_rotations;
@@ -15100,7 +15108,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
 	pass->transform_relative_other_emitter = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxOtherEmitter;
 	pass->user_spawn_locations = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
-	pass->user_spawn_rotation = pass->user_spawn_locations && pass->user_spawn_locations->has_rotation;
+	pass->user_spawn_rotation = pass->user_spawn_locations && pass->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
 	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
 
@@ -17861,7 +17869,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		tfx__share_user_spawn_amount(pm, work_entry, emitter);
 		work_entry->user_spawn_cursor = 0;
 		work_entry->user_spawn_run_end = work_entry->user_spawn_run_count ? pm->user_spawn_runs[work_entry->user_spawn_run_start].count : 0;
-		if (work_entry->user_spawn_run_count && work_entry->user_spawn_locations->has_rotation) {
+		if (work_entry->user_spawn_run_count && work_entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation) {
 			work_entry->user_spawn_rotation = tfx__unpack16bit_quaternion(work_entry->user_spawn_locations->locations[pm->user_spawn_runs[work_entry->user_spawn_run_start].slot].packed_rotation) * emitter.rotation;
 		}
 	}
@@ -18406,7 +18414,7 @@ tfxINTERNAL tfx_vec3_t tfx__spawn_anchor(tfx_spawn_work_entry_t *entry, const tf
 	}
 	tfxU32 previous_cursor = entry->user_spawn_cursor;
 	tfx_vec3_t anchor = tfx__user_spawn_run_anchor(entry, particle_index, entry->user_spawn_cursor, entry->user_spawn_run_end);
-	if (entry->user_spawn_cursor != previous_cursor && entry->user_spawn_locations->has_rotation) {
+	if (entry->user_spawn_cursor != previous_cursor && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation) {
 		//The emitter's own angle first, then the location turns the whole thing into its frame. Rebuilt once a run, so the
 		//offset still costs the one rotate per particle it always did
 		const tfx_user_spawn_run_t *runs = &entry->pm->user_spawn_runs[entry->user_spawn_run_start];
@@ -18449,8 +18457,8 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
-	const bool rotate_emission = user_location_list.has_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
-	if (!user_location_list.has_factors && !rotate_emission) {
+	const bool rotate_emission = user_location_list.flags & tfxUserSpawnLocationListFlags_has_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
+	if (!(user_location_list.flags & tfxUserSpawnLocationListFlags_has_factors) && !rotate_emission) {
 		return;
 	}
 
@@ -22102,6 +22110,21 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				}
 				continue;
 			}
+			//Mirrors a fresh add, which skips ageing on the update it arrives in, so single shots at delay 0 still fire
+			if (user_location_list->flags & tfxUserSpawnLocationListFlags_restart_pending) {
+				location.captured_position = location.position;
+				location.age = 0.f;
+				location.previous_age = -1.f;
+				//A soft expiring location is on its way out whatever the restart did, so it keeps its own countdown
+				if (location.flags & tfxUserSpawnLocationFlags_counting_down && !(location.flags & tfxUserSpawnLocationFlags_expiring)) {
+					if (user_location_list->auto_remove_time > 0.f) {
+						user_location_list->tweaks[slot].expire_countdown = user_location_list->auto_remove_time;
+					} else {
+						location.flags &= ~tfxUserSpawnLocationFlags_counting_down;
+					}
+				}
+				continue;
+			}
 			//A soft expiring location always drains. An auto removing one is counting out the effect playing, which a pause holds,
 			//so its countdown has to stop with the age or the slot goes before the effect has finished
 			bool counting_down = location.flags & tfxUserSpawnLocationFlags_counting_down
@@ -22124,6 +22147,7 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				location.age += frame_length;
 			}
 		}
+		user_location_list->flags &= ~tfxUserSpawnLocationListFlags_restart_pending;
 
 		for (tfx_user_spawn_location_command_t &command : user_location_list->commands) {
 			if (command.type == tfx_user_spawn_location_command_add) {
@@ -22202,12 +22226,15 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 			user_location_list->active_slots[kept++] = slot;
 		}
 		user_location_list->active_slots.current_size = kept;
-		user_location_list->has_rotation = false;
-		user_location_list->has_factors = false;
+		user_location_list->flags &= ~(tfxUserSpawnLocationListFlags_has_rotation | tfxUserSpawnLocationListFlags_has_factors);
 		for (tfxU32 slot : user_location_list->active_slots) {
 			locations[slot].flags &= ~tfxUserSpawnLocationFlags_listed;
-			user_location_list->has_rotation |= locations[slot].packed_rotation != tfxPACKED_W_QUATERNION;
-			user_location_list->has_factors |= user_location_list->tweaks[slot].size_factor != 1.f || user_location_list->tweaks[slot].velocity_factor != 1.f;
+			if (locations[slot].packed_rotation != tfxPACKED_W_QUATERNION) {
+				user_location_list->flags |= tfxUserSpawnLocationListFlags_has_rotation;
+			}
+			if (user_location_list->tweaks[slot].size_factor != 1.f || user_location_list->tweaks[slot].velocity_factor != 1.f) {
+				user_location_list->flags |= tfxUserSpawnLocationListFlags_has_factors;
+			}
 		}
 	}
 }

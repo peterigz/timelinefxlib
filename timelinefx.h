@@ -1633,7 +1633,8 @@ tfxAPI bool tfx_IsFiniteEffect(tfx_effect_template effect);
 
 /*
 Returns the maximum possible lifetime of an effect taking into account particle lifetime and lifetime variation.
-If the effect is not finite then it returns 0.
+If the effect is not finite then it returns 0. You should not use this effect in realtime as it can be expensive
+depending on the effect, so use it ahead of time after creating the effect template.
 * @param tfx_effect_template		A handle to the effect template
 * @returns float					The time in milliseconds	
 */

@@ -3060,6 +3060,7 @@ typedef tfxU32 tfxEmitterControlProfileFlags;   //tfx_emitter_control_profile_fl
 typedef tfxU32 tfxContextPolicyFlags;			//tfx_context_policy_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
 typedef tfxU32 tfxUserSpawnLocationFlags;       //tfx_user_spawn_location_flag_bits
+typedef tfxU32 tfxUserSpawnLocationListFlags;   //tfx_user_spawn_location_list_flag_bits
 
 typedef enum {
 	tfxSharedFlag_capture_after_transform						= 1 << 8,
@@ -7159,6 +7160,12 @@ typedef enum {
 	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
 } tfx_user_spawn_location_flag_bits;
 
+typedef enum {
+	tfxUserSpawnLocationListFlags_has_rotation = 1 << 0,		//Rebuilt each update so an emitter can skip the tweak work entirely when nobody has set any
+	tfxUserSpawnLocationListFlags_has_factors = 1 << 1,
+	tfxUserSpawnLocationListFlags_restart_pending = 1 << 2,	//The effect restarted in place, the next apply step starts every location over as if it was just added
+} tfx_user_spawn_location_list_flag_bits;
+
 //Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
 //for the liveness check and packed_rotation for the relative rotation. The ages are only read once per location in the runs loop
 typedef struct tfx_user_spawn_location_s {
@@ -7216,9 +7223,7 @@ typedef struct tfx_user_spawn_locations_s {
 	//How long the effect runs for at one location, 0 if it never ends. Cached per effect because working it out sweeps every
 	//emitter's spawn window and a host can add locations every frame
 	float auto_remove_time;
-	//Rebuilt each update so an emitter can skip the tweak work entirely when nobody has set any
-	bool has_rotation;
-	bool has_factors;
+	tfxUserSpawnLocationListFlags flags;
 } tfx_user_spawn_locations_t;
 #endif
 
