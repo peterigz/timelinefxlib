@@ -3171,8 +3171,18 @@ typedef enum {
 	tfxPathFlags_mode_origin                                    = 1 << 1,
 	tfxPathFlags_mode_node                                      = 1 << 2,
 	tfxPathFlags_reverse_direction                              = 1 << 4,
-	tfxPathFlags_rotation_range_yaw_only                        = 1 << 5
+	tfxPathFlags_rotation_range_yaw_only                        = 1 << 5,
+	tfxPathFlags_rotation_steps_restart                         = 1 << 6       //Stepped rotation distributions start from the first division on every spawn batch
 } tfx_emitter_path_flag_bits;
+
+//How path rotations are picked within the rotation range. Values are serialized so must stay the same.
+typedef enum {
+	tfxPathRotationDistribution_random,
+	tfxPathRotationDistribution_sequential,
+	tfxPathRotationDistribution_ping_pong,
+	tfxPathRotationDistribution_shuffled,
+	tfxPathRotationDistribution_max,
+} tfx_path_rotation_distribution;
 
                                                                                 //Particle property that defines how a particle will rotate
 typedef enum {
@@ -5897,6 +5907,9 @@ typedef struct tfx_path_settings_s {
 	int nodes_to_commit;
 	tfxEmitterPathFlags flags;
 	float rotation_range;
+	tfx_path_rotation_distribution rotation_distribution;
+	tfxU32 rotation_divisions;
+	float rotation_jitter;				//0 to 1 of a division, randomises the angle within each division
 	float rotation_pitch;      
 	float rotation_yaw;
 	tfxU32 maximum_active_paths;
@@ -6110,6 +6123,8 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfx_emission_type emission_type;
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t grid_points;
+	//Set above 0 to cycle the angle that particles or ribbons spawn with, radians.
+	tfx_vec3_t angle_step_size;
 	//Can this be removed if we're using the image hash now?
 	tfxU32 image_index;
 	//The shape being used for all particles spawned from the emitter
@@ -6430,6 +6445,12 @@ typedef enum tfx_gpu_particle_field_e {
 	tfx_gpu_field_count
 } tfx_gpu_particle_field_t;
 
+//A user spawn location's own stepped path rotation counter, stale once the slot's generation moves on
+typedef struct tfx_location_rotation_step_s {
+	tfxU32 generation;
+	tfxU32 step_index;
+} tfx_location_rotation_step_t;
+
 typedef struct tfx_ribbon_lag_history_s {
 	float time;
 	tfx_vec3_t position;
@@ -6471,13 +6492,16 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
 	float user_spawn_amount_phase;					//Where the spawn sharing starts scanning, moved on every update so the locations take turns
+	tfxU32 rotation_step_index;					//Counts spawns for the stepped path rotation distributions
 	tfx_effect_descriptor source_ribbon;
 	tfx_library library;
 
 #ifdef __cplusplus
 	tfx_vector_t<tfxU32> ribbon_indexes[2];
+	tfx_vector_t<tfx_location_rotation_step_t> location_rotation_steps;	//Indexed by user spawn location slot
 #else
 	tfx_vector_t ribbon_indexes[2];
+	tfx_vector_t location_rotation_steps;
 #endif
 
 	//Control Data
@@ -7595,6 +7619,9 @@ tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloa
 tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
 tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
+tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
+tfxINTERNAL tfx_quaternion_t tfx__get_stepped_path_rotation_3d(tfx_random_t *random, const tfx_path_settings_t *settings, tfxU32 step_index, tfxU32 seed);
+tfxINTERNAL tfxU32 *tfx__get_location_rotation_step(tfx_ribbon_emitter_state_t *ribbon_emitter, tfxU32 slot, tfxU32 generation, bool restart);
 tfxINTERNAL tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth);
 tfxINTERNAL tfx_vec3_t tfx__ellipse_surface_normal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float *py, const float *pz, float t);
