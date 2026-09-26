@@ -6173,6 +6173,12 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxU32 spawn_amount_variation;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
 	tfxU32 single_shot_limit;
+	//Particles spawned after the single burst, tapering off to nothing over single_decay_time. 0 turns the tail off
+	tfxU32 single_decay_amount;
+	//Milliseconds the decay tail lasts after the single burst
+	float single_decay_time;
+	//Exponent of the tail's falloff: 0 is a constant rate, 1 linear and higher values drop away faster at the start
+	float single_decay_shape;
 	//When relative position is set you can create a lag between the particle position and the emitter position base on the particle age
 	//When the emission type is shared emitter then this is the hash of the shared emitter.
 	tfxKey paired_emitter_hash;
@@ -6305,6 +6311,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	//Total particles this emitter has spawned since it started. Feeds the particle uid, so it must keep
 	//counting across frames rather than restarting each one.
 	tfxU32 spawn_counter;
+	float single_decay_age;							//Milliseconds since the single burst, drives the decay tail
 	tfxEmitterStateFlags state_flags;
 	tfx_path_state_t path_state;
 #ifdef __cplusplus
@@ -6537,6 +6544,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU32 active_ribbons;
 	float user_spawn_amount_phase;					//Where the spawn sharing starts scanning, moved on every update so the locations take turns
 	tfxU32 spawn_ordinal;						//Spawns made so far, drives the stepped angle distributions
+	float single_decay_age;							//Milliseconds since the single burst, drives the decay tail
 	tfx_effect_descriptor source_ribbon;
 	tfx_library library;
 
@@ -6715,7 +6723,8 @@ typedef struct tfx_spawn_points_soa_s {
 	float *captured_position_y;
 	float *captured_position_z;
 	float *age;
-	float *spawn_count;
+	float *single_spawn_age;			//0 until the point's single burst, then milliseconds since it
+	tfxU32 *single_spawn_amount;		//This update's burst plus decay tail for the point, only written while decaying
 } tfx_spawn_points_soa_t;
 
 typedef struct tfx_sprite_transform_s {
@@ -9358,6 +9367,7 @@ tfxINTERNAL void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon
 tfxINTERNAL void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
+tfxINTERNAL bool tfx__has_single_decay(const tfx_shared_properties_t *shared_properties);
 tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);

@@ -5040,10 +5040,14 @@ tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 		//explicitly assign, so anything they miss leaks into the new emitter.
 		library->shared_properties[recycled_index] = tfx_shared_properties_t{};
 		library->shared_properties[recycled_index].spawn_amount = 1;
+		library->shared_properties[recycled_index].single_decay_time = 1000.f;
+		library->shared_properties[recycled_index].single_decay_shape = 1.f;
 		return recycled_index;
 	}
 	tfx_shared_properties_t properties{};
 	properties.spawn_amount = 1;
+	properties.single_decay_time = 1000.f;
+	properties.single_decay_shape = 1.f;
 	library->shared_properties.push_back(properties);
 	return library->shared_properties.current_size - 1;
 }
@@ -5661,6 +5665,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("spawn_amount", tfxUInt);
 	names_and_types.Insert("spawn_amount_variation", tfxUInt);
 	names_and_types.Insert("single_shot_limit", tfxUInt);
+	names_and_types.Insert("single_decay_amount", tfxUInt);
+	names_and_types.Insert("single_decay_time", tfxFloat);
+	names_and_types.Insert("single_decay_shape", tfxFloat);
 	names_and_types.Insert("blend_mode", tfxSInt);
 	names_and_types.Insert("image_start_frame", tfxFloat);
 	names_and_types.Insert("image_end_frame", tfxFloat);
@@ -6709,6 +6716,9 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "layer")					value.Setf("%u", shared_properties->layer);
 	else if (property_name == "frame_offset")			value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset);
 	else if (property_name == "single_shot_limit")		value.Setf("%u", shared_properties->single_shot_limit);
+	else if (property_name == "single_decay_amount")	value.Setf("%u", shared_properties->single_decay_amount);
+	else if (property_name == "single_decay_time")		value.Setf("%f", shared_properties->single_decay_time);
+	else if (property_name == "single_decay_shape")		value.Setf("%f", shared_properties->single_decay_shape);
 	else if (property_name == "ribbon_segment_count")	value.Setf("%u", ribbon_properties->bucket_info.segment_count);
 	else if (property_name == "ribbon_noise_frequency")	value.Setf("%f", ribbon_properties->noise_frequency);
 	else if (property_name == "ribbon_noise_speed")		value.Setf("%f", ribbon_properties->noise_speed);
@@ -7017,6 +7027,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "spawn_amount_variation" && shared_properties) shared_properties->spawn_amount_variation = value;
 	else if (*field == "layer" && shared_properties) shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	else if (*field == "single_shot_limit" && shared_properties) shared_properties->single_shot_limit = value;
+	else if (*field == "single_decay_amount" && shared_properties) shared_properties->single_decay_amount = value;
 	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "frames") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames = value;
@@ -7145,6 +7156,8 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "base_noise_step_y" && shared_properties) shared_properties->base_noise_step.y = value;
 	else if (*field == "base_noise_step_z" && shared_properties) shared_properties->base_noise_step.z = value;
 	else if (*field == "noise_offset_variation" && shared_properties) shared_properties->noise_offset_variation = value < 0.f ? 0.f : value;
+	else if (*field == "single_decay_time" && shared_properties) shared_properties->single_decay_time = value < 0.f ? 0.f : value;
+	else if (*field == "single_decay_shape" && shared_properties) shared_properties->single_decay_shape = value < 0.f ? 0.f : value;
 	else if (*field == "image_start_frame" && shared_properties) shared_properties->start_frame = value;
 	else if (*field == "image_end_frame" && shared_properties) effect->state_properties.end_frame = value;
 	else if (*field == "image_frame_rate" && shared_properties) shared_properties->frame_rate = value;
@@ -7370,6 +7383,9 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
+	file->AddLine("single_decay_amount=%i", shared_properties->single_decay_amount);
+	file->AddLine("single_decay_time=%f", shared_properties->single_decay_time);
+	file->AddLine("single_decay_shape=%f", shared_properties->single_decay_shape);
 	file->AddLine("layer=%i", shared_properties->layer);
 
 	file->AddLine("image_handle_x=%f", gpu_properties->image_handle.x);
@@ -7427,6 +7443,9 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
+	file->AddLine("single_decay_amount=%i", shared_properties->single_decay_amount);
+	file->AddLine("single_decay_time=%f", shared_properties->single_decay_time);
+	file->AddLine("single_decay_shape=%f", shared_properties->single_decay_shape);
 	file->AddLine("layer=%i", shared_properties->layer);
 
 	file->AddLine("ribbon_segment_count=%i", ribbon_properties->bucket_info.segment_count);
@@ -9394,11 +9413,12 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 		float delay_spawning = child->state_properties.delay_spawning;
 
 		if (is_single) {
-			//Single-shot emitters spawn the entire burst at emitter age 0 and then loop the
+			//Single-shot emitters spawn the entire burst at emitter age 0, plus any decay tail after it, and then loop the
 			//particle's own graphs single_shot_limit times before the particle dies.
+			float decay_time = tfx__has_single_decay(shared_props) ? shared_props->single_decay_time : 0.f;
 			float life_at_zero = tfx__get_graph_first_value(life_graph) + tfx__get_graph_first_value(life_variation_graph);
 			float global_life_adjust = tfx__get_graph_value_by_age(global_life_graph, delay_spawning);
-			float total_life = delay_spawning + life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
+			float total_life = delay_spawning + decay_time + life_at_zero * global_life_adjust * life_factor * (float)shared_props->single_shot_limit;
 			child_lifetimes[child_index] = total_life;
 			continue;
 		}
@@ -9456,7 +9476,8 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 			}
 			if (source_lifetime <= 0.f) continue;
 
-			float total_life = source_lifetime + tfx__get_max_life(child);
+			float decay_time = child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && tfx__has_single_decay(shared_props) ? shared_props->single_decay_time : 0.f;
+			float total_life = source_lifetime + decay_time + tfx__get_max_life(child);
 			if (total_life > child_lifetimes[child_index]) {
 				child_lifetimes[child_index] = total_life;
 				lifetime_resolved = true;
@@ -12757,6 +12778,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.creation_rotations = tfx_vec3_t();
 	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
+	emitter.single_decay_age = 0.f;
 	emitter.location_spawn_ordinals.clear();
 	emitter.spawn_locations_index = tfxINVALID;
 	emitter.other_emitter_index = tfxINVALID;
@@ -12830,6 +12852,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 
 	ribbon_emitter.amount_remainder = 0.f;
 	ribbon_emitter.spawn_ordinal = 0;
+	ribbon_emitter.single_decay_age = 0.f;
 	ribbon_emitter.user_spawn_amount_phase = 0.f;
 	ribbon_emitter.qty_step_size = 0.f;
 	ribbon_emitter.spawn_quantity = 0.f;
@@ -17245,10 +17268,37 @@ typedef struct tfx_user_spawn_amount_source_s {
 	tfx_graph_t *global_amount;
 	float single_amount;
 	float single_amount_variation;
+	float single_decay_amount;
+	float single_decay_time;						//0 when the single burst has no decay tail
+	float single_decay_shape;
+	float frame_length;
 	float delay;
 	float loop_length;
 	bool single;
 } tfx_user_spawn_amount_source_t;
+
+tfxINTERNAL bool tfx__has_single_decay(const tfx_shared_properties_t *shared_properties) {
+	return shared_properties->single_decay_amount > 0 && shared_properties->single_decay_time > 0.f;
+}
+
+//Differencing the floored running totals keeps the tail's total exact at any update rate without carrying a remainder
+tfxINTERNAL tfxU32 tfx__single_decay_spawn_amount(float decay_amount, float start_time, float end_time, float decay_time, float decay_shape) {
+	if (start_time >= decay_time || decay_amount <= 0.f) {
+		return 0;
+	}
+	float falloff_exponent = decay_shape + 1.f;
+	float start_total = start_time > 0.f ? floorf(decay_amount * (1.f - powf(1.f - start_time / decay_time, falloff_exponent))) : 0.f;
+	float end_total = end_time < decay_time ? floorf(decay_amount * (1.f - powf(1.f - end_time / decay_time, falloff_exponent))) : floorf(decay_amount);
+	return end_total > start_total ? (tfxU32)(end_total - start_total) : 0;
+}
+
+tfxINTERNAL void tfx__set_user_spawn_decay_source(tfx_user_spawn_amount_source_t *source, const tfx_shared_properties_t *shared_properties, float frame_length) {
+	bool has_decay = tfx__has_single_decay(shared_properties);
+	source->single_decay_amount = has_decay ? (float)shared_properties->single_decay_amount : 0.f;
+	source->single_decay_time = has_decay ? shared_properties->single_decay_time : 0.f;
+	source->single_decay_shape = shared_properties->single_decay_shape;
+	source->frame_length = frame_length;
+}
 
 //Adds a run for every location that spawns this update, weighted by its amount at its own age, and returns the total weight. Shared by
 //particle and ribbon emitters, which only differ in the graphs they sample and where their runs are stored
@@ -17261,23 +17311,33 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 		if (location.flags & tfxUserSpawnLocationFlags_paused) {
 			continue;
 		}
-		//Single shots fire once, in the update the location's age reaches the delay. The rest spawn from then on
-		if (location.age < source->delay || (source->single && location.previous_age >= source->delay)) {
+		if (location.age < source->delay) {
+			continue;
+		}
+		//Single shots fire once, in the update the location's age reaches the delay, then any decay tail runs on from there. The rest spawn from then on
+		bool single_burst = location.previous_age < source->delay;
+		float time_since_burst = location.age - source->delay;
+		if (source->single && !single_burst && time_since_burst >= source->single_decay_time) {
 			continue;
 		}
 		//The emitter's age doesn't advance while it waits out its delay, so neither does the location's
-		float age = tfx__Max(location.age - source->delay, 0.f);
+		float age = tfx__Max(time_since_burst, 0.f);
 		age = source->loop_length > 0.f ? fmodf(age, source->loop_length) : age;
 		float oscillator_time = age / 1000.f;
+		float global_amount = tfx__sample_multi_node_graph(source->global_amount, age, oscillator_time);
 		float weight;
 		if (source->single) {
-			weight = source->single_amount + tfx_RandomRangeZeroToMax(random, source->single_amount_variation);
+			weight = single_burst ? (source->single_amount + tfx_RandomRangeZeroToMax(random, source->single_amount_variation)) * global_amount : 0.f;
+			if (source->single_decay_time > 0.f) {
+				//The burst update's window starts at 0 so that consecutive windows join up exactly
+				weight += (float)tfx__single_decay_spawn_amount(source->single_decay_amount * global_amount, single_burst ? 0.f : time_since_burst, time_since_burst + source->frame_length, source->single_decay_time, source->single_decay_shape);
+			}
 		} else {
 			weight = tfx__sample_multi_node_graph(source->base_amount, age, oscillator_time);
 			float amount_variation = tfx__sample_multi_node_graph(source->variation_amount, age, oscillator_time);
 			weight += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
+			weight *= global_amount;
 		}
-		weight *= tfx__sample_multi_node_graph(source->global_amount, age, oscillator_time);
 		if (weight <= 0.f) {
 			continue;
 		}
@@ -17590,7 +17650,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	//tfx__grab_gpu_ribbon_emitter hands back recycled slots without clearing them and 0 is a valid segment index
 	gpu_emitter.morph_segment_start_index = ribbon_emitter.morph_segment_start_index;
 
-	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0) {
+	bool single_decay_pending = ribbon_emitter.single_decay_age > 0.f && !(ribbon_emitter.state_flags & tfxEmitterStateFlags_single_shot_done) && !(ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning);
+	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0 || single_decay_pending) {
 		parent_effect.active_emitters++;
 		return;
 	}
@@ -17771,7 +17832,9 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	if (emitter.source_emitter->state_properties.loop_length && emitter.age > emitter.source_emitter->state_properties.loop_length)
 		emitter.age -= emitter.source_emitter->state_properties.loop_length;
 
-	if (particle_buffer.current_size != 0) {
+	//A sparse decay tail can leave no particles alive between spawns, which must not time the effect out
+	bool single_decay_pending = emitter.single_decay_age > 0.f && !(emitter.state_flags & (tfxEmitterStateFlags_single_shot_done | tfxEmitterStateFlags_stop_spawning));
+	if (particle_buffer.current_size != 0 || single_decay_pending) {
 		parent_effect.active_emitters++;
 	}
 
@@ -17787,6 +17850,7 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	source.global_amount = &library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index];
 	source.single_amount = (float)entry->shared_properties->spawn_amount;
 	source.single_amount_variation = (float)entry->shared_properties->spawn_amount_variation;
+	tfx__set_user_spawn_decay_source(&source, entry->shared_properties, (float)pm->frame_length);
 	source.delay = emitter.state_properties.delay_spawning;
 	source.loop_length = emitter.source_emitter->state_properties.loop_length;
 	source.single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
@@ -17827,10 +17891,65 @@ tfxINTERNAL double tfx__user_spawn_ribbon_weights(tfx_ribbon_work_entry_t *entry
 	source.global_amount = &library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index];
 	source.single_amount = (float)entry->shared_properties->spawn_amount;
 	source.single_amount_variation = (float)entry->shared_properties->spawn_amount_variation;
+	tfx__set_user_spawn_decay_source(&source, entry->shared_properties, (float)entry->pm->frame_length);
 	source.delay = ribbon_emitter.state_properties.delay_spawning;
 	source.loop_length = ribbon_emitter.source_ribbon->state_properties.loop_length;
 	source.single = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	return tfx__user_spawn_location_runs(entry->user_spawn_locations, &entry->ribbon_bucket->user_spawn_runs, &entry->random, &source, &entry->user_spawn_run_start, &entry->user_spawn_run_count);
+}
+
+//The amount a single emitter with match_amount_to_grid_points spawns so that every grid point gets one particle
+tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_particle_emitter_state_t &emitter, const tfx_shared_properties_t *shared_properties) {
+	float x = tfxMax(shared_properties->grid_points.x, 1.f);
+	float y = tfxMax(shared_properties->grid_points.y, 1.f);
+	float z = tfxMax(shared_properties->grid_points.z, 1.f);
+	switch (shared_properties->emission_type) {
+	case tfx_emission_type::tfxArea:
+		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) {
+			return x * y * z;
+		}
+		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends) {
+			return x * z * 2 + y * z * 2 - 4 * z;
+		}
+		return x * z * 2 + (y - 2) * (x * 2 + z * 2 - 4);
+	case tfx_emission_type::tfxCylinder:
+		return x * y;
+	case tfx_emission_type::tfxEllipse:
+	case tfx_emission_type::tfxDisc:
+		return x;
+	case tfx_emission_type::tfxLine:
+		return y;
+	case tfx_emission_type::tfxIcosphere:
+		return (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
+	default:
+		break;
+	}
+	return (float)emitter.spawn_quantity;
+}
+
+//Sizes this update's burst and decay tail for every spawn point of a single other_emitter, storing each point's amount for the spawn to read back
+tfxINTERNAL tfxU32 tfx__single_decay_spawn_points(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter, const tfx_shared_properties_t *shared_properties, tfxU32 burst_amount, float global_amount) {
+	tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
+	tfx_spawn_points_soa_t &spawn_points = pm->particle_location_arrays[emitter.spawn_locations_index];
+	const float frame_length = (float)pm->frame_length;
+	const float decay_amount = (float)shared_properties->single_decay_amount * global_amount;
+	const float decay_time = shared_properties->single_decay_time;
+	const float decay_shape = shared_properties->single_decay_shape;
+	tfxU32 total_amount = 0;
+	entry->spawn_points_ready = 0;
+	for (tfxU32 point_index = 0; point_index != spawn_point_buffer.current_size; ++point_index) {
+		tfxU32 spawn_index = tfx__get_circular_index(&spawn_point_buffer, point_index);
+		float &single_spawn_age = spawn_points.single_spawn_age[spawn_index];
+		tfxU32 amount = 0;
+		if (single_spawn_age < decay_time) {
+			amount = (single_spawn_age == 0.f ? burst_amount : 0) + tfx__single_decay_spawn_amount(decay_amount, single_spawn_age, single_spawn_age + frame_length, decay_time, decay_shape);
+			single_spawn_age += frame_length;
+		}
+		spawn_points.single_spawn_amount[spawn_index] = amount;
+		entry->spawn_points_ready += amount > 0 ? 1 : 0;
+		total_amount += amount;
+	}
+	return total_amount;
 }
 
 tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
@@ -17838,7 +17957,8 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	tfx_random_t *random = &entry->random;
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + emitter.seed_index);
-	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
+	const bool is_single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	if (!is_single) {
 		emitter.spawn_quantity = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index], emitter.age, emitter.oscillator_time);
 		float amount_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index], emitter.age, emitter.oscillator_time);
 		emitter.spawn_quantity += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
@@ -17855,12 +17975,15 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	} else {
 		emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
-	emitter.spawn_quantity *= tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], emitter.age, emitter.oscillator_time);
+	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], emitter.age, emitter.oscillator_time);
+	emitter.spawn_quantity *= global_amount;
 
 	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
 		return 0;
 	}
 
+	const bool single_decay = is_single && tfx__has_single_decay(shared_properties);
+	const bool match_grid_points = (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) && (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
 	if (entry->user_spawn_locations) {
 		emitter.spawn_quantity = tfx__user_spawn_location_weights(pm, entry, emitter, parent);
 	} else if (parent->state_flags & tfxEffectStateFlags_user_spawn_locations && shared_properties->emission_type != tfxOtherEmitter && shared_properties->emission_type != tfxSpawnOnRibbon) {
@@ -17868,6 +17991,20 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		//to the max spawn count this returns
 		emitter.spawn_quantity = 0;
 		return 0;
+	} else if (single_decay && shared_properties->emission_type != tfxOtherEmitter) {
+		if (emitter.single_decay_age >= shared_properties->single_decay_time) {
+			emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
+			emitter.spawn_quantity = 0;
+			return 0;
+		}
+		float burst_amount = 0.f;
+		if (emitter.single_decay_age == 0.f) {
+			burst_amount = match_grid_points ? tfx__grid_points_spawn_amount(emitter, shared_properties) : (float)emitter.spawn_quantity;
+		}
+		float frame_length = (float)pm->frame_length;
+		tfxU32 decay_amount = tfx__single_decay_spawn_amount((float)shared_properties->single_decay_amount * global_amount, emitter.single_decay_age, emitter.single_decay_age + frame_length, shared_properties->single_decay_time, shared_properties->single_decay_shape);
+		emitter.spawn_quantity = burst_amount + (float)decay_amount;
+		emitter.single_decay_age += frame_length;
 	}
 
 	if (shared_properties->emission_type == tfxPath && emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
@@ -17877,16 +18014,18 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	}
 
 	if (emitter.spawn_locations_index != tfxINVALID && shared_properties->emission_type == tfxOtherEmitter) {
-		if ((emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
+		if ((emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) && !is_single) {
 			tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
 			emitter.spawn_quantity *= spawn_point_buffer.current_size;
-		} else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		} else if (single_decay) {
+			emitter.spawn_quantity = (double)tfx__single_decay_spawn_points(pm, entry, emitter, shared_properties, (tfxU32)emitter.spawn_quantity, global_amount);
+		} else if (is_single) {
 			tfx_soa_buffer_t &spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
 			tfx_spawn_points_soa_t &spawn_points = pm->particle_location_arrays[emitter.spawn_locations_index];
 			entry->spawn_points_ready = 0;
 			for (tfxU32 i = 0; i != spawn_point_buffer.current_size; ++i) {
 				tfxU32 index = tfx__get_circular_index(&spawn_point_buffer, i);
-				if (spawn_points.spawn_count[index] == 0.f) {
+				if (spawn_points.single_spawn_age[index] == 0.f) {
 					entry->spawn_points_ready++;
 				}
 			}
@@ -17905,7 +18044,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	}
 
 	double step_size = 0;
-	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
+	if (!is_single) {
 		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (shared_properties->emission_type == tfxArea || shared_properties->emission_type == tfxEllipse)) {
 			float area = tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.y) * tfxMax(0.1f, emitter.emitter_size.z);
 			emitter.spawn_quantity = (emitter.spawn_quantity / 50.0) * area;
@@ -17922,48 +18061,11 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		emitter.spawn_quantity *= pm->update_time;
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
-	else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) {
-		if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) {
-			float x = tfxMax(shared_properties->grid_points.x, 1.f);
-			float y = tfxMax(shared_properties->grid_points.y, 1.f);
-			float z = tfxMax(shared_properties->grid_points.z, 1.f);
-			if (shared_properties->emission_type == tfxArea) {
-			}
-			else if (shared_properties->emission_type == tfxCylinder) {
-				emitter.spawn_quantity = x * y;
-			}
-			switch (shared_properties->emission_type) {
-			case tfx_emission_type::tfxArea:
-				if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) {
-					emitter.spawn_quantity = x * y * z;
-				}
-				else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends) {
-					emitter.spawn_quantity = x * z * 2 + y * z * 2 - 4 * z;
-				}
-				else {
-					emitter.spawn_quantity = x * z * 2 + (y - 2) * (x * 2 + z * 2 - 4);
-				}
-				break;
-			case tfx_emission_type::tfxCylinder:
-				emitter.spawn_quantity = x * y;
-				break;
-			case tfx_emission_type::tfxEllipse:
-			case tfx_emission_type::tfxDisc:
-				emitter.spawn_quantity = x;
-				break;
-			case tfx_emission_type::tfxLine:
-				emitter.spawn_quantity = y;
-				break;
-			case tfx_emission_type::tfxIcosphere:
-				emitter.spawn_quantity = (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
-				break;
-			default:
-				break;
-			}
-		}
-		step_size = 1.0 / emitter.spawn_quantity;
-	}
 	else {
+		//A decaying emitter already sized its burst to the grid above
+		if (match_grid_points && !single_decay) {
+			emitter.spawn_quantity = tfx__grid_points_spawn_amount(emitter, shared_properties);
+		}
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
 
@@ -17988,7 +18090,8 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	} else {
 		ribbon_emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
-	ribbon_emitter.spawn_quantity *= tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	ribbon_emitter.spawn_quantity *= global_amount;
 
 	if (ribbon_emitter.state_flags & tfxEmitterStateFlags_single_shot_done || ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
 		return 0;
@@ -18000,6 +18103,17 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 		//Cleared as well as returning 0 because a single emitter takes its amount straight from the quantity
 		ribbon_emitter.spawn_quantity = 0;
 		return 0;
+	} else if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && tfx__has_single_decay(shared_properties)) {
+		if (ribbon_emitter.single_decay_age >= shared_properties->single_decay_time) {
+			ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_single_shot_done;
+			ribbon_emitter.spawn_quantity = 0;
+			return 0;
+		}
+		float burst_amount = ribbon_emitter.single_decay_age == 0.f ? (float)ribbon_emitter.spawn_quantity : 0.f;
+		float frame_length = (float)pm->frame_length;
+		tfxU32 decay_amount = tfx__single_decay_spawn_amount((float)shared_properties->single_decay_amount * global_amount, ribbon_emitter.single_decay_age, ribbon_emitter.single_decay_age + frame_length, shared_properties->single_decay_time, shared_properties->single_decay_shape);
+		ribbon_emitter.spawn_quantity = burst_amount + (float)decay_amount;
+		ribbon_emitter.single_decay_age += frame_length;
 	}
 
 	if (ribbon_emitter.spawn_quantity == 0) {
@@ -18163,7 +18277,8 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		}
 	}
 
-	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations) {
+	//A decaying emitter is marked done by tfx__new_sprites_needed once its tail has run out
+	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations && !tfx__has_single_decay(&shared_properties)) {
 		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
 }
@@ -18651,7 +18766,7 @@ void tfx__spawn_particle_init_spawn_points(tfx_work_queue_t *queue, void *data) 
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		spawn_points.spawn_count[index] = 0.f;
+		spawn_points.single_spawn_age[index] = 0.f;
 	}
 }
 
@@ -19064,7 +19179,7 @@ void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *dat
 		return;
 	}
 
-	//A single other_emitter only fires at spawn points that haven't spawned yet (spawn_count == 0). The amount
+	//A single other_emitter only fires at spawn points that haven't spawned yet (single_spawn_age == 0). The amount
 	//to spawn was sized in tfx__new_sprites_needed as spawn_points_ready * per-location amount, so distribute
 	//entry->amount_to_spawn evenly across exactly those ready points, handing the integer remainder to the
 	//first few so the total lands exactly on amount_to_spawn (the particle bank was already grown by that many
@@ -19074,19 +19189,30 @@ void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *dat
 		entry->amount_to_spawn = 0;
 		return;
 	}
+	//A decaying emitter had each point's amount worked out in tfx__single_decay_spawn_points instead
+	const bool single_decay = tfx__has_single_decay(entry->shared_properties);
 	tfxU32 base_amount = entry->amount_to_spawn / ready;
 	tfxU32 remainder = entry->amount_to_spawn % ready;
 	tfxU32 spawned = 0;
 	for (tfxU32 s = 0; s != spawn_point_buffer.current_size; ++s) {
 		int spawn_index = tfx__get_circular_index(&spawn_point_buffer, s);
-		//Must match the readiness predicate counted in tfx__new_sprites_needed exactly or the sizing and the
-		//fill will diverge. When the life-percent threshold is added it goes in both places.
-		if (spawn_points.spawn_count[spawn_index] != 0.f) {
-			continue;
-		}
-		tfxU32 amount_to_spawn = base_amount + (remainder > 0 ? 1 : 0);
-		if (remainder > 0) {
-			remainder--;
+		tfxU32 amount_to_spawn = 0;
+		if (single_decay) {
+			amount_to_spawn = tfx__Min(spawn_points.single_spawn_amount[spawn_index], entry->amount_to_spawn - spawned);
+			if (amount_to_spawn == 0) {
+				continue;
+			}
+		} else {
+			//Must match the readiness predicate counted in tfx__new_sprites_needed exactly or the sizing and the
+			//fill will diverge. When the life-percent threshold is added it goes in both places.
+			if (spawn_points.single_spawn_age[spawn_index] != 0.f) {
+				continue;
+			}
+			amount_to_spawn = base_amount + (remainder > 0 ? 1 : 0);
+			if (remainder > 0) {
+				remainder--;
+			}
+			spawn_points.single_spawn_age[spawn_index] = (float)pm.frame_length;
 		}
 		float x = spawn_points.position_x[spawn_index];
 		float y = spawn_points.position_y[spawn_index];
@@ -19110,7 +19236,6 @@ void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *dat
 			}
 			spawned++;
 		}
-		spawn_points.spawn_count[spawn_index] += 1.f;
 	}
 }
 
@@ -20270,7 +20395,8 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		entry->new_ribbons = actual_new_ribbons;
 	}
 
-	if (entry->amount_to_spawn > 0 && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && !entry->user_spawn_locations) {
+	//A decaying ribbon emitter is marked done by tfx__new_ribbons_needed once its tail has run out
+	if (entry->amount_to_spawn > 0 && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && !entry->user_spawn_locations && !tfx__has_single_decay(entry->shared_properties)) {
 		ribbon_emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
 }
@@ -20861,6 +20987,7 @@ tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
 		float max_amount_per_frame = tfx__get_graph_max_value(amount_graph);
 		tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
 		tfxU32 total = shared_props->spawn_amount + shared_props->spawn_amount_variation;
+		total += tfx__has_single_decay(shared_props) ? shared_props->single_decay_amount : 0;
 		total += (tfxU32)ceilf(max_amount_per_frame);
 		return tfx__Max(total, (tfxU32)1);
 	} else {
@@ -21118,6 +21245,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 
 	if (is_single || is_ordered) {
 		bool has_random_movement = tfx__control_profile_has_noise(emitter.state_properties.control_profile);
+		//Spawn points share the particle's index, so a single other_emitter's per point spawn state has to move with it
+		tfx_spawn_points_soa_t *spawn_points = emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID ? &work_entry->pm->particle_location_arrays[emitter.spawn_locations_index] : nullptr;
 		//---- Legacy compaction pass (retained for single and ordered emitters) ----
 		//Ordered emitters need depth_index updates on removal; single emitters reset particle
 		//age to 0 on loop so max_life bumping would never trigger at the head.
@@ -21181,6 +21310,9 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 					bank.path_offset[next_index] = bank.path_offset[index];
 				} else if (user_location_list) {
 					bank.spawn_location[next_index] = bank.spawn_location[index];
+				}
+				if (spawn_points) {
+					spawn_points->single_spawn_age[next_index] = spawn_points->single_spawn_age[index];
 				}
 				if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_rotated_path_or_line) {
 					bank.quaternion[next_index] = bank.quaternion[index];
@@ -22026,7 +22158,8 @@ void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, age));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, spawn_count));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, single_spawn_age));
+	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_spawn_points_soa_t, single_spawn_amount));
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
 }
 
