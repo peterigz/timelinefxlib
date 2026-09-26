@@ -18097,6 +18097,9 @@ tfxINTERNAL double tfx__update_path_sets(tfx_stage pm, tfx_spawn_work_entry_t *e
 	//The march steps before it spawns, so this puts each pass's first particle on the first grid point
 	const float grid_start = clockwise ? -1.f / entry->shared_properties->grid_points.x : (float)settings->node_count - 3.f;
 	if (entry->user_spawn_locations) {
+		if (!entry->user_spawn_run_count) {
+			return 0.0;
+		}
 		tfx_user_spawn_run_t *runs = &pm->user_spawn_runs[entry->user_spawn_run_start];
 		double total_weight = 0.0;
 		for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
