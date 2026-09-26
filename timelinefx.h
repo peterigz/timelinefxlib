@@ -1891,10 +1891,11 @@ tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, fl
 /*
 Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Every emitter in the
 effect spawns at every location the effect has, with its shape placed around each one, so an area emitter gives you its whole area at each
-location rather than a single point. Path emitters are the exception and don't spawn at all, because they take their position from traversing
-the path rather than from where they spawned. Line emitters that traverse their edge or use their path as a trajectory do work, but only with
-relative position set, since that is what anchors them to their location. Other Emitter and Spawn on Ribbon emitters carry on spawning from
-their source emitter. Use this to have one effect handle lots of sources, for example the
+location rather than a single point, and a path emitter gives you its whole path at each location. Line and path emitters that traverse their
+edge or use their path as a trajectory need relative position set, since that is what anchors them to their location (edge traversal sets it
+for you). Other Emitter and Spawn on Ribbon emitters carry on spawning from
+their source emitter, which puts them at the locations too. Spawn on Ribbon particles are world space here, like the ribbons they spawn on,
+so relative position is ignored for them. Use this to have one effect handle lots of sources, for example the
 smoke trails of every ship in a fleet, which is much cheaper than an effect per ship.
 Locations persist until you remove them. Changes are applied the next time tfx_UpdateStage is called, so it's safe to call this while the
 previous update is still running, but only from the thread that calls tfx_UpdateStage.
@@ -1902,7 +1903,8 @@ Locations are in world space. Particles from emitters set to relative position f
 effect rotation still applies) and are removed along with it, which suits things like a glow on each ship. Relative particles at a transient
 location only last one update.
 One thing is shared rather than per location: an emitter set to spawn on a grid marches a single grid position for the whole emitter, so the
-locations take it in turns through the grid instead of each getting a grid of their own.
+locations take it in turns through the grid instead of each getting a grid of their own. The same goes for a path emitter's rotated paths:
+every location shares the emitter's active paths, and a maximum paths limit is used up across all of them rather than per location.
 Ribbons are always world space here: a ribbon is anchored where its location was when it spawned and stays there for its life, so relative
 position is ignored for a ribbon emitter spawning at user locations, and so is ribbon lag, which needs it.
 The spawn amount of an emitter is per location and is taken from its amount graph at that location's age, so a burst that fades out does so

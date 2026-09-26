@@ -6701,10 +6701,8 @@ typedef struct tfx_particle_soa_s {
 	tfxU64 *quaternion;					//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
-	union {
-		float *path_offset;
-		tfxU32 *spawn_location;			//Relative particles of a user spawn locations effect: the slot and generation of the location they follow
-	};
+	float *path_offset;
+	tfxU32 *spawn_location;				//Relative particles of a user spawn locations effect: the slot and generation of the location they follow
 	tfxU32 *flags_single_loop_count;	//Packed flags and single loop count
 	union {
 		float *base_velocity;
