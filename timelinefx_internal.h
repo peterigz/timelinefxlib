@@ -1597,6 +1597,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfxPI2 6.283185307f 
 #define tfxINVTWOPI 0.1591549f
 #define tfxTHREEHALFPI 4.7123889f
+#define tfxGOLDEN_ANGLE 2.39996323f			//pi * (3 - sqrt(5))
 #define tfxQUARTERPI 0.7853982f
 #define tfx720Radians 12.56638f
 #define tfx360Radians 6.28319f
@@ -3186,8 +3187,16 @@ typedef enum {
 typedef enum {
 	tfxAngleStepFlags_none                                      = 0,
 	tfxAngleStepFlags_restart_each_spawn                        = 1 << 0,      //Start from the first division on every spawn batch
-	tfxAngleStepFlags_ring                                      = 1 << 1       //Emission only: step around the edge of the emission cone instead of across it
+	tfxAngleStepFlags_ring                                      = 1 << 1,      //Emission only: step around the edge of the emission cone instead of across it
+	tfxAngleStepFlags_cap                                       = 1 << 2       //Emission only: spread the divisions evenly over the whole emission cone on a fibonacci spiral
 } tfx_angle_step_flag_bits;
+
+typedef enum {
+	tfxEmissionStepLayout_fan,
+	tfxEmissionStepLayout_ring,
+	tfxEmissionStepLayout_cap,
+	tfxEmissionStepLayout_max,
+} tfx_emission_step_layout;
 
                                                                                 //Particle property that defines how a particle will rotate
 typedef enum {
@@ -5915,12 +5924,13 @@ typedef struct tfx_angle_steps_s {
 	tfxAngleStepFlags flags;
 } tfx_angle_steps_t;
 
-//One particle's stepped emission angle, with the cone tilt precomputed for the batch
+//One particle's stepped emission angle and its tilt away from the emission direction when tilted (ring and cap)
 typedef struct tfx_emission_step_s {
 	float angle;
 	float sin_tilt;
 	float cos_tilt;
-	bool ring;
+	float jitter_cone;						//Cap only: half angle of the random cone jitter scatters the direction in
+	bool tilted;
 } tfx_emission_step_t;
 
 //Walks the divisions for one spawn batch so the per spawn cost is an increment and a compare, not a divide
@@ -7676,6 +7686,9 @@ tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library 
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
 tfxINTERNAL void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed);
+tfxINTERNAL tfxU32 tfx__next_angle_step_division(tfx_angle_step_iterator_t *iterator);
+tfxAPI_EDITOR tfx_emission_step_layout tfx__get_emission_step_layout(const tfx_angle_steps_t *steps);
+tfxAPI_EDITOR void tfx__set_emission_step_layout(tfx_angle_steps_t *steps, tfx_emission_step_layout layout);
 tfxINTERNAL float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random);
 tfxINTERNAL tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *settings, tfxU32 ordinal, tfxU32 seed, tfx_random_t *random);
 tfxINTERNAL tfx_quaternion_t tfx__pick_path_rotation(tfx_particle_emitter_state_t *emitter, const tfx_path_settings_t *settings, tfxU32 path_slot, tfx_random_t *random);

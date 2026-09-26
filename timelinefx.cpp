@@ -2756,8 +2756,11 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 	// Create the random vector in the cone's local space
 	tfx_vec3_t random_vector = { x, y, z };
 
-	// If the cone is centered around the north pole (0, 0, 1), return the vector as is
+	// On either pole there is no rotation axis, so mirror the sample for the south pole
 	if (cone_direction.x == 0 && cone_direction.y == 0) {
+		if (cone_direction.z < 0) {
+			random_vector.z = -z;
+		}
 		return random_vector;
 	}
 
@@ -2766,7 +2769,7 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 	rotation_axis = tfx__normalize_vec3_fast(&rotation_axis);
 
 	// Calculate the rotation angle (acos of dot product of (0, 0, 1) and cone_direction)
-	float rotation_angle = acosf(cone_direction.z);
+	float rotation_angle = acosf(tfx__Clamp(-1.f, 1.f, cone_direction.z));
 	float cos = cosf(rotation_angle);
 	float sin = sinf(rotation_angle);
 	//return (a->x * b->x + a->y * b->y + a->z * b->z);
@@ -2779,11 +2782,11 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 	return rotated_vector;
 }
 
-//Fans the direction about fan_axis, or tilts it out to the cone edge and turns it around itself for a ring. fan_axis must be a unit vector perpendicular to direction
+//Fans the direction about fan_axis, or tilts it away from itself and turns it around itself for a ring or cap. fan_axis must be a unit vector perpendicular to direction
 tfxINTERNAL tfx_vec3_t tfx__apply_emission_step(tfx_vec3_t direction, tfx_vec3_t axis, const tfx_emission_step_t *emission_step) {
 	float sin_angle = sinf(emission_step->angle);
 	float cos_angle = cosf(emission_step->angle);
-	if (!emission_step->ring) {
+	if (!emission_step->tilted) {
 		return direction * cos_angle + tfx__cross_product_vec3(axis, direction) * sin_angle;
 	}
 	tfx_vec3_t radial = axis * cos_angle + tfx__cross_product_vec3(direction, axis) * sin_angle;
@@ -2913,8 +2916,9 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx
 	if (apply_world_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		v = tfx__rotate_vector_quaternion(&emitter.rotation, v);
 	}
-	if (range != 0 && !emission_step) {
-		v = tfx__random_vector_in_cone(random, v, range);
+	float cone = emission_step ? emission_step->jitter_cone : range;
+	if (cone != 0) {
+		v = tfx__random_vector_in_cone(random, v, cone);
 	}
 
 	return tfx__normalize_vec3_fast(&v);
@@ -3002,7 +3006,7 @@ void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle
 	iterator->cycle_seed = seed ^ ((ordinal / iterator->period) * 0x9E3779B9u);
 }
 
-float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random) {
+tfxU32 tfx__next_angle_step_division(tfx_angle_step_iterator_t *iterator) {
 	tfxU32 division = iterator->position;
 	if (iterator->distribution == tfxAngleStepDistribution_ping_pong) {
 		division = division < iterator->divisions ? division : iterator->period - division;
@@ -3014,6 +3018,23 @@ float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *ra
 		iterator->position = 0;
 		iterator->cycle_seed = iterator->seed ^ ((iterator->ordinal / iterator->period) * 0x9E3779B9u);
 	}
+	return division;
+}
+
+tfx_emission_step_layout tfx__get_emission_step_layout(const tfx_angle_steps_t *steps) {
+	if (steps->flags & tfxAngleStepFlags_cap) return tfxEmissionStepLayout_cap;
+	if (steps->flags & tfxAngleStepFlags_ring) return tfxEmissionStepLayout_ring;
+	return tfxEmissionStepLayout_fan;
+}
+
+void tfx__set_emission_step_layout(tfx_angle_steps_t *steps, tfx_emission_step_layout layout) {
+	steps->flags &= ~(tfxAngleStepFlags_ring | tfxAngleStepFlags_cap);
+	if (layout == tfxEmissionStepLayout_ring) steps->flags |= tfxAngleStepFlags_ring;
+	else if (layout == tfxEmissionStepLayout_cap) steps->flags |= tfxAngleStepFlags_cap;
+}
+
+float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random) {
+	tfxU32 division = tfx__next_angle_step_division(iterator);
 	float angle = iterator->start + iterator->step * (float)division;
 	if (iterator->half_jitter > 0.f) {
 		angle += tfx_RandomRangeFromTo(random, -iterator->half_jitter, iterator->half_jitter);
@@ -5710,6 +5731,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("emission_jitter", tfxFloat);
 	names_and_types.Insert("emission_steps_restart", tfxBool);
 	names_and_types.Insert("emission_ring", tfxBool);
+	names_and_types.Insert("emission_layout", tfxSInt);
 	names_and_types.Insert("roll_distribution", tfxSInt);
 	names_and_types.Insert("roll_divisions", tfxUInt);
 	names_and_types.Insert("roll_jitter", tfxFloat);
@@ -6754,6 +6776,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "noise_algorithm") value.Setf("%i", emitter_properties->noise_algorithm);
 	else if (property_name == "end_behaviour") value.Setf("%i", emitter_properties->end_behaviour);
 	else if (property_name == "emission_distribution" && emitter_properties) value.Setf("%i", emitter_properties->emission_steps.distribution);
+	else if (property_name == "emission_layout" && emitter_properties) value.Setf("%i", tfx__get_emission_step_layout(&emitter_properties->emission_steps));
 	else if (property_name == "roll_distribution" && emitter_properties) value.Setf("%i", emitter_properties->roll_steps.distribution);
 	else if (property_name == "emission_type") value.Setf("%i", shared_properties->emission_type);
 	else if (property_name == "color_option") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option);
@@ -7082,6 +7105,7 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "noise_algorithm" && emitter_properties) emitter_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "end_behaviour" && emitter_properties) emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
 	else if (*field == "emission_distribution" && emitter_properties) emitter_properties->emission_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
+	else if (*field == "emission_layout" && emitter_properties) tfx__set_emission_step_layout(&emitter_properties->emission_steps, value >= 0 && value < tfxEmissionStepLayout_max ? (tfx_emission_step_layout)value : tfxEmissionStepLayout_fan);
 	else if (*field == "roll_distribution" && emitter_properties) emitter_properties->roll_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
 	else if (*field == "emission_type" && shared_properties) shared_properties->emission_type = (tfx_emission_type)value;
 	else if (*field == "color_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
@@ -7374,7 +7398,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("emission_divisions=%u", emitter_properties->emission_steps.divisions);
 	file->AddLine("emission_jitter=%f", emitter_properties->emission_steps.jitter);
 	file->AddLine("emission_steps_restart=%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_restart_each_spawn);
-	file->AddLine("emission_ring=%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_ring);
+	file->AddLine("emission_layout=%i", tfx__get_emission_step_layout(&emitter_properties->emission_steps));
 	file->AddLine("roll_distribution=%i", emitter_properties->roll_steps.distribution);
 	file->AddLine("roll_divisions=%u", emitter_properties->roll_steps.divisions);
 	file->AddLine("roll_jitter=%f", emitter_properties->roll_steps.jitter);
@@ -20744,14 +20768,23 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	tfx_angle_step_iterator_t emission_step_iterator = {};
 	tfx_emission_step_t emission_step = {};
 	float emission_step_range = 0.f;
+	const bool cap_emission_steps = (emission_steps.flags & tfxAngleStepFlags_cap) > 0;
+	float cap_height_step = 0.f;
 	tfxU32 step_cursor = 0;
 	tfxU32 step_run_end = 0;
 	if (stepped_emission) {
 		float emission_range = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
-		emission_step.ring = (emission_steps.flags & tfxAngleStepFlags_ring) > 0;
+		emission_step.tilted = cap_emission_steps || (emission_steps.flags & tfxAngleStepFlags_ring);
 		emission_step.sin_tilt = sinf(emission_range * 0.5f);
 		emission_step.cos_tilt = cosf(emission_range * 0.5f);
-		emission_step_range = emission_step.ring ? 2.f * tfxPI : emission_range;
+		emission_step_range = emission_step.tilted ? 2.f * tfxPI : emission_range;
+		if (cap_emission_steps) {
+			//Equal area bands of the spherical cap, so each division covers the same solid angle
+			tfxU32 divisions = tfx__Max(emission_steps.divisions, (tfxU32)1);
+			float cap_height = divisions > 1 ? 1.f - emission_step.cos_tilt : 0.f;
+			cap_height_step = cap_height / (float)divisions;
+			emission_step.jitter_cone = emission_steps.jitter * 0.5f * sqrtf(2.f * tfxPI * cap_height_step);
+		}
 		tfxU32 ordinal = restart_emission_steps ? 0 : (step_runs ? step_runs[0].spawn_ordinal : entry->spawn_ordinal);
 		tfx__begin_angle_steps(&emission_step_iterator, &emission_steps, emission_step_range, 0.f, ordinal, emitter.seed_index);
 		step_run_end = step_runs ? step_runs[0].count : 0xFFFFFFFF;
@@ -20778,7 +20811,14 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 				}
 				tfx__begin_angle_steps(&emission_step_iterator, &emission_steps, emission_step_range, 0.f, restart_emission_steps ? 0 : step_runs[step_cursor].spawn_ordinal, emitter.seed_index);
 			}
-			emission_step.angle = tfx__next_angle_step(&emission_step_iterator, &random);
+			if (cap_emission_steps) {
+				tfxU32 division = tfx__next_angle_step_division(&emission_step_iterator);
+				emission_step.cos_tilt = 1.f - cap_height_step * ((float)division + 0.5f);
+				emission_step.sin_tilt = sqrtf(tfx__Max(1.f - emission_step.cos_tilt * emission_step.cos_tilt, 0.f));
+				emission_step.angle = (float)division * tfxGOLDEN_ANGLE;
+			} else {
+				emission_step.angle = tfx__next_angle_step(&emission_step_iterator, &random);
+			}
 		}
 
 		tfx_vec3_t world_position;
