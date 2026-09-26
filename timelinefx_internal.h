@@ -3171,18 +3171,23 @@ typedef enum {
 	tfxPathFlags_mode_origin                                    = 1 << 1,
 	tfxPathFlags_mode_node                                      = 1 << 2,
 	tfxPathFlags_reverse_direction                              = 1 << 4,
-	tfxPathFlags_rotation_range_yaw_only                        = 1 << 5,
-	tfxPathFlags_rotation_steps_restart                         = 1 << 6       //Stepped rotation distributions start from the first division on every spawn batch
+	tfxPathFlags_rotation_range_yaw_only                        = 1 << 5
 } tfx_emitter_path_flag_bits;
 
-//How path rotations are picked within the rotation range. Values are serialized so must stay the same.
+//How an angle is picked within its range. Values are serialized so must stay the same.
 typedef enum {
-	tfxPathRotationDistribution_random,
-	tfxPathRotationDistribution_sequential,
-	tfxPathRotationDistribution_ping_pong,
-	tfxPathRotationDistribution_shuffled,
-	tfxPathRotationDistribution_max,
-} tfx_path_rotation_distribution;
+	tfxAngleStepDistribution_random,
+	tfxAngleStepDistribution_sequential,
+	tfxAngleStepDistribution_ping_pong,
+	tfxAngleStepDistribution_shuffled,
+	tfxAngleStepDistribution_max,
+} tfx_angle_step_distribution;
+
+typedef enum {
+	tfxAngleStepFlags_none                                      = 0,
+	tfxAngleStepFlags_restart_each_spawn                        = 1 << 0,      //Start from the first division on every spawn batch
+	tfxAngleStepFlags_ring                                      = 1 << 1       //Emission only: step around the edge of the emission cone instead of across it
+} tfx_angle_step_flag_bits;
 
                                                                                 //Particle property that defines how a particle will rotate
 typedef enum {
@@ -5900,6 +5905,38 @@ typedef struct tfx_path_buffers_s {
 	tfx_path_nodes_soa_t node_soa;
 } tfx_path_buffers_t;
 
+typedef tfxU32 tfxAngleStepFlags;
+
+//Splits an angle range into evenly spaced divisions that spawns step through instead of picking a random angle
+typedef struct tfx_angle_steps_s {
+	tfx_angle_step_distribution distribution;
+	tfxU32 divisions;
+	float jitter;							//0 to 1 of a division
+	tfxAngleStepFlags flags;
+} tfx_angle_steps_t;
+
+//One particle's stepped emission angle, with the cone tilt precomputed for the batch
+typedef struct tfx_emission_step_s {
+	float angle;
+	float sin_tilt;
+	float cos_tilt;
+	bool ring;
+} tfx_emission_step_t;
+
+//Walks the divisions for one spawn batch so the per spawn cost is an increment and a compare, not a divide
+typedef struct tfx_angle_step_iterator_s {
+	float start;
+	float step;
+	float half_jitter;
+	tfxU32 divisions;
+	tfxU32 period;
+	tfxU32 position;
+	tfxU32 ordinal;
+	tfxU32 seed;
+	tfxU32 cycle_seed;
+	tfx_angle_step_distribution distribution;
+} tfx_angle_step_iterator_t;
+
 typedef struct tfx_path_settings_s {
 	tfxKey key;
 	tfx_str32_t name;
@@ -5907,9 +5944,7 @@ typedef struct tfx_path_settings_s {
 	int nodes_to_commit;
 	tfxEmitterPathFlags flags;
 	float rotation_range;
-	tfx_path_rotation_distribution rotation_distribution;
-	tfxU32 rotation_divisions;
-	float rotation_jitter;				//0 to 1 of a division, randomises the angle within each division
+	tfx_angle_steps_t rotation_steps;
 	float rotation_pitch;      
 	float rotation_yaw;
 	tfxU32 maximum_active_paths;
@@ -6107,6 +6142,11 @@ typedef struct tfx_particle_emitter_properties_s {
 	//Added to spawn_impulse per particle, drawn from [0, variation] by hashing the particle uid rather
 	//than by storing a per particle magnitude - see tfxSPAWN_IMPULSE_HASH_AXIS.
 	float spawn_impulse_variation;
+	//Steps the emission direction across (fan) or around (ring) the emission range instead of spreading it randomly.
+	//Only used by Point emitters and the Specified emission direction.
+	tfx_angle_steps_t emission_steps;
+	//Steps the random roll range of camera facing particles instead of picking a random angle
+	tfx_angle_steps_t roll_steps;
 	//Maximum of 8 forces per emitter. The list is an unordered set - every force is a velocity field summed
 	//into one accumulator, so entry order cannot change the result and there is no reordering to author.
 	tfx_force_t forces[tfxMAX_FORCES];
@@ -6123,8 +6163,6 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfx_emission_type emission_type;
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t grid_points;
-	//Set above 0 to cycle the angle that particles or ribbons spawn with, radians.
-	tfx_vec3_t angle_step_size;
 	//Can this be removed if we're using the image hash now?
 	tfxU32 image_index;
 	//The shape being used for all particles spawned from the emitter
@@ -6188,6 +6226,7 @@ typedef struct tfx_path_state_s {
 	tfxU32 active_paths;
 	tfxU32 path_start_index;
 	tfxU32 ribbon_index;
+	tfxU32 path_pick_ordinal;			//Path rotations picked so far, drives the stepped angle distributions
 } tfx_path_state_t;
 
 typedef struct tfx_common_state_properties_s {
@@ -6215,6 +6254,12 @@ typedef struct tfx_common_state_properties_s {
 //This is a struct that stores an emitter state that is currently active in a effect manager.
 //Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
 //      and dynamic variables that change each frame.
+//How many spawns a user spawn location has made for one emitter, stale once the slot's generation moves on
+typedef struct tfx_location_spawn_ordinal_s {
+	tfxU32 generation;
+	tfxU32 ordinal;
+} tfx_location_spawn_ordinal_t;
+
 typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_common_state_properties_t state_properties;
 
@@ -6262,6 +6307,11 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfxU32 spawn_counter;
 	tfxEmitterStateFlags state_flags;
 	tfx_path_state_t path_state;
+#ifdef __cplusplus
+	tfx_vector_t<tfx_location_spawn_ordinal_t> location_spawn_ordinals;	//Indexed by user spawn location slot
+#else
+	tfx_vector_t location_spawn_ordinals;
+#endif
 } tfx_particle_emitter_state_t;
 
 //This is a struct that stores an effect state that is currently active in a effect manager.
@@ -6445,12 +6495,6 @@ typedef enum tfx_gpu_particle_field_e {
 	tfx_gpu_field_count
 } tfx_gpu_particle_field_t;
 
-//A user spawn location's own stepped path rotation counter, stale once the slot's generation moves on
-typedef struct tfx_location_rotation_step_s {
-	tfxU32 generation;
-	tfxU32 step_index;
-} tfx_location_rotation_step_t;
-
 typedef struct tfx_ribbon_lag_history_s {
 	float time;
 	tfx_vec3_t position;
@@ -6492,16 +6536,16 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
 	float user_spawn_amount_phase;					//Where the spawn sharing starts scanning, moved on every update so the locations take turns
-	tfxU32 rotation_step_index;					//Counts spawns for the stepped path rotation distributions
+	tfxU32 spawn_ordinal;						//Spawns made so far, drives the stepped angle distributions
 	tfx_effect_descriptor source_ribbon;
 	tfx_library library;
 
 #ifdef __cplusplus
 	tfx_vector_t<tfxU32> ribbon_indexes[2];
-	tfx_vector_t<tfx_location_rotation_step_t> location_rotation_steps;	//Indexed by user spawn location slot
+	tfx_vector_t<tfx_location_spawn_ordinal_t> location_spawn_ordinals;	//Indexed by user spawn location slot
 #else
 	tfx_vector_t ribbon_indexes[2];
-	tfx_vector_t location_rotation_steps;
+	tfx_vector_t location_spawn_ordinals;
 #endif
 
 	//Control Data
@@ -6807,6 +6851,7 @@ typedef struct tfx_user_spawn_run_s {
 	tfxU32 slot;
 	tfxU32 count;
 	float weight;							//The location's spawn amount, what the emitter's amount is shared out by
+	tfxU32 spawn_ordinal;					//Spawns the location made for this emitter before this run, only set when the emitter steps its angles
 } tfx_user_spawn_run_t;
 
 typedef struct tfx_ribbon_bucket_s {
@@ -6927,6 +6972,7 @@ typedef struct tfx_spawn_work_entry_s {
 	//Running hash input for this frame's batch of particle uids, seeded in tfx__update_emitter and
 	//consumed one particle at a time by tfx__spawn_particle_age.
 	tfxU32 particle_uid;
+	tfxU32 spawn_ordinal;				//Particles the emitter spawned before this batch, drives the stepped angle distributions
 }tfx_spawn_work_entry_t;
 
 typedef struct tfx_ribbon_work_entry_s {
@@ -7617,11 +7663,13 @@ tfxAPI_EDITOR tfx_quaternion_t tfx__unpack16bit_quaternion_from_gpu(tfxU64 q);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
-tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin);
+tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin, const tfx_emission_step_t *emission_step);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
-tfxINTERNAL tfx_quaternion_t tfx__get_stepped_path_rotation_3d(tfx_random_t *random, const tfx_path_settings_t *settings, tfxU32 step_index, tfxU32 seed);
-tfxINTERNAL tfxU32 *tfx__get_location_rotation_step(tfx_ribbon_emitter_state_t *ribbon_emitter, tfxU32 slot, tfxU32 generation, bool restart);
+tfxINTERNAL void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed);
+tfxINTERNAL float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random);
+tfxINTERNAL tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *settings, tfxU32 ordinal, tfxU32 seed, tfx_random_t *random);
+tfxINTERNAL tfx_quaternion_t tfx__pick_path_rotation(tfx_particle_emitter_state_t *emitter, const tfx_path_settings_t *settings, tfxU32 path_slot, tfx_random_t *random);
 tfxINTERNAL tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth);
 tfxINTERNAL tfx_vec3_t tfx__ellipse_surface_normal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float *py, const float *pz, float t);

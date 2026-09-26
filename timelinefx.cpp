@@ -2779,9 +2779,20 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 	return rotated_vector;
 }
 
+//Fans the direction about fan_axis, or tilts it out to the cone edge and turns it around itself for a ring. fan_axis must be a unit vector perpendicular to direction
+tfxINTERNAL tfx_vec3_t tfx__apply_emission_step(tfx_vec3_t direction, tfx_vec3_t axis, const tfx_emission_step_t *emission_step) {
+	float sin_angle = sinf(emission_step->angle);
+	float cos_angle = cosf(emission_step->angle);
+	if (!emission_step->ring) {
+		return direction * cos_angle + tfx__cross_product_vec3(axis, direction) * sin_angle;
+	}
+	tfx_vec3_t radial = axis * cos_angle + tfx__cross_product_vec3(direction, axis) * sin_angle;
+	return direction * emission_step->cos_tilt + radial * emission_step->sin_tilt;
+}
+
 //emission_origin is the world point the particle spawned around, which is the emitter for an ordinary emitter and the particle's user
 //spawn location when the effect spawns at user locations
-tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin) {
+tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin, const tfx_emission_step_t *emission_step) {
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
 	//----Emission
 	float range = emission_angle_variation * .5f;
@@ -2888,12 +2899,21 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx
 	direction.x = to_handle.x * cos_yaw - direction.z * sin_yaw;
 	direction.z = to_handle.x * sin_yaw + direction.z * cos_yaw;
 	tfx_vec3_t v = direction;
+	if (emission_step) {
+		//Local z carried through the same pitch/yaw, so the fan plane turns rigidly with the direction instead of flipping near vertical
+		tfx_vec3_t fan_axis(-cos_pitch * sin_yaw, -sin_pitch, cos_pitch * cos_yaw);
+		v = tfx__apply_emission_step(direction, fan_axis, emission_step);
+	}
+	if (emission_type == tfxPoint && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera) {
+		//Camera facing turns local +Y to the camera with -X as screen up, so remap to look like an unrotated emitter seen from its +Z side
+		v = tfx_vec3_t(-v.y, v.z, -v.x);
+	}
 	//Bake in the emitter's world rotation for Specified/Point emission (non-relative only). The pitch/yaw offset
 	//above was applied in the emitter's local frame; rotating afterwards carries it into world space.
 	if (apply_world_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		v = tfx__rotate_vector_quaternion(&emitter.rotation, v);
 	}
-	if (range != 0) {
+	if (range != 0 && !emission_step) {
 		v = tfx__random_vector_in_cone(random, v, range);
 	}
 
@@ -2966,51 +2986,69 @@ tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed) {
 	return (index + seed) % length;
 }
 
-tfx_quaternion_t tfx__get_stepped_path_rotation_3d(tfx_random_t *random, const tfx_path_settings_t *settings, tfxU32 step_index, tfxU32 seed) {
-	tfxU32 divisions = tfx__Max(settings->rotation_divisions, (tfxU32)1);
-	tfxU32 division = 0;
-	if (divisions > 1) {
-		switch (settings->rotation_distribution) {
-		case tfxPathRotationDistribution_ping_pong: {
-			tfxU32 period = (divisions - 1) * 2;
-			tfxU32 position = step_index % period;
-			division = position < divisions ? position : period - position;
-			break;
-		}
-		case tfxPathRotationDistribution_shuffled: {
-			tfxU32 cycle = step_index / divisions;
-			division = tfx__permute_index(step_index % divisions, divisions, seed ^ (cycle * 0x9E3779B9u));
-			break;
-		}
-		default:
-			division = step_index % divisions;
-			break;
-		}
-	}
+void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed) {
+	tfxU32 divisions = tfx__Max(steps->divisions, (tfxU32)1);
 	//A full circle leaves a gap after the last division so it doesn't land on the first, an arc puts a division on both edges
-	bool full_circle = settings->rotation_range >= 2.f * tfxPI - 0.001f;
-	float step = full_circle ? settings->rotation_range / (float)divisions : (divisions > 1 ? settings->rotation_range / (float)(divisions - 1) : 0.f);
-	float yaw = settings->rotation_yaw + (full_circle ? 0.f : settings->rotation_range * -0.5f) + step * (float)division;
-	if (settings->rotation_jitter > 0.f) {
-		float half_jitter = step * settings->rotation_jitter * 0.5f;
-		yaw += tfx_RandomRangeFromTo(random, -half_jitter, half_jitter);
+	bool full_circle = range >= 2.f * tfxPI - 0.001f;
+	iterator->step = full_circle ? range / (float)divisions : (divisions > 1 ? range / (float)(divisions - 1) : 0.f);
+	iterator->start = full_circle || divisions == 1 ? centre : centre - range * 0.5f;
+	iterator->half_jitter = iterator->step * steps->jitter * 0.5f;
+	iterator->divisions = divisions;
+	iterator->distribution = divisions > 1 ? steps->distribution : tfxAngleStepDistribution_sequential;
+	iterator->period = iterator->distribution == tfxAngleStepDistribution_ping_pong ? (divisions - 1) * 2 : divisions;
+	iterator->position = ordinal % iterator->period;
+	iterator->ordinal = ordinal;
+	iterator->seed = seed;
+	iterator->cycle_seed = seed ^ ((ordinal / iterator->period) * 0x9E3779B9u);
+}
+
+float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random) {
+	tfxU32 division = iterator->position;
+	if (iterator->distribution == tfxAngleStepDistribution_ping_pong) {
+		division = division < iterator->divisions ? division : iterator->period - division;
+	} else if (iterator->distribution == tfxAngleStepDistribution_shuffled) {
+		division = tfx__permute_index(division, iterator->divisions, iterator->cycle_seed);
 	}
-	tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, yaw);
+	iterator->ordinal++;
+	if (++iterator->position == iterator->period) {
+		iterator->position = 0;
+		iterator->cycle_seed = iterator->seed ^ ((iterator->ordinal / iterator->period) * 0x9E3779B9u);
+	}
+	float angle = iterator->start + iterator->step * (float)division;
+	if (iterator->half_jitter > 0.f) {
+		angle += tfx_RandomRangeFromTo(random, -iterator->half_jitter, iterator->half_jitter);
+	}
+	return angle;
+}
+
+tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *settings, tfxU32 ordinal, tfxU32 seed, tfx_random_t *random) {
+	tfx_angle_step_iterator_t iterator;
+	tfx__begin_angle_steps(&iterator, &settings->rotation_steps, settings->rotation_range, settings->rotation_yaw, ordinal, seed);
+	tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&iterator, random));
 	tfx_quaternion_t pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, settings->rotation_pitch);
 	return yaw_quaternion * pitch_quaternion;
 }
 
-tfxU32 *tfx__get_location_rotation_step(tfx_ribbon_emitter_state_t *ribbon_emitter, tfxU32 slot, tfxU32 generation, bool restart) {
-	if (slot >= ribbon_emitter->location_rotation_steps.current_size) {
-		tfx_location_rotation_step_t unused_step = { tfxINVALID, 0 };
-		ribbon_emitter->location_rotation_steps.resize(slot + 1, unused_step);
+//Picks the rotation for one of a path emitter's active paths. Restarting divisions pins each path slot to its own division.
+tfx_quaternion_t tfx__pick_path_rotation(tfx_particle_emitter_state_t *emitter, const tfx_path_settings_t *settings, tfxU32 path_slot, tfx_random_t *random) {
+	if (settings->rotation_steps.distribution == tfxAngleStepDistribution_random) {
+		return tfx__get_path_rotation_3d(random, settings->rotation_range, settings->rotation_pitch, settings->rotation_yaw, ((settings->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 	}
-	tfx_location_rotation_step_t &step = ribbon_emitter->location_rotation_steps[slot];
-	if (restart || step.generation != generation) {
-		step.generation = generation;
-		step.step_index = 0;
+	tfxU32 ordinal = settings->rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn ? path_slot : emitter->path_state.path_pick_ordinal++;
+	return tfx__get_stepped_path_rotation(settings, ordinal, emitter->seed_index, random);
+}
+
+tfxINTERNAL tfxU32 *tfx__get_location_spawn_ordinal(tfx_vector_t<tfx_location_spawn_ordinal_t> *location_ordinals, tfxU32 slot, tfxU32 generation, bool restart) {
+	if (slot >= location_ordinals->current_size) {
+		tfx_location_spawn_ordinal_t unused_ordinal = { tfxINVALID, 0 };
+		location_ordinals->resize(slot + 1, unused_ordinal);
 	}
-	return &step.step_index;
+	tfx_location_spawn_ordinal_t &location_ordinal = (*location_ordinals)[slot];
+	if (restart || location_ordinal.generation != generation) {
+		location_ordinal.generation = generation;
+		location_ordinal.ordinal = 0;
+	}
+	return &location_ordinal.ordinal;
 }
 
 void tfx__reset_effect_graphs(tfx_effect_descriptor effect, bool add_node) {
@@ -3842,9 +3880,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter) {
 		path.settings.offset = { 0 };
 		path.settings.rotation_cycle_length = 0.f;
 		path.settings.rotation_range = 0.f;
-		path.settings.rotation_distribution = tfxPathRotationDistribution_random;
-		path.settings.rotation_divisions = 12;
-		path.settings.rotation_jitter = 0.f;
+		path.settings.rotation_steps = { tfxAngleStepDistribution_random, 12, 0.f, tfxAngleStepFlags_none };
 		path.settings.rotation_pitch = 0.f;
 		path.settings.rotation_yaw = 0.f;
 		path.settings.rotation_stagger = 0.f;
@@ -3870,9 +3906,7 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	path.settings.offset = { 0 };
 	path.settings.rotation_cycle_length = 0.f;
 	path.settings.rotation_range = 0.f;
-	path.settings.rotation_distribution = tfxPathRotationDistribution_random;
-	path.settings.rotation_divisions = 12;
-	path.settings.rotation_jitter = 0.f;
+	path.settings.rotation_steps = { tfxAngleStepDistribution_random, 12, 0.f, tfxAngleStepFlags_none };
 	path.settings.rotation_pitch = 0.f;
 	path.settings.rotation_yaw = 0.f;
 	path.settings.rotation_stagger = 0.f;
@@ -5664,6 +5698,15 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("noise_offset_variation", tfxFloat);
 	names_and_types.Insert("spawn_impulse", tfxFloat);
 	names_and_types.Insert("spawn_impulse_variation", tfxFloat);
+	names_and_types.Insert("emission_distribution", tfxSInt);
+	names_and_types.Insert("emission_divisions", tfxUInt);
+	names_and_types.Insert("emission_jitter", tfxFloat);
+	names_and_types.Insert("emission_steps_restart", tfxBool);
+	names_and_types.Insert("emission_ring", tfxBool);
+	names_and_types.Insert("roll_distribution", tfxSInt);
+	names_and_types.Insert("roll_divisions", tfxUInt);
+	names_and_types.Insert("roll_jitter", tfxFloat);
+	names_and_types.Insert("roll_steps_restart", tfxBool);
 	names_and_types.Insert("drag_variation", tfxFloat);
 	names_and_types.Insert("sort_passes", tfxUInt);
 	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
@@ -6656,6 +6699,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 
 	//u32 values
 	if (property_name == "spawn_amount")				value.Setf("%u", shared_properties->spawn_amount);
+	else if (property_name == "emission_divisions" && emitter_properties) value.Setf("%u", emitter_properties->emission_steps.divisions);
+	else if (property_name == "roll_divisions" && emitter_properties) value.Setf("%u", emitter_properties->roll_steps.divisions);
 	else if (property_name == "spawn_amount_variation") value.Setf("%u", shared_properties->spawn_amount_variation);
 	else if (property_name == "frames")					value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames);
 	else if (property_name == "export_frame_count")		value.Setf("%u", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_frame_count);
@@ -6691,13 +6736,15 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	} else if (property_name == "path_node_count") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%u", path->settings.node_count);
 	} else if (property_name == "path_rotation_divisions") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%u", path->settings.rotation_divisions);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%u", path->settings.rotation_steps.divisions);
 	}
 
 	//Int values
 	if (property_name == "emission_direction") value.Setf("%i", emitter_properties->emission_direction);
 	else if (property_name == "noise_algorithm") value.Setf("%i", emitter_properties->noise_algorithm);
 	else if (property_name == "end_behaviour") value.Setf("%i", emitter_properties->end_behaviour);
+	else if (property_name == "emission_distribution" && emitter_properties) value.Setf("%i", emitter_properties->emission_steps.distribution);
+	else if (property_name == "roll_distribution" && emitter_properties) value.Setf("%i", emitter_properties->roll_steps.distribution);
 	else if (property_name == "emission_type") value.Setf("%i", shared_properties->emission_type);
 	else if (property_name == "color_option") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option);
 	else if (property_name == "export_option") value.Setf("%i", effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_option);
@@ -6707,7 +6754,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes];  value.Setf("%i", path->settings.extrusion_type);
 	} else if (property_name == "path_rotation_distribution") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.rotation_distribution);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.rotation_steps.distribution);
 	}
 
 	//Float values
@@ -6752,6 +6799,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "spawn_impulse") value.Setf("%f", emitter_properties->spawn_impulse);
 	else if (property_name == "spawn_impulse_variation") value.Setf("%f", emitter_properties->spawn_impulse_variation);
 	else if (property_name == "drag_variation") value.Setf("%f", emitter_properties->drag_variation);
+	else if (property_name == "emission_jitter" && emitter_properties) value.Setf("%f", emitter_properties->emission_steps.jitter);
+	else if (property_name == "roll_jitter" && emitter_properties) value.Setf("%f", emitter_properties->roll_steps.jitter);
 	else if (property_name == "emitter_handle_x") value.Setf("%f", effect->emitter_handle.x);
 	else if (property_name == "emitter_handle_y") value.Setf("%f", effect->emitter_handle.y);
 	else if (property_name == "emitter_handle_z") value.Setf("%f", effect->emitter_handle.z);
@@ -6771,7 +6820,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	} else if (property_name == "path_rotation_stagger") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%f", path->settings.rotation_stagger);
 	} else if (property_name == "path_rotation_jitter") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%f", path->settings.rotation_jitter);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%f", path->settings.rotation_steps.jitter);
 	} else if (property_name == "path_handle_x") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes];  value.Setf("%f", path->settings.offset.x);
 	} else if (property_name == "path_handle_y") {
@@ -6819,6 +6868,9 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "area_open_ends") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends);
 	else if (property_name == "emitter_handle_auto_center") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center);
 	else if (property_name == "edge_traversal") value.Setf("%i", effect->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal);
+	else if (property_name == "emission_steps_restart" && emitter_properties) value.Setf("%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_restart_each_spawn);
+	else if (property_name == "emission_ring" && emitter_properties) value.Setf("%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_ring);
+	else if (property_name == "roll_steps_restart" && emitter_properties) value.Setf("%i", emitter_properties->roll_steps.flags & tfxAngleStepFlags_restart_each_spawn);
 	else if (property_name == "image_reverse_animation") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation);
 	else if (property_name == "image_play_once") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once);
 	else if (property_name == "image_animate") value.Setf("%i", effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate);
@@ -6850,7 +6902,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	} else if (property_name == "path_rotation_range_yaw_only") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_rotation_range_yaw_only);
 	} else if (property_name == "path_rotation_steps_restart") {
-		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_rotation_steps_restart);
+		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn);
 	} else if (property_name == "path_reverse_direction") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_reverse_direction);
 	}
@@ -6965,6 +7017,8 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "spawn_amount_variation" && shared_properties) shared_properties->spawn_amount_variation = value;
 	else if (*field == "layer" && shared_properties) shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	else if (*field == "single_shot_limit" && shared_properties) shared_properties->single_shot_limit = value;
+	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
+	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "frames") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames = value;
 	else if (*field == "export_frame_count") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_frame_count = value;
 	else if (*field == "current_frame") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].current_frame = value;
@@ -7004,7 +7058,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	} else if (*field == "path_node_count") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.node_count = value;
 	} else if (*field == "path_rotation_divisions") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_divisions = tfx__Max(value, (tfxU32)1);
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_steps.divisions = tfx__Max(value, (tfxU32)1);
 	}
 	else if (*field == "version") effect->version = value;
 }
@@ -7016,6 +7070,8 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	}
 	else if (*field == "noise_algorithm" && emitter_properties) emitter_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "end_behaviour" && emitter_properties) emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
+	else if (*field == "emission_distribution" && emitter_properties) emitter_properties->emission_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
+	else if (*field == "roll_distribution" && emitter_properties) emitter_properties->roll_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
 	else if (*field == "emission_type" && shared_properties) shared_properties->emission_type = (tfx_emission_type)value;
 	else if (*field == "color_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
 	else if (*field == "export_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
@@ -7026,7 +7082,7 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
 	} else if (*field == "path_rotation_distribution") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_distribution = value >= 0 && value < tfxPathRotationDistribution_max ? (tfx_path_rotation_distribution)value : tfxPathRotationDistribution_random;
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
 	} else if (*field == "color_interpolation_mode") {
 		effect->library->graphs[effect->state_properties.graph_list_index].color_ramps.interpolation_mode = (tfx_color_interpolation_mode)value;
 	}
@@ -7107,7 +7163,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_stagger = value;
 	}
 	else if (*field == "path_rotation_jitter") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
 	}
 	else if (*field == "path_rotation_lifetime") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; path->settings.rotation_cycle_length = value;
@@ -7135,6 +7191,8 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "spawn_impulse") emitter_properties->spawn_impulse = value;
 		else if (*field == "spawn_impulse_variation") emitter_properties->spawn_impulse_variation = value;
 		else if (*field == "drag_variation") emitter_properties->drag_variation = value;
+		else if (*field == "emission_jitter") emitter_properties->emission_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
+		else if (*field == "roll_jitter") emitter_properties->roll_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
 	} else if (effect->type == tfxRibbonType) {
 		tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 		if (*field == "ribbon_fixed_angle_normal_x") ribbon_properties->fixed_angle_normal.x = value;
@@ -7151,7 +7209,14 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 	else if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[effect->preview_camera_settings].attach_effect_to_camera = value;
 	else if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_hide_floor = value;
 	else if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_isometric = value;
-	else if (*field == "hidden") {
+	else if (*field == "roll_steps_restart" && effect->type == tfxEmitterType) {
+		tfx_angle_steps_t &roll_steps = tfx__get_particle_emitter_properties(effect)->roll_steps;
+		if (value) { roll_steps.flags |= tfxAngleStepFlags_restart_each_spawn; } else { roll_steps.flags &= ~tfxAngleStepFlags_restart_each_spawn; }
+	} else if ((*field == "emission_steps_restart" || *field == "emission_ring") && effect->type == tfxEmitterType) {
+		tfx_angle_steps_t &emission_steps = tfx__get_particle_emitter_properties(effect)->emission_steps;
+		tfxAngleStepFlags flag = *field == "emission_ring" ? tfxAngleStepFlags_ring : tfxAngleStepFlags_restart_each_spawn;
+		if (value) { emission_steps.flags |= flag; } else { emission_steps.flags &= ~flag; }
+	} else if (*field == "hidden") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_hidden; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_hidden; }
 	} else if (*field == "random_color") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_random_color; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_random_color; }
@@ -7240,7 +7305,7 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 	} else if (*field == "path_rotation_range_yaw_only") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_rotation_range_yaw_only; } else { path->settings.flags &= ~tfxPathFlags_rotation_range_yaw_only; }
 	} else if (*field == "path_rotation_steps_restart") {
-		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_rotation_steps_restart; } else { path->settings.flags &= ~tfxPathFlags_rotation_steps_restart; }
+		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.rotation_steps.flags |= tfxAngleStepFlags_restart_each_spawn; } else { path->settings.rotation_steps.flags &= ~tfxAngleStepFlags_restart_each_spawn; }
 	} else if (*field == "path_reverse_direction") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_reverse_direction; } else { path->settings.flags &= ~tfxPathFlags_reverse_direction; }
 	}
@@ -7292,6 +7357,15 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("spawn_impulse=%f", emitter_properties->spawn_impulse);
 	file->AddLine("spawn_impulse_variation=%f", emitter_properties->spawn_impulse_variation);
 	file->AddLine("drag_variation=%f", emitter_properties->drag_variation);
+	file->AddLine("emission_distribution=%i", emitter_properties->emission_steps.distribution);
+	file->AddLine("emission_divisions=%u", emitter_properties->emission_steps.divisions);
+	file->AddLine("emission_jitter=%f", emitter_properties->emission_steps.jitter);
+	file->AddLine("emission_steps_restart=%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_restart_each_spawn);
+	file->AddLine("emission_ring=%i", emitter_properties->emission_steps.flags & tfxAngleStepFlags_ring);
+	file->AddLine("roll_distribution=%i", emitter_properties->roll_steps.distribution);
+	file->AddLine("roll_divisions=%u", emitter_properties->roll_steps.divisions);
+	file->AddLine("roll_jitter=%f", emitter_properties->roll_steps.jitter);
+	file->AddLine("roll_steps_restart=%i", emitter_properties->roll_steps.flags & tfxAngleStepFlags_restart_each_spawn);
 	file->AddLine("emitter_handle_x=%f", emitter->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", emitter->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", emitter->emitter_handle.z);
@@ -7585,10 +7659,10 @@ void tfx__stream_path_properties(tfx_emitter_path_t *path, tfx_stream_t *file) {
 	file->AddLine("path_node_count=%i", (path->settings.node_count));
 	file->AddLine("path_rotation_stagger=%f", (path->settings.rotation_stagger));
 	file->AddLine("path_rotation_range_yaw_only=%i", (path->settings.flags & tfxPathFlags_rotation_range_yaw_only));
-	file->AddLine("path_rotation_steps_restart=%i", (path->settings.flags & tfxPathFlags_rotation_steps_restart));
-	file->AddLine("path_rotation_distribution=%i", (path->settings.rotation_distribution));
-	file->AddLine("path_rotation_divisions=%u", (path->settings.rotation_divisions));
-	file->AddLine("path_rotation_jitter=%f", (path->settings.rotation_jitter));
+	file->AddLine("path_rotation_steps_restart=%i", (path->settings.rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn));
+	file->AddLine("path_rotation_distribution=%i", (path->settings.rotation_steps.distribution));
+	file->AddLine("path_rotation_divisions=%u", (path->settings.rotation_steps.divisions));
+	file->AddLine("path_rotation_jitter=%f", (path->settings.rotation_steps.jitter));
 	file->AddLine("path_reverse_direction=%i", (path->settings.flags & tfxPathFlags_reverse_direction));
 	file->AddLine("path_handle_x=%f", (path->settings.offset.x));
 	file->AddLine("path_handle_y=%f", (path->settings.offset.y));
@@ -12683,6 +12757,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.creation_rotations = tfx_vec3_t();
 	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
+	emitter.location_spawn_ordinals.clear();
 	emitter.spawn_locations_index = tfxINVALID;
 	emitter.other_emitter_index = tfxINVALID;
 	emitter.path_state.path_quaternions = nullptr;
@@ -12696,6 +12771,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 		tfx_emitter_path_t *path = &emitter.library->paths[emitter.state_properties.path_attributes];
 		tfx_path_state_t &path_state = emitter.path_state;
 		path_state.last_path_index = 0;
+		path_state.path_pick_ordinal = 0;
 		path_state.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->settings.rotation_stagger == 0 ? path->settings.maximum_active_paths : 1;
 		path_state.path_stagger_counter = 0.f;
 		path_state.path_quaternion_index = tfx__allocate_path_quaternion(pm, path->settings.maximum_active_paths);
@@ -12709,7 +12785,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 				path_state.path_quaternions[qi].cycles = tfxINVALID;
 			}
 			for (tfxU32 qi = 0; qi != path_state.active_paths; ++qi) {
-				tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+				tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &pm->random);
 				path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 				path_state.path_quaternions[qi].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
 				path_state.path_quaternions[qi].age = 0.f;
@@ -12753,7 +12829,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
 
 	ribbon_emitter.amount_remainder = 0.f;
-	ribbon_emitter.rotation_step_index = 0;
+	ribbon_emitter.spawn_ordinal = 0;
 	ribbon_emitter.user_spawn_amount_phase = 0.f;
 	ribbon_emitter.qty_step_size = 0.f;
 	ribbon_emitter.spawn_quantity = 0.f;
@@ -12770,7 +12846,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.path_state.active_paths = 0;
 	ribbon_emitter.ribbon_indexes[0].init();
 	ribbon_emitter.ribbon_indexes[1].init();
-	ribbon_emitter.location_rotation_steps.init();
+	ribbon_emitter.location_spawn_ordinals.init();
 	ribbon_emitter.lag_clock = 0.f;
 	ribbon_emitter.lag_history_head = 0;
 	ribbon_emitter.lag_history_count = 0;
@@ -16141,6 +16217,9 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 		}
 	}
 
+	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
+		emitter_state.location_spawn_ordinals.free();
+	}
 	pm->emitters.clear();
 	tfx__free_all_user_spawn_locations(pm);
 	pm->effects.clear();
@@ -16576,7 +16655,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	for (tfx_ribbon_emitter_state_t &emitters : pm->ribbon_emitters) {
 		emitters.ribbon_indexes[0].free();
 		emitters.ribbon_indexes[1].free();
-		emitters.location_rotation_steps.free();
+		emitters.location_spawn_ordinals.free();
 	}
 	for (tfx_ribbon_bucket_t &ribbon_bucket : pm->ribbon_segment_buckets.data) {
 		tfx__free_soa_buffer(&ribbon_bucket.ribbons_buffer);
@@ -16606,6 +16685,9 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->free_ribbon_emitters.clear();
 	pm->particle_indexes.clear();
 	pm->free_particle_indexes.clear();
+	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
+		emitter_state.location_spawn_ordinals.free();
+	}
 	pm->emitters.clear();
 	pm->ribbon_emitters.clear();
 	tfx__free_all_user_spawn_locations(pm);
@@ -16686,7 +16768,7 @@ void tfx_FreeStage(tfx_stage pm) {
 	for (tfx_ribbon_emitter_state_t &emitters : pm->ribbon_emitters) {
 		emitters.ribbon_indexes[0].free();
 		emitters.ribbon_indexes[1].free();
-		emitters.location_rotation_steps.free();
+		emitters.location_spawn_ordinals.free();
 	}
 	for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
 		bucket.free_ribbons.free();
@@ -16708,6 +16790,9 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->free_particle_indexes.free();
 	tfx__free_all_user_spawn_locations(pm);
 	pm->effects.free();
+	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
+		emitter_state.location_spawn_ordinals.free();
+	}
 	pm->emitters.free();
 	pm->gpu_ribbon_emitters.free();
 	pm->ribbon_emitters.free();
@@ -16831,6 +16916,7 @@ tfxU32 tfx__get_emitter_slot(tfx_stage pm) {
 		return tfxINVALID;
 	}
 	pm->emitters.current_size++;
+	pm->emitters.back().location_spawn_ordinals.init();
 	return pm->emitters.current_size - 1;
 }
 
@@ -16839,7 +16925,7 @@ tfxU32 tfx__get_ribbon_slot(tfx_stage pm) {
 		tfxU32 index = pm->free_ribbon_emitters.pop_back();
 		pm->ribbon_emitters[index].ribbon_indexes[0].free();
 		pm->ribbon_emitters[index].ribbon_indexes[1].free();
-		pm->ribbon_emitters[index].location_rotation_steps.free();
+		pm->ribbon_emitters[index].location_spawn_ordinals.free();
 		return index;
 	}
 	if (pm->ribbon_emitters.current_size == pm->ribbon_emitters.capacity) {
@@ -16849,7 +16935,7 @@ tfxU32 tfx__get_ribbon_slot(tfx_stage pm) {
 	tfx_ribbon_emitter_state_t &ribbon = pm->ribbon_emitters.back();
 	ribbon.ribbon_indexes[0].init();
 	ribbon.ribbon_indexes[1].init();
-	ribbon.location_rotation_steps.init();
+	ribbon.location_spawn_ordinals.init();
 	return pm->ribbon_emitters.current_size - 1;
 }
 
@@ -17707,6 +17793,24 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	return tfx__user_spawn_location_runs(entry->user_spawn_locations, &pm->user_spawn_runs, &entry->random, &source, &entry->user_spawn_run_start, &entry->user_spawn_run_count);
 }
 
+tfxINTERNAL bool tfx__emission_is_stepped(const tfx_particle_emitter_properties_t *properties, tfx_emission_type emission_type) {
+	return properties->emission_steps.distribution != tfxAngleStepDistribution_random && (emission_type == tfxPoint || properties->emission_direction == tfxSpecified);
+}
+
+tfxINTERNAL bool tfx__roll_is_stepped(const tfx_particle_emitter_properties_t *properties, const tfx_particle_emitter_state_t &emitter) {
+	return properties->roll_steps.distribution != tfxAngleStepDistribution_random && !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) && !(properties->angle_settings & tfxAngleSettingFlags_specify_roll);
+}
+
+tfxINTERNAL void tfx__assign_location_spawn_ordinals(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
+	tfx_user_spawn_run_t *runs = &pm->user_spawn_runs[work_entry->user_spawn_run_start];
+	for (tfxU32 run_index = 0; run_index != work_entry->user_spawn_run_count; ++run_index) {
+		tfx_user_spawn_run_t &run = runs[run_index];
+		tfxU32 *ordinal = tfx__get_location_spawn_ordinal(&emitter.location_spawn_ordinals, run.slot, work_entry->user_spawn_locations->locations[run.slot].generation, false);
+		run.spawn_ordinal = *ordinal;
+		*ordinal += run.count;
+	}
+}
+
 tfxINTERNAL void tfx__share_user_spawn_amount(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
 	const bool single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&pm->user_spawn_runs, work_entry->user_spawn_run_start, work_entry->user_spawn_run_count, work_entry->amount_to_spawn, single, &emitter.user_spawn_amount_phase);
@@ -17998,6 +18102,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	if (work_entry->user_spawn_locations) {
 		tfx__share_user_spawn_amount(pm, work_entry, emitter);
+		if (work_entry->user_spawn_run_count && (tfx__emission_is_stepped(work_entry->properties, work_entry->emission_type) || tfx__roll_is_stepped(work_entry->properties, emitter))) {
+			tfx__assign_location_spawn_ordinals(pm, work_entry, emitter);
+		}
 		work_entry->user_spawn_cursor = 0;
 		work_entry->user_spawn_run_end = work_entry->user_spawn_run_count ? pm->user_spawn_runs[work_entry->user_spawn_run_start].count : 0;
 		if (work_entry->user_spawn_run_count && work_entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation) {
@@ -18036,6 +18143,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	//emitter_index separates emitters that are alive at the same time, including two instances of the same
 	//effect. Set here rather than at the call site because this is where amount_to_spawn is final.
 	work_entry->particle_uid = emitter.spawn_counter + work_entry->emitter_index * 0x9E3779B9;
+	work_entry->spawn_ordinal = emitter.spawn_counter;
 	emitter.spawn_counter += work_entry->amount_to_spawn;
 
 	if (work_entry->amount_to_spawn > 0) {
@@ -18464,9 +18572,33 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 	const float spin_yaw_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index], emitter.age, emitter.oscillator_time) * entry->parent_spawn_controls->yaw_spin;
 	const tfxAngleSettingFlags angle_settings = entry->properties->angle_settings;
 
+	const tfx_angle_steps_t &roll_steps = entry->properties->roll_steps;
+	const bool stepped_roll = tfx__roll_is_stepped(entry->properties, emitter);
+	const bool restart_roll_steps = (roll_steps.flags & tfxAngleStepFlags_restart_each_spawn) > 0;
+	const tfx_user_spawn_run_t *step_runs = entry->user_spawn_run_count ? &pm.user_spawn_runs[entry->user_spawn_run_start] : nullptr;
+	const float roll_range = emitter.state_properties.angle_offsets.roll;
+	//The random roll covers 0 to the range, so a partial arc is centred on half of it and a full circle starts at 0
+	const float roll_centre = roll_range >= 2.f * tfxPI - 0.001f ? 0.f : roll_range * 0.5f;
+	tfx_angle_step_iterator_t roll_step_iterator = {};
+	tfxU32 step_cursor = 0;
+	tfxU32 step_run_end = 0;
+	if (stepped_roll) {
+		tfxU32 ordinal = restart_roll_steps ? 0 : (step_runs ? step_runs[0].spawn_ordinal : entry->spawn_ordinal);
+		tfx__begin_angle_steps(&roll_step_iterator, &roll_steps, roll_range, roll_centre, ordinal, emitter.seed_index);
+		step_run_end = step_runs ? step_runs[0].count : 0xFFFFFFFF;
+	}
+
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+
+		if (stepped_roll && i >= step_run_end) {
+			while (i >= step_run_end) {
+				step_cursor++;
+				step_run_end += step_runs[step_cursor].count;
+			}
+			tfx__begin_angle_steps(&roll_step_iterator, &roll_steps, roll_range, roll_centre, restart_roll_steps ? 0 : step_runs[step_cursor].spawn_ordinal, emitter.seed_index);
+		}
 
 		entry->particle_data->base_roll_spin[index] = tfx_RandomRangeFromTo(&random, -spin_variation, spin_variation) + roll_spin;
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
@@ -18499,6 +18631,8 @@ void tfx__spawn_particle_spin(tfx_work_queue_t *queue, void *data) {
 			float &rotation_offset = entry->particle_data->rotation_offset[index];
 			if (angle_settings & tfxAngleSettingFlags_specify_roll) {
 				rotation_offset = emitter.state_properties.angle_offsets.roll;
+			} else if (stepped_roll) {
+				rotation_offset = tfx__next_angle_step(&roll_step_iterator, &random);
 			} else {
 				rotation_offset = tfx_RandomRangeZeroToMax(&random, emitter.state_properties.angle_offsets.roll);
 			}
@@ -19592,6 +19726,15 @@ void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data) {
 	float extrusion = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_extrusion_index], emitter.age, emitter.oscillator_time);
 	float path_scale_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_path_trajectory_scale_index], emitter.age, emitter.oscillator_time);
 	tfx_vec3_t point;
+	const bool has_rotated_path = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) > 0;
+	const bool stepped_rotation = has_rotated_path && path->settings.rotation_steps.distribution != tfxAngleStepDistribution_random;
+	tfx_angle_step_iterator_t rotation_step_iterator = {};
+	tfx_quaternion_t stepped_pitch_quaternion;
+	if (stepped_rotation) {
+		stepped_pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, path->settings.rotation_pitch);
+		tfxU32 ordinal = path->settings.rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn ? 0 : entry->spawn_ordinal;
+		tfx__begin_angle_steps(&rotation_step_iterator, &path->settings.rotation_steps, path->settings.rotation_range, path->settings.rotation_yaw, ordinal, emitter.seed_index);
+	}
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -19630,8 +19773,13 @@ void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data) {
 			local_position_y = point.y * emitter.emitter_size.y;
 		}
 
-		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
-			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+		if (has_rotated_path) {
+			tfx_quaternion_t q;
+			if (stepped_rotation) {
+				q = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&rotation_step_iterator, &random)) * stepped_pitch_quaternion;
+			} else {
+				q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+			}
 			entry->particle_data->quaternion[index] = tfx__pack16bit_quaternion(q);
 		}
 	}
@@ -19676,7 +19824,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 qi = 0; qi != emitter.path_state.active_paths; ++qi) {
 				emitter.path_state.path_quaternions[qi].age += (float)pm.frame_length;
 				if (emitter.path_state.path_quaternions[qi].age >= path->settings.rotation_cycle_length) {
-					tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+					tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
 					emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 					emitter.path_state.path_quaternions[qi].age = 0.f;
 					emitter.path_state.path_cycle_count--;
@@ -19693,7 +19841,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			emitter.path_state.last_path_index = emitter.path_state.active_paths;
 			qi = (emitter.path_state.path_start_index + emitter.path_state.active_paths++) % path->settings.maximum_active_paths;
 			TFX_ASSERT(qi < path->settings.maximum_active_paths);
-			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+			tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
 			emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 			emitter.path_state.path_quaternions[qi].cycles = 0;
 			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -19750,7 +19898,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			if (new_path) {
 				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && path->settings.rotation_stagger == 0) {
 					if (path->settings.maximum_paths == 0 || emitter.path_state.path_cycle_count > 0) {
-						tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+						tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
 						emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
 						emitter.path_state.path_cycle_count--;
 					}
@@ -20008,12 +20156,19 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		const tfx_user_spawn_run_t *runs = entry->user_spawn_run_count ? &ribbon_bucket->user_spawn_runs[entry->user_spawn_run_start] : nullptr;
 		tfxU32 run_index = 0;
 		tfxU32 run_spawned = 0;
-		bool restart_rotation_steps = (path->settings.flags & tfxPathFlags_rotation_steps_restart) > 0;
-		bool stepped_rotation = path->settings.rotation_distribution != tfxPathRotationDistribution_random;
-		if (restart_rotation_steps) {
-			ribbon_emitter.rotation_step_index = 0;
+		const tfx_angle_steps_t &rotation_steps = path->settings.rotation_steps;
+		const bool stepped_rotation = rotation_steps.distribution != tfxAngleStepDistribution_random;
+		const bool restart_rotation_steps = (rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn) > 0;
+		tfx_angle_step_iterator_t rotation_step_iterator = {};
+		tfx_quaternion_t stepped_pitch_quaternion;
+		tfxU32 *spawn_ordinal = nullptr;
+		if (stepped_rotation) {
+			stepped_pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, path->settings.rotation_pitch);
+			if (!runs) {
+				spawn_ordinal = &ribbon_emitter.spawn_ordinal;
+				tfx__begin_angle_steps(&rotation_step_iterator, &rotation_steps, path->settings.rotation_range, path->settings.rotation_yaw, restart_rotation_steps ? 0 : *spawn_ordinal, ribbon_emitter.seed_index);
+			}
 		}
-		tfxU32 *rotation_step_index = &ribbon_emitter.rotation_step_index;
 		bool locations_have_rotation = runs && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
 		tfx_quaternion_t spawn_rotation = ribbon_emitter.rotation;
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
@@ -20036,7 +20191,11 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					spawn_rotation = tfx__unpack16bit_quaternion(location.packed_rotation) * ribbon_emitter.rotation;
 				}
 				if (stepped_rotation && run_spawned == 0) {
-					rotation_step_index = tfx__get_location_rotation_step(&ribbon_emitter, runs[run_index].slot, location.generation, restart_rotation_steps);
+					if (spawn_ordinal) {
+						*spawn_ordinal = rotation_step_iterator.ordinal;
+					}
+					spawn_ordinal = tfx__get_location_spawn_ordinal(&ribbon_emitter.location_spawn_ordinals, runs[run_index].slot, location.generation, restart_rotation_steps);
+					tfx__begin_angle_steps(&rotation_step_iterator, &rotation_steps, path->settings.rotation_range, path->settings.rotation_yaw, *spawn_ordinal, ribbon_emitter.seed_index);
 				}
 				run_spawned++;
 			} else if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
@@ -20070,10 +20229,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | tfxU32(image_frame);
 			tfx_quaternion_t q;
-			if (path->settings.rotation_distribution == tfxPathRotationDistribution_random) {
-				q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+			if (stepped_rotation) {
+				q = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&rotation_step_iterator, &random)) * stepped_pitch_quaternion;
 			} else {
-				q = tfx__get_stepped_path_rotation_3d(&random, &path->settings, (*rotation_step_index)++, ribbon_emitter.seed_index);
+				q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			}
 			ribbon.texture_indexes = texture_indexes;
 			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time));
@@ -20104,6 +20263,9 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_bucket->ribbons.uid[ribbon_index] = pm.unique_ribbon_id++;
 			ribbon.phase_seed = ribbon_bucket->ribbons.uid[ribbon_index];
 			ribbon_emitter.active_ribbons++;
+		}
+		if (spawn_ordinal) {
+			*spawn_ordinal = rotation_step_iterator.ordinal;
 		}
 		entry->new_ribbons = actual_new_ribbons;
 	}
@@ -20449,6 +20611,27 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	tfxU32 user_spawn_cursor = 0;
 	tfxU32 user_spawn_run_end = measure_from_user_location ? pm.user_spawn_runs[entry->user_spawn_run_start].count : 0;
 
+	const tfx_angle_steps_t &emission_steps = entry->properties->emission_steps;
+	const bool stepped_emission = tfx__emission_is_stepped(entry->properties, emission_type);
+	const bool restart_emission_steps = (emission_steps.flags & tfxAngleStepFlags_restart_each_spawn) > 0;
+	const tfx_user_spawn_run_t *step_runs = entry->user_spawn_run_count ? &pm.user_spawn_runs[entry->user_spawn_run_start] : nullptr;
+	tfx_angle_step_iterator_t emission_step_iterator = {};
+	tfx_emission_step_t emission_step = {};
+	float emission_step_range = 0.f;
+	tfxU32 step_cursor = 0;
+	tfxU32 step_run_end = 0;
+	if (stepped_emission) {
+		float emission_range = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
+		emission_step.ring = (emission_steps.flags & tfxAngleStepFlags_ring) > 0;
+		emission_step.sin_tilt = sinf(emission_range * 0.5f);
+		emission_step.cos_tilt = cosf(emission_range * 0.5f);
+		emission_step_range = emission_step.ring ? 2.f * tfxPI : emission_range;
+		tfxU32 ordinal = restart_emission_steps ? 0 : (step_runs ? step_runs[0].spawn_ordinal : entry->spawn_ordinal);
+		tfx__begin_angle_steps(&emission_step_iterator, &emission_steps, emission_step_range, 0.f, ordinal, emitter.seed_index);
+		step_run_end = step_runs ? step_runs[0].count : 0xFFFFFFFF;
+	}
+	const tfx_emission_step_t *particle_emission_step = stepped_emission ? &emission_step : nullptr;
+
 	//Micro Update
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -20461,6 +20644,16 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 
 		tfx_vec3_t emission_origin = measure_from_user_location ? tfx__user_spawn_run_anchor(entry, i, user_spawn_cursor, user_spawn_run_end) : emitter.world_position;
+		if (stepped_emission) {
+			if (i >= step_run_end) {
+				while (i >= step_run_end) {
+					step_cursor++;
+					step_run_end += step_runs[step_cursor].count;
+				}
+				tfx__begin_angle_steps(&emission_step_iterator, &emission_steps, emission_step_range, 0.f, restart_emission_steps ? 0 : step_runs[step_cursor].spawn_ordinal, emitter.seed_index);
+			}
+			emission_step.angle = tfx__next_angle_step(&emission_step_iterator, &random);
+		}
 
 		tfx_vec3_t world_position;
 		if (!line && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -20477,7 +20670,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 
 		tfx_vec3_t velocity_normal;
 		if (emission_type == tfxPoint) {
-			velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin);
+			velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin, particle_emission_step);
 			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		}
 		else if (emission_direction != tfxPathGradient) {
@@ -20486,7 +20679,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			}
 			else if ((emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface))) {
 				//----Velocity
-				velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin);
+				velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin, particle_emission_step);
 				velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 			}
 		} else {
@@ -21841,6 +22034,8 @@ void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties)
 	*properties = tfx_particle_emitter_properties_t{};
 	properties->vector_align_type = tfxVectorAlignType_motion;
 	properties->emission_direction = tfx_emission_direction::tfxOutwards;
+	properties->emission_steps = { tfxAngleStepDistribution_random, 12, 0.f, tfxAngleStepFlags_none };
+	properties->roll_steps = { tfxAngleStepDistribution_random, 12, 0.f, tfxAngleStepFlags_none };
 	properties->end_behaviour = tfx_line_traversal_end_behaviour::tfxLoop;
 	properties->angle_settings = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
 	for (int i = 0; i != tfxMAX_FORCES; ++i) {
