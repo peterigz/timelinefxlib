@@ -5892,12 +5892,21 @@ typedef struct tfx_path_nodes_soa_s {
 	float *length;
 } tfx_path_nodes_soa_t;
 
-typedef struct tfx_path_quaternion_s {
-	tfxU64 quaternion;
-	float grid_coord;
-	float age;
-	tfxU32 cycles;
-} tfx_path_quaternion_t;
+//One of the paths a path set spawns on at once
+typedef struct tfx_path_slot_s {
+	tfxU64 rotation;			//Packed quaternion
+	tfxU32 instance;			//slot index + generations * slot count, counts towards maximum_paths. tfxINVALID until the slot starts
+	float grid_coord;			//Ordered grid spawning's march along the path
+} tfx_path_slot_t;
+
+//The rotated paths one spawn source spawns on: the emitter itself, or one of its effect's user spawn locations
+typedef struct tfx_path_set_s {
+	tfxU32 generation;			//The user spawn location's generation, tfxINVALID until the set is started
+	tfxU32 seed;
+	tfxU32 cursor;				//Round robin over the live slots
+	tfxU32 live_slots;
+	float time;					//Drives stagger and rotation cycles
+} tfx_path_set_t;
 
 //Samples taken per catmull-rom span when building the arc length lookup table
 #define tfxPATH_ARC_LENGTH_SAMPLES_PER_SPAN 16
@@ -6233,18 +6242,6 @@ typedef struct tfx_parent_spawn_controls_s {
 	float weight;
 }tfx_parent_spawn_controls_t;
 
-typedef struct tfx_path_state_s {
-	tfx_path_quaternion_t *path_quaternions;
-	tfxU32 path_quaternion_index;
-	tfxU32 last_path_index;
-	float path_stagger_counter;
-	tfxU32 path_cycle_count;
-	tfxU32 active_paths;
-	tfxU32 path_start_index;
-	tfxU32 ribbon_index;
-	tfxU32 path_pick_ordinal;			//Path rotations picked so far, drives the stepped angle distributions
-} tfx_path_state_t;
-
 typedef struct tfx_common_state_properties_s {
 	float loop_length;
 	float max_life;
@@ -6323,11 +6320,16 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfxU32 spawn_counter;
 	float single_decay_age;							//Milliseconds since the single burst, drives the decay tail
 	tfxEmitterStateFlags state_flags;
-	tfx_path_state_t path_state;
+	tfxU32 ribbon_spawn_cursor;						//Spawn on ribbon: the ribbon the next particle spawns on
+	tfxU32 path_slot_count;							//Slots per path set, path_slots holds this many for each set
 #ifdef __cplusplus
 	tfx_vector_t<tfx_location_spawn_ordinal_t> location_spawn_ordinals;	//Indexed by user spawn location slot
+	tfx_vector_t<tfx_path_set_t> path_sets;			//[0] is the emitter's own, [1 + slot] a user spawn location's
+	tfx_vector_t<tfx_path_slot_t> path_slots;
 #else
 	tfx_vector_t location_spawn_ordinals;
+	tfx_vector_t path_sets;
+	tfx_vector_t path_slots;
 #endif
 } tfx_particle_emitter_state_t;
 
@@ -6545,8 +6547,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxIndex parent_index;
 	tfxIndex info_index;
 	tfxIndex spawn_locations_index;					//For other_emitter emission type and storing the last known position of the particle
-
-	tfx_path_state_t path_state;
 
 	tfxRibbonEmitterStateFlags state_flags;
 
@@ -7350,8 +7350,6 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfxU32> free_emitters;
 	tfx_vector_t<tfxU32> free_gpu_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_ribbon_emitters;
-	tfx_vector_t<tfxU32> free_path_quaternions;
-	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_particle_emitter_state_t> emitters;
 	tfx_vector_t<tfx_gpu_ribbon_emitter_t> gpu_ribbon_emitters;
@@ -7689,7 +7687,6 @@ tfxAPI_EDITOR tfx_emission_step_layout tfx__get_emission_step_layout(const tfx_a
 tfxAPI_EDITOR void tfx__set_emission_step_layout(tfx_angle_steps_t *steps, tfx_emission_step_layout layout);
 tfxINTERNAL float tfx__next_angle_step(tfx_angle_step_iterator_t *iterator, tfx_random_t *random);
 tfxINTERNAL tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *settings, tfxU32 ordinal, tfxU32 seed, tfx_random_t *random);
-tfxINTERNAL tfx_quaternion_t tfx__pick_path_rotation(tfx_particle_emitter_state_t *emitter, const tfx_path_settings_t *settings, tfxU32 path_slot, tfx_random_t *random);
 tfxINTERNAL tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth);
 tfxINTERNAL tfx_vec3_t tfx__ellipse_surface_normal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float *py, const float *pz, float t);
@@ -9555,8 +9552,6 @@ tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm);
 tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *instance_data);
 tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_stage pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_stage pm);
-tfxINTERNAL tfxU32 tfx__allocate_path_quaternion(tfx_stage pm, tfxU32 amount);
-tfxINTERNAL void tfx__free_path_quaternion(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID, float millisecs);
 tfxAPI_EDITOR tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id);

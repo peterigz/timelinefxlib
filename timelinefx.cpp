@@ -2469,6 +2469,22 @@ bool tfx__is_emitter_type(tfx_effect_descriptor emitter) {
 	return emitter->type == tfxEmitterType || emitter->type == tfxRibbonType;
 }
 
+tfxINTERNAL bool tfx__path_is_rotated(const tfx_path_settings_t *settings) {
+	return settings->rotation_range > 0 || settings->rotation_pitch != 0 || settings->rotation_yaw != 0;
+}
+
+tfxINTERNAL bool tfx__path_spawns_in_order(tfxSharedEmitterFlags shared_flags) {
+	return (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) && !(shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
+}
+
+//Maximum paths only ends a path emitter if its paths end, by a rotation cycle or by marching to the end of the grid
+tfxINTERNAL bool tfx__path_budget_ends(tfx_effect_descriptor emitter, const tfx_emitter_path_t *path) {
+	if (emitter->type != tfxEmitterType || !tfx__path_is_rotated(&path->settings) || path->settings.maximum_paths == 0 || emitter->state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
+		return false;
+	}
+	return tfx__path_spawns_in_order(emitter->state_properties.shared_flags) || path->settings.rotation_cycle_length > 0.f;
+}
+
 bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	for (tfx_effect_descriptor child : effect->children) {
@@ -2484,8 +2500,7 @@ bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 		//Its particles can still loop forever though, so the single shot limit check below still applies to it.
 		bool spawns_from_paired_source = shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon;
 		if (child->state_properties.path_attributes != tfxINVALID && shared_properties->emission_type == tfxPath) {
-			tfx_emitter_path_t *path = tfx_GetEmitterPath(child);
-			if (path->settings.rotation_range > 0 && path->settings.maximum_paths > 0) {
+			if (tfx__path_budget_ends(child, tfx_GetEmitterPath(child))) {
 				continue;
 			}
 		}
@@ -3050,13 +3065,23 @@ tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *setti
 	return yaw_quaternion * pitch_quaternion;
 }
 
-//Picks the rotation for one of a path emitter's active paths. Restarting divisions pins each path slot to its own division.
-tfx_quaternion_t tfx__pick_path_rotation(tfx_particle_emitter_state_t *emitter, const tfx_path_settings_t *settings, tfxU32 path_slot, tfx_random_t *random) {
+tfxINTERNAL tfxU64 tfx__split_mix64(tfxU64 value) {
+	value += 0x9E3779B97F4A7C15ull;
+	value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
+	value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
+	return value ^ (value >> 31);
+}
+
+//A path's rotation comes from its set's seed and its instance alone, so a slot moving on to its next path is all it takes to pick one.
+//Restarting divisions pins each slot to its own division.
+tfxINTERNAL tfx_quaternion_t tfx__path_instance_rotation(const tfx_path_settings_t *settings, tfxU32 seed, tfxU32 slot_index, tfxU32 instance) {
+	tfx_random_t random;
+	tfx_RandomReseed2(&random, tfx__split_mix64(((tfxU64)seed << 32) | instance), tfx__split_mix64(((tfxU64)instance << 32) | seed) | 1);
 	if (settings->rotation_steps.distribution == tfxAngleStepDistribution_random) {
-		return tfx__get_path_rotation_3d(random, settings->rotation_range, settings->rotation_pitch, settings->rotation_yaw, ((settings->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+		return tfx__get_path_rotation_3d(&random, settings->rotation_range, settings->rotation_pitch, settings->rotation_yaw, ((settings->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 	}
-	tfxU32 ordinal = settings->rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn ? path_slot : emitter->path_state.path_pick_ordinal++;
-	return tfx__get_stepped_path_rotation(settings, ordinal, emitter->seed_index, random);
+	tfxU32 ordinal = settings->rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn ? slot_index : instance;
+	return tfx__get_stepped_path_rotation(settings, ordinal, seed, &random);
 }
 
 tfxINTERNAL tfxU32 *tfx__get_location_spawn_ordinal(tfx_vector_t<tfx_location_spawn_ordinal_t> *location_ordinals, tfxU32 slot, tfxU32 generation, bool restart) {
@@ -9383,6 +9408,51 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	return max_life * max_life_factor;
 }
 
+//When the last of the emitter's paths finishes, in emitter age. Grid order depends on the spawn rate, so that is swept at the slowest
+//rate the amount graphs can give, with each slot taking an equal share of it as the spawner does
+tfxINTERNAL float tfx__path_budget_end_time(tfx_effect_descriptor emitter, const tfx_emitter_path_t *path, float step_size, float delay_spawning, tfx_graph_t *global_amount_graph) {
+	const tfx_path_settings_t &settings = path->settings;
+	const tfxU32 slot_count = tfxMax(settings.maximum_active_paths, 1u);
+	const tfxU32 used_slots = tfxMin(slot_count, settings.maximum_paths);
+	float end_time = 0.f;
+	if (!tfx__path_spawns_in_order(emitter->state_properties.shared_flags)) {
+		for (tfxU32 slot_index = 0; slot_index != used_slots; ++slot_index) {
+			tfxU32 passes = (settings.maximum_paths - slot_index + slot_count - 1) / slot_count;
+			end_time = tfxMax(end_time, (float)slot_index * settings.rotation_stagger + (float)passes * settings.rotation_cycle_length);
+		}
+		return end_time;
+	}
+
+	tfx_graph_list_t &graphs = emitter->library->graphs[emitter->state_properties.graph_list_index];
+	tfx_graph_t *amount_graph = &graphs.graphs[tfxEmitter_base_amount_index];
+	tfx_graph_t *amount_variation_graph = &graphs.graphs[tfxEmitter_variation_amount_index];
+	const float particles_per_pass = ((float)settings.node_count - 3.f) * tfx__get_shared_emitter_properties(emitter)->grid_points.x;
+	const float sweep_limit = 600000.f;
+	tmpStack(float, slot_start_spawned);
+	slot_start_spawned.resize(used_slots, -1.f);
+	float spawned_per_slot = 0.f;
+	tfxU32 finished_slots = 0;
+	for (float t = 0.f; t <= sweep_limit && finished_slots != used_slots; t += step_size) {
+		finished_slots = 0;
+		for (tfxU32 slot_index = 0; slot_index != used_slots; ++slot_index) {
+			if (slot_start_spawned[slot_index] < 0.f) {
+				if (t < (float)slot_index * settings.rotation_stagger) continue;
+				slot_start_spawned[slot_index] = spawned_per_slot;
+			}
+			tfxU32 passes = (settings.maximum_paths - slot_index + slot_count - 1) / slot_count;
+			if (spawned_per_slot - slot_start_spawned[slot_index] >= (float)passes * particles_per_pass) {
+				finished_slots++;
+			}
+		}
+		end_time = t;
+		float variation = tfx__get_graph_value_by_age(amount_variation_graph, t);
+		float slowest_rate = tfx__get_graph_value_by_age(amount_graph, t) + (variation > 0.f ? 1.f : 0.f);
+		spawned_per_slot += slowest_rate * tfx__get_graph_value_by_age(global_amount_graph, delay_spawning + t) * step_size / (1000.f * (float)slot_count);
+	}
+	slot_start_spawned.free();
+	return end_time;
+}
+
 float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (!tfx__is_finite_effect(effect)) {
@@ -9450,6 +9520,12 @@ float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size) {
 		float amount_last_frame = tfx__get_graph_last_frame(amount_graph, 60.f);
 		float variation_last_frame = tfx__get_graph_last_frame(amount_variation_graph, 60.f);
 		float spawn_end = fmaxf(amount_last_frame, variation_last_frame);
+		if (shared_props->emission_type == tfxPath && child->state_properties.path_attributes != tfxINVALID) {
+			tfx_emitter_path_t *path = tfx_GetEmitterPath(child);
+			if (tfx__path_budget_ends(child, path)) {
+				spawn_end = tfx__path_budget_end_time(child, path, step_size, delay_spawning, global_amount_graph);
+			}
+		}
 		if (spawn_end <= 0.f) {
 			continue;
 		}
@@ -12804,46 +12880,18 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.spawn_counter = 0;
 	emitter.single_decay_age = 0.f;
 	emitter.location_spawn_ordinals.clear();
+	emitter.path_sets.clear();
+	emitter.path_slots.clear();
+	emitter.path_slot_count = 0;
+	emitter.ribbon_spawn_cursor = 0;
 	emitter.spawn_locations_index = tfxINVALID;
 	emitter.other_emitter_index = tfxINVALID;
-	emitter.path_state.path_quaternions = nullptr;
 	tfxEmitterStateFlags &state_flags = emitter.state_flags;
 	state_flags = src_emitter->state_flags;
 	state_flags |= tfxEmitterStateFlags_no_tween_this_update;
 	state_flags |= emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxEmitterStateFlags_orient_to_camera_pending : 0;
 
-	if (shared_properties->emission_type == tfxPath) {
-		TFX_ASSERT(emitter.state_properties.path_attributes != tfxINVALID);
-		tfx_emitter_path_t *path = &emitter.library->paths[emitter.state_properties.path_attributes];
-		tfx_path_state_t &path_state = emitter.path_state;
-		path_state.last_path_index = 0;
-		path_state.path_pick_ordinal = 0;
-		path_state.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->settings.rotation_stagger == 0 ? path->settings.maximum_active_paths : 1;
-		path_state.path_stagger_counter = 0.f;
-		path_state.path_quaternion_index = tfx__allocate_path_quaternion(pm, path->settings.maximum_active_paths);
-		path_state.path_quaternions = pm->path_quaternions[path_state.path_quaternion_index];
-		path_state.path_quaternions[0].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
-		path_state.path_quaternions[0].cycles = 0;
-		path_state.path_cycle_count = path->settings.maximum_paths;
-		path_state.path_start_index = 0;
-		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
-			for (tfxU32 qi = 0; qi != path->settings.maximum_active_paths; ++qi) {
-				path_state.path_quaternions[qi].cycles = tfxINVALID;
-			}
-			for (tfxU32 qi = 0; qi != path_state.active_paths; ++qi) {
-				tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &pm->random);
-				path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
-				path_state.path_quaternions[qi].grid_coord = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->settings.node_count - 4;
-				path_state.path_quaternions[qi].age = 0.f;
-				path_state.path_quaternions[qi].cycles = 0;
-				if (path_state.path_cycle_count > 0) {
-					path_state.path_cycle_count--;
-				} else if (path->settings.maximum_paths > 0) {
-					path_state.path_quaternions[qi].cycles = tfxINVALID;
-				}
-			}
-		}
-	}
+	TFX_ASSERT(shared_properties->emission_type != tfxPath || emitter.state_properties.path_attributes != tfxINVALID);
 
 	if (emitter.particles_index == tfxINVALID) {
 		emitter.particles_index = tfx__grab_particle_lists(pm, src_emitter->path_hash, 100, src_emitter->state_properties.control_profile);
@@ -12890,7 +12938,6 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.parent_index = parent_index;
 	ribbon_emitter.seed_index = (*seed_index)++;
 	ribbon_emitter.active_ribbons = 0;
-	ribbon_emitter.path_state.active_paths = 0;
 	ribbon_emitter.ribbon_indexes[0].init();
 	ribbon_emitter.ribbon_indexes[1].init();
 	ribbon_emitter.location_spawn_ordinals.init();
@@ -12923,9 +12970,6 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 	tfx_effect_state_t &effect = pm->effects[effect_id];
 	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
 		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-		if (emitter.path_state.path_quaternions) {
-			tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
-		}
 		tfx__free_particle_list(pm, emitter_index);
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 			tfx__free_spawn_location_list(pm, emitter_index);
@@ -13152,9 +13196,6 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 		//Tear the emitters down the same way tfx__simulate_effect_spawn does for a removed effect, but without waiting for an update tick.
 		for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
 			tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-			if (emitter.path_state.path_quaternions) {
-				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
-			}
 			tfx__free_particle_list(pm, emitter_index);
 			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 				tfx__free_spawn_location_list(pm, emitter_index);
@@ -13722,9 +13763,6 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		} else if (!warming_up) {
 			//Defer freeing during warmup — emitter stays in current_ebuff with _remove flag and the next normal tick frees it.
 			tfx__sync_lock(&pm->add_effect_mutex);
-			if (emitter.path_state.path_quaternions) {
-				tfx__free_path_quaternion(pm, emitter.path_state.path_quaternion_index);
-			}
 			tfx__free_particle_list(pm, emitter_index);
 			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
 				tfx__free_spawn_location_list(pm, emitter_index);
@@ -16279,6 +16317,8 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 
 	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
 		emitter_state.location_spawn_ordinals.free();
+		emitter_state.path_sets.free();
+		emitter_state.path_slots.free();
 	}
 	pm->emitters.clear();
 	tfx__free_all_user_spawn_locations(pm);
@@ -16747,6 +16787,8 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->free_particle_indexes.clear();
 	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
 		emitter_state.location_spawn_ordinals.free();
+		emitter_state.path_sets.free();
+		emitter_state.path_slots.free();
 	}
 	pm->emitters.clear();
 	pm->ribbon_emitters.clear();
@@ -16764,13 +16806,6 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
 	pm->flags &= ~tfxStageFlags_warming_up;
-	for (tfxU32 i = 0; i != pm->path_quaternions.current_size; ++i) {
-		if (pm->path_quaternions[i]) {
-			tfxFREE(pm->path_quaternions[i]);
-		}
-	}
-	pm->path_quaternions.clear();
-	pm->free_path_quaternions.clear();
 	pm->instance_buffer.clear();
 	for (tfxEachLayer) {
 		pm->layer_sizes[layer] = 0;
@@ -16852,6 +16887,8 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->effects.free();
 	for (tfx_particle_emitter_state_t &emitter_state : pm->emitters) {
 		emitter_state.location_spawn_ordinals.free();
+		emitter_state.path_sets.free();
+		emitter_state.path_slots.free();
 	}
 	pm->emitters.free();
 	pm->gpu_ribbon_emitters.free();
@@ -16870,13 +16907,6 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->free_ribbon_segment_lists.FreeAll();
 	pm->warmup_effects[0].free();
 	pm->warmup_effects[1].free();
-	for (tfxU32 i = 0; i != pm->path_quaternions.current_size; ++i) {
-		if (pm->path_quaternions[i]) {
-			tfxFREE(pm->path_quaternions[i]);
-		}
-	}
-	pm->path_quaternions.free();
-	pm->free_path_quaternions.free();
 	//Deregister from the store so that the sweep in tfx_EndTimelineFX doesn't free the stage a second time.
 	if (tfxStore->stages.ValidKey((tfxKey)pm)) {
 		tfxStore->stages.Remove((tfxKey)pm);
@@ -16977,6 +17007,8 @@ tfxU32 tfx__get_emitter_slot(tfx_stage pm) {
 	}
 	pm->emitters.current_size++;
 	pm->emitters.back().location_spawn_ordinals.init();
+	pm->emitters.back().path_sets.init();
+	pm->emitters.back().path_slots.init();
 	return pm->emitters.current_size - 1;
 }
 
@@ -16997,29 +17029,6 @@ tfxU32 tfx__get_ribbon_slot(tfx_stage pm) {
 	ribbon.ribbon_indexes[1].init();
 	ribbon.location_spawn_ordinals.init();
 	return pm->ribbon_emitters.current_size - 1;
-}
-
-tfxU32 tfx__allocate_path_quaternion(tfx_stage pm, tfxU32 amount) {
-	tfx_path_quaternion_t *q = (tfx_path_quaternion_t *)tfxALLOCATE(sizeof(tfx_path_quaternion_t) * amount);
-	if (!pm->free_path_quaternions.empty()) {
-		tfxU32 free_index = pm->free_path_quaternions.pop_back();
-		TFX_ASSERT(pm->path_quaternions[free_index] == nullptr);        //Free path quaternion should be null! For some reason the path was not freed before being added to the the list of free path quaternions
-		//or the path was allocated outside of this function.
-		pm->path_quaternions[free_index] = q;
-		return free_index;
-	}
-	else {
-		pm->path_quaternions.locked_push_back(q);
-	}
-	return pm->path_quaternions.current_size - 1;
-}
-
-void tfx__free_path_quaternion(tfx_stage pm, tfxU32 index) {
-	if (pm->path_quaternions[index] != nullptr) {
-		tfxFREE(pm->path_quaternions[index]);
-		pm->path_quaternions[index] = nullptr;
-		pm->free_path_quaternions.push_back(index);
-	}
 }
 
 
@@ -17902,7 +17911,7 @@ tfxINTERNAL bool tfx__roll_is_stepped(const tfx_particle_emitter_properties_t *p
 	return properties->roll_steps.distribution != tfxAngleStepDistribution_random && !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) && !(properties->angle_settings & tfxAngleSettingFlags_specify_roll);
 }
 
-//Only the trajectory spawner steps per particle, a path spawned on steps per path through tfx__pick_path_rotation
+//Only the trajectory spawner steps per particle, a path spawned on steps per path through tfx__path_instance_rotation
 tfxINTERNAL bool tfx__path_start_rotation_is_stepped(const tfx_particle_emitter_state_t &emitter) {
 	if (!(emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) || !(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)) {
 		return false;
@@ -17997,6 +18006,164 @@ tfxINTERNAL tfxU32 tfx__single_decay_spawn_points(tfx_stage pm, tfx_spawn_work_e
 	return total_amount;
 }
 
+//Only the path spawner uses sets, the trajectory spawner rotates each particle on its own
+tfxINTERNAL bool tfx__emitter_uses_path_sets(const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
+	if (emission_type != tfxPath || emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory) {
+		return false;
+	}
+	return (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) || tfx__path_spawns_in_order(emitter.state_properties.shared_flags);
+}
+
+//maximum_paths is 0 for an unrotated emitter, so its grid march never runs out
+tfxINTERNAL inline bool tfx__path_slot_is_live(const tfx_path_slot_t &slot, tfxU32 maximum_paths) {
+	return slot.instance != tfxINVALID && (maximum_paths == 0 || slot.instance < maximum_paths);
+}
+
+tfxINTERNAL void tfx__reset_path_slots(tfx_path_set_t *set, tfx_path_slot_t *slots, tfxU32 slot_count) {
+	set->cursor = 0;
+	set->live_slots = 0;
+	set->time = 0.f;
+	for (tfxU32 slot_index = 0; slot_index != slot_count; ++slot_index) {
+		slots[slot_index].instance = tfxINVALID;
+		slots[slot_index].grid_coord = 0.f;
+		slots[slot_index].rotation = tfxPACKED_W_QUATERNION;
+	}
+}
+
+//Source 0 is the emitter's own set, 1 + slot a user spawn location's. A set starts afresh when it's new or its slot has changed hands.
+//Can grow the tables, so only call it from the sequential emitter update.
+tfxINTERNAL tfx_path_set_t *tfx__get_path_set(tfx_particle_emitter_state_t &emitter, const tfx_path_settings_t *settings, tfxU32 source, tfxU32 generation, const tfx_random_t *random) {
+	const tfxU32 slot_count = emitter.state_flags & tfxEmitterStateFlags_has_rotated_path ? tfxMax(settings->maximum_active_paths, 1u) : 1u;
+	if (emitter.path_slot_count != slot_count) {
+		emitter.path_sets.clear();
+		emitter.path_slots.clear();
+		emitter.path_slot_count = slot_count;
+	}
+	if (source >= emitter.path_sets.current_size) {
+		tfx_path_set_t unused_set = {};
+		unused_set.generation = tfxINVALID;
+		emitter.path_sets.resize(source + 1, unused_set);
+		tfx_path_slot_t unused_slot = {};
+		emitter.path_slots.resize((source + 1) * slot_count, unused_slot);
+	}
+	tfx_path_set_t &set = emitter.path_sets[source];
+	if (set.generation != generation) {
+		set.generation = generation;
+		set.seed = (tfxU32)tfx__split_mix64(random->seeds[0] ^ (((tfxU64)source << 32) | generation));
+		tfx__reset_path_slots(&set, &emitter.path_slots[source * slot_count], slot_count);
+	}
+	return &set;
+}
+
+//Starts the slots whose stagger has come round and moves timed slots on to the path their rotation cycle is up to. In grid order a
+//slot moves on when its march finishes instead, in tfx__next_path_slot.
+tfxINTERNAL void tfx__refresh_path_set(tfx_path_set_t *set, tfx_path_slot_t *slots, tfxU32 slot_count, const tfx_path_settings_t *settings, bool rotated, bool in_order, float grid_start) {
+	const tfxU32 maximum_paths = rotated ? settings->maximum_paths : 0;
+	set->live_slots = 0;
+	for (tfxU32 slot_index = 0; slot_index != slot_count; ++slot_index) {
+		tfx_path_slot_t &slot = slots[slot_index];
+		float start_time = (float)slot_index * settings->rotation_stagger;
+		if (set->time < start_time) {
+			continue;
+		}
+		tfxU32 instance = slot_index;
+		if (in_order) {
+			if (slot.instance == tfxINVALID) {
+				slot.grid_coord = grid_start;
+			} else {
+				instance = slot.instance;
+			}
+		} else if (settings->rotation_cycle_length > 0.f) {
+			tfxU64 cycles = (tfxU64)((set->time - start_time) / settings->rotation_cycle_length);
+			instance = (tfxU32)tfxMin((tfxU64)slot_index + cycles * slot_count, (tfxU64)tfxINVALID - 1);
+		}
+		if (instance != slot.instance) {
+			slot.instance = instance;
+			if (rotated && tfx__path_slot_is_live(slot, maximum_paths)) {
+				slot.rotation = tfx__pack16bit_quaternion(tfx__path_instance_rotation(settings, set->seed, slot_index, instance));
+			}
+		}
+		set->live_slots += tfx__path_slot_is_live(slot, maximum_paths) ? 1 : 0;
+	}
+}
+
+//Brings every set this update spawns from up to date and scales the amount by how many of their paths are live, per location when the
+//effect spawns at user locations
+tfxINTERNAL double tfx__update_path_sets(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter, double spawn_quantity) {
+	const tfx_path_settings_t *settings = &emitter.library->paths[emitter.state_properties.path_attributes].settings;
+	const bool rotated = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) > 0;
+	const bool in_order = tfx__path_spawns_in_order(emitter.state_properties.shared_flags);
+	const bool clockwise = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) > 0;
+	//The march steps before it spawns, so this puts each pass's first particle on the first grid point
+	const float grid_start = clockwise ? -1.f / entry->shared_properties->grid_points.x : (float)settings->node_count - 3.f;
+	if (entry->user_spawn_locations) {
+		tfx_user_spawn_run_t *runs = &pm->user_spawn_runs[entry->user_spawn_run_start];
+		double total_weight = 0.0;
+		for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
+			tfx_user_spawn_run_t &run = runs[run_index];
+			const tfx_user_spawn_location_t &location = entry->user_spawn_locations->locations[run.slot];
+			tfx_path_set_t *set = tfx__get_path_set(emitter, settings, run.slot + 1, location.generation, &entry->random);
+			tfx_path_slot_t *slots = &emitter.path_slots[(run.slot + 1) * emitter.path_slot_count];
+			//A restart puts the location's age back to 0
+			if (location.age < set->time) {
+				tfx__reset_path_slots(set, slots, emitter.path_slot_count);
+			}
+			set->time = location.age;
+			tfx__refresh_path_set(set, slots, emitter.path_slot_count, settings, rotated, in_order, grid_start);
+			if (rotated) {
+				run.weight *= (float)set->live_slots / (float)emitter.path_slot_count;
+			}
+			total_weight += run.weight;
+		}
+		return total_weight;
+	}
+	tfx_path_set_t *set = tfx__get_path_set(emitter, settings, 0, 0, &entry->random);
+	set->time += (float)pm->frame_length;
+	tfx__refresh_path_set(set, emitter.path_slots.data, emitter.path_slot_count, settings, rotated, in_order, grid_start);
+	return rotated ? spawn_quantity * (double)set->live_slots / (double)emitter.path_slot_count : spawn_quantity;
+}
+
+//The next live slot in turn, stepping its march first when spawning in grid order. A slot whose march finishes moves on to its next path,
+//or drops out once maximum paths is used up and the particle goes to the next live slot instead. Null once every slot has finished.
+tfxINTERNAL tfx_path_slot_t *tfx__next_path_slot(tfx_path_set_t *set, tfx_path_slot_t *slots, tfxU32 slot_count, const tfx_path_settings_t *settings, bool rotated, bool in_order, bool clockwise, float total_grid_points, float increment) {
+	const tfxU32 maximum_paths = rotated ? settings->maximum_paths : 0;
+	for (tfxU32 attempt = 0; attempt != slot_count; ++attempt) {
+		tfxU32 slot_index = set->cursor;
+		set->cursor = slot_index + 1 == slot_count ? 0 : slot_index + 1;
+		tfx_path_slot_t &slot = slots[slot_index];
+		if (!tfx__path_slot_is_live(slot, maximum_paths)) {
+			continue;
+		}
+		if (!in_order) {
+			return &slot;
+		}
+		bool finished_pass = false;
+		if (clockwise) {
+			slot.grid_coord += increment;
+			if (slot.grid_coord >= total_grid_points) {
+				slot.grid_coord = 0.f;
+				finished_pass = true;
+			}
+		} else {
+			slot.grid_coord -= increment;
+			if (slot.grid_coord < 0.f) {
+				slot.grid_coord = total_grid_points - increment;
+				finished_pass = true;
+			}
+		}
+		if (finished_pass && rotated) {
+			slot.instance += slot_count;
+			if (!tfx__path_slot_is_live(slot, maximum_paths)) {
+				set->live_slots--;
+				continue;
+			}
+			slot.rotation = tfx__pack16bit_quaternion(tfx__path_instance_rotation(settings, set->seed, slot_index, slot.instance));
+		}
+		return &slot;
+	}
+	return nullptr;
+}
+
 tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 	tfx_random_t *random = &entry->random;
@@ -18052,10 +18219,8 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		emitter.single_decay_age += frame_length;
 	}
 
-	if (shared_properties->emission_type == tfxPath && emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
-		tfx_emitter_path_t *path = &library->paths[emitter.state_properties.path_attributes];
-		emitter.spawn_quantity *= (float)emitter.path_state.active_paths / (float)path->settings.maximum_active_paths;
-		emitter.path_state.path_stagger_counter += (float)pm->frame_length;
+	if (tfx__emitter_uses_path_sets(emitter, shared_properties->emission_type)) {
+		emitter.spawn_quantity = tfx__update_path_sets(pm, entry, emitter, emitter.spawn_quantity);
 	}
 
 	if (emitter.spawn_locations_index != tfxINVALID && shared_properties->emission_type == tfxOtherEmitter) {
@@ -19030,7 +19195,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 
 	int node = 0;
 	float t = 0.f;
-	tfxU32 qi = emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+	tfxU32 qi = emitter.ribbon_spawn_cursor % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 	emitter.grid_coords.y = float(qi);
 
 	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
@@ -19075,9 +19240,9 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		local_position_x = rp.x;
 		local_position_y = rp.y;
 		local_position_z = rp.z;
-		emitter.path_state.last_path_index++;
-		emitter.path_state.last_path_index %= ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-		qi = emitter.path_state.last_path_index % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+		emitter.ribbon_spawn_cursor++;
+		emitter.ribbon_spawn_cursor %= ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
+		qi = emitter.ribbon_spawn_cursor % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
 		TFX_ASSERT(qi < ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size);
 
 		if (ribbon_is_relative && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -20000,45 +20165,20 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 		range = emission_angle_variation * .5f;
 	}
 
-	if (path->settings.rotation_cycle_length > 0) {
-		if ((emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) ||
-			!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid)
-			) {
-			for (tfxU32 qi = 0; qi != emitter.path_state.active_paths; ++qi) {
-				emitter.path_state.path_quaternions[qi].age += (float)pm.frame_length;
-				if (emitter.path_state.path_quaternions[qi].age >= path->settings.rotation_cycle_length) {
-					tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
-					emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
-					emitter.path_state.path_quaternions[qi].age = 0.f;
-					emitter.path_state.path_cycle_count--;
-				}
-			}
-		}
-	}
+	const bool rotated = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) > 0;
+	const bool in_order = tfx__path_spawns_in_order(emitter.state_properties.shared_flags);
+	const bool clockwise = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) > 0;
+	const bool uses_sets = tfx__emitter_uses_path_sets(emitter, tfxPath);
+	const bool per_location_sets = uses_sets && entry->user_spawn_run_count;
+	const tfxU32 slot_count = emitter.path_slot_count;
+	const tfx_user_spawn_run_t *runs = per_location_sets ? &pm.user_spawn_runs[entry->user_spawn_run_start] : nullptr;
+	tfxU32 run_cursor = 0;
+	tfxU32 run_end = per_location_sets ? runs[0].count : 0xFFFFFFFF;
+	tfxU32 source = per_location_sets ? runs[0].slot + 1 : 0;
+	TFX_ASSERT(!uses_sets || source < emitter.path_sets.current_size);
+	tfx_path_set_t *set = uses_sets ? &emitter.path_sets[source] : nullptr;
+	tfx_path_slot_t *slots = uses_sets ? &emitter.path_slots[source * slot_count] : nullptr;
 
-	tfxU32 qi = (emitter.path_state.path_start_index + emitter.path_state.last_path_index) % path->settings.maximum_active_paths;
-	TFX_ASSERT(qi < path->settings.maximum_active_paths);
-
-	if (path->settings.rotation_stagger > 0 && emitter.path_state.path_stagger_counter >= path->settings.rotation_stagger) {
-		if (emitter.path_state.active_paths < path->settings.maximum_active_paths && (emitter.path_state.path_cycle_count > 0 || path->settings.maximum_paths == 0)) {
-			emitter.path_state.last_path_index = emitter.path_state.active_paths;
-			qi = (emitter.path_state.path_start_index + emitter.path_state.active_paths++) % path->settings.maximum_active_paths;
-			TFX_ASSERT(qi < path->settings.maximum_active_paths);
-			tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
-			emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
-			emitter.path_state.path_quaternions[qi].cycles = 0;
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
-				emitter.path_state.path_quaternions[qi].grid_coord = 0.f;
-			}
-			else if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise)) {
-				emitter.path_state.path_quaternions[qi].grid_coord = total_grid_points - increment;
-			}
-			emitter.path_state.path_cycle_count--;
-			emitter.path_state.path_stagger_counter = 0.f;
-		}
-	}
-
-	int dead_paths = 0;
 	int node = 0;
 	float t = 0.f;
 
@@ -20049,6 +20189,27 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 		float &path_position = entry->particle_data->path_position[index];
 		float &path_offset = entry->particle_data->path_offset[index];
+
+		if (per_location_sets && i >= run_end) {
+			while (i >= run_end) {
+				run_cursor++;
+				run_end += runs[run_cursor].count;
+			}
+			source = runs[run_cursor].slot + 1;
+			TFX_ASSERT(source < emitter.path_sets.current_size);
+			set = &emitter.path_sets[source];
+			slots = &emitter.path_slots[source * slot_count];
+		}
+		tfx_path_slot_t *slot = nullptr;
+		if (uses_sets) {
+			slot = tfx__next_path_slot(set, slots, slot_count, &path->settings, rotated, in_order, clockwise, total_grid_points, increment);
+			if (!slot) {
+				//The last of the source's paths finished part way through this update
+				entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
+				tween += entry->qty_step_size;
+				continue;
+			}
+		}
 
 		//Records the per-path rotation quaternion applied to this particle (if any) so the path gradient emission
 		//direction can be rotated by the same amount as the position further down.
@@ -20061,43 +20222,9 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			path_position = (float)node + t;
 			tfx__catmull_rom_spline_3d_soa(path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, node, t, &point.x);
 		}
-		else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) {
-			float &grid_coord = emitter.path_state.path_quaternions[qi].grid_coord;
-			bool new_path = false;
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
-				grid_coord += increment;
-				if (grid_coord >= total_grid_points) {
-					grid_coord = 0.f;
-					new_path = true;
-				}
-			}
-			else if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise)) {
-				grid_coord -= increment;
-				if (grid_coord < 0) {
-					grid_coord = total_grid_points - increment;
-					new_path = true;
-				}
-			}
-			if (new_path) {
-				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && path->settings.rotation_stagger == 0) {
-					if (path->settings.maximum_paths == 0 || emitter.path_state.path_cycle_count > 0) {
-						tfx_quaternion_t q = tfx__pick_path_rotation(&emitter, &path->settings, qi, &random);
-						emitter.path_state.path_quaternions[qi].quaternion = tfx__pack16bit_quaternion(q);
-						emitter.path_state.path_cycle_count--;
-					}
-					else {
-						dead_paths++;
-						emitter.path_state.path_quaternions[qi].cycles = tfxINVALID;
-						entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
-					}
-				}
-				else {
-					emitter.path_state.path_quaternions[qi].cycles = tfxINVALID;
-					dead_paths++;
-				}
-			}
-			node = (int)grid_coord;
-			t = grid_coord - node;
+		else if (in_order) {
+			node = (int)slot->grid_coord;
+			t = slot->grid_coord - node;
 			path_position = (float)node + t;
 			tfx__catmull_rom_spline_3d_soa(path->buffers.node_soa.x, path->buffers.node_soa.y, path->buffers.node_soa.z, node, t, &point.x);
 		}
@@ -20149,17 +20276,9 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 
-		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && emitter.path_state.active_paths > 0) {
-			if (emitter.path_state.path_quaternions[qi].cycles == tfxINVALID) {
-				entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
-				emitter.path_state.last_path_index++;
-				emitter.path_state.last_path_index %= emitter.path_state.active_paths;
-				qi = (emitter.path_state.path_start_index + emitter.path_state.last_path_index) % path->settings.maximum_active_paths;
-				TFX_ASSERT(qi < path->settings.maximum_active_paths);
-				continue;
-			}
-			tfx_quaternion_t q = tfx__unpack16bit_quaternion(emitter.path_state.path_quaternions[qi].quaternion);
-			entry->particle_data->quaternion[index] = emitter.path_state.path_quaternions[qi].quaternion;
+		if (rotated) {
+			tfx_quaternion_t q = tfx__unpack16bit_quaternion(slot->rotation);
+			entry->particle_data->quaternion[index] = slot->rotation;
 			path_rotation = q;
 			has_path_rotation = true;
 			tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
@@ -20167,10 +20286,6 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			local_position_x = rp.x;
 			local_position_y = rp.y;
 			local_position_z = rp.z;
-			emitter.path_state.last_path_index++;
-			emitter.path_state.last_path_index %= emitter.path_state.active_paths;
-			qi = (emitter.path_state.path_start_index + emitter.path_state.last_path_index) % path->settings.maximum_active_paths;
-			TFX_ASSERT(qi < path->settings.maximum_active_paths);
 		}
 
 		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -20204,25 +20319,6 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 		tween += entry->qty_step_size;
 	}
-
-	if (dead_paths > 0 && emitter.path_state.active_paths > 0) {
-		tfxU32 offset = 0;
-		for (int qi = emitter.path_state.active_paths - 1; qi >= 0; --qi) {
-			int index = (emitter.path_state.path_start_index + qi) % path->settings.maximum_active_paths;
-			if (emitter.path_state.path_quaternions[index].cycles == tfxINVALID) {
-				offset++;
-			}
-			else if (offset > 0) {
-				tfxU32 next_index = (qi + offset + emitter.path_state.path_start_index) % path->settings.maximum_active_paths;
-				TFX_ASSERT(next_index < path->settings.maximum_active_paths);
-				emitter.path_state.path_quaternions[next_index] = emitter.path_state.path_quaternions[index];
-			}
-		}
-		emitter.path_state.path_start_index = (emitter.path_state.path_start_index + offset) % path->settings.maximum_active_paths;
-		emitter.path_state.active_paths -= tfx__Min(emitter.path_state.active_paths, offset);
-		emitter.path_state.last_path_index = 0;
-	}
-
 }
 
 /*

@@ -1903,8 +1903,8 @@ Locations are in world space. Particles from emitters set to relative position f
 effect rotation still applies) and are removed along with it, which suits things like a glow on each ship. Relative particles at a transient
 location only last one update.
 One thing is shared rather than per location: an emitter set to spawn on a grid marches a single grid position for the whole emitter, so the
-locations take it in turns through the grid instead of each getting a grid of their own. The same goes for a path emitter's rotated paths:
-every location shares the emitter's active paths, and a maximum paths limit is used up across all of them rather than per location.
+locations take it in turns through the grid instead of each getting a grid of their own. Path emitters are the exception: each location gets
+its own rotated paths, rotation cycles, stagger, maximum paths and grid march, as if the effect were playing on its own there.
 Ribbons are always world space here: a ribbon is anchored where its location was when it spawned and stays there for its life, so relative
 position is ignored for a ribbon emitter spawning at user locations, and so is ribbon lag, which needs it.
 The spawn amount of an emitter is per location and is taken from its amount graph at that location's age, so a burst that fades out does so
