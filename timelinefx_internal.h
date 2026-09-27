@@ -3310,6 +3310,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_enable_morph    						= 1 << 5,
 	tfxRibbonPropertyFlags_enable_noise    						= 1 << 6,
 	tfxRibbonPropertyFlags_enable_lag      						= 1 << 7,
+	tfxRibbonPropertyFlags_orient_to_surface_normal			    = 1 << 8,
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
@@ -5475,7 +5476,6 @@ typedef struct tfx_quaternion_s {
 
 tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t * q);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
-tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t * normalised_dir);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
 typedef struct tfx_bounding_box_s {
@@ -6991,6 +6991,18 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 particle_uid;
 	tfxU32 spawn_ordinal;				//Particles the emitter spawned before this batch, drives the stepped angle distributions
 }tfx_spawn_work_entry_t;
+
+//Sampled once per spawn batch so each ribbon only has to pick a point
+typedef struct tfx_ribbon_spawn_shape_s {
+	tfx_emission_type emission_type;
+	tfx_vec3_t emitter_size;
+	tfx_vec3_t half_emitter_size;
+	float arc_size;
+	float arc_offset;
+	float dome_cosine_upper;
+	float dome_cosine_lower;
+	bool fill_area;
+}tfx_ribbon_spawn_shape_t;
 
 typedef struct tfx_ribbon_work_entry_s {
 	tfx_random_t random;

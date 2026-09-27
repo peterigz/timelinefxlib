@@ -1163,33 +1163,6 @@ tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, floa
 	return tfx_quaternion_t(cosf(half_angle), x * sin_half_angle, y * sin_half_angle, z * sin_half_angle);
 }
 
-tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir) {
-	// Initial direction (default y-axis) because this is how paths are generated
-	tfx_vec3_t initial_dir = { 0.0f, 1.0f, 0.0f };
-
-	// Calculate rotation axis
-	tfx_vec3_t rotation_axis = tfx__cross_product_vec3(initial_dir, *normalised_dir);
-	rotation_axis = tfx__normalize_vec3_fast(&rotation_axis);
-
-	// Calculate dot product
-	float dot_product = tfx__dot_product_vec3(&initial_dir, normalised_dir);
-
-	// Calculate rotation angle
-	float angle = acosf(dot_product);  // Angle between initial_dir and normalised_dir
-	float half_angle = angle / 2.0f;
-	float sin_half_angle = sinf(half_angle);
-
-	// Construct quaternion
-	tfx_quaternion_t result(
-		cosf(half_angle),                    // w
-		rotation_axis.x * sin_half_angle,    // x
-		rotation_axis.y * sin_half_angle,    // y
-		rotation_axis.z * sin_half_angle     // z
-	);
-
-	return tfx__normalize_quaternion(&result);
-}
-
 tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth) {
 	// Calculate the gradient of the ellipse equation
 	float dx = 2.f * x / (width * width);
@@ -2600,7 +2573,7 @@ tfx_effect_descriptor tfx__add_new_ribbon_to_effect(tfx_effect_descriptor effect
 	path->settings.extrusion_type = tfxExtrusionLinear;
 	tfx__build_path_nodes(path);
 	ribbon->ribbon_flags |= tfxRibbonPropertyFlags_static;
-	ribbon->library->shared_properties[ribbon->state_properties.shared_index].emission_type = tfxPath;
+	ribbon->library->shared_properties[ribbon->state_properties.shared_index].emission_type = tfxPoint;
 	ribbon->library->ribbon_properties[ribbon->state_properties.property_index].bucket_info.segment_count = 128;
 	tfx__update_ribbon_bucket_id(ribbon);
 	ribbon->state_properties.shared_flags = 0;
@@ -5822,6 +5795,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_noise_algorithm", tfxUInt);
 	names_and_types.Insert("ribbon_noise_octaves", tfxUInt);
 	names_and_types.Insert("ribbon_lag", tfxBool);
+	names_and_types.Insert("ribbon_orient_to_surface_normal", tfxBool);
 	names_and_types.Insert("ribbon_lag_time", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
@@ -6953,6 +6927,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "ribbon_path_morph") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_morph);
 	else if (property_name == "ribbon_noise") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise);
 	else if (property_name == "ribbon_lag") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_enable_lag);
+	else if (property_name == "ribbon_orient_to_surface_normal") value.Setf("%i", effect->ribbon_flags & tfxRibbonPropertyFlags_orient_to_surface_normal);
 	if (property_name == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->state_properties.path_attributes]; value.Setf("%i", path->settings.flags & tfxPathFlags_mode_origin);
 	} else if (property_name == "path_mode_node") {
@@ -7360,6 +7335,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_noise; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_noise; }
 	} else if (*field == "ribbon_lag") {
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_lag; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_lag; }
+	} else if (*field == "ribbon_orient_to_surface_normal") {
+		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_orient_to_surface_normal; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_orient_to_surface_normal; }
 	} else if (*field == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)]; if (value) { path->settings.flags |= tfxPathFlags_mode_origin; path->settings.flags &= ~tfxPathFlags_mode_node; } else { path->settings.flags &= ~tfxPathFlags_mode_origin; }
 	} else if (*field == "path_mode_node") {
@@ -7513,6 +7490,7 @@ void tfx__stream_ribbon_emitter_properties(tfx_effect_descriptor emitter, tfx_sh
 	file->AddLine("ribbon_noise_algorithm=%i", ribbon_properties->noise_algorithm);
 	file->AddLine("ribbon_noise_octaves=%i", ribbon_properties->noise_octaves);
 	file->AddLine("ribbon_lag=%i", (ribbon_flags & tfxRibbonPropertyFlags_enable_lag));
+	file->AddLine("ribbon_orient_to_surface_normal=%i", (ribbon_flags & tfxRibbonPropertyFlags_orient_to_surface_normal));
 	file->AddLine("ribbon_lag_time=%f", ribbon_properties->lag_time);
 	file->AddLine("color_interpolation_mode=%i", emitter->library->graphs[emitter->state_properties.graph_list_index].color_ramps.interpolation_mode);
 }
@@ -11922,11 +11900,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.segment_count = ribbon_properties.bucket_info.segment_count;
 		//Must mirror the density derived in tfx__add_effect_to_stage: the recorded segments are stored at that
 		//density and ribbons.comp indexes them by sample_count, not segment_count.
-		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
-		properties.sample_count = properties.segment_count;
-		if (shared_properties && shared_properties->emission_type == tfxPath) {
-			properties.sample_count = properties.segment_count * tfx__get_ribbon_samples_per_segment(&effect->library->graphs[effect->state_properties.graph_list_index]);
-		}
+		properties.sample_count = properties.segment_count * tfx__get_ribbon_samples_per_segment(&effect->library->graphs[effect->state_properties.graph_list_index]);
 		properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
 		//Overwritten in tfx_AddSpriteData for emitters that recorded a morph block. Zero is a valid segment
 		//index so the no morph case cannot be left to the value initialisation above.
@@ -12945,22 +12919,19 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.lag_history_head = 0;
 	ribbon_emitter.lag_history_count = 0;
 	ribbon_emitter.state_flags = ribbon_emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxRibbonEmitterStateFlags_orient_to_camera_pending : 0;
-	ribbon_emitter.samples_per_segment = 1;
-	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count;
 	ribbon_emitter.morph_segment_start_index = tfxINVALID;
-	if (shared_properties->emission_type == tfxPath) {
-		tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
-		ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
-		ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
-		//Emitters sharing a path but wanting different sample densities must not share a cached array
-		tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
-		tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
-		ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
-		if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
-			tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
-			tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
-			ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
-		}
+	TFX_ASSERT(ribbon_emitter.state_properties.path_attributes != tfxINVALID);
+	tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
+	ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
+	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
+	//Emitters sharing a path but wanting different sample densities must not share a cached array
+	tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+	tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
+	ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
+	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
+		tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
+		tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
+		ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
 	}
 }
 
@@ -13027,7 +12998,7 @@ tfxINTERNAL bool tfx__ribbon_emitter_spawns_relative(tfx_stage pm, const tfx_rib
 		return false;
 	}
 	const bool at_user_locations = (pm->effects[ribbon_emitter.parent_index].state_flags & tfxEffectStateFlags_user_spawn_locations) != 0;
-	return !(at_user_locations && ribbon_emitter.library->shared_properties[ribbon_emitter.state_properties.shared_index].emission_type == tfxPath);
+	return !at_user_locations;
 }
 
 //After an effect in a stage has had it's emitters release, this is used to rebuild them again
@@ -13350,7 +13321,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	if (shared_properties->emission_type == tfxSpawnOnRibbon) {
 		if (tfx__is_valid_effect_key(emitter->library, shared_properties->paired_emitter_hash)) {
 			tfx_effect_descriptor ribbon_emitter = tfx__get_library_effect_by_key(emitter->library, shared_properties->paired_emitter_hash);
-			if (ribbon_emitter->type == tfxRibbonType && tfx__get_shared_emitter_properties(ribbon_emitter)->emission_type == tfxPath) {
+			if (ribbon_emitter->type == tfxRibbonType) {
 				emitter->state_properties.control_profile |= tfxEmitterControlProfile_other_ribbon_emitter_path;
 			}
 		}
@@ -13538,10 +13509,8 @@ bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter) {
 					tfx_gpu_ribbon_emitter_t *gpu_properties = &pm->gpu_ribbon_emitters[pm->ribbon_emitters[e].state_properties.gpu_property_index];
 					gpu_properties->fixed_angle_normal = tfx__get_ribbon_emitter_properties(emitter)->fixed_angle_normal;
 
-					if (shared_properties.emission_type == tfxPath) {
-						tfx_emitter_path_t *path = &pm->ribbon_emitters[e].library->paths[emitter->state_properties.path_attributes];
-						state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
-					}
+					tfx_emitter_path_t *path = &pm->ribbon_emitters[e].library->paths[emitter->state_properties.path_attributes];
+					state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
 
 					if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
 						emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
@@ -17560,7 +17529,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	ribbon_work_entry->user_spawn_locations = nullptr;
 	ribbon_work_entry->user_spawn_run_count = 0;
-	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && ribbon_work_entry->shared_properties->emission_type == tfxPath) {
+	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations) {
 		ribbon_work_entry->user_spawn_locations = parent_effect.user_spawn_locations;
 	}
 
@@ -17681,7 +17650,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		ribbon_work_entry->user_spawn_run_count = tfx__share_user_spawn_runs(&ribbon_work_entry->ribbon_bucket->user_spawn_runs, ribbon_work_entry->user_spawn_run_start, ribbon_work_entry->user_spawn_run_count, ribbon_work_entry->amount_to_spawn, single, &ribbon_emitter.user_spawn_amount_phase);
 	}
 
-	if (!(ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_single_shot_done) && ribbon_work_entry->shared_properties->emission_type == tfxPath && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
+	if (!(ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_single_shot_done) && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
 		tfx__spawn_static_ribbons(ribbon_emitter_index, &pm->work_queue, data);
 	}
 
@@ -20373,6 +20342,81 @@ void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment
 	}
 }
 
+tfxINTERNAL tfx_ribbon_spawn_shape_t tfx__setup_ribbon_spawn_shape(const tfx_ribbon_emitter_state_t &ribbon_emitter, tfx_emission_type emission_type) {
+	tfx_ribbon_spawn_shape_t shape = {};
+	shape.emission_type = emission_type;
+	shape.emitter_size = ribbon_emitter.emitter_size;
+	shape.half_emitter_size = ribbon_emitter.emitter_size * .5f;
+	shape.fill_area = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) != 0;
+	if (emission_type == tfxEllipse || emission_type == tfxCylinder) {
+		tfx_graph_list_t &graph_list = ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
+		shape.arc_size = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_size_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+		shape.arc_offset = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_offset_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	}
+	if (emission_type == tfxEllipse) {
+		//Same polar band as the particle ellipsoid: arc offset starts the sweep down from +y and arc size is its span
+		float dome_polar_start = tfx__Clamp(0.f, tfxPI, shape.arc_offset);
+		float dome_polar_end = tfx__Clamp(dome_polar_start, tfxPI, shape.arc_offset + shape.arc_size);
+		shape.dome_cosine_upper = cosf(dome_polar_start);
+		shape.dome_cosine_lower = cosf(dome_polar_end);
+	}
+	return shape;
+}
+
+//Rotation that takes a path's +y axis onto normalised_direction
+tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_up_to(const tfx_vec3_t &normalised_direction) {
+	if (normalised_direction.y < -0.9999f) {
+		return tfx_quaternion_t(0.f, 1.f, 0.f, 0.f);
+	}
+	tfx_quaternion_t result(1.f + normalised_direction.y, -normalised_direction.z, 0.f, normalised_direction.x);
+	return tfx__normalize_quaternion(&result);
+}
+
+//Offset from the emitter origin in emitter space, before any emitter or location rotation. surface_normal is left
+//unnormalised and is zero where the shape has no normal.
+tfxINTERNAL tfx_vec3_t tfx__ribbon_spawn_shape_offset(const tfx_ribbon_spawn_shape_t &shape, tfx_random_t *random, tfx_vec3_t *surface_normal) {
+	const tfx_vec3_t &half_emitter_size = shape.half_emitter_size;
+	*surface_normal = tfx_vec3_t();
+	switch (shape.emission_type) {
+	case tfxArea:
+		return {
+			tfx_RandomRangeFromTo(random, -half_emitter_size.x, half_emitter_size.x),
+			tfx_RandomRangeFromTo(random, -half_emitter_size.y, half_emitter_size.y),
+			tfx_RandomRangeFromTo(random, -half_emitter_size.z, half_emitter_size.z)
+		};
+	case tfxEllipse: {
+		float theta = tfx_RandomRangeZeroToMax(random, tfxPI2);
+		float cos_phi = tfx_RandomRangeFromTo(random, shape.dome_cosine_lower, shape.dome_cosine_upper);
+		//cbrt gives an even spread through the volume
+		float radius = shape.fill_area ? powf(tfx_RandomRangeZeroToMax(random, 1.f), 1.f / 3.f) : 1.f;
+		float sin_phi = sqrtf(tfx__Max(0.f, 1.f - cos_phi * cos_phi));
+		tfx_vec3_t unit_direction = { sin_phi * cosf(theta), cos_phi, sin_phi * sinf(theta) };
+		//The ellipsoid gradient scaled by the product of the half sizes, so a flat axis doesn't divide by zero
+		*surface_normal = {
+			unit_direction.x * half_emitter_size.y * half_emitter_size.z,
+			unit_direction.y * half_emitter_size.x * half_emitter_size.z,
+			unit_direction.z * half_emitter_size.x * half_emitter_size.y
+		};
+		return half_emitter_size * unit_direction * radius;
+	}
+	case tfxCylinder: {
+		float theta = tfx_RandomRangeZeroToMax(random, shape.arc_size) + shape.arc_offset;
+		//sqrt gives an even spread across the disc
+		float radius = shape.fill_area ? sqrtf(tfx_RandomRangeZeroToMax(random, 1.f)) : 1.f;
+		float cos_theta = cosf(theta);
+		float sin_theta = sinf(theta);
+		*surface_normal = { cos_theta * half_emitter_size.z, 0.f, -sin_theta * half_emitter_size.x };
+		return {
+			cos_theta * half_emitter_size.x * radius,
+			tfx_RandomRangeZeroToMax(random, shape.emitter_size.y),
+			-sin_theta * half_emitter_size.z * radius
+		};
+	}
+	default:
+		return {};
+	}
+}
+
 void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
@@ -20387,6 +20431,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	const float life = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
 	const float life_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
 	float base_width = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->size_x;
+	const float width_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
 
 	tfx_emitter_path_t *morph_path = nullptr;
 	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
@@ -20428,7 +20473,8 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		}
 	}
 
-	bool is_offset = !ribbon_emitter.emitter_size.IsNill();
+	const bool has_spawn_shape = entry->amount_to_spawn > 0 && entry->shared_properties->emission_type != tfxPoint && !ribbon_emitter.emitter_size.IsNill();
+	const tfx_ribbon_spawn_shape_t spawn_shape = has_spawn_shape ? tfx__setup_ribbon_spawn_shape(ribbon_emitter, entry->shared_properties->emission_type) : tfx_ribbon_spawn_shape_t{};
 
 	if (ribbon_emitter.static_segment_start_index != tfxINVALID) {
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
@@ -20452,6 +20498,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			}
 		}
 		bool locations_have_rotation = runs && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
+		//A ribbon spawned at a user location is anchored where the location was, so it takes the location and emitter rotation at spawn
+		//rather than the per frame transform a relative ribbon gets from its emitter
+		const bool relative_ribbons = !runs && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position;
+		const bool orient_to_surface_normal = has_spawn_shape && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_orient_to_surface_normal;
 		tfx_quaternion_t spawn_rotation = ribbon_emitter.rotation;
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 ribbon_index = tfx__grab_ribbon(&pm, ribbon_bucket, &ribbon_emitter);
@@ -20480,19 +20530,16 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					tfx__begin_angle_steps(&rotation_step_iterator, &rotation_steps, path->settings.rotation_range, path->settings.rotation_yaw, *spawn_ordinal, ribbon_emitter.seed_index);
 				}
 				run_spawned++;
-			} else if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+			} else if (relative_ribbons) {
 				ribbon.position = tfx_vec4_t();
 			} else {
 				ribbon.position = ribbon_emitter.world_position;
 			}
-			if (is_offset) {
-				tfx_vec3_t half_emitter_size = ribbon_emitter.emitter_size * .5f;
-				tfx_vec3_t offset = {
-					tfx_RandomRangeFromTo(&random, -half_emitter_size.x, half_emitter_size.x),
-					tfx_RandomRangeFromTo(&random, -half_emitter_size.y, half_emitter_size.y),
-					tfx_RandomRangeFromTo(&random, -half_emitter_size.z, half_emitter_size.z)
-				};
-				ribbon.position += offset;
+			tfx_vec3_t surface_normal;
+			if (has_spawn_shape) {
+				tfx_vec3_t offset = tfx__ribbon_spawn_shape_offset(spawn_shape, &random, &surface_normal) * entry->overall_scale;
+				//Relative ribbons are rotated by the emitter on the GPU
+				ribbon.position += relative_ribbons ? offset : tfx__rotate_vector_quaternion(&spawn_rotation, offset);
 			}
 			if (splatter) {
 				tfx_vec3_t splat = {
@@ -20516,8 +20563,15 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			} else {
 				q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			}
+			if (orient_to_surface_normal) {
+				float normal_length_squared = tfx__dot_product_vec3(&surface_normal, &surface_normal);
+				if (normal_length_squared > 0.f) {
+					tfx_vec3_t normal = surface_normal * (1.f / sqrtf(normal_length_squared));
+					q = q * tfx__quaternion_from_up_to(normal);
+				}
+			}
 			ribbon.texture_indexes = texture_indexes;
-			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time));
+			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, width_variation);
 			ribbon.position.w = 0.f;
 			ribbon.start_index = ribbon_emitter.static_segment_start_index;
 			//Assign (not OR) so a slot recycled from the shared bucket free-list starts clean. Otherwise a stale
@@ -20525,9 +20579,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			//emitter reuses the slot, making the GPU treat it as relative and rotate/offset its (already world-space)
 			//position by the emitter transform - the ribbon then jumps to a far off location.
 			ribbon.flags = tfxRibbonFlags_active;
-			//A ribbon spawned at a user location is anchored where the location was, so it takes the location and emitter rotation at spawn
-			//rather than the per frame transform a relative ribbon gets from its emitter
-			if (!runs && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+			if (relative_ribbons) {
 				ribbon.flags |= tfxRibbonFlags_relative;
 			} else {
 				q = q * spawn_rotation;
@@ -21038,11 +21090,14 @@ void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &
 	ribbon.bounding_box.max_corner.y = -FLT_MAX;
 	ribbon.bounding_box.max_corner.z = -FLT_MAX;
 
-	ribbon.emitter_size.x = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_width_index], ribbon.age, ribbon.oscillator_time);
-	ribbon.emitter_size.y = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_height_index], ribbon.age, ribbon.oscillator_time);
-	ribbon.emitter_size.z = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_depth_index], ribbon.age, ribbon.oscillator_time);
-
-	ribbon.emitter_size *= pm->effects[parent_index].emitter_size;
+	if (entry->shared_properties->emission_type == tfxPoint) {
+		ribbon.emitter_size = tfx_vec3_t();
+	} else {
+		ribbon.emitter_size.x = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_width_index], ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size.y = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_height_index], ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size.z = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_depth_index], ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size *= pm->effects[parent_index].emitter_size;
+	}
 
 	ribbon.handle = { 0 };
 	if (!(ribbon.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
