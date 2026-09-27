@@ -13021,7 +13021,6 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 	}
 }
 
-//After an effect in a stage has had it's emitters release, this is used to rebuild them again
 //Ribbons spawned at user locations are anchored in world space whatever the ribbon emitter's relative setting
 tfxINTERNAL bool tfx__ribbon_emitter_spawns_relative(tfx_stage pm, const tfx_ribbon_emitter_state_t &ribbon_emitter) {
 	if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -13031,6 +13030,7 @@ tfxINTERNAL bool tfx__ribbon_emitter_spawns_relative(tfx_stage pm, const tfx_rib
 	return !(at_user_locations && ribbon_emitter.library->shared_properties[ribbon_emitter.state_properties.shared_index].emission_type == tfxPath);
 }
 
+//After an effect in a stage has had it's emitters release, this is used to rebuild them again
 tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effect_id, tfx_effect_descriptor effect) {
 	tfx_effect_state_t &effect_state = pm->effects[effect_id];
 	tfxU32 parent_index = effect_id;
