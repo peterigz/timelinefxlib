@@ -2781,101 +2781,44 @@ tfxINTERNAL tfx_vec3_t tfx__apply_emission_step(tfx_vec3_t direction, tfx_vec3_t
 	return direction * emission_step->cos_tilt + radial * emission_step->sin_tilt;
 }
 
-//emission_origin is the world point the particle spawned around, which is the emitter for an ordinary emitter and the particle's user
-//spawn location when the effect spawns at user locations
-tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emission_origin, const tfx_emission_step_t *emission_step) {
+//spawn_offset is where the particle spawned relative to the emitter, in the emitter's own frame and before overall scale, handle included.
+//Every base direction is built in that frame so the pitch/yaw offset and the emitter rotation apply the same way whether or not the
+//emitter is relative.
+tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t spawn_offset, const tfx_emission_step_t *emission_step) {
 	float emission_angle_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.age, emitter.oscillator_time);
 	//----Emission
 	float range = emission_angle_variation * .5f;
 
-	tfx_vec3_t result;
-	tfx_vec3_t tmp_position;
-	if (emitter.handle.x + local_position.x == 0 && emitter.handle.y + local_position.y == 0 && emitter.handle.z + local_position.z == 0)
-		tmp_position = emitter.emitter_size;
-	else
-		tmp_position = local_position + emitter.handle;
+	//A particle spawned exactly on the pivot has no direction of its own
+	tfx_vec3_t radial = spawn_offset.x == 0 && spawn_offset.y == 0 && spawn_offset.z == 0 ? emitter.emitter_size : spawn_offset;
+	tfx_vec3_t shape_position = spawn_offset - emitter.handle;
 
 	tfx_emission_type emission_type = library->shared_properties[emitter.state_properties.shared_index].emission_type;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.state_properties.property_index].emission_direction;
 
 	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
-	bool apply_world_rotation = false;
 	if (emission_type != tfxPoint) {
 		if (emission_direction == tfxOutwards) {
-
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)
-				to_handle = tmp_position;
-			else
-				to_handle = world_position - emission_origin;
-
-			to_handle = tfx__normalize_vec3(&to_handle);
-
+			to_handle = tfx__normalize_vec3(&radial);
 		}
 		else if (emission_direction == tfxInwards) {
-
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)
-				to_handle = -tmp_position;
-			else
-				to_handle = emission_origin - world_position;
-
+			to_handle = -radial;
 			to_handle = tfx__normalize_vec3(&to_handle);
-
 		}
 		else if (emission_direction == tfxBothways) {
-
-			if (emitter.emission_alternator) {
-
-				if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)
-					to_handle = tmp_position;
-				else
-					to_handle = world_position - emission_origin;
-			}
-			else {
-
-				if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)
-					to_handle = -tmp_position;
-				else
-					to_handle = emission_origin - world_position;
-			}
-
+			to_handle = emitter.emission_alternator ? radial : -radial;
 			emitter.emission_alternator = !emitter.emission_alternator;
 			to_handle = tfx__normalize_vec3(&to_handle);
 		}
-		else if (emission_direction == tfxSurface && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
-			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
-				to_handle = tfx__ellipse_surface_normal(local_position.x, local_position.y, local_position.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
-			}
-			else if (emission_type == tfxCylinder) {
-				float radius_x = emitter.emitter_size.x * .5f;
-				float radius_z = emitter.emitter_size.z * .5f;
-				to_handle = tfx__cylinder_surface_normal(local_position.x - emitter.handle.x, local_position.z - emitter.handle.z, radius_x, radius_z);
-			}
-			else if (emission_type == tfxDisc) {
-				//A flat disc has no curved surface to take a normal from, so Surface fires perpendicular off its face
-				to_handle = tfx_vec3_t(0.f, 1.f, 0.f);
-			}
-		}
 		else if (emission_direction == tfxSurface) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
-				to_handle = tfx__ellipse_surface_normal(local_position.x - emission_origin.x - emitter.handle.x, local_position.y - emission_origin.y - emitter.handle.y, local_position.z - emission_origin.z - emitter.handle.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
+				to_handle = tfx__ellipse_surface_normal(shape_position.x, shape_position.y, shape_position.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
 			}
 			else if (emission_type == tfxCylinder) {
-				float radius_x = emitter.emitter_size.x * .5f;
-				float radius_z = emitter.emitter_size.z * .5f;
-				to_handle = tfx__cylinder_surface_normal(local_position.x - emission_origin.x - emitter.handle.x, local_position.z - emission_origin.z - emitter.handle.z, radius_x, radius_z);
+				to_handle = tfx__cylinder_surface_normal(shape_position.x, shape_position.z, emitter.emitter_size.x * .5f, emitter.emitter_size.z * .5f);
 			}
-			else if (emission_type == tfxDisc) {
-				//The face normal is authored in the emitters own frame, so it needs the emitter rotation to reach world space
-				to_handle = tfx_vec3_t(0.f, 1.f, 0.f);
-				apply_world_rotation = true;
-			}
+			//A flat disc has no curved surface to take a normal from, so Surface fires perpendicular off its face
 		}
-		else {
-			apply_world_rotation = true;
-		}
-	}
-	else {
-		apply_world_rotation = true;
 	}
 
 	float sin_pitch = sinf(emission_pitch);
@@ -2899,9 +2842,9 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_stage pm, tfx_library library, tfx
 		//Camera facing turns local +Y to the camera with -X as screen up, so remap to look like an unrotated emitter seen from its +Z side
 		v = tfx_vec3_t(-v.y, v.z, -v.x);
 	}
-	//Bake in the emitter's world rotation for Specified/Point emission (non-relative only). The pitch/yaw offset
-	//above was applied in the emitter's local frame; rotating afterwards carries it into world space.
-	if (apply_world_rotation && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+	//Non relative particles live in world space so the emitter rotation is baked in here. A user location's own rotation goes on
+	//top later in tfx__spawn_particle_user_location_tweaks.
+	if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		v = tfx__rotate_vector_quaternion(&emitter.rotation, v);
 	}
 	float cone = emission_step ? emission_step->jitter_cone : range;
@@ -20946,6 +20889,19 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	tfxU32 user_spawn_cursor = 0;
 	tfxU32 user_spawn_run_end = measure_from_user_location ? pm.user_spawn_runs[entry->user_spawn_run_start].count : 0;
 
+	//Non relative spawners leave the particle in world space at anchor + spawn rotation * (local + handle) * overall scale. Undoing that
+	//recovers the offset in the emitter's own frame that the emission direction is built from.
+	const bool direction_from_position = emission_type != tfxPoint && (emission_direction == tfxOutwards || emission_direction == tfxInwards || emission_direction == tfxBothways || emission_direction == tfxSurface);
+	const bool position_in_world = direction_from_position && !line && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal);
+	const bool locations_rotate_spawn = measure_from_user_location && (entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation);
+	const float inverse_overall_scale = entry->overall_scale != 0.f ? 1.f / entry->overall_scale : 0.f;
+	tfx_quaternion_t inverse_spawn_rotation = emitter.rotation;
+	inverse_spawn_rotation.x = -inverse_spawn_rotation.x;
+	inverse_spawn_rotation.y = -inverse_spawn_rotation.y;
+	inverse_spawn_rotation.z = -inverse_spawn_rotation.z;
+	tfxU32 inverse_rotation_cursor = tfxINVALID;
+	double tween = entry->tween;
+
 	const tfx_angle_steps_t &emission_steps = entry->properties->emission_steps;
 	const bool stepped_emission = tfx__emission_is_stepped(entry->properties, emission_type);
 	const bool restart_emission_steps = (emission_steps.flags & tfxAngleStepFlags_restart_each_spawn) > 0;
@@ -21006,22 +20962,26 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 
-		tfx_vec3_t world_position;
-		if (!line && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal)) {
-				world_position.x = local_position_x;
-				world_position.y = local_position_y;
-				world_position.z = local_position_z;
+		tfx_vec3_t spawn_offset = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
+		if (position_in_world) {
+			if (locations_rotate_spawn && user_spawn_cursor != inverse_rotation_cursor) {
+				inverse_rotation_cursor = user_spawn_cursor;
+				const tfx_user_spawn_location_t &location = entry->user_spawn_locations->locations[pm.user_spawn_runs[entry->user_spawn_run_start + user_spawn_cursor].slot];
+				inverse_spawn_rotation = tfx__unpack16bit_quaternion(location.packed_rotation) * emitter.rotation;
+				inverse_spawn_rotation.x = -inverse_spawn_rotation.x;
+				inverse_spawn_rotation.y = -inverse_spawn_rotation.y;
+				inverse_spawn_rotation.z = -inverse_spawn_rotation.z;
 			}
-			else {
-				tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle);
-				world_position = emission_origin + rotatevec * entry->overall_scale;
-			}
+			//The same tweened anchor the shape spawner placed the particle around, so a moving emitter doesn't skew the direction
+			tfx_vec3_t spawn_anchor = measure_from_user_location ? emission_origin : tfx__interpolate_vec3((float)tween, emitter.captured_position, emitter.world_position);
+			tfx_vec3_t world_offset = (tfx_vec3_t(local_position_x, local_position_y, local_position_z) - spawn_anchor) * inverse_overall_scale;
+			spawn_offset = tfx__rotate_vector_quaternion(&inverse_spawn_rotation, world_offset);
 		}
+		tween += entry->qty_step_size;
 
 		tfx_vec3_t velocity_normal;
 		if (emission_type == tfxPoint) {
-			velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin, particle_emission_step);
+			velocity_normal = tfx__get_emission_direction_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, spawn_offset, particle_emission_step);
 			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		}
 		else if (emission_direction != tfxPathGradient) {
@@ -21030,7 +20990,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			}
 			else if ((emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface))) {
 				//----Velocity
-				velocity_normal = tfx__get_emission_direciton_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position, emission_origin, particle_emission_step);
+				velocity_normal = tfx__get_emission_direction_3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, spawn_offset, particle_emission_step);
 				velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 			}
 		} else {
