@@ -478,7 +478,8 @@ typedef enum {
 	tfxErrorCode_library_object_could_not_be_created            = 1 << 14,
 	tfxErrorCode_some_images_loaded_without_user_ptr            = 1 << 15,
 	tfxErrorCode_folder_effect_data_not_found     				= 1 << 16,
-	tfxErrorCode_could_not_find_valid_effect_data_in_folder     = 1 << 17
+	tfxErrorCode_could_not_find_valid_effect_data_in_folder     = 1 << 17,
+	tfxErrorCode_shapes_changed_on_disk                         = 1 << 18	//Not a failure: an image was edited outside the editor and its emitters were remapped to it
 } tfx_error_flag_bits;
 
 //Errors that mean nothing at all could be read, as opposed to a partially loaded library
@@ -978,6 +979,7 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 	tfxErrorCode_some_images_loaded_without_user_ptr
+	tfxErrorCode_shapes_changed_on_disk
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 

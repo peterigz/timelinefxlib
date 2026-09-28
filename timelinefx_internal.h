@@ -8677,7 +8677,7 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 	tfxWideFloat scale = tfxWideMul(force->strength,
 		tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
 
-	//So that it accelerates more the closer it is
+	//Scaled by distance so the pull grows towards the edge of the field and eases off near the origin
 	scale = tfxWideMul(scale, distance);
 
 	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);

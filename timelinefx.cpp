@@ -10211,6 +10211,14 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	}
 
 	tfxKey first_shape_hash = 0;
+	bool library_kept_shapes = lib->particle_shapes.Size() != 0;
+
+	//A shape file edited outside the editor hashes differently to the row that names it
+	struct changed_shape_hash_t {
+		tfxKey recorded_hash;
+		tfxKey loaded_hash;
+	};
+	tmpStack(changed_shape_hash_t, changed_shape_hashes);
 
 	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
@@ -10395,7 +10403,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 					//A reload empties the library but keeps its shapes, so the ones the file still names are
 					//already here with the host's own pointer in them. Loading one again would hand the host a
 					//second copy of an image it never asked to reload.
-					bool already_loaded = image_data.image_hash && lib->particle_shapes.ValidKey(image_data.image_hash);
+					//Only shapes held from before this load count, or swapped shape files would match each other's recorded hash
+					bool already_loaded = library_kept_shapes && image_data.image_hash && lib->particle_shapes.ValidKey(image_data.image_hash);
 					if (already_loaded && first_shape_hash == 0) {
 						first_shape_hash = image_data.image_hash;
 					}
@@ -10415,7 +10424,11 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 							}
 						}
 					} else if (shape_entry) {
+						tfxKey recorded_hash = image_data.image_hash;
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
+						if (recorded_hash && recorded_hash != image_data.image_hash) {
+							changed_shape_hashes.push_back({ recorded_hash, image_data.image_hash });
+						}
 						if (image_data.format == tfx_image_format_unknown) {
 							image_data.format = tfx__detect_image_format(shape_entry->data.data, shape_entry->file_size);
 						}
@@ -10518,6 +10531,18 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		}
 		tfx__update_all_library_graphs(lib);
 		tfx__reindex_library(lib);
+		//Point emitters at the edited image before the reference pass would swap them to the fallback shape
+		for (tfx_shared_properties_t &shared_properties : lib->shared_properties) {
+			for (changed_shape_hash_t &changed_shape : changed_shape_hashes) {
+				if (shared_properties.image_hash == changed_shape.recorded_hash) {
+					shared_properties.image_hash = changed_shape.loaded_hash;
+					break;
+				}
+			}
+		}
+		if (changed_shape_hashes.size()) {
+			error |= tfxErrorCode_shapes_changed_on_disk;
+		}
 		if (first_shape_hash != 0) {
 			//Need a better solution for this if for some reason no shapes load. Should be very rare.
 			tfx__update_library_particle_shape_references(lib, first_shape_hash);
@@ -10535,6 +10560,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 	effect_stack.free();
 	pair.free();
+	changed_shape_hashes.free();
 
 	return error;
 }
