@@ -10690,18 +10690,101 @@ tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
 	}
 }
 
+//Called when a new effect in a library is added from tfx_RefreshLibrary
+tfxINTERNAL void tfx__adopt_disk_effect_settings(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect, tfxU32 sprite_sheet_index, tfxU32 sprite_data_index, tfxU32 camera_index) {
+	tfx_library library = effect->library;
+	tfx_library disk_library = disk_effect->library;
+	if (disk_effect->sprite_sheet_settings_index < disk_library->sprite_sheet_settings.current_size) {
+		if (sprite_sheet_index == tfxINVALID) {
+			sprite_sheet_index = library->sprite_sheet_settings.current_size;
+			library->sprite_sheet_settings.push_back(disk_library->sprite_sheet_settings[disk_effect->sprite_sheet_settings_index]);
+		} else {
+			library->sprite_sheet_settings[sprite_sheet_index] = disk_library->sprite_sheet_settings[disk_effect->sprite_sheet_settings_index];
+		}
+	}
+	if (disk_effect->sprite_data_settings_index < disk_library->sprite_data_settings.current_size) {
+		if (sprite_data_index == tfxINVALID) {
+			sprite_data_index = library->sprite_data_settings.current_size;
+			library->sprite_data_settings.push_back(disk_library->sprite_data_settings[disk_effect->sprite_data_settings_index]);
+		} else {
+			library->sprite_data_settings[sprite_data_index] = disk_library->sprite_data_settings[disk_effect->sprite_data_settings_index];
+		}
+	}
+	if (disk_effect->preview_camera_settings < disk_library->preview_camera_settings.current_size) {
+		if (camera_index == tfxINVALID) {
+			camera_index = library->preview_camera_settings.current_size;
+			library->preview_camera_settings.push_back(disk_library->preview_camera_settings[disk_effect->preview_camera_settings]);
+		} else {
+			library->preview_camera_settings[camera_index] = disk_library->preview_camera_settings[disk_effect->preview_camera_settings];
+		}
+	}
+	effect->sprite_sheet_settings_index = sprite_sheet_index;
+	effect->sprite_data_settings_index = sprite_data_index;
+	effect->preview_camera_settings = camera_index;
+}
 
-
-tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect) {
-	if (!disk_effect) {
-		effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
+tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect, tfx_refresh_result_t *result) {
+	//An effect replaced by a folder of the same name has gone as far as this effect is concerned
+	if (!disk_effect || disk_effect->type != effect->type) {
+		//Counted once, when it first goes missing, not on every refresh that follows
+		if (!(effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion)) {
+			effect->effect_flags |= tfxEffectPropertyFlags_marked_for_deletion;
+			result->removed_count++;
+			result->flags |= tfxRefreshFlags_effects_removed;
+		}
 		return;
 	}
 	effect->effect_flags &= ~tfxEffectPropertyFlags_marked_for_deletion;
 	if (disk_effect->version > effect->version) {
-		//Effect was updated
+		tfxU32 sprite_sheet_index = effect->sprite_sheet_settings_index;
+		tfxU32 sprite_data_index = effect->sprite_data_settings_index;
+		tfxU32 camera_index = effect->preview_camera_settings;
+		tfxU32 uid = effect->uid;
 		tfx__overwrite_effect(disk_effect, &effect);
+		tfx__adopt_disk_effect_settings(effect, disk_effect, sprite_sheet_index, sprite_data_index, camera_index);
+		effect->uid = uid;
 		effect->effect_flags |= tfxEffectPropertyFlags_was_updated;
+		result->changed_count++;
+		result->flags |= tfxRefreshFlags_effects_changed;
+	}
+}
+
+tfxINTERNAL tfx_effect_descriptor tfx__clone_disk_effect(tfx_library library, tfx_effect_descriptor disk_effect) {
+	tfx_effect_descriptor effect = tfx__clone_effect_into_library(disk_effect, nullptr, library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
+	tfx__adopt_disk_effect_settings(effect, disk_effect, tfxINVALID, tfxINVALID, tfxINVALID);
+	effect->uid = ++library->uid;
+	return effect;
+}
+
+//Called from tfx_RefreshLibrary when there's a new effect in the library.
+tfxINTERNAL void tfx__add_effects_from_disk(tfx_library library, tfx_library disk_library, tfx_refresh_result_t *result) {
+	for (tfx_effect_descriptor disk_effect : disk_library->effects) {
+		if (disk_effect->type == tfxFolder) {
+			tfx_effect_descriptor folder = library->effect_paths.ValidName(disk_effect->path.c_str()) ? library->effect_paths.At(disk_effect->path.c_str()) : nullptr;
+			if (folder && folder->type != tfxFolder) {
+				continue;
+			}
+			for (tfx_effect_descriptor disk_folder_effect : disk_effect->children) {
+				if (library->effect_paths.ValidName(disk_folder_effect->path.c_str())) {
+					continue;
+				}
+				if (!folder) {
+					folder = tfx_CreateEffectDescriptor(tfxFolder);
+					folder->library = library;
+					folder->name = disk_effect->name;
+					folder->uid = ++library->uid;
+					library->effects.push_back(folder);
+				}
+				folder->children.push_back(tfx__clone_disk_effect(library, disk_folder_effect));
+				result->added_count++;
+			}
+		} else if (disk_effect->type == tfxEffectType && !library->effect_paths.ValidName(disk_effect->path.c_str())) {
+			library->effects.push_back(tfx__clone_disk_effect(library, disk_effect));
+			result->added_count++;
+		}
+	}
+	if (result->added_count) {
+		result->flags |= tfxRefreshFlags_effects_added;
 	}
 }
 
@@ -10859,13 +10942,16 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		if (effect->type == tfxFolder) {
 			for (tfx_effect_descriptor folder_effect : effect->children) {
 				tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, folder_effect->path.c_str());
-				tfx__update_effect_from_disk(folder_effect, disk_effect);
+				tfx__update_effect_from_disk(folder_effect, disk_effect, result);
 			}
 		} else if (effect->type == tfxEffectType) {
 			tfx_effect_descriptor disk_effect = tfx_GetLibraryEffect(disk_library, effect->path.c_str());
-			tfx__update_effect_from_disk(effect, disk_effect);
+			tfx__update_effect_from_disk(effect, disk_effect, result);
 		}
 	}
+	//After the merge, so the loop above never walks what this adds
+	tfx__add_effects_from_disk(library, disk_library, result);
+	bool effects_updated = result->changed_count || result->added_count;
 
 	//Now the effects are updated, update the templates in the library
 	for (tfx_effect_template effect_template : library->effect_templates) {
@@ -10894,14 +10980,29 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		}
 	}
 
-	tfx__update_all_library_graphs(library);
-	tfx__reindex_library(library);
-	tfxKey fallback_shape_hash = library->particle_shapes.Size() > 0 ? library->particle_shapes.data[0].image_hash : 0;
-	tfx__update_library_particle_shape_references(library, fallback_shape_hash);
-	tfx__update_library_effect_paths(library);
-	tfx__build_all_library_paths(library);
-	tfx__update_library_control_profiles(library);
-	tfx__update_library_compute_nodes();
+	bool shapes_changed = result->flags & tfxRefreshFlags_shapes_changed;
+	if (shapes_changed || effects_updated) {
+		//Before any gpu property pass: it reads compute_shape_index through image pointers that a shape change or an overwrite has left stale
+		tfxKey fallback_shape_hash = library->particle_shapes.Size() > 0 ? library->particle_shapes.data[0].image_hash : 0;
+		tfx__update_library_particle_shape_references(library, fallback_shape_hash);
+		if (shapes_changed && library->uv_lookup) {
+			tfx_UpdateLibraryGPUImageData(library);
+			result->flags |= tfxRefreshFlags_gpu_shapes_changed;
+		} else if (shapes_changed) {
+			tfx__update_library_image_indexes(library);
+		}
+		result->flags |= tfxRefreshFlags_particle_properties_changed;
+	}
+
+	if (effects_updated) {
+		tfx__update_all_library_graphs(library);
+		tfx__reindex_library(library);
+		tfx__update_library_effect_paths(library);
+		tfx__build_all_library_paths(library);
+		tfx__update_library_control_profiles(library);
+		tfx__update_library_compute_nodes();
+		result->flags |= tfxRefreshFlags_color_ramps_changed | tfxRefreshFlags_graph_lookups_changed;
+	}
 
 	for (tfx_stage pm : tfxStore->stages.data) {
 		for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {

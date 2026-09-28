@@ -911,17 +911,16 @@ tfxAPI tfx_library tfx_LoadEffectLibrary(const char *filename, tfx_shape_loader 
 */
 tfxAPI tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data);
 
-//What a refresh found. Effects are reported by path hash; shapes only as a set difference, because a
-//host cannot do anything finer with them than rebuild its atlas.
+//What a refresh found. Effects and shapes are reported as counts, because a host acts on the library as a whole
 typedef enum {
 	tfxRefreshFlags_none = 0,
-	tfxRefreshFlags_effects_changed = 1 << 0,   //One or more effects carry a version the library did not load
-	tfxRefreshFlags_effects_added = 1 << 1,     //Paths on disk that the library does not have
-	tfxRefreshFlags_effects_removed = 1 << 2,   //Paths the library has that are no longer on disk
-	tfxRefreshFlags_shapes_changed = 1 << 3,    //The shape set differs, so an atlas rebuild is needed
-	tfxRefreshFlags_unreadable = 1 << 4,        //The file could not be re-read; every list is empty
+	tfxRefreshFlags_effects_changed = 1 << 0,   //Effects with a newer version on disk were overwritten, and anything running from them restarted
+	tfxRefreshFlags_effects_added = 1 << 1,     //Effects that were only on disk were added to the library
+	tfxRefreshFlags_effects_removed = 1 << 2,   //Effects no longer on disk were marked for deletion and anything running from them expired
+	tfxRefreshFlags_shapes_changed = 1 << 3,    //The shape set differs, so an atlas rebuild is needed if used
+	tfxRefreshFlags_unreadable = 1 << 4,        //The file could not be re-read; nothing was applied
 	tfxRefreshFlags_merged = 1 << 5,            //The changed values were applied to the library in place
-	tfxRefreshFlags_needs_reload = 1 << 6,      //Nothing was applied: the change is more than values
+	tfxRefreshFlags_needs_reload = 1 << 6,      //A new shape could not be loaded, so reload the library to get it
 	//Which of the library's gpu-side buffers the refresh rebuilt. A host owns the uploaded copy of each of
 	//these, so it has to re-upload the ones flagged here or it goes on drawing with the old data.
 	tfxRefreshFlags_gpu_shapes_changed = 1 << 7,           //tfx_GetLibraryGPUShapes was rebuilt: re-upload it. Any cached tfx_GetGPUShapesArray pointer is now dangling
@@ -952,14 +951,11 @@ typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bi
 typedef struct tfx_refresh_result_s {
 	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags
 	tfxU32 library_version;              //The library_version found on disk, or the loaded one if unreadable
-	tfxU32 changed_count;
-	tfxU32 added_count;
-	tfxU32 removed_count;
-	tfxU32 restart_count;
-	//Image hashes. Added shapes have been loaded through the shape_loader and are in the library; removed
-	//ones are already gone. A host that keeps its own texture per shape only has to act on these two.
-	tfxU32 added_shape_count;
-	tfxU32 removed_shape_count;
+	tfxU32 changed_count;                //Effects overwritten from disk
+	tfxU32 added_count;                  //Effects added from disk
+	tfxU32 removed_count;                //Effects newly missing from disk, counted by the first refresh that finds them gone
+	tfxU32 added_shape_count;            //Shapes passed to shape_loader and now in the library
+	tfxU32 removed_shape_count;          //Shapes passed to shape_remover and already gone from the library
 } tfx_refresh_result_t;
 
 /*
@@ -994,27 +990,30 @@ tfxAPI tfxU32 tfx_GetLibraryFileVersion(tfx_library library);
 /*
 Checks the library on disk to see if it's been updated since it was loaded.
 
-In most cases the effects can be updated in place and either any live effects in a particle manager will
-just update or they will have to just be restarted. Shapes that are added are passed to shape_loader for
-you to load in the renderer.
+Effects with a newer version on disk are overwritten in place and anything running from them in a stage is
+restarted. Effects that are new on disk are added, and effects that have gone from disk are marked for deletion,
+with anything running from them expired. Templates of a changed effect are updated and templates of a removed one
+are marked for deletion, so tfx_AddEffectTemplateToStage refuses them. Re-resolve any effect descriptor you hold
+after a refresh that reports effects removed.
+
+Shapes that are added are passed to shape_loader for you to load in the renderer, and shapes that are removed
+are passed to shape_remover.
 
 The library's own memory is all this updates. Anything you uploaded to the gpu is your copy and goes stale,
 so check the tfxRefreshFlags_*_changed bits in the result and re-upload what they name: the gpu shape data,
-the particle properties buffer, the color ramp bitmaps and the global graph lookup buffer. Restart every
-root named in restart_effects.
+the particle properties buffer, the color ramp bitmaps and the global graph lookup buffer.
 
-The only reason the library would have to be reloaded is if it didn't parse properly or a folder in the
-library changed.
+The library only has to be reloaded if the file didn't parse or tfxRefreshFlags_needs_reload is set.
 
 It's safe to call this function regularily as it only loads the initial bytes of the file (whether it's
 loaded from a folder or a .tfx package) to assertain whether the library is a newer version.
 
 * @param library                 A handle to the loaded library to compare against its file
-* @param shape_loader            Not called yet
-* @param uv_lookup               Not called yet
-* @param user_data               Not called yet
-* @param result                  Filled in with the flags and the lists described above. The lists point
-                                 into the library and stay valid until the next call for that library.
+* @param shape_loader            Called for each shape that is new on disk, the same as when the library is loaded
+* @param uv_lookup               Replaces the library's uv lookup if not null, used to rebuild the gpu shape data
+* @param shape_remover           Called with a copy of each shape that is gone from disk, after it is removed from the library. Can be null
+* @param user_data               Passed to shape_loader and shape_remover
+* @param result                  Filled in with the flags and counts described above
 */
 tfxAPI void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, tfx_shape_remover shape_remover, void *user_data, tfx_refresh_result_t *result);
 
