@@ -23,7 +23,9 @@
 #endif
 
 //Kept out of tfx_force_type itself so a sentinel does not have to be answered by every switch over the type
-#define tfxFORCE_TYPE_COUNT 5
+#define tfxFORCE_TYPE_COUNT 6
+
+#define tfxMAX_BLENDER_BLADES 8
 
 //---------------------------------------
 /*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
@@ -2899,6 +2901,7 @@ typedef enum {
 	tfxForceVortex,
 	tfxForceShockwave,
 	tfxForceNoise,
+	tfxForceBlender,
 } tfx_force_type;
 
 //The space that a force's direction and wave_axis are authored in. Wind is almost always world space:
@@ -3321,6 +3324,7 @@ typedef enum {
 typedef enum {
 	tfxForceFlags_none                                          = 0,
 	tfxForceFlags_enabled                                       = 1 << 0,	//Cleared to mute a force without deleting it. A force list with no enabled entries must not raise the control profile bit
+	tfxForceFlags_blade_tip_speed                               = 1 << 1,	//Blender only: the push grows from nothing at the hub to full strength at the blade tip
 } tfx_force_flag_bits;
 
 typedef enum {
@@ -6117,6 +6121,8 @@ typedef struct tfx_force_s {
 		struct { float radial_ratio, axial_ratio; } vortex;
 		struct { float speed, thickness; } shockwave;
 		struct { tfx_noise_type algorithm; } noise;
+		//speed in revolutions per second (sign is spin direction), thickness measured back from the leading face, speed_variation spreads each blade's speed across speed * (1 +- variation)
+		struct { float speed, thickness, speed_variation, radial_ratio, axial_ratio; tfxU32 blade_count, seed; } blender;
 	};
 } tfx_force_t;
 
@@ -6126,7 +6132,20 @@ typedef enum {
 	//The field is confined to a sphere about the origin. Noise only: the other types have no unbounded form, so
 	//they are dropped at setup when their extent is zero rather than being resolved without one.
 	tfx_force_resolved_flag_bounded                             = 1 << 1,
+	tfx_force_resolved_flag_blade_tip_speed                     = 1 << 2,
 } tfx_force_resolved_flag_bits;
+
+//Per blade values the blender loop broadcasts, kept scalar so the resolved force stays small
+typedef struct tfx_blender_blade_s {
+	//The blade's angle about the axis, as a rotation from the reference direction
+	float angle_cos, angle_sin;
+	//+1 or -1, which way this blade turns
+	float spin_sign;
+	//Rewinds the blade to where it started the frame, capped at a quarter turn
+	float sweep_cos, sweep_sin;
+	//Reciprocal of the uncapped angle turned this frame, 0 for a blade that isn't moving
+	float inverse_frame_sweep;
+} tfx_blender_blade_t;
 
 //Struct that gets written outside of the particle loop that calculates various things based on the
 //force type and space (emitter, effect world)
@@ -6144,6 +6163,18 @@ typedef struct tfx_force_resolved_s {
 		//setup so the inner loop never touches a clock.
 		struct { tfxWideFloat front; } shockwave;
 		struct { tfx_noise_type algorithm; } noise;
+		//reference is angle zero about the axis and reference_turn is axis x reference, the way a positive speed turns
+		struct {
+			tfxWideFloat reference_x, reference_y, reference_z;
+			tfxWideFloat reference_turn_x, reference_turn_y, reference_turn_z;
+			tfxWideFloat thickness;
+			tfxWideFloat inverse_radius;
+			tfxWideFloat radial_ratio, axial_ratio;
+			//The profile's cubic in power form, c0 + c1 t + c2 t^2 + c3 t^3
+			tfxWideFloat profile_c0, profile_c1, profile_c2, profile_c3;
+			tfx_blender_blade_t blades[tfxMAX_BLENDER_BLADES];
+			tfxU32 blade_count;
+		} blender;
 	};
 	tfx_graph_t *profile_graph;
 	tfxU32 flags;
@@ -7841,6 +7872,7 @@ tfxAPI_EDITOR bool tfx__graph_curves_can_overshoot(tfx_graph_preset preset);
 tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__init_emitter_force(tfx_force_t *force);
 tfxAPI_EDITOR void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type);
+tfxAPI_EDITOR void tfx__get_blender_blade_speeds(const tfx_force_t *force, float *blade_speeds);
 tfxAPI_EDITOR tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type);
 tfxAPI_EDITOR void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
 tfxAPI_EDITOR void tfx__clear_emitter_forces(tfx_effect_descriptor emitter);
@@ -8164,6 +8196,8 @@ tfxINTERNAL inline float tfx__white_unit(tfxU32 seed, tfxU32 axis) {
 //Hash axis the per particle drag rate is drawn on. Must differ from every other axis or a particle's drag
 //would correlate with its launch speed and the two variations would visibly move together.
 #define tfxDRAG_VARIATION_HASH_AXIS 0x9e3779b9
+//Hash axis the blender's per blade speed jitter is drawn on
+#define tfxBLENDER_BLADE_HASH_AXIS 0x68e31da4
 
 //--------------------------------
 //Control particle inline functions and policies
@@ -8743,6 +8777,151 @@ tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved
 	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
 }
 
+//Depth behind a blade's face, unfolded past the quarter turn (2 * arm - depth) so it keeps rising instead of folding back
+tfxINTERNAL inline tfxWideFloat tfx__wide_blade_depth(tfxWideFloat along_blade, tfxWideFloat ahead_of_blade, tfxWideFloat twice_arm) {
+	const tfxWideFloat depth = tfxWideSub(tfxWIDEZERO.m, ahead_of_blade);
+	const tfxWideFloat signed_twice_arm = tfxWideOr(tfxWideAnd(depth, tfxSIGNMASK.m), twice_arm);
+	return tfxWideBlendv(depth, tfxWideSub(signed_twice_arm, depth), tfxWideLess(along_blade, tfxWIDEZERO.m));
+}
+
+//Mean of the profile across [middle - half_width, middle + half_width], exact for a cubic: P(middle) + P''(middle) * half_width^2 / 6
+tfxINTERNAL inline tfxWideFloat tfx__wide_average_blender_profile(const tfx_force_resolved_t *force, tfxWideFloat middle, tfxWideFloat half_width) {
+	const tfxWideFloat inside = tfxWideLess(middle, tfxWIDEONE.m);
+	middle = tfxWideMin(middle, tfxWIDEONE.m);
+	if (!(force->flags & tfx_force_resolved_flag_profile_is_bezier)) {
+		//A straight profile's mean is its value at the middle
+		const tfx_graph_wide_t &profile = force->profile_graph->wide_graph;
+		return tfxWideAnd(inside, tfx__wide_linear_sampler(profile.from, profile.to, middle));
+	}
+	const tfxWideFloat c2 = force->blender.profile_c2;
+	const tfxWideFloat c3 = force->blender.profile_c3;
+	tfxWideFloat value = tfxWideMulAdd(middle, c3, c2);
+	value = tfxWideMulAdd(middle, value, force->blender.profile_c1);
+	value = tfxWideMulAdd(middle, value, force->blender.profile_c0);
+	const tfxWideFloat half_curvature = tfxWideMulAdd(tfxWideMul(middle, c3), tfxWIDETHREE.m, c2);
+	const tfxWideFloat third_half_width_squared = tfxWideMul(tfxWideMul(half_width, half_width), tfxWideSetSingle(1.f / 3.f));
+	return tfxWideAnd(inside, tfxWideMulAdd(half_curvature, third_half_width_squared, value));
+}
+
+//Flat blades turning about an axis, pushing each particle by the share of the frame a blade spent over it so fast blades can't skip particles
+tfxINTERNAL inline void tfx__wide_apply_blender_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+	const tfxWideFloat axis_x = force->axis_x;
+	const tfxWideFloat axis_y = force->axis_y;
+	const tfxWideFloat axis_z = force->axis_z;
+	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
+	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
+	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
+
+	tfxWideFloat axial_distance = tfxWideMul(offset_x, axis_x);
+	axial_distance = tfxWideMulAdd(offset_y, axis_y, axial_distance);
+	axial_distance = tfxWideMulAdd(offset_z, axis_z, axial_distance);
+	tfxWideFloat radial_x = tfxWideSub(offset_x, tfxWideMul(axial_distance, axis_x));
+	tfxWideFloat radial_y = tfxWideSub(offset_y, tfxWideMul(axial_distance, axis_y));
+	tfxWideFloat radial_z = tfxWideSub(offset_z, tfxWideMul(axial_distance, axis_z));
+
+	tfxWideFloat radial_length_squared = tfxWideMul(radial_x, radial_x);
+	radial_length_squared = tfxWideMulAdd(radial_y, radial_y, radial_length_squared);
+	radial_length_squared = tfxWideMulAdd(radial_z, radial_z, radial_length_squared);
+	const tfxWideFloat inverse_radial_length = tfxWideRSqrt(tfxWideMax(radial_length_squared, tfxWIDEEPSILON.m));
+	radial_x = tfxWideMul(radial_x, inverse_radial_length);
+	radial_y = tfxWideMul(radial_y, inverse_radial_length);
+	radial_z = tfxWideMul(radial_z, inverse_radial_length);
+	const tfxWideFloat radial_distance = tfxWideMul(radial_length_squared, inverse_radial_length);
+
+	//The reference and its turn are perpendicular to the axis, so the axial part of the offset drops out
+	tfxWideFloat reference_along = tfxWideMul(offset_x, force->blender.reference_x);
+	reference_along = tfxWideMulAdd(offset_y, force->blender.reference_y, reference_along);
+	reference_along = tfxWideMulAdd(offset_z, force->blender.reference_z, reference_along);
+	tfxWideFloat reference_turn = tfxWideMul(offset_x, force->blender.reference_turn_x);
+	reference_turn = tfxWideMulAdd(offset_y, force->blender.reference_turn_y, reference_turn);
+	reference_turn = tfxWideMulAdd(offset_z, force->blender.reference_turn_z, reference_turn);
+
+	//Nearer the axis than the blade is thick, the blade covers the whole quarter turn behind its face
+	const tfxWideFloat slab_depth = tfxWideMin(force->blender.thickness, radial_distance);
+	const tfxWideFloat twice_arm = tfxWideAdd(radial_distance, radial_distance);
+	const tfxWideFloat inverse_radial_length_squared = tfxWideMul(inverse_radial_length, inverse_radial_length);
+	//Where the particle's circle crosses the back of the blade, measured along the blade
+	const tfxWideFloat along_back_squared = tfxWideMax(tfxWideSub(radial_length_squared, tfxWideMul(slab_depth, slab_depth)), tfxWIDEZERO.m);
+	const tfxWideFloat along_back = tfxWideMul(along_back_squared, tfxWideRSqrt(tfxWideMax(along_back_squared, tfxWIDEEPSILON.m)));
+	const tfxWideFloat one_twenty_fourth = tfxWideSetSingle(1.f / 24.f);
+
+	//Summed since two blades can pass a particle in one frame, and signed by spin so counter turning blades push against each other
+	tfxWideFloat covered_fraction = tfxWIDEZERO.m;
+	tfxWideFloat spun_fraction = tfxWIDEZERO.m;
+	//The profile is averaged once, over the stretch of the blade that covered the particle longest
+	tfxWideFloat best_fraction = tfxWIDEZERO.m;
+	tfxWideFloat best_depth = tfxWIDEZERO.m;
+	tfxWideFloat best_half_depth = tfxWIDEZERO.m;
+	for (tfxU32 blade_index = 0; blade_index != force->blender.blade_count; ++blade_index) {
+		const tfx_blender_blade_t &blade = force->blender.blades[blade_index];
+		const tfxWideFloat angle_cos = tfxWideSetSingle(blade.angle_cos);
+		const tfxWideFloat angle_sin = tfxWideSetSingle(blade.angle_sin);
+		const tfxWideFloat spin_sign = tfxWideSetSingle(blade.spin_sign);
+		const tfxWideFloat along_blade = tfxWideMulAdd(reference_along, angle_cos, tfxWideMul(reference_turn, angle_sin));
+		const tfxWideFloat ahead_of_blade = tfxWideMul(tfxWideSub(tfxWideMul(reference_turn, angle_cos), tfxWideMul(reference_along, angle_sin)), spin_sign);
+		const tfxWideFloat depth_now = tfx__wide_blade_depth(along_blade, ahead_of_blade, twice_arm);
+		tfxWideFloat fraction;
+		tfxWideFloat profile_depth;
+		tfxWideFloat profile_half_depth = tfxWIDEZERO.m;
+		if (blade.inverse_frame_sweep > 0.f) {
+			const tfxWideFloat sweep_cos = tfxWideSetSingle(blade.sweep_cos);
+			const tfxWideFloat sweep_sin = tfxWideSetSingle(blade.sweep_sin);
+			const tfxWideFloat along_blade_start = tfxWideSub(tfxWideMul(along_blade, sweep_cos), tfxWideMul(ahead_of_blade, sweep_sin));
+			const tfxWideFloat ahead_of_blade_start = tfxWideMulAdd(along_blade, sweep_sin, tfxWideMul(ahead_of_blade, sweep_cos));
+			const tfxWideFloat depth_start = tfx__wide_blade_depth(along_blade_start, ahead_of_blade_start, twice_arm);
+
+			//The arc of the particle's circle the blade covered this frame, clipped to the face and the back of the blade
+			const tfxWideFloat covered_start = tfxWideMax(depth_start, tfxWIDEZERO.m);
+			const tfxWideFloat covered_end = tfxWideMin(depth_now, slab_depth);
+			const tfxWideFloat covered = tfxWideLess(covered_start, covered_end);
+			const tfxWideFloat along_covered_start = tfxWideBlendv(radial_distance, along_blade_start, tfxWideLess(tfxWIDEZERO.m, depth_start));
+			const tfxWideFloat along_covered_end = tfxWideBlendv(along_back, along_blade, tfxWideLess(depth_now, slab_depth));
+			const tfxWideFloat depth_step = tfxWideSub(covered_end, covered_start);
+			const tfxWideFloat along_step = tfxWideSub(along_covered_start, along_covered_end);
+			tfxWideFloat chord_squared = tfxWideMul(depth_step, depth_step);
+			chord_squared = tfxWideMulAdd(along_step, along_step, chord_squared);
+			chord_squared = tfxWideMul(chord_squared, inverse_radial_length_squared);
+			const tfxWideFloat chord = tfxWideMul(chord_squared, tfxWideRSqrt(tfxWideMax(chord_squared, tfxWIDEEPSILON.m)));
+			//Arc from chord on the unit circle, 2 * asin(chord / 2) to third order
+			const tfxWideFloat arc = tfxWideMul(chord, tfxWideMulAdd(chord_squared, one_twenty_fourth, tfxWIDEONE.m));
+			fraction = tfxWideAnd(covered, tfxWideMin(tfxWideMul(arc, tfxWideSetSingle(blade.inverse_frame_sweep)), tfxWIDEONE.m));
+			profile_depth = tfxWideMul(tfxWideAdd(covered_start, covered_end), tfxWIDEHALF.m);
+			profile_half_depth = tfxWideMul(depth_step, tfxWIDEHALF.m);
+		} else {
+			const tfxWideFloat inside_now = tfxWideAnd(tfxWideGreaterEqual(depth_now, tfxWIDEZERO.m), tfxWideLessEqual(depth_now, slab_depth));
+			fraction = tfxWideAnd(inside_now, tfxWIDEONE.m);
+			profile_depth = depth_now;
+		}
+
+		const tfxWideFloat longer = tfxWideLess(best_fraction, fraction);
+		best_fraction = tfxWideBlendv(best_fraction, fraction, longer);
+		best_depth = tfxWideBlendv(best_depth, profile_depth, longer);
+		best_half_depth = tfxWideBlendv(best_half_depth, profile_half_depth, longer);
+		covered_fraction = tfxWideAdd(covered_fraction, fraction);
+		spun_fraction = tfxWideMulAdd(fraction, spin_sign, spun_fraction);
+	}
+
+	const tfxWideFloat arm_fraction = tfxWideMul(radial_distance, force->blender.inverse_radius);
+	tfxWideFloat scale = tfxWideMul(force->strength, tfx__wide_average_blender_profile(force, tfxWideMul(best_depth, force->falloff_scale), tfxWideMul(best_half_depth, force->falloff_scale)));
+	if (force->flags & tfx_force_resolved_flag_blade_tip_speed) {
+		scale = tfxWideMul(scale, arm_fraction);
+	}
+	//The blades end at the radius
+	scale = tfxWideAnd(tfxWideLess(arm_fraction, tfxWIDEONE.m), scale);
+
+	//Pushed round the way the covering blades turn, leaned along the arm and axis by the same ratios a vortex uses
+	tfxWideFloat tangential_x, tangential_y, tangential_z;
+	tfx__wide_cross_product(axis_x, axis_y, axis_z, &radial_x, &radial_y, &radial_z, &tangential_x, &tangential_y, &tangential_z);
+	const tfxWideFloat turn_scale = tfxWideMul(scale, spun_fraction);
+	const tfxWideFloat lean_scale = tfxWideMul(scale, covered_fraction);
+	const tfxWideFloat radial_scale = tfxWideMul(lean_scale, force->blender.radial_ratio);
+	const tfxWideFloat axial_scale = tfxWideMul(lean_scale, force->blender.axial_ratio);
+
+	ctx.medium_velocity_x = tfxWideMulAdd(axis_x, axial_scale, tfxWideMulAdd(radial_x, radial_scale, tfxWideMulAdd(tangential_x, turn_scale, ctx.medium_velocity_x)));
+	ctx.medium_velocity_y = tfxWideMulAdd(axis_y, axial_scale, tfxWideMulAdd(radial_y, radial_scale, tfxWideMulAdd(tangential_y, turn_scale, ctx.medium_velocity_y)));
+	ctx.medium_velocity_z = tfxWideMulAdd(axis_z, axial_scale, tfxWideMulAdd(radial_z, radial_scale, tfxWideMulAdd(tangential_z, turn_scale, ctx.medium_velocity_z)));
+}
+
 tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
 	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
 	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
@@ -9113,6 +9292,11 @@ struct tfx_apply_forces {
 			const tfxU32 shockwave_end = shockwave_start + work_entry->force_group_count[tfxForceShockwave];
 			for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
 				tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
+			}
+			const tfxU32 blender_start = work_entry->force_group_start[tfxForceBlender];
+			const tfxU32 blender_end = blender_start + work_entry->force_group_count[tfxForceBlender];
+			for (tfxU32 force_index = blender_start; force_index != blender_end; ++force_index) {
+				tfx__wide_apply_blender_force(&work_entry->resolved_forces[force_index], ctx);
 			}
 		}
 

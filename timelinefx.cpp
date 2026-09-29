@@ -6227,6 +6227,24 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 		force->shockwave.speed = (float)atof((*values)[tail + 4].c_str());
 		force->shockwave.thickness = (float)atof((*values)[tail + 5].c_str());
 		break;
+	case tfxForceBlender:
+		if (values->size() < tail + 13) return;
+		force->origin.x = (float)atof((*values)[tail + 0].c_str());
+		force->origin.y = (float)atof((*values)[tail + 1].c_str());
+		force->origin.z = (float)atof((*values)[tail + 2].c_str());
+		force->radius = (float)atof((*values)[tail + 3].c_str());
+		force->axis.x = (float)atof((*values)[tail + 4].c_str());
+		force->axis.y = (float)atof((*values)[tail + 5].c_str());
+		force->axis.z = (float)atof((*values)[tail + 6].c_str());
+		force->blender.speed = (float)atof((*values)[tail + 7].c_str());
+		force->blender.thickness = (float)atof((*values)[tail + 8].c_str());
+		force->blender.speed_variation = (float)atof((*values)[tail + 9].c_str());
+		force->blender.radial_ratio = (float)atof((*values)[tail + 10].c_str());
+		force->blender.axial_ratio = (float)atof((*values)[tail + 11].c_str());
+		force->blender.blade_count = (tfxU32)atoi((*values)[tail + 12].c_str());
+		if (values->size() < tail + 14) return;
+		force->blender.seed = (tfxU32)strtoul((*values)[tail + 13].c_str(), nullptr, 10);
+		break;
 	case tfxForceNoise:
 		if (values->size() < tail + 1) return;
 		force->noise.algorithm = (tfx_noise_type)atoi((*values)[tail + 0].c_str());
@@ -7730,7 +7748,7 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 	for (tfxU32 i = 0; i != properties->force_count; ++i) {
 		tfx_force_t *force = &properties->forces[i];
 		//origin and radius are shared struct fields but are written into each tail that uses them rather than into
-		//the head, because only three of the five types want them. delay is wanted by all five, which is what earned
+		//the head, because not every type wants them. delay is wanted by every type, which is what earned
 		//the force3 key: a field every tail would have to repeat belongs in the head, and the head cannot grow
 		//without shifting every tail along.
 		switch (force->type) {
@@ -7756,6 +7774,14 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->origin.x, force->origin.y, force->origin.z, force->radius,
 				force->shockwave.speed, force->shockwave.thickness);
+			break;
+		case tfxForceBlender:
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%i,%u",
+				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
+				force->origin.x, force->origin.y, force->origin.z, force->radius,
+				force->axis.x, force->axis.y, force->axis.z,
+				force->blender.speed, force->blender.thickness, force->blender.speed_variation,
+				force->blender.radial_ratio, force->blender.axial_ratio, (int)force->blender.blade_count, force->blender.seed);
 			break;
 		case tfxForceNoise:
 			//origin and radius trail the algorithm rather than leading it the way the other three types have them,
@@ -15277,6 +15303,8 @@ void tfx_setup_path_life_policy::apply(tfx_control_work_entry_t *work_entry, tfx
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count - 3.f);
 }
 
+tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_up_to(const tfx_vec3_t &normalised_direction);
+
 void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t *emitter = &pm.emitters[work_entry->emitter_index];
@@ -15337,10 +15365,13 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 				}
 				case tfxForceAttract:
 				case tfxForceVortex:
-				case tfxForceShockwave: {
-					//Shockwave's profile runs across the wave front rather than out from the centre, so thickness is its
-					//falloff distance where the other two use the radius.
-					float falloff_distance = (force->type == tfxForceShockwave ? force->shockwave.thickness : force->radius) * bank_units_scale;
+				case tfxForceShockwave:
+				case tfxForceBlender: {
+					//Shockwave's and blender's profiles run across the front or blade rather than out from the centre
+					float falloff_distance = force->radius;
+					if (force->type == tfxForceShockwave) falloff_distance = force->shockwave.thickness;
+					else if (force->type == tfxForceBlender) falloff_distance = force->blender.thickness;
+					falloff_distance *= bank_units_scale;
 					if (falloff_distance <= 0.f) continue;		//No extent means no field, whatever the strength says
 					//The profile is the shape of the field, so a force whose graph list never got allocated has nothing
 					//to describe. Only reachable on a force built outside tfx__add_emitter_force.
@@ -15377,6 +15408,64 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 						//Skip if the front is beyond the radius.
 						if (front > force->radius * bank_units_scale) continue;
 						resolved->shockwave.front = tfxWideSetSingle(front);
+					} else if (force->type == tfxForceBlender) {
+						float radius = force->radius * bank_units_scale;
+						tfxU32 blade_count = tfx__Min(force->blender.blade_count, (tfxU32)tfxMAX_BLENDER_BLADES);
+						if (radius <= 0.f || blade_count == 0) continue;
+						tfx_vec3_t axis = force->axis;
+						float axis_length = tfx__length_vec3(&axis);
+						if (axis_length <= 0.f) continue;
+						axis.x /= axis_length;
+						axis.y /= axis_length;
+						axis.z /= axis_length;
+						//Angle zero comes from the axis's own frame, the same one the preview widget draws the blades in
+						tfx_quaternion_t axis_frame = tfx__quaternion_from_up_to(axis);
+						tfx_vec3_t reference = tfx__rotate_vector_quaternion(&axis_frame, tfx_vec3_t(1.f, 0.f, 0.f));
+						axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+						reference = tfx__resolve_force_direction(reference, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+						tfx_vec3_t reference_turn = tfx__cross_product_vec3(axis, reference);
+						float active_seconds = (emitter->age - force->delay) * 0.001f;
+						float frame_seconds = tfx__Min((float)pm.frame_length * 0.001f, active_seconds);
+						float blade_speeds[tfxMAX_BLENDER_BLADES];
+						tfx__get_blender_blade_speeds(force, blade_speeds);
+						for (tfxU32 blade_index = 0; blade_index != blade_count; ++blade_index) {
+							tfx_blender_blade_t &blade = resolved->blender.blades[blade_index];
+							float revolutions = blade_speeds[blade_index] * active_seconds;
+							//Wrapped before it becomes an angle so a long running effect keeps its precision
+							revolutions -= floorf(revolutions);
+							float blade_angle = (revolutions + (float)blade_index / (float)blade_count) * tfxPI2;
+							blade.angle_cos = cosf(blade_angle);
+							blade.angle_sin = sinf(blade_angle);
+							blade.spin_sign = blade_speeds[blade_index] < 0.f ? -1.f : 1.f;
+							//Capped at the quarter turn the depth measure can follow; the uncapped reciprocal keeps the share of the frame true
+							float frame_sweep = fabsf(blade_speeds[blade_index]) * frame_seconds * tfxPI2;
+							float clamped_sweep = tfx__Min(frame_sweep, tfxHALFPI);
+							blade.sweep_cos = cosf(clamped_sweep);
+							blade.sweep_sin = sinf(clamped_sweep);
+							blade.inverse_frame_sweep = frame_sweep > 0.f ? 1.f / frame_sweep : 0.f;
+						}
+						resolved->axis_x = tfxWideSetSingle(axis.x);
+						resolved->axis_y = tfxWideSetSingle(axis.y);
+						resolved->axis_z = tfxWideSetSingle(axis.z);
+						resolved->blender.reference_x = tfxWideSetSingle(reference.x);
+						resolved->blender.reference_y = tfxWideSetSingle(reference.y);
+						resolved->blender.reference_z = tfxWideSetSingle(reference.z);
+						resolved->blender.reference_turn_x = tfxWideSetSingle(reference_turn.x);
+						resolved->blender.reference_turn_y = tfxWideSetSingle(reference_turn.y);
+						resolved->blender.reference_turn_z = tfxWideSetSingle(reference_turn.z);
+						resolved->blender.thickness = tfxWideSetSingle(falloff_distance);
+						resolved->blender.inverse_radius = tfxWideSetSingle(1.f / radius);
+						resolved->blender.radial_ratio = tfxWideSetSingle(force->blender.radial_ratio);
+						resolved->blender.axial_ratio = tfxWideSetSingle(force->blender.axial_ratio);
+						resolved->blender.blade_count = blade_count;
+						//Bezier control points to power form, from the same wide_graph tfx__wide_sample_force_profile reads
+						const tfx_graph_wide_t &profile = profile_graph->wide_graph;
+						const tfxWideFloat curve_difference = tfxWideSub(profile.curve1, profile.curve2);
+						resolved->blender.profile_c0 = profile.from;
+						resolved->blender.profile_c1 = tfxWideMul(tfxWIDETHREE.m, tfxWideSub(profile.curve1, profile.from));
+						resolved->blender.profile_c2 = tfxWideMul(tfxWIDETHREE.m, tfxWideSub(tfxWideSub(profile.from, profile.curve1), curve_difference));
+						resolved->blender.profile_c3 = tfxWideMulAdd(tfxWIDETHREE.m, curve_difference, tfxWideSub(profile.to, profile.from));
+						resolved->flags |= (force->flags & tfxForceFlags_blade_tip_speed) ? tfx_force_resolved_flag_blade_tip_speed : 0;
 					}
 					ctx.flags |= tfx_ctx_policy_flag_has_position_forces;
 					resolved_count++;
@@ -22823,9 +22912,29 @@ void tfx__init_emitter_force(tfx_force_t *force) {
 }
 
 void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type) {
-	//We could add a static assert to check if the union changed footprint
-	force->vortex = {};
+	//The union is the last member, so this clears every arm of it plus the trailing padding the byte hash reads
+	memset(&force->vortex, 0, sizeof(tfx_force_t) - offsetof(tfx_force_t, vortex));
 	force->type = type;
+}
+
+//Speeds sit in even bands across speed * (1 +- variation) so no two blades match, jittered by the seed so they never fall into a repeating pattern
+void tfx__get_blender_blade_speeds(const tfx_force_t *force, float *blade_speeds) {
+	tfxU32 blade_count = tfx__Min(force->blender.blade_count, (tfxU32)tfxMAX_BLENDER_BLADES);
+	if (blade_count == 0) return;
+	float band_offsets[tfxMAX_BLENDER_BLADES];
+	float mean_offset = 0.f;
+	tfxU32 seed = tfx__seedgen_u32(force->blender.seed);
+	for (tfxU32 blade_index = 0; blade_index != blade_count; ++blade_index) {
+		float jitter = 0.5f + 0.25f * tfx__white_unit(seed + blade_index, tfxBLENDER_BLADE_HASH_AXIS);
+		band_offsets[blade_index] = ((float)blade_index + jitter) * 2.f / (float)blade_count - 1.f;
+		mean_offset += band_offsets[blade_index];
+	}
+	//Centred so Speed stays the average of the blades, and widened so the outer bands centre on +-variation
+	mean_offset /= (float)blade_count;
+	float spread = blade_count > 1 ? force->blender.speed_variation * (float)blade_count / (float)(blade_count - 1) : 0.f;
+	for (tfxU32 blade_index = 0; blade_index != blade_count; ++blade_index) {
+		blade_speeds[blade_index] = force->blender.speed * (1.f + spread * (band_offsets[blade_index] - mean_offset));
+	}
 }
 
 tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type) {
@@ -22866,6 +22975,16 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 			force->strength = 10.f;
 			force->shockwave.speed = 5.f;
 			force->shockwave.thickness = 1.f;
+			break;
+		}
+		case tfxForceBlender: {
+			force->axis = { 0.f, 1.f, 0.f };
+			force->radius = 5.f;
+			force->strength = 10.f;
+			force->flags |= tfxForceFlags_blade_tip_speed;
+			force->blender.speed = 1.f;
+			force->blender.thickness = 1.f;
+			force->blender.blade_count = 2;
 			break;
 		}
 		//Only fields this type's save tail writes may be defaulted here - anything else comes back from a load at
