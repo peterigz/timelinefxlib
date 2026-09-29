@@ -4357,6 +4357,64 @@ tfx_image_format tfx__detect_image_format(const void *image_data, tfxU64 image_s
 	return tfx_image_format_rgba8_raw;
 }
 
+static const unsigned char tfx__png_signature[8] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+static const unsigned char tfx__ktx2_identifier[12] = { 0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A };
+
+//Reads a png or ktx2 header without decoding. A ktx2 shape holds its frames as array layers rather than a grid, so it reports layered.
+bool tfx__read_image_dimensions(const void *image_data, tfxU64 image_size, tfxU32 *width, tfxU32 *height, tfxU32 *layers, bool *layered) {
+	const unsigned char *bytes = (const unsigned char *)image_data;
+	if (bytes && image_size >= 24 && memcmp(bytes, tfx__png_signature, sizeof(tfx__png_signature)) == 0) {
+		*width = ((tfxU32)bytes[16] << 24) | ((tfxU32)bytes[17] << 16) | ((tfxU32)bytes[18] << 8) | (tfxU32)bytes[19];
+		*height = ((tfxU32)bytes[20] << 24) | ((tfxU32)bytes[21] << 16) | ((tfxU32)bytes[22] << 8) | (tfxU32)bytes[23];
+		*layers = 1;
+		*layered = false;
+		return true;
+	}
+	if (bytes && image_size >= 36 && memcmp(bytes, tfx__ktx2_identifier, sizeof(tfx__ktx2_identifier)) == 0) {
+		tfxU32 layer_count = 0;
+		memcpy(width, bytes + 20, sizeof(tfxU32));
+		memcpy(height, bytes + 24, sizeof(tfxU32));
+		memcpy(&layer_count, bytes + 32, sizeof(tfxU32));
+		*layers = layer_count ? layer_count : 1;
+		*layered = true;
+		return true;
+	}
+	return false;
+}
+
+//A single channel png or a bc4 can't say whether it holds alpha or luminance, so it keeps the meaning the shape already had
+tfx_image_format tfx__refreshed_image_format(const void *image_data, tfxU64 image_size, tfx_image_format current_format) {
+	const unsigned char *bytes = (const unsigned char *)image_data;
+	bool alpha_only = current_format == tfx_image_format_a8_png || current_format == tfx_image_format_a_bc4_ktx2;
+	if (bytes && image_size > 25 && memcmp(bytes, tfx__png_signature, sizeof(tfx__png_signature)) == 0) {
+		unsigned char png_color_type = bytes[25];
+		if (png_color_type == 0) {
+			return alpha_only ? tfx_image_format_a8_png : tfx_image_format_l8_png;
+		}
+		return png_color_type == 4 ? tfx_image_format_la8_png : tfx_image_format_rgba8_png;
+	}
+	if (bytes && image_size >= 16 && memcmp(bytes, tfx__ktx2_identifier, sizeof(tfx__ktx2_identifier)) == 0) {
+		tfxU32 vk_format = 0;
+		memcpy(&vk_format, bytes + 12, sizeof(tfxU32));
+		switch (vk_format) {
+		case 139: case 140: return alpha_only ? tfx_image_format_a_bc4_ktx2 : tfx_image_format_l_bc4_ktx2;	//VK_FORMAT_BC4_UNORM/SNORM_BLOCK
+		case 141: case 142: return tfx_image_format_la_bc5_ktx2;												//VK_FORMAT_BC5_UNORM/SNORM_BLOCK
+		case 145: case 146: return tfx_image_format_rgba_bc7_ktx2;												//VK_FORMAT_BC7_UNORM/SRGB_BLOCK
+		default: return tfx_image_format_unknown;
+		}
+	}
+	return tfx_image_format_unknown;
+}
+
+void tfx__record_library_shape_file(tfx_library library, tfxKey image_hash, const char *file_name, const void *image_data, tfxU64 image_size) {
+	tfx_shape_file_t shape_file = {};
+	shape_file.file_name.Set(file_name);
+	tfxU32 layers = 0;
+	bool layered = false;
+	tfx__read_image_dimensions(image_data, image_size, &shape_file.sheet_width, &shape_file.sheet_height, &layers, &layered);
+	library->shape_files.Insert(image_hash, shape_file);
+}
+
 void *tfx_GetBitmapData(tfx_bitmap_t *bitmap) {
 	TFX_ASSERT(bitmap);	//bitmap pointer is NULL, must point to a valid tfx_bitmap_t
 	return (void*)bitmap->data;
@@ -4698,6 +4756,9 @@ bool tfx__remove_library_shape(tfx_library library, tfxKey image_hash) {
 	library->particle_shapes.Remove(image_hash);
 	for (auto &m : library->particle_shapes.map) {
 		library->particle_shapes[m.index].image_hash = m.key;
+	}
+	if (library->shape_files.ValidKey(image_hash)) {
+		library->shape_files.Remove(image_hash);
 	}
 	return true;
 }
@@ -5154,6 +5215,7 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	library->effect_paths.FreeAll();
 	if (!keep_shapes) {
 		library->particle_shapes.FreeAll();
+		library->shape_files.FreeAll();
 		if (TFX_VALID_HANDLE(library->gpu_shapes, tfx_struct_type_gpu_shapes)) {
 			tfx_FreeGPUShapesList(library->gpu_shapes);
 		}
@@ -10433,6 +10495,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 						if (recorded_hash && recorded_hash != image_data.image_hash) {
 							changed_shape_hashes.push_back({ recorded_hash, image_data.image_hash });
 						}
+						tfx__record_library_shape_file(lib, image_data.image_hash, shape_entry_name, shape_entry->data.data, shape_entry->file_size);
 						if (image_data.format == tfx_image_format_unknown) {
 							image_data.format = tfx__detect_image_format(shape_entry->data.data, shape_entry->file_size);
 						}
@@ -10846,6 +10909,7 @@ tfxINTERNAL void tfx__refresh_library_shapes(tfx_library library, tfx_library di
 		}
 		//Inserted whether or not the host took it, the same as a load does - the pointer belongs to the host
 		library->particle_shapes.Insert(image.image_hash, image);
+		tfx__record_library_shape_file(library, image.image_hash, image.name.c_str(), data, size);
 	}
 	shape_data.Free();
 
@@ -11047,6 +11111,224 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	library->version = result->library_version;
 	tfx_FreeLibrary(disk_library);
 	tfx__free_package(package);
+}
+
+//Matches the shape's name or the file it was loaded from, so a host can pass what its file watcher reports
+tfxINTERNAL tfx_image_data_t *tfx__find_library_shape(tfx_library library, const char *shape_name) {
+	const char *file_name = shape_name;
+	for (const char *character = shape_name; *character; ++character) {
+		if (*character == '/' || *character == '\\') {
+			file_name = character + 1;
+		}
+	}
+	for (tfx_image_data_t &image : library->particle_shapes.data) {
+		if (tfx__names_match_ignoring_case(image.name.c_str(), file_name)) {
+			return &image;
+		}
+		tfx_shape_file_t *shape_file = library->shape_files.AtPtr(image.image_hash);
+		if (shape_file && tfx__names_match_ignoring_case(shape_file->file_name.c_str(), file_name)) {
+			return &image;
+		}
+	}
+	return nullptr;
+}
+
+//The frame layout a refreshed image gets. A sheet keeps its grid, so frames scale with it. A new frame count keeps
+//the frame size when the sheet still fits that many frames, otherwise the number of columns.
+tfxINTERNAL bool tfx__resolve_refreshed_shape_layout(tfx_image_data_t *image, tfx_shape_file_t *shape_file, tfxU32 width, tfxU32 height, tfxU32 layers, bool layered, tfxU32 frame_count, tfx_float32x2_t *frame_size, tfxU32 *frames) {
+	tfxU32 current_frames = image->animation_frames > 1.f ? (tfxU32)image->animation_frames : 1;
+	tfxU32 frame_width = (tfxU32)image->image_size.x;
+	tfxU32 frame_height = (tfxU32)image->image_size.y;
+	tfxU32 target_frames = frame_count ? frame_count : current_frames;
+	if (!width || !height) {
+		return false;
+	}
+	if (layered) {
+		if (frame_count && frame_count != layers) {
+			return false;
+		}
+		*frame_size = { (float)width, (float)height };
+		*frames = layers;
+		return true;
+	}
+	if (target_frames == 1) {
+		*frame_size = { (float)width, (float)height };
+		*frames = 1;
+		return true;
+	}
+	//A single image is its own sheet. An animation needs the recorded sheet, the frame size alone doesn't give the grid.
+	tfxU32 sheet_width = shape_file && shape_file->sheet_width ? shape_file->sheet_width : (current_frames == 1 ? frame_width : 0);
+	tfxU32 sheet_height = shape_file && shape_file->sheet_height ? shape_file->sheet_height : (current_frames == 1 ? frame_height : 0);
+	if (target_frames != current_frames && frame_width && frame_height && width % frame_width == 0 && height % frame_height == 0
+		&& (width / frame_width) * (height / frame_height) >= target_frames) {
+		*frame_size = image->image_size;
+		*frames = target_frames;
+		return true;
+	}
+	if (!frame_width || !frame_height || !sheet_width || !sheet_height) {
+		return false;
+	}
+	tfxU32 columns = sheet_width / frame_width;
+	tfxU32 rows = target_frames == current_frames ? sheet_height / frame_height : (target_frames + columns - 1) / tfx__Max(columns, 1u);
+	if (!columns || !rows || width % columns || height % rows) {
+		return false;
+	}
+	*frame_size = { (float)(width / columns), (float)(height / rows) };
+	*frames = target_frames;
+	return true;
+}
+
+tfxINTERNAL bool tfx__effect_uses_shape(tfx_effect_descriptor effect, tfxKey image_hash) {
+	if ((effect->type == tfxEmitterType || effect->type == tfxRibbonType) && tfx__get_shared_emitter_properties(effect)->image_hash == image_hash) {
+		return true;
+	}
+	for (tfx_effect_descriptor child : effect->children) {
+		if (tfx__effect_uses_shape(child, image_hash)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+tfxINTERNAL tfxRefreshFlags tfx__refresh_library_shape(tfx_library library, tfx_image_data_t *image, const void *data, tfxU32 size, tfxRefreshShapeFlags flags, tfxU32 frame_count, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data) {
+	if (!data || !size) {
+		return tfxRefreshFlags_unreadable;
+	}
+	tfx_image_format format = tfx__refreshed_image_format(data, size, image->format);
+	if (format == tfx_image_format_unknown) {
+		return tfxRefreshFlags_unreadable;
+	}
+	//A local hasher, as a host can call this from any thread its stages aren't updating on
+	tfx_hasher_t hasher;
+	tfxKey image_hash = tfx_Hash(&hasher, data, size, 0);
+	tfxKey old_hash = image->image_hash;
+	if (image_hash != old_hash && library->particle_shapes.ValidKey(image_hash)) {
+		return tfxRefreshFlags_shape_matches_another;
+	}
+
+	tfxU32 current_frames = image->animation_frames > 1.f ? (tfxU32)image->animation_frames : 1;
+	tfx_float32x2_t frame_size = image->image_size;
+	tfxU32 frames = current_frames;
+	tfxU32 width = 0;
+	tfxU32 height = 0;
+	tfxU32 layers = 0;
+	bool layered = false;
+	if (tfx__read_image_dimensions(data, size, &width, &height, &layers, &layered)) {
+		if (!tfx__resolve_refreshed_shape_layout(image, library->shape_files.AtPtr(old_hash), width, height, layers, layered, frame_count, &frame_size, &frames)) {
+			return tfxRefreshFlags_shape_layout_mismatch;
+		}
+	} else if (frame_count && frame_count != current_frames) {
+		return tfxRefreshFlags_shape_layout_mismatch;
+	}
+	bool frames_changed = frames != current_frames;
+	bool layout_changed = frames_changed || frame_size.x != image->image_size.x || frame_size.y != image->image_size.y;
+	if (layout_changed && !(flags & tfxRefreshShapeFlags_allow_layout_change) && !frame_count) {
+		return tfxRefreshFlags_shape_layout_mismatch;
+	}
+	if (image_hash == old_hash && !layout_changed) {
+		return tfxRefreshFlags_none;
+	}
+
+	for (tfx_stage pm : tfxStore->stages.data) {
+		tfx_CompleteStageWork(pm);
+	}
+
+	tfx_str256_t file_name = library->shape_files.ValidKey(old_hash) ? library->shape_files.At(old_hash).file_name : image->name;
+	tfx_image_data_t old_image = *image;
+	image->ptr = nullptr;
+	image->image_hash = image_hash;
+	image->format = format;
+	image->image_size = frame_size;
+	image->animation_frames = (float)frames;
+	if (shape_loader) {
+		shape_loader(image->name.c_str(), image, const_cast<void *>(data), (int)size, user_data);
+	}
+	if (shape_remover && old_image.ptr) {
+		shape_remover(&old_image, user_data);
+	}
+
+	//Rekeyed rather than removed and inserted, so every image pointer into particle_shapes stays valid
+	if (image_hash != old_hash) {
+		library->particle_shapes.Rekey(old_hash, image_hash);
+		if (library->shape_files.ValidKey(old_hash)) {
+			library->shape_files.Remove(old_hash);
+		}
+	}
+	tfx__record_library_shape_file(library, image_hash, file_name.c_str(), data, size);
+	//One sweep covers template clones too, their shared properties live in the same array
+	for (tfx_shared_properties_t &shared_properties : library->shared_properties) {
+		if (shared_properties.image_hash == old_hash) {
+			shared_properties.image_hash = image_hash;
+		}
+		if (frames_changed && shared_properties.image_hash == image_hash && shared_properties.start_frame > (float)(frames - 1)) {
+			shared_properties.start_frame = (float)(frames - 1);
+		}
+	}
+
+	tfxRefreshFlags result = tfxRefreshFlags_shapes_changed;
+	if (layout_changed) {
+		result |= tfxRefreshFlags_shape_layout_changed;
+	}
+	if (frames_changed) {
+		//Only the end frame moves, the image pointers are the ones already held
+		tfx__update_library_particle_shape_references(library, image_hash);
+	}
+	if (library->uv_lookup) {
+		tfx_UpdateLibraryGPUImageData(library);
+		result |= tfxRefreshFlags_gpu_shapes_changed;
+	} else if (frames_changed) {
+		tfx__update_library_image_indexes(library);
+	}
+	if (frames_changed) {
+		//Every later shape's frames moved in the gpu shape list, and running particles may be on a frame that no longer exists
+		result |= tfxRefreshFlags_particle_properties_changed;
+		for (tfx_stage pm : tfxStore->stages.data) {
+			for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
+				tfx_effect_state_t &effect_state = pm->effects[effect_index.index];
+				if (effect_state.library == library && TFX_VALID_HANDLE(effect_state.source_effect, tfx_struct_type_effect_descriptor)
+					&& tfx__effect_uses_shape(effect_state.source_effect, image_hash)) {
+					tfx__restart_stage_effect(pm, effect_index.index);
+				}
+			}
+		}
+	}
+	return result;
+}
+
+tfxRefreshFlags tfx_RefreshShapeFromMemory(tfx_library library, const char *shape_name, const void *data, tfxU32 size, tfxRefreshShapeFlags flags, tfxU32 frame_count, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data) {
+	TFX_ASSERT_HANDLE(library);
+	TFX_ASSERT(shape_name);
+	tfx_image_data_t *image = tfx__find_library_shape(library, shape_name);
+	if (!image) {
+		return tfxRefreshFlags_shape_not_found;
+	}
+	return tfx__refresh_library_shape(library, image, data, size, flags, frame_count, shape_loader, shape_remover, user_data);
+}
+
+tfxRefreshFlags tfx_RefreshShape(tfx_library library, const char *shape_name, tfxRefreshShapeFlags flags, tfxU32 frame_count, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data) {
+	TFX_ASSERT_HANDLE(library);
+	TFX_ASSERT(shape_name);
+	tfx_image_data_t *image = tfx__find_library_shape(library, shape_name);
+	if (!image) {
+		return tfxRefreshFlags_shape_not_found;
+	}
+	if (library->library_file_path.Length() == 0) {
+		//Loaded from memory, so there is no file to read it from
+		return tfxRefreshFlags_unreadable;
+	}
+	tfx_shape_file_t *shape_file = library->shape_files.AtPtr(image->image_hash);
+	const char *file_name = shape_file ? shape_file->file_name.c_str() : image->name.c_str();
+	tfx_stream_t shape_data{};
+	if (tfx__path_is_folder(library->library_file_path.data)) {
+		tfx_str512_t shape_path;
+		shape_path.Setf("%s/%s/%s", library->library_file_path.data, tfxFOLDER_SHAPES_DIRECTORY, file_name);
+		tfx__read_entire_file(shape_path.c_str(), &shape_data, false);
+	} else {
+		tfx__load_file_from_package(library->library_file_path.data, file_name, &shape_data);
+	}
+	tfxRefreshFlags result = tfx__refresh_library_shape(library, image, shape_data.data, (tfxU32)shape_data.Size(), flags, frame_count, shape_loader, shape_remover, user_data);
+	shape_data.Free();
+	return result;
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {

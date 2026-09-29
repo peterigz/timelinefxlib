@@ -4184,6 +4184,22 @@ struct tfx_storage_map_t {
 		}
 	}
 
+	//Moves an item to a new key without touching data, so pointers into it stay valid. False if old_key is missing or new_key is taken.
+	inline bool Rekey(tfxKey old_key, tfxKey new_key) {
+		pair *it = LowerBound(old_key);
+		if (it == map.end() || it->key != old_key) {
+			return false;
+		}
+		pair *taken = LowerBound(new_key);
+		if (taken != map.end() && taken->key == new_key) {
+			return false;
+		}
+		tfxU32 index = it->index;
+		map.erase(it);
+		map.insert(LowerBound(new_key), pair(new_key, index));
+		return true;
+	}
+
 
 	inline T &At(const char *name) {
 		int index = GetIndex(name);
@@ -7495,12 +7511,20 @@ typedef struct tfx_effect_library_stats_s {
 }tfx_effect_library_stats_t;
 
 #ifdef __cplusplus
+//Where a shape's image lives in the library's folder or package, and the size of the whole sheet, which the frame size alone can't give
+typedef struct tfx_shape_file_s {
+	tfx_str256_t file_name;
+	tfxU32 sheet_width;
+	tfxU32 sheet_height;
+} tfx_shape_file_t;
+
 typedef struct tfx_library_s {
 	tfxU32 magic;
 	tfxErrorFlags error_flags;
 	tfx_storage_map_t<tfx_effect_descriptor> effect_paths;
 	tfx_vector_t<tfx_effect_descriptor> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
+	tfx_storage_map_t<tfx_shape_file_t> shape_files;	//Keyed by image hash, like particle_shapes
 	tfx_vector_t<tfx_particle_emitter_properties_t> emitter_properties;
 	tfx_vector_t<tfx_shared_properties_t> shared_properties;
 	tfx_vector_t<tfx_ribbon_emitter_properties_t> ribbon_properties;
@@ -9553,6 +9577,9 @@ tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, 
 tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes shape_data, tfx_uv_lookup uv_lookup);
 //Works out a shape's format from its bytes, for library files written before file version 6 recorded one
 tfxAPI_EDITOR tfx_image_format tfx__detect_image_format(const void *image_data, tfxU64 image_size);
+tfxAPI_EDITOR tfx_image_format tfx__refreshed_image_format(const void *image_data, tfxU64 image_size, tfx_image_format current_format);
+tfxINTERNAL bool tfx__read_image_dimensions(const void *image_data, tfxU64 image_size, tfxU32 *width, tfxU32 *height, tfxU32 *layers, bool *layered);
+tfxAPI_EDITOR void tfx__record_library_shape_file(tfx_library library, tfxKey image_hash, const char *file_name, const void *image_data, tfxU64 image_size);
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects

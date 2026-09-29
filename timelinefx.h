@@ -927,9 +927,21 @@ typedef enum {
 	tfxRefreshFlags_particle_properties_changed = 1 << 8,  //tfx_GetParticlePropertiesBuffer changed, and may have grown: re-upload it
 	tfxRefreshFlags_color_ramps_changed = 1 << 9,          //The color ramp bitmaps were rebuilt and re-indexed: re-upload the ramp texture array
 	tfxRefreshFlags_graph_lookups_changed = 1 << 10,       //tfx_GetGPUGraphLookupsBuffer changed, and may have resized: re-upload it
+	//Reported by tfx_RefreshShape only
+	tfxRefreshFlags_shape_not_found = 1 << 11,             //No shape has that name or file name; nothing was applied
+	tfxRefreshFlags_shape_matches_another = 1 << 12,       //The new image is identical to a different shape; nothing was applied
+	tfxRefreshFlags_shape_layout_mismatch = 1 << 13,       //The image no longer fits the shape's frame layout, or can't be laid out as asked; nothing was applied
+	tfxRefreshFlags_shape_layout_changed = 1 << 14,        //The shape took a new frame size or frame count
 } tfx_refresh_flag_bits;
 
 typedef tfxU32 tfxRefreshFlags;                 //tfx_refresh_flag_bits
+
+typedef enum {
+	tfxRefreshShapeFlags_none = 0,
+	tfxRefreshShapeFlags_allow_layout_change = 1 << 0,     //Accept an image of a different size. A sheet keeps its grid, so frames scale with it
+} tfx_refresh_shape_flag_bits;
+
+typedef tfxU32 tfxRefreshShapeFlags;            //tfx_refresh_shape_flag_bits
 
 typedef enum {
 	tfxEffectTemplateFlags_none = 0,
@@ -1016,6 +1028,49 @@ loaded from a folder or a .tfx package) to assertain whether the library is a ne
 * @param result                  Filled in with the flags and counts described above
 */
 tfxAPI void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, tfx_shape_remover shape_remover, void *user_data, tfx_refresh_result_t *result);
+
+/*
+Reload one shape's image from the library's own folder or package, for when the image file was changed
+directly and nothing else in the library was. Only this shape is touched; the rest of the library and
+anything running in a stage carry on as they were.
+
+shape_loader is called with the shape's image data, its ptr field cleared, the same as when the library was
+loaded, and then shape_remover with a copy of the image data as it was, so you can free the old texture.
+The shape keeps its place in the library, so image pointers you hold stay valid, but its image_hash
+changes to the hash of the new image.
+
+An image of a different size is refused unless tfxRefreshShapeFlags_allow_layout_change is set. With it,
+a single image takes the new size and an animation keeps its grid of frames, so halving the sheet halves
+each frame. Pass frame_count to change how many frames the sheet holds: the frame size is kept if the new
+sheet still fits that many, otherwise the number of columns is. A frame count change restarts anything
+running that uses the shape.
+
+Check the returned flags: tfxRefreshFlags_gpu_shapes_changed and tfxRefreshFlags_particle_properties_changed
+name what to re-upload, the same as tfx_RefreshLibrary. When the shape is not refreshed the flags say why:
+tfxRefreshFlags_shape_not_found, tfxRefreshFlags_shape_matches_another, tfxRefreshFlags_shape_layout_mismatch
+or tfxRefreshFlags_unreadable, which a library loaded from memory always reports. tfxRefreshFlags_none means
+the image on disk is the one already loaded.
+
+Animation managers keep their own copy of each shape, so sprite data recorded with the old image is not updated.
+
+* @param library                 A handle to a library loaded from a file or folder
+* @param shape_name              The shape's name or its file name. Any directory in front of it is ignored
+* @param flags                   A combination of tfxRefreshShapeFlags
+* @param frame_count             The number of frames the image now holds, or 0 to keep the current count
+* @param shape_loader            Called to load the new image, the same as when the library is loaded
+* @param shape_remover           Called with a copy of the shape as it was, after the new image is loaded. Can be null
+* @param user_data               Passed to shape_loader and shape_remover
+* @return tfxRefreshFlags        tfxRefreshFlags_shapes_changed when the shape was refreshed
+*/
+tfxAPI tfxRefreshFlags tfx_RefreshShape(tfx_library library, const char *shape_name, tfxRefreshShapeFlags flags, tfxU32 frame_count, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data);
+
+/*
+The same as tfx_RefreshShape but with the image supplied by you, for a library loaded from memory or an image
+that comes from your own asset pipeline.
+* @param data                    The encoded image, a .png or .ktx2 the same as the library holds
+* @param size                    The size of data in bytes
+*/
+tfxAPI tfxRefreshFlags tfx_RefreshShapeFromMemory(tfx_library library, const char *shape_name, const void *data, tfxU32 size, tfxRefreshShapeFlags flags, tfxU32 frame_count, tfx_shape_loader shape_loader, tfx_shape_remover shape_remover, void *user_data);
 
 /**
 * Loads a sprite data file into an animation manager
