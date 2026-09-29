@@ -1890,6 +1890,26 @@ Set the position of an effect
 tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]);
 
 /*
+Move an effect to a new position without tweening, so nothing is spawned along the line between the old and new position and
+no extra particles are added by spawn rate over distance. Use this rather than tfx_SetEffectPosition when the effect jumps somewhere
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param x                The x value of the position
+* @param y                The y value of the position
+* @param z                The z value of the position
+*/
+tfxAPI void tfx_TeleportEffect(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z);
+
+/*
+Move an effect to a new position without tweening, so nothing is spawned along the line between the old and new position and
+no extra particles are added by spawn rate over distance. Use this rather than tfx_SetEffectPositionVec3 when the effect jumps somewhere
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param position        A float[3] array containing the x, y and z coordinates
+*/
+tfxAPI void tfx_TeleportEffectVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]);
+
+/*
 Add a location for an effect to spawn particles at. The effect must have "Spawn at User Locations" set in the editor. Every emitter in the
 effect spawns at every location the effect has, with its shape placed around each one, so an area emitter gives you its whole area at each
 location rather than a single point, and a path emitter gives you its whole path at each location. Line and path emitters that traverse their
@@ -1936,6 +1956,15 @@ Move a spawn location. Particles spawned this update are spread along the line b
 * @param position          A float[3] array containing the x, y and z coordinates
 */
 tfxAPI void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]);
+
+/*
+Move a spawn location without tweening, so nothing is spawned along the line between the old and new position and no extra
+particles are added by spawn rate over distance.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param position          A float[3] array containing the x, y and z coordinates
+*/
+tfxAPI void tfx_TeleportSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]);
 
 /*
 Per location adjustments to what an emitter spawns there, so one effect can drive sources that differ from each other. Defaults are an

@@ -5667,6 +5667,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("noise_offset_variation", tfxFloat);
 	names_and_types.Insert("spawn_impulse", tfxFloat);
 	names_and_types.Insert("spawn_impulse_variation", tfxFloat);
+	names_and_types.Insert("spawn_rate_over_distance", tfxFloat);
 	names_and_types.Insert("emission_distribution", tfxSInt);
 	names_and_types.Insert("emission_divisions", tfxUInt);
 	names_and_types.Insert("emission_jitter", tfxFloat);
@@ -6773,6 +6774,7 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	else if (property_name == "noise_offset_variation") value.Setf("%f", shared_properties->noise_offset_variation);
 	else if (property_name == "spawn_impulse") value.Setf("%f", emitter_properties->spawn_impulse);
 	else if (property_name == "spawn_impulse_variation") value.Setf("%f", emitter_properties->spawn_impulse_variation);
+	else if (property_name == "spawn_rate_over_distance") value.Setf("%f", emitter_properties->spawn_rate_over_distance);
 	else if (property_name == "drag_variation") value.Setf("%f", emitter_properties->drag_variation);
 	else if (property_name == "emission_jitter" && emitter_properties) value.Setf("%f", emitter_properties->emission_steps.jitter);
 	else if (property_name == "roll_jitter" && emitter_properties) value.Setf("%f", emitter_properties->roll_steps.jitter);
@@ -7170,6 +7172,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "noise_speed_bias") emitter_properties->noise_speed_bias = value < -1.f ? -1.f : (value > 1.f ? 1.f : value);
 		else if (*field == "spawn_impulse") emitter_properties->spawn_impulse = value;
 		else if (*field == "spawn_impulse_variation") emitter_properties->spawn_impulse_variation = value;
+		else if (*field == "spawn_rate_over_distance") emitter_properties->spawn_rate_over_distance = value < 0.f ? 0.f : value;
 		else if (*field == "drag_variation") emitter_properties->drag_variation = value;
 		else if (*field == "emission_jitter") emitter_properties->emission_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
 		else if (*field == "roll_jitter") emitter_properties->roll_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
@@ -7338,6 +7341,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("noise_offset_variation=%f", shared_properties->noise_offset_variation);
 	file->AddLine("spawn_impulse=%f", emitter_properties->spawn_impulse);
 	file->AddLine("spawn_impulse_variation=%f", emitter_properties->spawn_impulse_variation);
+	file->AddLine("spawn_rate_over_distance=%f", emitter_properties->spawn_rate_over_distance);
 	file->AddLine("drag_variation=%f", emitter_properties->drag_variation);
 	file->AddLine("emission_distribution=%i", emitter_properties->emission_steps.distribution);
 	file->AddLine("emission_divisions=%u", emitter_properties->emission_steps.divisions);
@@ -14200,6 +14204,8 @@ void tfx__update_stage(void *data) {
 	pm->ribbon_work.clear();
 
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[next_buffer]) {
+		//Held until now so the particle and ribbon emitters could pick it up from the effect
+		pm->effects[effect_index.index].state_flags &= ~tfxEffectStateFlags_no_tween_this_update;
 		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
 		TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 			if (tfx__is_ordered_effect_state(&pm->effects[effect_index.index])) {
@@ -17341,8 +17347,6 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 		effect.timeout = 1;
 		effect.active_emitters = 0;
 	}
-
-	effect.state_flags &= ~tfxEffectStateFlags_no_tween_this_update;
 }
 
 //What an emitter samples to work out one location's share of the spawn. Only the amount is per location, everything else an
@@ -17359,11 +17363,19 @@ typedef struct tfx_user_spawn_amount_source_s {
 	float frame_length;
 	float delay;
 	float loop_length;
+	float distance_rate;							//Spawn rate over distance divided by the update time, so it adds to the per second weight
 	bool single;
 } tfx_user_spawn_amount_source_t;
 
 tfxINTERNAL bool tfx__has_single_decay(const tfx_shared_properties_t *shared_properties) {
 	return shared_properties->single_decay_amount > 0 && shared_properties->single_decay_time > 0.f;
+}
+
+tfxINTERNAL float tfx__spawn_rate_over_distance(const tfx_particle_emitter_state_t &emitter, const tfx_particle_emitter_properties_t *properties, const tfx_shared_properties_t *shared_properties) {
+	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single || shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) {
+		return 0.f;
+	}
+	return properties->spawn_rate_over_distance;
 }
 
 //Differencing the floored running totals keeps the tail's total exact at any update rate without carrying a remainder
@@ -17421,6 +17433,10 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 			weight = tfx__sample_multi_node_graph(source->base_amount, age, oscillator_time);
 			float amount_variation = tfx__sample_multi_node_graph(source->variation_amount, age, oscillator_time);
 			weight += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
+			if (source->distance_rate > 0.f) {
+				tfx_vec3_t travelled = location.position - location.captured_position;
+				weight += tfx__length_vec3(&travelled) * source->distance_rate;
+			}
 			weight *= global_amount;
 		}
 		if (weight <= 0.f) {
@@ -17622,13 +17638,14 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	//Each user spawn location waits out the delay from its own age instead
 	if (parent_effect.age < ribbon_emitter.state_properties.delay_spawning && !ribbon_work_entry->user_spawn_locations) {
+		ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_no_tween_this_update;
 		parent_effect.active_emitters++;
 		return;
 	}
 
 	ribbon_work_entry->effect_flags = pm->effects[ribbon_emitter.parent_index].effect_flags;
 
-	ribbon_emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_no_tween;
+	ribbon_emitter.state_flags |= parent_effect.state_flags & (tfxEffectStateFlags_no_tween | tfxEffectStateFlags_no_tween_this_update);
 	if (ribbon_work_entry->shared_properties->emission_type != tfxOtherEmitter) {
 		ribbon_emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
 	}
@@ -17645,6 +17662,11 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	local_rotations += ribbon_emitter.creation_rotations;
 
 	tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
+
+	if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_no_tween_this_update) {
+		ribbon_emitter.captured_position = ribbon_emitter.world_position;
+		ribbon_emitter.state_flags &= ~tfxRibbonEmitterStateFlags_no_tween_this_update;
+	}
 
 	tfx__update_ribbon_emitter_state(pm, ribbon_emitter, ribbon_emitter.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
 	ribbon_work_entry->new_ribbons = tfx__new_ribbons_needed(pm, ribbon_work_entry, ribbon_emitter_index, &parent_effect, ribbon_work_entry->shared_properties);
@@ -17791,13 +17813,15 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	//Each user spawn location waits out the delay from its own age instead
 	if (parent_effect.age < emitter.state_properties.delay_spawning && !spawn_work_entry->user_spawn_locations) {
+		//world_position isn't updated while delayed, so the first live update mustn't tween or measure travel from the stale one
+		emitter.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
 		parent_effect.active_emitters++;
 		return;
 	}
 	spawn_work_entry->root_effect_flags = pm->effects[emitter.parent_index].effect_flags;
 	bool ordered_effect = (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_age_order) || (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 
-	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_no_tween;
+	emitter.state_flags |= parent_effect.state_flags & (tfxEffectStateFlags_no_tween | tfxEffectStateFlags_no_tween_this_update);
 	if (shared_properties.emission_type != tfxOtherEmitter && shared_properties.emission_type != tfxSpawnOnRibbon) {
 		emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
 	}
@@ -17810,19 +17834,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		pm->emitters_check_capture.push_back(emitter_index);
 	}
 
-	//bool is_compute = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->flags & tfxStageFlags_use_compute_shader;
-	tfxU32 max_spawn_count = tfx__new_sprites_needed(pm, spawn_work_entry, emitter_index, &parent_effect, &shared_properties);
-	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
-
-	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer][layer];
-	bool is_recording = (pm->flags & tfxStageFlags_recording_sprites) > 0 && (pm->flags & tfxStageFlags_using_uids) > 0;
-	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
-	tfxU32 &effect_instance_index_point = instance_data.sprite_index_point[layer];
-	tfxU32 &instance_index_point = instance_data.sprite_index_point[layer];
-	if (ordered_effect) {
-		spawn_work_entry->depth_indexes = &instance_data.depth_indexes[layer][instance_data.current_depth_buffer_index[layer]];
-	}
-
+	//Transformed before the spawn count so spawn rate over distance can measure this update's travel
 	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
 		if (tfx__solve_camera_facing_rotations(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotations)) {
 			emitter.state_flags &= ~tfxEmitterStateFlags_orient_to_camera_pending;
@@ -17844,6 +17856,19 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
 		emitter.captured_position = emitter.world_position;
+	}
+
+	//bool is_compute = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->flags & tfxStageFlags_use_compute_shader;
+	tfxU32 max_spawn_count = tfx__new_sprites_needed(pm, spawn_work_entry, emitter_index, &parent_effect, &shared_properties);
+	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
+
+	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer][layer];
+	bool is_recording = (pm->flags & tfxStageFlags_recording_sprites) > 0 && (pm->flags & tfxStageFlags_using_uids) > 0;
+	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
+	tfxU32 &effect_instance_index_point = instance_data.sprite_index_point[layer];
+	tfxU32 &instance_index_point = instance_data.sprite_index_point[layer];
+	if (ordered_effect) {
+		spawn_work_entry->depth_indexes = &instance_data.depth_indexes[layer][instance_data.current_depth_buffer_index[layer]];
 	}
 
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
@@ -17938,6 +17963,7 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	tfx__set_user_spawn_decay_source(&source, entry->shared_properties, (float)pm->frame_length);
 	source.delay = emitter.state_properties.delay_spawning;
 	source.loop_length = emitter.source_emitter->state_properties.loop_length;
+	source.distance_rate = pm->update_time > 0.0 ? tfx__spawn_rate_over_distance(emitter, entry->properties, entry->shared_properties) / (float)pm->update_time : 0.f;
 	source.single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	return tfx__user_spawn_location_runs(entry->user_spawn_locations, &pm->user_spawn_runs, &entry->random, &source, &entry->user_spawn_run_start, &entry->user_spawn_run_count);
 }
@@ -18232,6 +18258,14 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], emitter.age, emitter.oscillator_time);
 	emitter.spawn_quantity *= global_amount;
 
+	//An amount for this update rather than per second. User spawn locations add theirs to each location's weight instead
+	double distance_amount = 0.0;
+	const float rate_over_distance = tfx__spawn_rate_over_distance(emitter, entry->properties, shared_properties);
+	if (rate_over_distance > 0.f && !entry->user_spawn_locations) {
+		tfx_vec3_t travelled = emitter.world_position - emitter.captured_position;
+		distance_amount = (double)(tfx__length_vec3(&travelled) * rate_over_distance * global_amount);
+	}
+
 	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
 		return 0;
 	}
@@ -18291,7 +18325,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		}
 	}
 
-	if (emitter.spawn_quantity == 0) {
+	if (emitter.spawn_quantity == 0 && distance_amount == 0.0) {
 		return 0;
 	}
 
@@ -18311,6 +18345,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		}
 
 		emitter.spawn_quantity *= pm->update_time;
+		emitter.spawn_quantity += distance_amount;
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
 	else {
@@ -22806,6 +22841,18 @@ void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float pos
 	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
 }
 
+void tfx_TeleportEffect(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	pm->effects[effect_index].local_position = tfx_vec3_t(x, y, z);
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_no_tween_this_update;
+}
+
+void tfx_TeleportEffectVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_no_tween_this_update;
+}
+
 //A spawn location id is the effect index in the upper 32 bits, then the slot's generation and the slot itself, so an id goes stale when its slot is reused
 tfxINTERNAL tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation) {
 	return slot | (generation << tfxSPAWN_LOCATION_SLOT_BITS);
@@ -22978,6 +23025,11 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
 					locations[command.slot].position = command.position;
 				}
+			} else if (command.type == tfx_user_spawn_location_command_teleport) {
+				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
+					locations[command.slot].position = command.position;
+					locations[command.slot].captured_position = command.position;
+				}
 			} else if (command.type == tfx_user_spawn_location_command_tweaks) {
 				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
 					locations[command.slot].packed_rotation = command.packed_rotation;
@@ -23085,6 +23137,19 @@ void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float
 	}
 	tfx_user_spawn_location_command_t command = {};
 	command.type = tfx_user_spawn_location_command_update;
+	command.slot = tfx__spawn_location_slot(location_id);
+	command.position = { position[0], position[1], position[2] };
+	user_location_list->commands.push_back(command);
+}
+
+void tfx_TeleportSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	if (!user_location_list) {
+		return;
+	}
+	tfx_user_spawn_location_command_t command = {};
+	command.type = tfx_user_spawn_location_command_teleport;
 	command.slot = tfx__spawn_location_slot(location_id);
 	command.position = { position[0], position[1], position[2] };
 	user_location_list->commands.push_back(command);

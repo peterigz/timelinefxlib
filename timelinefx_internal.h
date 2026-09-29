@@ -3362,6 +3362,7 @@ typedef enum {
 typedef enum {
 	tfxRibbonEmitterStateFlags_none                             = 0,
 	tfxRibbonEmitterStateFlags_remove                           = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
+	tfxRibbonEmitterStateFlags_no_tween_this_update             = 1 << 7,       //Same bit as tfxEffectStateFlags_no_tween_this_update so it can be inherited from the effect
 	tfxRibbonEmitterStateFlags_single_shot_done                 = 1 << 17,
 	tfxRibbonEmitterStateFlags_orient_to_camera_pending         = 1 << 26,      //Same as tfxEmitterStateFlags_orient_to_camera_pending
 } tfx_ribbon_emitter_state_flag_bits;
@@ -6161,6 +6162,9 @@ typedef struct tfx_particle_emitter_properties_s {
 	//Added to spawn_impulse per particle, drawn from [0, variation] by hashing the particle uid rather
 	//than by storing a per particle magnitude - see tfxSPAWN_IMPULSE_HASH_AXIS.
 	float spawn_impulse_variation;
+	//For things like trails you can increase the amount of particles spawned based on the distance 
+	//travelled overtime
+	float spawn_rate_over_distance;
 	//Steps the emission direction across (fan) or around (ring) the emission range instead of spreading it randomly.
 	//Only used by Point emitters and the Specified emission direction.
 	tfx_angle_steps_t emission_steps;
@@ -7291,6 +7295,7 @@ typedef struct tfx_user_spawn_tweaks_s {
 typedef enum {
 	tfx_user_spawn_location_command_add,
 	tfx_user_spawn_location_command_update,
+	tfx_user_spawn_location_command_teleport,
 	tfx_user_spawn_location_command_tweaks,
 	tfx_user_spawn_location_command_pause,
 	tfx_user_spawn_location_command_soft_expire,
