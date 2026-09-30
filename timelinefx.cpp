@@ -4323,9 +4323,9 @@ void *tfx_GetImagePointer(tfx_image_data_t *image) {
 void tfx_SetGPUImageTextureInfo(tfx_gpu_image_data_t *image, float x, float y, float z, float w, int array_index) {
 	TFX_ASSERT(image);	//image pointer is NULL, must point to a valid tfx_gpu_image_data_t
 	image->uv.x = x;
-	image->uv.x = y;
-	image->uv.x = z;
-	image->uv.x = w;
+	image->uv.y = y;
+	image->uv.z = z;
+	image->uv.w = w;
 	image->texture_array_index = array_index;
 	image->uv_packed = tfx__pack16bit4_snorm(x, y, z, w);
 }
