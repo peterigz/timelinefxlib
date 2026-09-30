@@ -6217,6 +6217,16 @@ void tfx__assign_force_line(tfx_effect_descriptor emitter, tfx_vector_t<tfx_str2
 		force->axis.z = (float)atof((*values)[tail + 6].c_str());
 		force->vortex.radial_ratio = (float)atof((*values)[tail + 7].c_str());
 		force->vortex.axial_ratio = (float)atof((*values)[tail + 8].c_str());
+		//Appended later, so a vortex saved before it could fluctuate loads uniform with the defaults a new vortex gets
+		if (values->size() < tail + 13) {
+			force->vortex.fluctuation_speed = 0.5f;
+			force->vortex.fluctuation_lobes = 3;
+			return;
+		}
+		force->vortex.fluctuation = (float)atof((*values)[tail + 9].c_str());
+		force->vortex.fluctuation_speed = (float)atof((*values)[tail + 10].c_str());
+		force->vortex.fluctuation_lobes = (tfxU32)atoi((*values)[tail + 11].c_str());
+		force->vortex.fluctuation_seed = (tfxU32)strtoul((*values)[tail + 12].c_str(), nullptr, 10);
 		break;
 	case tfxForceShockwave:
 		if (values->size() < tail + 6) return;
@@ -7745,11 +7755,12 @@ void tfx__stream_emitter_forces(tfx_effect_descriptor emitter, tfx_stream_t *fil
 				force->origin.x, force->origin.y, force->origin.z, force->radius);
 			break;
 		case tfxForceVortex:
-			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f",
+			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%u,%u",
 				(int)i, (int)force->type, (int)force->space, (int)force->flags, force->strength, force->delay,
 				force->origin.x, force->origin.y, force->origin.z, force->radius,
 				force->axis.x, force->axis.y, force->axis.z,
-				force->vortex.radial_ratio, force->vortex.axial_ratio);
+				force->vortex.radial_ratio, force->vortex.axial_ratio,
+				force->vortex.fluctuation, force->vortex.fluctuation_speed, force->vortex.fluctuation_lobes, force->vortex.fluctuation_seed);
 			break;
 		case tfxForceShockwave:
 			file->AddLine("force3,%i,%i,%i,%i,%f,%f,%f,%f,%f,%f,%f,%f",
@@ -15277,6 +15288,8 @@ void tfx_setup_path_life_policy::apply(tfx_control_work_entry_t *work_entry, tfx
 	ctx.node_count = tfxWideSetSingle(work_entry->node_count - 3.f);
 }
 
+tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_up_to(const tfx_vec3_t &normalised_direction);
+
 void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t *emitter = &pm.emitters[work_entry->emitter_index];
@@ -15365,12 +15378,27 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 						axis.x /= axis_length;
 						axis.y /= axis_length;
 						axis.z /= axis_length;
+						//Angle zero for the fluctuation comes from the authored axis's own frame, the same one the preview widget uses
+						tfx_quaternion_t axis_frame = tfx__quaternion_from_up_to(axis);
 						axis = tfx__resolve_force_direction(axis, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
 						resolved->axis_x = tfxWideSetSingle(axis.x);
 						resolved->axis_y = tfxWideSetSingle(axis.y);
 						resolved->axis_z = tfxWideSetSingle(axis.z);
 						resolved->vortex.radial_ratio = tfxWideSetSingle(force->vortex.radial_ratio);
 						resolved->vortex.axial_ratio = tfxWideSetSingle(force->vortex.axial_ratio);
+						if (force->vortex.fluctuation > 0.f) {
+							tfx_vec3_t reference = tfx__rotate_vector_quaternion(&axis_frame, tfx_vec3_t(1.f, 0.f, 0.f));
+							reference = tfx__resolve_force_direction(reference, force->space, emitter, parent_effect, &inverse_emitter_rotation, to_local_space);
+							tfx_vec3_t reference_turn = tfx__cross_product_vec3(axis, reference);
+							resolved->vortex.reference[0] = reference.x;
+							resolved->vortex.reference[1] = reference.y;
+							resolved->vortex.reference[2] = reference.z;
+							resolved->vortex.reference_turn[0] = reference_turn.x;
+							resolved->vortex.reference_turn[1] = reference_turn.y;
+							resolved->vortex.reference_turn[2] = reference_turn.z;
+							tfx__get_vortex_fluctuation(force, (emitter->age - force->delay) * 0.001f, (float)pm.frame_length * 0.001f, &resolved->vortex.fluctuation);
+							resolved->flags |= tfx_force_resolved_flag_fluctuating;
+						}
 					} else if (force->type == tfxForceShockwave) {
 						//Note: emitter age will equal the effect age because they're always created in the effect manager at the same time.
 						float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * bank_units_scale;
@@ -22823,9 +22851,38 @@ void tfx__init_emitter_force(tfx_force_t *force) {
 }
 
 void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type) {
-	//We could add a static assert to check if the union changed footprint
-	force->vortex = {};
+	//The union is the last member, so this clears every arm of it plus the trailing padding the byte hash reads
+	memset(&force->vortex, 0, sizeof(tfx_force_t) - offsetof(tfx_force_t, vortex));
 	force->type = type;
+}
+
+//The first harmonic turns at the fluctuation speed and the others at seeded ratios of it, some against it, so the lobes drift through each other without ever repeating
+void tfx__get_vortex_fluctuation(const tfx_force_t *force, float active_seconds, float frame_seconds, tfx_vortex_fluctuation_t *fluctuation) {
+	const float weights[tfxVORTEX_FLUCTUATION_HARMONICS] = { 0.5f, 0.3f, 0.2f };
+	fluctuation->lobes = tfx__Clamp(1u, (tfxU32)tfxMAX_VORTEX_FLUCTUATION_LOBES, force->vortex.fluctuation_lobes);
+	tfxU32 seed = tfx__seedgen_u32(force->vortex.fluctuation_seed);
+	//Sampled at the middle of the frame so the frame average below is centred on it
+	float middle_seconds = active_seconds - frame_seconds * 0.5f;
+	for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+		float speed_ratio = 1.f;
+		if (harmonic_index > 0) {
+			speed_ratio = 1.f + 0.6f * tfx__white_unit(seed + harmonic_index, tfxVORTEX_FLUCTUATION_HASH_AXIS);
+			if (tfx__white_unit(seed + harmonic_index, tfxVORTEX_FLUCTUATION_HASH_AXIS ^ 0x1u) < -0.4f) speed_ratio = -speed_ratio;
+		}
+		float phase = tfxPI * tfx__white_unit(seed + harmonic_index, tfxVORTEX_FLUCTUATION_HASH_AXIS ^ 0x2u);
+		float lobe_count = (float)(fluctuation->lobes + harmonic_index);
+		float lobe_turns_per_second = lobe_count * force->vortex.fluctuation_speed * speed_ratio;
+		float turns = lobe_turns_per_second * middle_seconds;
+		//Wrapped before it becomes an angle so a long running effect keeps its precision
+		turns -= floorf(turns);
+		float angle = turns * tfxPI2 + phase;
+		//A cosine averaged over the angle it turns through in one frame is its middle value times sinc(half that angle)
+		float half_frame_turn = tfxPI * fabsf(lobe_turns_per_second) * frame_seconds;
+		float frame_average = half_frame_turn > 0.0001f ? sinf(half_frame_turn) / half_frame_turn : 1.f;
+		float weight = weights[harmonic_index] * force->vortex.fluctuation * frame_average;
+		fluctuation->harmonic_cos[harmonic_index] = weight * cosf(angle);
+		fluctuation->harmonic_sin[harmonic_index] = weight * sinf(angle);
+	}
 }
 
 tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type) {
@@ -22859,6 +22916,8 @@ tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_typ
 			force->strength = 5.f;
 			force->vortex.radial_ratio = 0.f;
 			force->vortex.axial_ratio = 0.f;
+			force->vortex.fluctuation_speed = 0.5f;
+			force->vortex.fluctuation_lobes = 3;
 			break;
 		}
 		case tfxForceShockwave: {

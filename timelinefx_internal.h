@@ -6114,7 +6114,8 @@ typedef struct tfx_force_s {
 	//Time in milliseconds before the force activates
 	float delay;
 	union {
-		struct { float radial_ratio, axial_ratio; } vortex;
+		//fluctuation varies the strength around the axis (0 is uniform) in lobes that turn at fluctuation_speed revolutions per second
+		struct { float radial_ratio, axial_ratio, fluctuation, fluctuation_speed; tfxU32 fluctuation_lobes, fluctuation_seed; } vortex;
 		struct { float speed, thickness; } shockwave;
 		struct { tfx_noise_type algorithm; } noise;
 	};
@@ -6126,7 +6127,19 @@ typedef enum {
 	//The field is confined to a sphere about the origin. Noise only: the other types have no unbounded form, so
 	//they are dropped at setup when their extent is zero rather than being resolved without one.
 	tfx_force_resolved_flag_bounded                             = 1 << 1,
+	tfx_force_resolved_flag_fluctuating                         = 1 << 2,
 } tfx_force_resolved_flag_bits;
+
+#define tfxVORTEX_FLUCTUATION_HARMONICS 3
+#define tfxMAX_VORTEX_FLUCTUATION_LOBES 8
+
+//A vortex's strength around its axis at one moment: 1 + sum(harmonic_cos[k] * cos(n_k angle) + harmonic_sin[k] * sin(n_k angle)), n_k = lobes + k
+typedef struct tfx_vortex_fluctuation_s {
+	tfxU32 lobes;
+	//Each harmonic's weight with the fluctuation amount, its current turn and its average over the frame already folded in
+	float harmonic_cos[tfxVORTEX_FLUCTUATION_HARMONICS];
+	float harmonic_sin[tfxVORTEX_FLUCTUATION_HARMONICS];
+} tfx_vortex_fluctuation_t;
 
 //Struct that gets written outside of the particle loop that calculates various things based on the
 //force type and space (emitter, effect world)
@@ -6139,7 +6152,12 @@ typedef struct tfx_force_resolved_s {
 	tfxWideFloat falloff_scale;
 	//Union for vortex and shockwave forces
 	union {
-		struct { tfxWideFloat radial_ratio, axial_ratio; } vortex;
+		//reference is angle zero about the axis and reference_turn is axis x reference; scalar since only a fluctuating vortex reads them
+		struct {
+			tfxWideFloat radial_ratio, axial_ratio;
+			float reference[3], reference_turn[3];
+			tfx_vortex_fluctuation_t fluctuation;
+		} vortex;
 		//How far the wave's leading edge has travelled this frame. Resolved from speed and the effect clock at
 		//setup so the inner loop never touches a clock.
 		struct { tfxWideFloat front; } shockwave;
@@ -7841,6 +7859,7 @@ tfxAPI_EDITOR bool tfx__graph_curves_can_overshoot(tfx_graph_preset preset);
 tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__init_emitter_force(tfx_force_t *force);
 tfxAPI_EDITOR void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type);
+tfxAPI_EDITOR void tfx__get_vortex_fluctuation(const tfx_force_t *force, float active_seconds, float frame_seconds, tfx_vortex_fluctuation_t *fluctuation);
 tfxAPI_EDITOR tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type);
 tfxAPI_EDITOR void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
 tfxAPI_EDITOR void tfx__clear_emitter_forces(tfx_effect_descriptor emitter);
@@ -8164,6 +8183,8 @@ tfxINTERNAL inline float tfx__white_unit(tfxU32 seed, tfxU32 axis) {
 //Hash axis the per particle drag rate is drawn on. Must differ from every other axis or a particle's drag
 //would correlate with its launch speed and the two variations would visibly move together.
 #define tfxDRAG_VARIATION_HASH_AXIS 0x9e3779b9
+//Hash axis a vortex's fluctuation harmonics draw their speeds and phases on
+#define tfxVORTEX_FLUCTUATION_HASH_AXIS 0x68e31da4
 
 //--------------------------------
 //Control particle inline functions and policies
@@ -8638,6 +8659,57 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_sample_force_profile(const tfx_force_r
 	return tfxWideAnd(inside, sample);
 }
 
+//Scales a vortex's strength by where the particle sits around the axis. cos/sin of n * angle come from powers of the unit arm as a complex number, so no angle is ever taken.
+tfxINTERNAL inline tfxWideFloat tfx__wide_vortex_fluctuation(const tfx_force_resolved_t *force, tfxWideFloat radial_x, tfxWideFloat radial_y, tfxWideFloat radial_z) {
+	const float *reference = force->vortex.reference;
+	const float *reference_turn = force->vortex.reference_turn;
+	const tfx_vortex_fluctuation_t &fluctuation = force->vortex.fluctuation;
+	tfxWideFloat arm_real = tfxWideMul(radial_x, tfxWideSetSingle(reference[0]));
+	arm_real = tfxWideMulAdd(radial_y, tfxWideSetSingle(reference[1]), arm_real);
+	arm_real = tfxWideMulAdd(radial_z, tfxWideSetSingle(reference[2]), arm_real);
+	tfxWideFloat arm_imaginary = tfxWideMul(radial_x, tfxWideSetSingle(reference_turn[0]));
+	arm_imaginary = tfxWideMulAdd(radial_y, tfxWideSetSingle(reference_turn[1]), arm_imaginary);
+	arm_imaginary = tfxWideMulAdd(radial_z, tfxWideSetSingle(reference_turn[2]), arm_imaginary);
+
+	//The arm raised to the lobe count by squaring. The first factor is taken as it is rather than multiplied into one.
+	tfxWideFloat power_real = arm_real;
+	tfxWideFloat power_imaginary = arm_imaginary;
+	bool have_power = false;
+	tfxWideFloat base_real = arm_real;
+	tfxWideFloat base_imaginary = arm_imaginary;
+	for (tfxU32 exponent = fluctuation.lobes; exponent; exponent >>= 1) {
+		if (exponent & 1) {
+			if (have_power) {
+				const tfxWideFloat next_real = tfxWideMulSub(power_real, base_real, tfxWideMul(power_imaginary, base_imaginary));
+				power_imaginary = tfxWideMulAdd(power_real, base_imaginary, tfxWideMul(power_imaginary, base_real));
+				power_real = next_real;
+			} else {
+				power_real = base_real;
+				power_imaginary = base_imaginary;
+				have_power = true;
+			}
+		}
+		if (exponent > 1) {
+			const tfxWideFloat next_real = tfxWideMulSub(base_real, base_real, tfxWideMul(base_imaginary, base_imaginary));
+			base_imaginary = tfxWideMul(tfxWideAdd(base_real, base_real), base_imaginary);
+			base_real = next_real;
+		}
+	}
+
+	//Each further harmonic has one more lobe than the last, so it is one more multiply by the arm
+	tfxWideFloat variation = tfxWIDEONE.m;
+	for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+		if (harmonic_index > 0) {
+			const tfxWideFloat next_real = tfxWideMulSub(power_real, arm_real, tfxWideMul(power_imaginary, arm_imaginary));
+			power_imaginary = tfxWideMulAdd(power_real, arm_imaginary, tfxWideMul(power_imaginary, arm_real));
+			power_real = next_real;
+		}
+		variation = tfxWideMulAdd(power_real, tfxWideSetSingle(fluctuation.harmonic_cos[harmonic_index]), variation);
+		variation = tfxWideMulAdd(power_imaginary, tfxWideSetSingle(fluctuation.harmonic_sin[harmonic_index]), variation);
+	}
+	return variation;
+}
+
 //Adds one vortex's flow to the medium. This is the shape every position dependent force follows: offset the particle
 //from the resolved origin, turn a distance into the profile's 0..1 coordinate, then accumulate
 //strength * profile * direction.
@@ -8670,8 +8742,11 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	radial_z = tfxWideMul(radial_z, inverse_radial_length);
 	const tfxWideFloat radial_distance = tfxWideMul(radial_length_squared, inverse_radial_length);
 
-	const tfxWideFloat scale = tfxWideMul(force->strength,
+	tfxWideFloat scale = tfxWideMul(force->strength,
 		tfx__wide_sample_force_profile(force, tfxWideMul(radial_distance, force->falloff_scale)));
+	if (force->flags & tfx_force_resolved_flag_fluctuating) {
+		scale = tfxWideMul(scale, tfx__wide_vortex_fluctuation(force, radial_x, radial_y, radial_z));
+	}
 
 	//Spinning is the whole point of a vortex, so the tangential component is implicitly 1 and strength scales it.
 	//The two ratios lean that flow inward or outward along the arm and up or down the axis.
