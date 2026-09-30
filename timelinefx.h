@@ -2065,6 +2065,20 @@ tfxAPI void tfx_SetSpawnLocationSplatterMultiplier(tfx_stage pm, tfxSpawnLocatio
 tfxAPI void tfx_SetSpawnLocationWeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float weight);
 
 /*
+The size of the shape an emitter spawns in at a location, the location's version of tfx_SetEffectWidthMultiplier, tfx_SetEffectHeightMultiplier
+and tfx_SetEffectDepthMultiplier, and multiplied on top of them. Width, height and depth are the emitter's own x, y and z, so a line's length
+is its height. All default to 1 and take effect for particles and ribbons spawned from now on. If the emitter sets its amount by its area,
+a resized location's amount changes with it so the density stays the same, as it does for the effect.
+Trajectory emitters, which follow their line or path every frame, only take the height, as a uniform scale of the whole trajectory.
+Emitters that traverse their line or path edge ignore all three.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI void tfx_SetSpawnLocationWidthMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float width);
+tfxAPI void tfx_SetSpawnLocationHeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float height);
+tfxAPI void tfx_SetSpawnLocationDepthMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float depth);
+
+/*
 Offset the noise field sampled by particles spawned at a location, the location's version of tfx_SetEffectBaseNoiseOffset. Locations
 otherwise share the effect's noise offset, so giving each its own stops them all swirling the same way. Added to the effect's offset,
 0 by default, and only read by emitters using a noise field.

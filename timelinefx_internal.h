@@ -7011,6 +7011,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 user_spawn_cursor;				//The run tfx__spawn_anchor is up to, only ever moves forwards
 	tfxU32 user_spawn_run_end;				//The particle index the cursor's run ends at
 	tfx_quaternion_t user_spawn_rotation;	//The cursor run's location rotation combined with the emitter's, rebuilt when the cursor moves
+	tfx_vec3_t user_spawn_shape_scale;		//The cursor run's emitter width, height and depth multipliers, rebuilt when the cursor moves
 	tfxU32 user_spawn_run_count;
 	tfxU32 spawn_points_ready;
 #ifdef __cplusplus
@@ -7301,6 +7302,7 @@ typedef enum {
 	tfxUserSpawnLocationFlags_has_factors = 1 << 3,		//A multiplier isn't at its default
 	tfxUserSpawnLocationFlags_counting_down = 1 << 4,	//expire_countdown is running, the slot frees when it reaches zero
 	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
+	tfxUserSpawnLocationFlags_has_shape_scale = 1 << 6,	//An emitter width, height or depth multiplier isn't 1
 } tfx_user_spawn_location_flag_bits;
 
 typedef enum {
@@ -7317,6 +7319,7 @@ typedef enum {
 	tfxUserSpawnLocationListFlags_has_rotation = 1 << 0,		//Rebuilt each update so an emitter can skip the tweak work entirely when nobody has set any
 	tfxUserSpawnLocationListFlags_has_factors = 1 << 1,
 	tfxUserSpawnLocationListFlags_restart_pending = 1 << 2,	//The effect restarted in place, the next apply step starts every location over as if it was just added
+	tfxUserSpawnLocationListFlags_has_shape_scale = 1 << 3,
 } tfx_user_spawn_location_list_flag_bits;
 
 //Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
@@ -7341,6 +7344,9 @@ typedef struct tfx_user_spawn_multipliers_s {
 	float splatter;
 	float weight;
 	float noise_offset;								//Added rather than multiplied, 0 by default
+	float emitter_width;							//The size of the shape the emitter spawns in, like the effect's emitter width, height and depth
+	float emitter_height;
+	float emitter_depth;
 } tfx_user_spawn_multipliers_t;
 
 //Per location values that the per particle gather never touches, kept in their own list indexed by the same slot so they don't widen
@@ -7764,7 +7770,7 @@ tfxAPI_EDITOR tfx_quaternion_t tfx__unpack16bit_quaternion_from_gpu(tfxU64 q);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
-tfxINTERNAL tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t spawn_offset, const tfx_emission_step_t *emission_step);
+tfxINTERNAL tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t spawn_offset, tfx_vec3_t shape_scale, const tfx_emission_step_t *emission_step);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
 tfxINTERNAL void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed);
@@ -9541,6 +9547,7 @@ tfxINTERNAL void tfx__spawn_particle_point(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_user_location_shape_scale(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
