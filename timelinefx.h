@@ -1917,24 +1917,6 @@ as the remaining particles come to the end of their life. Any single particles w
 tfxAPI void tfx_DisableStageSpawning(tfx_stage pm, bool yesno);
 
 /*
-Get the buffer of effect indexes in the effect manager. These are the effects' slots in the stage, not the ids returned by tfx_AddEffectTemplateToStage.
-* @param pm               A pointer to a tfx_stage_t.
-* @param depth            The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
-* @param count			  A pointer to an int that you can pass in that will be filled with the count of effects in the array
-* @returns                Pointer to the array of effect indexes
-*/
-tfxAPI tfx_effect_index_t *tfx_GetStageEffectBuffer(tfx_stage pm, int *count);
-
-/*
-Get the buffer of emitter indexes in the effect manager.
-* @param pm                A pointer to a tfx_stage_t.
-* @param depth            The depth of the list that you want. 0 are top level emitters and anything higher are sub emitters within those effects
-* @param count			  A pointer to an int that you can pass in that will be filled with the count of emitters in the array
-* @returns                Pointer to the tfxvec of effect indexes
-*/
-tfxAPI tfxU32 *tfx_GetStageEmitterBuffer(tfx_stage pm, int *count);
-
-/*
 Error-handling contract for the effect manager functions that take a tfxEffectID (below):
 Every such function validates the id. An id that fails validation makes the call a no-op: mutators return
 without touching any state, functions that return a pointer return NULL, and functions that return a

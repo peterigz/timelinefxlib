@@ -16640,18 +16640,6 @@ void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-tfx_effect_index_t *tfx_GetStageEffectBuffer(tfx_stage pm, int *count) {
-	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	*count = pm->effects_in_use[pm->current_ebuff].current_size;
-	return pm->effects_in_use[pm->current_ebuff].data;
-}
-
-tfxU32 *tfx_GetStageEmitterBuffer(tfx_stage pm, int *count) {
-	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	*count = pm->control_emitter_queue.current_size;
-	return pm->control_emitter_queue.data;
-}
-
 void tfx__toggle_sprites_with_uid(tfx_stage pm, bool switch_on) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	if (switch_on) {
