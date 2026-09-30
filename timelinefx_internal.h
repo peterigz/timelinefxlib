@@ -3063,6 +3063,7 @@ typedef tfxU32 tfxContextPolicyFlags;			//tfx_context_policy_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
 typedef tfxU32 tfxUserSpawnLocationFlags;       //tfx_user_spawn_location_flag_bits
 typedef tfxU32 tfxUserSpawnLocationListFlags;   //tfx_user_spawn_location_list_flag_bits
+typedef tfxU32 tfxUserSpawnLocationRequestFlags;	//tfx_user_spawn_location_request_flag_bits
 
 typedef enum {
 	tfxSharedFlag_capture_after_transform						= 1 << 8,
@@ -6403,7 +6404,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	void *user_data;
 
 	//Spawn controls
-	tfx_parent_spawn_controls_t spawn_controls;
+	tfx_parent_spawn_controls_t spawn_controls;		//The global graphs sampled each update, times spawn_multipliers
+	tfx_parent_spawn_controls_t spawn_multipliers;	//Set by the host through the tfx_SetEffect*Multiplier functions
 	tfx_vec3_t emitter_size;
 	float stretch;
 	float noise;
@@ -7296,10 +7298,20 @@ typedef enum {
 	tfxUserSpawnLocationFlags_active = 1 << 0,
 	tfxUserSpawnLocationFlags_transient = 1 << 1,		//Removed automatically after the update it was added in
 	tfxUserSpawnLocationFlags_paused = 1 << 2,			//Still exists and is still followed, but spawns nothing and stops ageing
-	tfxUserSpawnLocationFlags_listed = 1 << 3,			//Scratch flag for removing duplicate slots from active_slots
+	tfxUserSpawnLocationFlags_has_factors = 1 << 3,		//A multiplier isn't at its default
 	tfxUserSpawnLocationFlags_counting_down = 1 << 4,	//expire_countdown is running, the slot frees when it reaches zero
 	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
 } tfx_user_spawn_location_flag_bits;
+
+typedef enum {
+	tfxUserSpawnLocationRequestFlags_added = 1 << 0,			//Waiting for the apply step to start it
+	tfxUserSpawnLocationRequestFlags_transient = 1 << 1,
+	tfxUserSpawnLocationRequestFlags_no_auto_remove = 1 << 2,
+	tfxUserSpawnLocationRequestFlags_teleport = 1 << 3,			//Cleared once applied
+	tfxUserSpawnLocationRequestFlags_tweaks_changed = 1 << 4,	//Cleared once applied
+	tfxUserSpawnLocationRequestFlags_paused = 1 << 5,
+	tfxUserSpawnLocationRequestFlags_expiring = 1 << 6,			//Never cleared, a soft expire can't be taken back
+} tfx_user_spawn_location_request_flag_bits;
 
 typedef enum {
 	tfxUserSpawnLocationListFlags_has_rotation = 1 << 0,		//Rebuilt each update so an emitter can skip the tweak work entirely when nobody has set any
@@ -7319,49 +7331,53 @@ typedef struct tfx_user_spawn_location_s {
 	float previous_age;								//Before the last update, -1 until the location has been through one
 } tfx_user_spawn_location_t;
 
+typedef struct tfx_user_spawn_multipliers_s {
+	float particle_width;
+	float particle_height;
+	float velocity;
+	float life;
+	float spin;
+	float intensity;
+	float splatter;
+	float weight;
+	float noise_offset;								//Added rather than multiplied, 0 by default
+} tfx_user_spawn_multipliers_t;
+
 //Per location values that the per particle gather never touches, kept in their own list indexed by the same slot so they don't widen
-//tfx_user_spawn_location_t. Only the spawn tweaks pass and the apply step read these, both of which walk locations sequentially
+//tfx_user_spawn_location_t. Only the spawn passes and the apply step read these, both of which walk locations sequentially
 typedef struct tfx_user_spawn_tweaks_s {
-	float size_factor;
-	float velocity_factor;
+	tfx_user_spawn_multipliers_t multipliers;
+	float largest_life_multiplier;					//At least 1, the longest anything spawned here can live relative to the effect, which countdowns must cover
 	float expire_countdown;							//Milliseconds left before a soft expiring location frees its slot
 } tfx_user_spawn_tweaks_t;
 
-typedef enum {
-	tfx_user_spawn_location_command_add,
-	tfx_user_spawn_location_command_update,
-	tfx_user_spawn_location_command_teleport,
-	tfx_user_spawn_location_command_tweaks,
-	tfx_user_spawn_location_command_pause,
-	tfx_user_spawn_location_command_soft_expire,
-	tfx_user_spawn_location_command_remove,
-	tfx_user_spawn_location_command_clear,
-} tfx_user_spawn_location_command_type;
-
-typedef struct tfx_user_spawn_location_command_s {
+//What the host last asked for at a slot, written straight by the tfx_*SpawnLocation api and copied into the live location by the
+//apply step, which walks these alongside the locations every update
+typedef struct tfx_user_spawn_location_request_s {
 	tfx_vec3_t position;
+	tfxU32 generation;								//Bumped when the slot is freed, which is what makes old ids stale
+	tfxUserSpawnLocationRequestFlags flags;
+} tfx_user_spawn_location_request_t;
+
+//Only read when tfxUserSpawnLocationRequestFlags_tweaks_changed or a new soft expire says so, kept apart to keep the requests narrow
+typedef struct tfx_user_spawn_requested_tweaks_s {
 	tfxU64 packed_rotation;
-	float size_factor;
-	float velocity_factor;
-	float expire_time;								//0 means work it out from the effect's longest lived emitter when the command is applied
-	tfxU32 slot;
-	tfxU32 generation;
-	tfxUserSpawnLocationFlags flags;
-	bool no_auto_remove;							//Add only, the host wants to keep the location after a finite effect has played out
-	tfx_user_spawn_location_command_type type;
-} tfx_user_spawn_location_command_t;
+	tfx_user_spawn_multipliers_t multipliers;
+	float expire_time;								//0 means work it out from the effect's longest lived emitter when it's applied
+} tfx_user_spawn_requested_tweaks_t;
 
 #ifdef __cplusplus
-//The spawn locations a user has given to one effect. locations and active_slots are only changed in tfx_UpdateStage
+//The spawn locations a user has given to one effect. locations, tweaks and active_slots are only changed in tfx_UpdateStage
 //while no update is running, the update only reads them. The rest belong to the thread calling the tfx_*SpawnLocation api.
 typedef struct tfx_user_spawn_locations_s {
 	tfx_vector_t<tfx_user_spawn_location_t> locations;		//Indexed by slot, so a slot never moves while it's in use
 	tfx_vector_t<tfx_user_spawn_tweaks_t> tweaks;			//Parallel to locations, same slot indexing
 	tfx_vector_t<tfxU32> active_slots;
-	tfx_vector_t<tfxU32> generations;
+	tfx_vector_t<tfx_user_spawn_location_request_t> requests;			//Indexed by slot, sized by every slot ever handed out
+	tfx_vector_t<tfx_user_spawn_requested_tweaks_t> requested_tweaks;	//Parallel to requests
+	tfx_vector_t<tfxU32> added_slots;						//Added since the last apply step, may hold a slot more than once
 	tfx_vector_t<tfxU32> free_slots;
-	tfx_vector_t<tfx_user_spawn_location_command_t> commands;
-	tfxEffectID effect_id;
+	tfxU32 effect_slot;
 	//How long the effect runs for at one location, 0 if it never ends. Cached per effect because working it out sweeps every
 	//emitter's spawn window and a host can add locations every frame
 	float auto_remove_time;
@@ -9685,7 +9701,7 @@ tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_stage pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_stage pm);
 tfxINTERNAL void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID, float millisecs);
 tfxAPI_EDITOR tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect);
-tfxAPI_EDITOR void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id);
+tfxAPI_EDITOR void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot);
 tfxAPI_EDITOR void tfx__purge_expired_effects(tfx_stage pm);
 tfxINTERNAL void tfx__free_particle_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index);

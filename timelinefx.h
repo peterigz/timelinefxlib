@@ -2018,7 +2018,8 @@ tfxAPI void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id
 
 /*
 Move a spawn location without tweening, so nothing is spawned along the line between the old and new position and no extra
-particles are added by spawn rate over distance.
+particles are added by spawn rate over distance. The last position given before the next update wins, and if any of the calls since the last
+update was a teleport, none of the move is tweened.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param location_id       The id returned by tfx_AddSpawnLocation
 * @param position          A float[3] array containing the x, y and z coordinates
@@ -2026,24 +2027,52 @@ particles are added by spawn rate over distance.
 tfxAPI void tfx_TeleportSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]);
 
 /*
-Per location adjustments to what an emitter spawns there, so one effect can drive sources that differ from each other. Defaults are an
-identity rotation and factors of 1, which is what a location has until you call this.
-The rotation orients the emitter at that location: the shape it spawns in and the direction its particles are emitted, so an area emitter's
-box turns with it and a point emitter's emission direction turns with it. Line emitters that traverse their edge or use their path as a
-trajectory take the rotation but not the direction, theirs is fixed along the line.
+Orient the emitter at a spawn location: the shape it spawns in and the direction its particles are emitted, so an area emitter's box turns
+with it and a point emitter's emission direction turns with it. A location has an identity rotation until you call this. Line emitters that
+traverse their edge or use their path as a trajectory take the rotation but not the direction, theirs is fixed along the line.
 When the rotation takes effect depends on whether the emitter is set to relative position, matching what relative already means for the
 location's position. Relative emitters are attached, so they turn with the location and keep turning as it does, which is what lets you aim
 a beam at something. Emitters that aren't relative take the rotation as each particle spawns, so turning a location aims what it spawns from
 then on and leaves what it already spawned where it was, which is what you want for a trail.
-The size and velocity factors scale an emitter's base size and base velocity for the particles spawned at that location. Both are applied as
-each particle spawns, so changing them never disturbs particles that are already alive.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param location_id       The id returned by tfx_AddSpawnLocation
-* @param rotation          A float[4] quaternion as x, y, z, w. Pass a null pointer to leave the rotation alone
-* @param size_factor       Multiplier for the base size of particles spawned here
-* @param velocity_factor   Multiplier for the base velocity of particles spawned here
+* @param rotation          A float[4] quaternion as x, y, z, w
 */
-tfxAPI void tfx_SetSpawnLocationTweaks(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4], float size_factor, float velocity_factor);
+tfxAPI void tfx_SetSpawnLocationRotation(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4]);
+
+/*
+Per location multipliers, the location's own version of the tfx_SetEffect*Multiplier functions, so one effect can drive sources that differ
+from each other. They multiply on top of the effect's, and they all default to 1. Every one of them is applied as each particle or ribbon
+spawns, so changing one never disturbs anything already alive. That includes intensity, which on the effect also changes the particles
+already out.
+Life: how long particles and ribbons spawned here last. A location that's counting down to removing itself, whether auto removing or soft
+expiring with a time worked out for you, has its countdown lengthened to cover a larger multiplier, but a smaller one never shortens it.
+Particle width and height: the base size of particles spawned here, and width is also the width of ribbons. If the effect is set to a uniform
+particle size then width scales both and height does nothing, as it does for the effect.
+Velocity, spin and weight: the base velocity, spin (all three axes) and weight of particles spawned here.
+Intensity: the intensity of particles spawned here.
+Splatter: the random offset given to particles and ribbons spawned here.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+*/
+tfxAPI void tfx_SetSpawnLocationLifeMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float life);
+tfxAPI void tfx_SetSpawnLocationParticleWidthMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float width);
+tfxAPI void tfx_SetSpawnLocationParticleHeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float height);
+tfxAPI void tfx_SetSpawnLocationVelocityMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float velocity);
+tfxAPI void tfx_SetSpawnLocationSpinMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float spin);
+tfxAPI void tfx_SetSpawnLocationIntensityMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float intensity);
+tfxAPI void tfx_SetSpawnLocationSplatterMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float splatter);
+tfxAPI void tfx_SetSpawnLocationWeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float weight);
+
+/*
+Offset the noise field sampled by particles spawned at a location, the location's version of tfx_SetEffectBaseNoiseOffset. Locations
+otherwise share the effect's noise offset, so giving each its own stops them all swirling the same way. Added to the effect's offset,
+0 by default, and only read by emitters using a noise field.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param noise_offset      The offset to add for particles spawned from now on
+*/
+tfxAPI void tfx_SetSpawnLocationNoiseOffset(tfx_stage pm, tfxSpawnLocationID location_id, float noise_offset);
 
 /*
 Stop a spawn location spawning without removing it. The location still exists and can still be moved, and relative particles already
@@ -2231,76 +2260,74 @@ Set the depth of an effect
 tfxAPI void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float depth);
 
 /*
-Set the life multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current life of the effect that was
-*                        set in the TimelineFX editor.
+Set the life multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param life            A float of the amount that you want to set the life multiplier too. The life mulitplier will affect how long all particles emitted within the effect will last before expiring.
+* @param life            How long particles and ribbons spawned from now on last before expiring.
 */
 tfxAPI void tfx_SetEffectLifeMultiplier(tfx_stage pm, tfxEffectID effect_index, float life);
 
 /*
-Set the particle width multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current particle width of the effect that was
-*                        set in the TimelineFX editor.
+Set the particle width multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param width            A float of the amount that you want to set the particle width multiplier too. The particle width mulitplier will affect the width of each particle if the emitter has a non uniform particle size, otherwise
-						it will uniformly size the particle
+* @param width           The width of particles and ribbons spawned from now on. If the effect is set to a uniform particle size it scales the height as well.
 */
 tfxAPI void tfx_SetEffectParticleWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width);
 
 /*
-Set the particle height multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current particle width of the effect that was
-*                        set in the TimelineFX editor.
+Set the particle height multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param height            A float of the amount that you want to set the particle height multiplier too. The particle height mulitplier will affect the height of each particle if the emitter has a non uniform particle size, otherwise
-						this function will have no effect.
+* @param height          The height of particles spawned from now on. Does nothing if the effect is set to a uniform particle size, the width multiplier covers both.
 */
 tfxAPI void tfx_SetEffectParticleHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height);
 
 /*
-Set the velocity multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current velocity of the effect that was
-*                        set in the TimelineFX editor.
+Set the velocity multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param velocity        A float of the amount that you want to set the particle velocity multiplier too. The particle velocity mulitplier will affect the base velocity of a particle at spawn time.
+* @param velocity        The base velocity of particles spawned from now on.
 */
 tfxAPI void tfx_SetEffectVelocityMultiplier(tfx_stage pm, tfxEffectID effect_index, float velocity);
 
 /*
-Set the spin multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current spin of the effect that was
-*                        set in the TimelineFX editor.
+Set the spin multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param spin            A float of the amount that you want to set the particle spin multiplier too. The particle spin mulitplier will affect the base spin of a particle at spawn time.
+* @param spin            The base roll, pitch and yaw spin of particles spawned from now on.
 */
 tfxAPI void tfx_SetEffectSpinMultiplier(tfx_stage pm, tfxEffectID effect_index, float spin);
 
 /*
-Set the intensity multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current intensity of the effect that was
-*                        set in the TimelineFX editor.
+Set the intensity multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param intensity        A float of the amount that you want to set the particle intensity multiplier too. The particle intensity mulitplier will instantly affect the opacity of all particles currently emitted by the effect.
+* @param intensity       The intensity of every particle in the effect, including the ones already alive.
 */
 tfxAPI void tfx_SetEffectIntensityMultiplier(tfx_stage pm, tfxEffectID effect_index, float intensity);
 
 /*
-Set the splatter multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current splatter of the effect that was
-*                        set in the TimelineFX editor.
+Set the splatter multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param splatter        A float of the amount that you want to set the particle splatter multiplier too. The particle splatter mulitplier will change the amount of random offset all particles emitted in the effect will have.
+* @param splatter        The random offset given to particles and ribbons spawned from now on.
 */
 tfxAPI void tfx_SetEffectSplatterMultiplier(tfx_stage pm, tfxEffectID effect_index, float splatter);
 
 /*
-Set the weight multiplier of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current weight of the effect that was
-*                        set in the TimelineFX editor.
+Set the weight multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and
+stays until you change it. 1 is no change.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param weight            A float of the amount that you want to set the particle weight multiplier too. The particle weight mulitplier will change the weight applied to particles in the effect at spawn time.
+* @param weight          The weight of particles spawned from now on.
 */
 tfxAPI void tfx_SetEffectWeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float weight);
 

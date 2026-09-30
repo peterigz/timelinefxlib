@@ -13144,8 +13144,23 @@ void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID effect_id, float millisecs
 	pm->warmup_effects[0].push_back(entry);
 }
 
-tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tfx_effect_descriptor effect) {
-	tfx_effect_state_t *effect_state = &pm->effects[effect_id];
+tfxINTERNAL tfx_parent_spawn_controls_t tfx__unit_spawn_controls() {
+	tfx_parent_spawn_controls_t spawn_controls;
+	spawn_controls.life = 1.f;
+	spawn_controls.size_x = 1.f;
+	spawn_controls.size_y = 1.f;
+	spawn_controls.velocity = 1.f;
+	spawn_controls.spin = 1.f;
+	spawn_controls.pitch_spin = 1.f;
+	spawn_controls.yaw_spin = 1.f;
+	spawn_controls.intensity = 1.f;
+	spawn_controls.splatter = 1.f;
+	spawn_controls.weight = 1.f;
+	return spawn_controls;
+}
+
+tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_effect_descriptor effect) {
+	tfx_effect_state_t *effect_state = &pm->effects[effect_slot];
 	effect_state->source_effect = effect;
 	effect_state->graph_list_index = effect->state_properties.graph_list_index;
 	effect_state->transform_index = effect->state_properties.transform_index;
@@ -13160,6 +13175,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 	effect_state->local_rotations = tfx_vec3_t();
 	effect_state->timeout = 1000.f;
 	effect_state->timeout_counter = 0;
+	effect_state->spawn_multipliers = tfx__unit_spawn_controls();
 	float range = effect->noise_base_offset_range;
 	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	effect_state->sort_passes = effect->sort_passes;
@@ -13183,14 +13199,14 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxEffectID effect_id, tf
 			pm->user_spawn_location_lists.push_back(user_location_list);
 			effect_state->user_spawn_locations = user_location_list;
 		}
-		effect_state->user_spawn_locations->effect_id = effect_id;
+		effect_state->user_spawn_locations->effect_slot = effect_slot;
 		//Outside the allocation guard: the list lives on the effect slot, so a recycled slot must re-measure for its new effect
 		effect_state->user_spawn_locations->auto_remove_time = tfx__get_effect_lifetime(effect, pm->frame_length > 0.0 ? (float)pm->frame_length : 16.666666667f);
 		effect_state->state_flags |= tfxEffectStateFlags_user_spawn_locations;
 	}
 
 	if (effect->warmup_time > 0) {
-		tfx__add_warmup_effect(pm, effect_id, effect->warmup_time);
+		tfx__add_warmup_effect(pm, effect_slot, effect->warmup_time);
 	}
 }
 
@@ -13602,8 +13618,8 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 }
 
 //Restart a stage effect, used when tfx_RefreshLibrary is called after it's been reloaded
-void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
-	tfx_effect_state_t &effect = pm->effects[effect_id];
+void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
+	tfx_effect_state_t &effect = pm->effects[effect_slot];
 	if (!TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
 		return;
 	}
@@ -13613,16 +13629,16 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
 	tfx_vec3_t local_position = effect.local_position;
 	tfx_vec3_t local_rotations = effect.local_rotations;
 	tfx_vec3_t emitter_size = effect.emitter_size;
-	tfx_parent_spawn_controls_t spawn_controls = effect.spawn_controls;
+	tfx_parent_spawn_controls_t spawn_multipliers = effect.spawn_multipliers;
 	float overall_scale = effect.overall_scale;
 	float noise_base_offset = effect.noise_base_offset;
 	void *user_data = effect.user_data;
 	tfxEmitterStateFlags overrides = effect.state_flags & (tfxEffectStateFlags_override_overall_scale
 		| tfxEffectStateFlags_override_orientiation | tfxEffectStateFlags_override_size_multiplier);
 
-	tfx__release_stage_effect_emitters(pm, effect_id);
-	tfx__reset_effect_state(pm, effect_id, source_effect);
-	tfx__build_stage_effect_emitters(pm, effect_id, source_effect);
+	tfx__release_stage_effect_emitters(pm, effect_slot);
+	tfx__reset_effect_state(pm, effect_slot, source_effect);
+	tfx__build_stage_effect_emitters(pm, effect_slot, source_effect);
 	if (effect.user_spawn_locations) {
 		effect.user_spawn_locations->flags |= tfxUserSpawnLocationListFlags_restart_pending;
 	}
@@ -13630,7 +13646,7 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxEffectID effect_id) {
 	effect.local_position = local_position;
 	effect.local_rotations = local_rotations;
 	effect.emitter_size = emitter_size;
-	effect.spawn_controls = spawn_controls;
+	effect.spawn_multipliers = spawn_multipliers;
 	effect.overall_scale = overall_scale;
 	effect.noise_base_offset = noise_base_offset;
 	effect.user_data = user_data;
@@ -19442,8 +19458,9 @@ void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data)
 	TFX_ASSERT(particle == entry->amount_to_spawn);
 }
 
-//The per location size and velocity factors, and for a non relative emitter the emission direction, which is already in world space by the
-//time it gets here so the location's rotation goes on top of it. Relative emitters take their rotation live in the transform instead
+//The per location multipliers, and for a non relative emitter the emission direction, which is already in world space by the time it
+//gets here so the location's rotation goes on top of it. Relative emitters take their rotation live in the transform instead. Splatter
+//is applied where it's generated, in tfx__spawn_particle_micro_update
 void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
@@ -19455,26 +19472,67 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 		return;
 	}
 
+	tfx_particle_soa_t &bank = *entry->particle_data;
+	//Matches how the effect's own particle height multiplier is applied in tfx__spawn_particle_size
+	const bool uniform_particle_size = (entry->parent_property_flags & tfxEffectPropertyFlags_global_uniform_size) != 0;
+	//Only the field noise algorithms read the offsets, white noise and motion randomness leave them at zero
+	const bool offset_noise = (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_simplex_noise_type) != 0;
+	//tfx__spawn_particle_age never lets a particle live less than a frame
+	const float largest_inverse_max_age = 1.f / (float)pm.frame_length;
 	tfxU32 particle = 0;
 	for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
 		const tfx_user_spawn_run_t &run = pm.user_spawn_runs[entry->user_spawn_run_start + run_index];
 		const tfx_user_spawn_location_t &location = user_location_list.locations[run.slot];
-		const tfx_user_spawn_tweaks_t &tweaks = user_location_list.tweaks[run.slot];
 		const bool rotate_run = rotate_emission && location.packed_rotation != tfxPACKED_W_QUATERNION;
+		const bool multiply_run = (location.flags & tfxUserSpawnLocationFlags_has_factors) != 0;
+		if (!rotate_run && !multiply_run) {
+			particle += run.count;
+			continue;
+		}
+		const tfx_user_spawn_multipliers_t &multipliers = user_location_list.tweaks[run.slot].multipliers;
+		const float particle_height = uniform_particle_size ? multipliers.particle_width : multipliers.particle_height;
+		const bool scale_size = multiply_run && (multipliers.particle_width != 1.f || particle_height != 1.f);
+		const bool scale_velocity = multiply_run && multipliers.velocity != 1.f;
+		const bool scale_life = multiply_run && multipliers.life != 1.f;
+		const bool scale_spin = multiply_run && multipliers.spin != 1.f;
+		const bool scale_intensity = multiply_run && multipliers.intensity != 1.f;
+		const bool scale_weight = multiply_run && multipliers.weight != 1.f;
+		const bool add_noise_offset = multiply_run && offset_noise && multipliers.noise_offset != 0.f;
+		const float inverse_life = multipliers.life > 0.f ? 1.f / multipliers.life : FLT_MAX;
 		tfx_quaternion_t rotation = rotate_run ? tfx__unpack16bit_quaternion(location.packed_rotation) : tfx_quaternion_t();
 		for (tfxU32 i = 0; i != run.count; ++i) {
 			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
-			if (tweaks.size_factor != 1.f) {
-				entry->particle_data->base_size_x[index] *= tweaks.size_factor;
-				entry->particle_data->base_size_y[index] *= tweaks.size_factor;
+			if (scale_size) {
+				bank.base_size_x[index] *= multipliers.particle_width;
+				bank.base_size_y[index] *= particle_height;
 			}
-			if (tweaks.velocity_factor != 1.f) {
-				entry->particle_data->base_velocity[index] *= tweaks.velocity_factor;
+			if (scale_velocity) {
+				bank.base_velocity[index] *= multipliers.velocity;
+			}
+			if (scale_life) {
+				bank.inv_max_age[index] = tfx__Min(bank.inv_max_age[index] * inverse_life, largest_inverse_max_age);
+				bank.life[index] = bank.age[index] * bank.inv_max_age[index];
+			}
+			if (scale_spin) {
+				bank.base_roll_spin[index] *= multipliers.spin;
+				bank.base_pitch_spin[index] *= multipliers.spin;
+				bank.base_yaw_spin[index] *= multipliers.spin;
+			}
+			if (scale_intensity) {
+				bank.intensity_factor[index] *= multipliers.intensity;
+			}
+			if (scale_weight) {
+				bank.base_weight[index] *= multipliers.weight;
+			}
+			if (add_noise_offset) {
+				bank.noise_offset_x[index] += multipliers.noise_offset;
+				bank.noise_offset_y[index] += multipliers.noise_offset;
+				bank.noise_offset_z[index] += multipliers.noise_offset;
 			}
 			if (rotate_run) {
-				tfx_vec3_t normal = tfx__unpack10bit_unsigned(entry->particle_data->velocity_normal[index]);
+				tfx_vec3_t normal = tfx__unpack10bit_unsigned(bank.velocity_normal[index]);
 				normal = tfx__rotate_vector_quaternion(&rotation, normal);
-				entry->particle_data->velocity_normal[index] = tfx__pack10bit_unsigned(&normal);
+				bank.velocity_normal[index] = tfx__pack10bit_unsigned(&normal);
 			}
 		}
 	}
@@ -20929,6 +20987,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			}
 		}
 		bool locations_have_rotation = runs && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
+		const bool locations_have_multipliers = runs && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_factors;
+		float location_width = 1.f;
+		float location_life = 1.f;
+		float location_splatter = 1.f;
 		//A ribbon spawned at a user location is anchored where the location was, so it takes the location and emitter rotation at spawn
 		//rather than the per frame transform a relative ribbon gets from its emitter
 		const bool relative_ribbons = !runs && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position;
@@ -20960,6 +21022,12 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					spawn_ordinal = tfx__get_location_spawn_ordinal(&ribbon_emitter.location_spawn_ordinals, runs[run_index].slot, location.generation, restart_rotation_steps);
 					tfx__begin_angle_steps(&rotation_step_iterator, &rotation_steps, path->settings.rotation_range, path->settings.rotation_yaw, *spawn_ordinal, ribbon_emitter.seed_index);
 				}
+				if (locations_have_multipliers && run_spawned == 0) {
+					const tfx_user_spawn_multipliers_t &multipliers = entry->user_spawn_locations->tweaks[runs[run_index].slot].multipliers;
+					location_width = multipliers.particle_width;
+					location_life = multipliers.life;
+					location_splatter = multipliers.splatter;
+				}
 				run_spawned++;
 			} else if (relative_ribbons) {
 				ribbon.position = tfx_vec4_t();
@@ -20984,7 +21052,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 					splat.y = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 					splat.z = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 				}
-				ribbon.position += splat;
+				ribbon.position += splat * location_splatter;
 			}
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | tfxU32(image_frame);
@@ -21002,7 +21070,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				}
 			}
 			ribbon.texture_indexes = texture_indexes;
-			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, width_variation);
+			ribbon.width = (base_width + tfx_RandomRangeZeroToMax(&random, width_variation)) * location_width;
 			ribbon.position.w = 0.f;
 			ribbon.start_index = ribbon_emitter.static_segment_start_index;
 			//Assign (not OR) so a slot recycled from the shared bucket free-list starts clean. Otherwise a stale
@@ -21022,7 +21090,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon.scale = entry->overall_scale;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
-			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
+			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max((life + tfx_RandomRangeZeroToMax(&random, life_variation)) * location_life, 1.f);
 			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
 			ribbon_bucket->ribbons.grid_index[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.uid[ribbon_index] = pm.unique_ribbon_id++;
@@ -21310,6 +21378,11 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	bool width_overlength_is_bezier_graph = width_overlength_graph ? tfx__graph_has_bezier_curves(width_overlength_graph) : false;
 	bool width_overlength_has_oscillator = width_overlength_graph ? tfx__graph_can_oscillate(width_overlength_graph) : false;
 
+	const tfx_user_spawn_run_t *splatter_runs = entry->user_spawn_run_count && entry->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_factors ? &pm.user_spawn_runs[entry->user_spawn_run_start] : nullptr;
+	tfxU32 splatter_run_index = 0;
+	tfxU32 splatter_run_end = splatter_runs ? splatter_runs[0].count : 0;
+	float location_splatter = splatter_runs ? entry->user_spawn_locations->tweaks[splatter_runs[0].slot].multipliers.splatter : 1.f;
+
 	if (splatter || entry->emission_type == tfxSpawnOnRibbon) {
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -21346,6 +21419,17 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 					splatx = tfx_RandomRangeFromTo(&random, -final_splatter, final_splatter);
 					splaty = tfx_RandomRangeFromTo(&random, -final_splatter, final_splatter);
 					splatz = tfx_RandomRangeFromTo(&random, -final_splatter, final_splatter);
+				}
+
+				//Scaling the offset rather than the radius keeps the random stream the same whatever the location asks for
+				if (splatter_runs) {
+					while (i == splatter_run_end) {
+						splatter_run_end += splatter_runs[++splatter_run_index].count;
+						location_splatter = entry->user_spawn_locations->tweaks[splatter_runs[splatter_run_index].slot].multipliers.splatter;
+					}
+					splatx *= location_splatter;
+					splaty *= location_splatter;
+					splatz *= location_splatter;
 				}
 
 				if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
@@ -21626,7 +21710,19 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	tfx_graph_list_t &graph_list = library->graphs[graph_list_index];
 	tfx_graph_list_t &transform_list = library->graphs[transform_index];
 
-	tfx__sample_effect_spawn_controls(&graph_list, pm->effects[index].effect_flags, age, oscillator_time, &pm->effects[index].spawn_controls);
+	tfx_parent_spawn_controls_t &spawn_controls = pm->effects[index].spawn_controls;
+	const tfx_parent_spawn_controls_t &spawn_multipliers = pm->effects[index].spawn_multipliers;
+	tfx__sample_effect_spawn_controls(&graph_list, pm->effects[index].effect_flags, age, oscillator_time, &spawn_controls);
+	spawn_controls.life *= spawn_multipliers.life;
+	spawn_controls.size_x *= spawn_multipliers.size_x;
+	spawn_controls.size_y *= pm->effects[index].effect_flags & tfxEffectPropertyFlags_global_uniform_size ? spawn_multipliers.size_x : spawn_multipliers.size_y;
+	spawn_controls.velocity *= spawn_multipliers.velocity;
+	spawn_controls.spin *= spawn_multipliers.spin;
+	spawn_controls.pitch_spin *= spawn_multipliers.pitch_spin;
+	spawn_controls.yaw_spin *= spawn_multipliers.yaw_spin;
+	spawn_controls.intensity *= spawn_multipliers.intensity;
+	spawn_controls.splatter *= spawn_multipliers.splatter;
+	spawn_controls.weight *= spawn_multipliers.weight;
 	noise = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_noise_index], age, oscillator_time);
 	if (!(state_flags & tfxEffectStateFlags_override_size_multiplier)) {
 		emitter_size.x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_width_index], age, oscillator_time);
@@ -23258,34 +23354,33 @@ tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_spawn_location_owner(tfx_stage 
 		return nullptr;
 	}
 	tfxU32 slot = tfx__spawn_location_slot(location_id);
-	if (slot >= user_location_list->generations.current_size || tfx__spawn_location_local_id(slot, user_location_list->generations[slot]) != (tfxU32)location_id) {
+	if (slot >= user_location_list->requests.current_size || tfx__spawn_location_local_id(slot, user_location_list->requests[slot].generation) != (tfxU32)location_id) {
 		return nullptr;
 	}
 	return user_location_list;
 }
 
+//The apply step drops the live location when it sees the generation has moved on, so this is all a remove needs
 tfxINTERNAL void tfx__free_spawn_location_slot(tfx_user_spawn_locations_t *user_location_list, tfxU32 slot) {
-	user_location_list->generations[slot]++;
+	user_location_list->requests[slot].generation++;
+	user_location_list->requests[slot].flags = 0;
 	user_location_list->free_slots.push_back(slot);
 }
 
 void tfx__clear_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list) {
 	user_location_list->free_slots.clear();
-	for (tfxU32 slot = user_location_list->generations.current_size; slot-- > 0;) {
+	for (tfxU32 slot = user_location_list->requests.current_size; slot-- > 0;) {
 		tfx__free_spawn_location_slot(user_location_list, slot);
 	}
-	user_location_list->commands.clear();
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_clear;
-	user_location_list->commands.push_back(command);
+	user_location_list->added_slots.clear();
 }
 
 //Used when a user spawn location is soft expired, to figure out how long the location should hange around for.
-tfxINTERNAL float tfx__user_spawn_location_expire_time(tfx_stage pm, tfxEffectID effect_index) {
-	if (effect_index >= pm->effects.current_size) {
+tfxINTERNAL float tfx__user_spawn_location_expire_time(tfx_stage pm, tfxU32 effect_slot) {
+	if (effect_slot >= pm->effects.current_size) {
 		return 0.f;
 	}
-	tfx_effect_descriptor source_effect = pm->effects[effect_index].source_effect;
+	tfx_effect_descriptor source_effect = pm->effects[effect_slot].source_effect;
 	if (!source_effect) {
 		return 0.f;
 	}
@@ -23306,150 +23401,191 @@ tfxINTERNAL float tfx__user_spawn_location_expire_time(tfx_stage pm, tfxEffectID
 	return expire_time;
 }
 
+tfxINTERNAL tfx_user_spawn_multipliers_t tfx__default_user_spawn_multipliers() {
+	tfx_user_spawn_multipliers_t multipliers;
+	multipliers.particle_width = 1.f;
+	multipliers.particle_height = 1.f;
+	multipliers.velocity = 1.f;
+	multipliers.life = 1.f;
+	multipliers.spin = 1.f;
+	multipliers.intensity = 1.f;
+	multipliers.splatter = 1.f;
+	multipliers.weight = 1.f;
+	multipliers.noise_offset = 0.f;
+	return multipliers;
+}
+
+tfxINTERNAL bool tfx__user_spawn_multipliers_are_default(const tfx_user_spawn_multipliers_t *multipliers) {
+	return multipliers->particle_width == 1.f && multipliers->particle_height == 1.f && multipliers->velocity == 1.f && multipliers->life == 1.f
+		&& multipliers->spin == 1.f && multipliers->intensity == 1.f && multipliers->splatter == 1.f && multipliers->weight == 1.f
+		&& multipliers->noise_offset == 0.f;
+}
+
+//Copies what the host asked for into the live location. The update isn't running, so this is the one place the two meet
+tfxINTERNAL void tfx__apply_user_spawn_location_request(tfx_stage pm, tfx_user_spawn_locations_t *user_location_list, tfxU32 slot) {
+	tfx_user_spawn_location_t &location = user_location_list->locations[slot];
+	tfx_user_spawn_location_request_t &request = user_location_list->requests[slot];
+	tfx_user_spawn_tweaks_t &tweaks = user_location_list->tweaks[slot];
+	location.position = request.position;
+	if (request.flags & tfxUserSpawnLocationRequestFlags_teleport) {
+		location.captured_position = request.position;
+	}
+	if (request.flags & tfxUserSpawnLocationRequestFlags_tweaks_changed) {
+		const tfx_user_spawn_requested_tweaks_t &requested_tweaks = user_location_list->requested_tweaks[slot];
+		location.packed_rotation = requested_tweaks.packed_rotation;
+		tweaks.multipliers = requested_tweaks.multipliers;
+		location.flags &= ~tfxUserSpawnLocationFlags_has_factors;
+		if (!tfx__user_spawn_multipliers_are_default(&tweaks.multipliers)) {
+			location.flags |= tfxUserSpawnLocationFlags_has_factors;
+		}
+		//Particles spawned from now on can outlive what an auto remove countdown was set for, so it's stretched to cover them.
+		//Never shortened, what was spawned under a longer life is still alive
+		float life_multiplier = tfx__Max(tweaks.multipliers.life, 1.f);
+		if (life_multiplier > tweaks.largest_life_multiplier) {
+			if (location.flags & tfxUserSpawnLocationFlags_counting_down && !(location.flags & tfxUserSpawnLocationFlags_expiring)) {
+				tweaks.expire_countdown += (life_multiplier - tweaks.largest_life_multiplier) * tfx__user_spawn_location_expire_time(pm, user_location_list->effect_slot);
+			}
+			tweaks.largest_life_multiplier = life_multiplier;
+		}
+	}
+	request.flags &= ~(tfxUserSpawnLocationRequestFlags_teleport | tfxUserSpawnLocationRequestFlags_tweaks_changed);
+	//A location that's already soft expiring can't be brought back, it's on its way out
+	if (location.flags & tfxUserSpawnLocationFlags_expiring) {
+		return;
+	}
+	if (request.flags & tfxUserSpawnLocationRequestFlags_expiring) {
+		//Resolved here rather than when the api was called so reading the library can't race the update thread
+		float expire_time = user_location_list->requested_tweaks[slot].expire_time;
+		if (expire_time <= 0.f) {
+			expire_time = tfx__user_spawn_location_expire_time(pm, user_location_list->effect_slot) * tweaks.largest_life_multiplier;
+		}
+		//An auto removing location is already counting down to when its effect has played out, so keep whichever ends first
+		if (location.flags & tfxUserSpawnLocationFlags_counting_down) {
+			expire_time = tfx__Min(expire_time, tweaks.expire_countdown);
+		}
+		location.flags |= tfxUserSpawnLocationFlags_paused | tfxUserSpawnLocationFlags_expiring | tfxUserSpawnLocationFlags_counting_down;
+		tweaks.expire_countdown = expire_time;
+		return;
+	}
+	location.flags &= ~tfxUserSpawnLocationFlags_paused;
+	if (request.flags & tfxUserSpawnLocationRequestFlags_paused) {
+		location.flags |= tfxUserSpawnLocationFlags_paused;
+	}
+}
+
 void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 	tfxPROFILE;
 	for (tfx_user_spawn_locations_t *user_location_list : pm->user_spawn_location_lists) {
 		tfx_vector_t<tfx_user_spawn_location_t> &locations = user_location_list->locations;
+		tfx_vector_t<tfx_user_spawn_location_request_t> &requests = user_location_list->requests;
+		const bool restarting = (user_location_list->flags & tfxUserSpawnLocationListFlags_restart_pending) != 0;
+		tfxUserSpawnLocationFlags combined_flags = 0;
+		bool has_rotation = false;
+		tfxU32 kept = 0;
 		for (tfxU32 slot : user_location_list->active_slots) {
 			tfx_user_spawn_location_t &location = locations[slot];
-			if (location.flags & tfxUserSpawnLocationFlags_transient) {
+			//Removed by the host, who may already have added something else in its slot
+			if (requests[slot].generation != location.generation) {
 				location.flags = 0;
-				//Otherwise the user already removed it and freed the slot
-				if (user_location_list->generations[slot] == location.generation) {
-					tfx__free_spawn_location_slot(user_location_list, slot);
-				}
 				continue;
 			}
-			//Mirrors a fresh add, which skips ageing on the update it arrives in, so single shots at delay 0 still fire
-			if (user_location_list->flags & tfxUserSpawnLocationListFlags_restart_pending) {
+			if (location.flags & tfxUserSpawnLocationFlags_transient) {
+				location.flags = 0;
+				tfx__free_spawn_location_slot(user_location_list, slot);
+				continue;
+			}
+			if (restarting) {
+				//Mirrors a fresh add, which skips ageing on the update it arrives in, so single shots at delay 0 still fire
 				location.captured_position = location.position;
 				location.age = 0.f;
 				location.previous_age = -1.f;
 				//A soft expiring location is on its way out whatever the restart did, so it keeps its own countdown
 				if (location.flags & tfxUserSpawnLocationFlags_counting_down && !(location.flags & tfxUserSpawnLocationFlags_expiring)) {
 					if (user_location_list->auto_remove_time > 0.f) {
-						user_location_list->tweaks[slot].expire_countdown = user_location_list->auto_remove_time;
+						tfx_user_spawn_tweaks_t &tweaks = user_location_list->tweaks[slot];
+						tweaks.expire_countdown = user_location_list->auto_remove_time;
+						if (tweaks.largest_life_multiplier > 1.f) {
+							tweaks.expire_countdown += (tweaks.largest_life_multiplier - 1.f) * tfx__user_spawn_location_expire_time(pm, user_location_list->effect_slot);
+						}
 					} else {
 						location.flags &= ~tfxUserSpawnLocationFlags_counting_down;
 					}
 				}
-				continue;
-			}
-			//A soft expiring location always drains. An auto removing one is counting out the effect playing, which a pause holds,
-			//so its countdown has to stop with the age or the slot goes before the effect has finished
-			bool counting_down = location.flags & tfxUserSpawnLocationFlags_counting_down
-				&& (location.flags & tfxUserSpawnLocationFlags_expiring || !(location.flags & tfxUserSpawnLocationFlags_paused));
-			if (counting_down) {
-				user_location_list->tweaks[slot].expire_countdown -= frame_length;
-				if (user_location_list->tweaks[slot].expire_countdown <= 0.f) {
-					location.flags = 0;
-					//Otherwise the user already removed it and freed the slot
-					if (user_location_list->generations[slot] == location.generation) {
+			} else {
+				//A soft expiring location always drains. An auto removing one is counting out the effect playing, which a pause holds,
+				//so its countdown has to stop with the age or the slot goes before the effect has finished
+				bool counting_down = location.flags & tfxUserSpawnLocationFlags_counting_down
+					&& (location.flags & tfxUserSpawnLocationFlags_expiring || !(location.flags & tfxUserSpawnLocationFlags_paused));
+				if (counting_down) {
+					user_location_list->tweaks[slot].expire_countdown -= frame_length;
+					if (user_location_list->tweaks[slot].expire_countdown <= 0.f) {
+						location.flags = 0;
 						tfx__free_spawn_location_slot(user_location_list, slot);
+						continue;
 					}
-					continue;
+				}
+				location.captured_position = location.position;
+				//Holding the timeline means the amount graph resumes where it left off and a single shot it hasn't reached yet isn't skipped over
+				if (!(location.flags & tfxUserSpawnLocationFlags_paused)) {
+					location.previous_age = location.age;
+					location.age += frame_length;
 				}
 			}
-			location.captured_position = location.position;
-			//Holding the timeline means the amount graph resumes where it left off and a single shot it hasn't reached yet isn't skipped over
-			if (!(location.flags & tfxUserSpawnLocationFlags_paused)) {
-				location.previous_age = location.age;
-				location.age += frame_length;
-			}
-		}
-		user_location_list->flags &= ~tfxUserSpawnLocationListFlags_restart_pending;
-
-		for (tfx_user_spawn_location_command_t &command : user_location_list->commands) {
-			if (command.type == tfx_user_spawn_location_command_add) {
-				if (command.slot >= locations.current_size) {
-					tfxU32 old_size = locations.current_size;
-					locations.resize(command.slot + 1);
-					memset((void *)&locations[old_size], 0, sizeof(tfx_user_spawn_location_t) * (locations.current_size - old_size));
-					user_location_list->tweaks.resize(locations.current_size);
-					memset((void *)&user_location_list->tweaks[old_size], 0, sizeof(tfx_user_spawn_tweaks_t) * (locations.current_size - old_size));
-				}
-				tfx_user_spawn_location_t &location = locations[command.slot];
-				tfx_user_spawn_tweaks_t &tweaks = user_location_list->tweaks[command.slot];
-				location.position = command.position;
-				location.captured_position = command.position;
-				location.packed_rotation = tfxPACKED_W_QUATERNION;
-				tweaks.size_factor = 1.f;
-				tweaks.velocity_factor = 1.f;
-				tweaks.expire_countdown = 0.f;
-				location.age = 0.f;
-				location.previous_age = -1.f;
-				location.flags = command.flags | tfxUserSpawnLocationFlags_active;
-				//A finite effect has nothing left to spawn or show once it's played out here, so the location takes itself away
-				if (user_location_list->auto_remove_time > 0.f && !command.no_auto_remove && !(command.flags & tfxUserSpawnLocationFlags_transient)) {
-					tweaks.expire_countdown = user_location_list->auto_remove_time;
-					location.flags |= tfxUserSpawnLocationFlags_counting_down;
-				}
-				location.generation = command.generation;
-				user_location_list->active_slots.push_back(command.slot);
-			} else if (command.slot >= locations.current_size) {
-				continue;
-			} else if (command.type == tfx_user_spawn_location_command_update) {
-				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
-					locations[command.slot].position = command.position;
-				}
-			} else if (command.type == tfx_user_spawn_location_command_teleport) {
-				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
-					locations[command.slot].position = command.position;
-					locations[command.slot].captured_position = command.position;
-				}
-			} else if (command.type == tfx_user_spawn_location_command_tweaks) {
-				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active) {
-					locations[command.slot].packed_rotation = command.packed_rotation;
-					user_location_list->tweaks[command.slot].size_factor = command.size_factor;
-					user_location_list->tweaks[command.slot].velocity_factor = command.velocity_factor;
-				}
-			} else if (command.type == tfx_user_spawn_location_command_pause) {
-				//A location that's already soft expiring can't be brought back, it's on its way out
-				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active && !(locations[command.slot].flags & tfxUserSpawnLocationFlags_expiring)) {
-					locations[command.slot].flags &= ~tfxUserSpawnLocationFlags_paused;
-					locations[command.slot].flags |= command.flags & tfxUserSpawnLocationFlags_paused;
-				}
-			} else if (command.type == tfx_user_spawn_location_command_soft_expire) {
-				//Resolved here rather than when the api was called so reading the library can't race the update thread
-				if (locations[command.slot].flags & tfxUserSpawnLocationFlags_active && !(locations[command.slot].flags & tfxUserSpawnLocationFlags_expiring)) {
-					float expire_time = command.expire_time > 0.f ? command.expire_time : tfx__user_spawn_location_expire_time(pm, user_location_list->effect_id);
-					//An auto removing location is already counting down to when its effect has played out, so keep whichever ends first
-					if (locations[command.slot].flags & tfxUserSpawnLocationFlags_counting_down) {
-						expire_time = tfx__Min(expire_time, user_location_list->tweaks[command.slot].expire_countdown);
-					}
-					locations[command.slot].flags |= tfxUserSpawnLocationFlags_paused | tfxUserSpawnLocationFlags_expiring | tfxUserSpawnLocationFlags_counting_down;
-					user_location_list->tweaks[command.slot].expire_countdown = expire_time;
-				}
-			} else if (command.type == tfx_user_spawn_location_command_remove) {
-				locations[command.slot].flags = 0;
-			} else if (command.type == tfx_user_spawn_location_command_clear) {
-				for (tfxU32 slot : user_location_list->active_slots) {
-					locations[slot].flags = 0;
-				}
-			}
-		}
-		user_location_list->commands.clear();
-
-		//A slot removed and added again in the same frame is listed twice
-		tfxU32 kept = 0;
-		for (tfxU32 slot : user_location_list->active_slots) {
-			tfx_user_spawn_location_t &location = locations[slot];
-			if (!(location.flags & tfxUserSpawnLocationFlags_active) || location.flags & tfxUserSpawnLocationFlags_listed) {
-				continue;
-			}
-			location.flags |= tfxUserSpawnLocationFlags_listed;
+			tfx__apply_user_spawn_location_request(pm, user_location_list, slot);
 			user_location_list->active_slots[kept++] = slot;
+			combined_flags |= location.flags;
+			has_rotation |= location.packed_rotation != tfxPACKED_W_QUATERNION;
 		}
 		user_location_list->active_slots.current_size = kept;
+		user_location_list->flags &= ~tfxUserSpawnLocationListFlags_restart_pending;
+
+		for (tfxU32 slot : user_location_list->added_slots) {
+			tfx_user_spawn_location_request_t &request = requests[slot];
+			//Removed again before it was ever applied, or a repeat entry for a slot that was removed and added again
+			if (!(request.flags & tfxUserSpawnLocationRequestFlags_added)) {
+				continue;
+			}
+			request.flags &= ~tfxUserSpawnLocationRequestFlags_added;
+			if (slot >= locations.current_size) {
+				tfxU32 old_size = locations.current_size;
+				locations.resize(slot + 1);
+				memset((void *)&locations[old_size], 0, sizeof(tfx_user_spawn_location_t) * (locations.current_size - old_size));
+				user_location_list->tweaks.resize(locations.current_size);
+				memset((void *)&user_location_list->tweaks[old_size], 0, sizeof(tfx_user_spawn_tweaks_t) * (locations.current_size - old_size));
+			}
+			tfx_user_spawn_location_t &location = locations[slot];
+			tfx_user_spawn_tweaks_t &tweaks = user_location_list->tweaks[slot];
+			location.position = request.position;
+			location.captured_position = request.position;
+			location.packed_rotation = tfxPACKED_W_QUATERNION;
+			tweaks.multipliers = tfx__default_user_spawn_multipliers();
+			tweaks.largest_life_multiplier = 1.f;
+			tweaks.expire_countdown = 0.f;
+			location.age = 0.f;
+			location.previous_age = -1.f;
+			location.flags = tfxUserSpawnLocationFlags_active;
+			if (request.flags & tfxUserSpawnLocationRequestFlags_transient) {
+				location.flags |= tfxUserSpawnLocationFlags_transient;
+			}
+			//A finite effect has nothing left to spawn or show once it's played out here, so the location takes itself away
+			else if (user_location_list->auto_remove_time > 0.f && !(request.flags & tfxUserSpawnLocationRequestFlags_no_auto_remove)) {
+				tweaks.expire_countdown = user_location_list->auto_remove_time;
+				location.flags |= tfxUserSpawnLocationFlags_counting_down;
+			}
+			location.generation = request.generation;
+			tfx__apply_user_spawn_location_request(pm, user_location_list, slot);
+			user_location_list->active_slots.push_back(slot);
+			combined_flags |= location.flags;
+			has_rotation |= location.packed_rotation != tfxPACKED_W_QUATERNION;
+		}
+		user_location_list->added_slots.clear();
+
 		user_location_list->flags &= ~(tfxUserSpawnLocationListFlags_has_rotation | tfxUserSpawnLocationListFlags_has_factors);
-		for (tfxU32 slot : user_location_list->active_slots) {
-			locations[slot].flags &= ~tfxUserSpawnLocationFlags_listed;
-			if (locations[slot].packed_rotation != tfxPACKED_W_QUATERNION) {
-				user_location_list->flags |= tfxUserSpawnLocationListFlags_has_rotation;
-			}
-			if (user_location_list->tweaks[slot].size_factor != 1.f || user_location_list->tweaks[slot].velocity_factor != 1.f) {
-				user_location_list->flags |= tfxUserSpawnLocationListFlags_has_factors;
-			}
+		if (has_rotation) {
+			user_location_list->flags |= tfxUserSpawnLocationListFlags_has_rotation;
+		}
+		if (combined_flags & tfxUserSpawnLocationFlags_has_factors) {
+			user_location_list->flags |= tfxUserSpawnLocationListFlags_has_factors;
 		}
 	}
 }
@@ -23459,15 +23595,21 @@ void tfx__free_all_user_spawn_locations(tfx_stage pm) {
 		user_location_list->locations.free();
 		user_location_list->tweaks.free();
 		user_location_list->active_slots.free();
-		user_location_list->generations.free();
+		user_location_list->requests.free();
+		user_location_list->requested_tweaks.free();
+		user_location_list->added_slots.free();
 		user_location_list->free_slots.free();
-		user_location_list->commands.free();
 		tfxFREE(user_location_list);
 	}
 	pm->user_spawn_location_lists.free();
 	for (tfx_effect_state_t &effect : pm->effects) {
 		effect.user_spawn_locations = nullptr;
 	}
+}
+
+tfxINTERNAL tfx_user_spawn_location_request_t *tfx__get_spawn_location_request(tfx_stage pm, tfxSpawnLocationID location_id) {
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	return user_location_list ? &user_location_list->requests[tfx__spawn_location_slot(location_id)] : nullptr;
 }
 
 tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], tfxSpawnLocationAddFlags flags) {
@@ -23481,86 +23623,153 @@ tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, 
 	if (!user_location_list->free_slots.empty()) {
 		slot = user_location_list->free_slots.pop_back();
 	} else {
-		slot = user_location_list->generations.current_size;
+		slot = user_location_list->requests.current_size;
 		TFX_ASSERT(slot < tfxSPAWN_LOCATION_SLOT_MASK);	//Too many spawn locations in one effect
-		user_location_list->generations.push_back(0);
+		tfx_user_spawn_location_request_t new_request = {};
+		tfx_user_spawn_requested_tweaks_t new_requested_tweaks = {};
+		user_location_list->requests.push_back(new_request);
+		user_location_list->requested_tweaks.push_back(new_requested_tweaks);
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_add;
-	command.slot = slot;
-	command.generation = user_location_list->generations[slot];
-	command.position = { position[0], position[1], position[2] };
-	command.flags = flags & tfxSpawnLocationAdd_transient ? tfxUserSpawnLocationFlags_transient : 0;
-	command.no_auto_remove = (flags & tfxSpawnLocationAdd_no_auto_remove) > 0;
-	user_location_list->commands.push_back(command);
-	return tfx__make_spawn_location_id(effect_index, slot, user_location_list->generations[slot]);
+	tfx_user_spawn_location_request_t &request = user_location_list->requests[slot];
+	request.position = { position[0], position[1], position[2] };
+	request.flags = tfxUserSpawnLocationRequestFlags_added | tfxUserSpawnLocationRequestFlags_tweaks_changed;
+	if (flags & tfxSpawnLocationAdd_transient) {
+		request.flags |= tfxUserSpawnLocationRequestFlags_transient;
+	}
+	if (flags & tfxSpawnLocationAdd_no_auto_remove) {
+		request.flags |= tfxUserSpawnLocationRequestFlags_no_auto_remove;
+	}
+	tfx_user_spawn_requested_tweaks_t &requested_tweaks = user_location_list->requested_tweaks[slot];
+	requested_tweaks.packed_rotation = tfxPACKED_W_QUATERNION;
+	requested_tweaks.multipliers = tfx__default_user_spawn_multipliers();
+	requested_tweaks.expire_time = 0.f;
+	user_location_list->added_slots.push_back(slot);
+	return tfx__make_spawn_location_id(effect_index, slot, request.generation);
 }
 
 void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return;
+	tfx_user_spawn_location_request_t *request = tfx__get_spawn_location_request(pm, location_id);
+	if (request) {
+		request->position = { position[0], position[1], position[2] };
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_update;
-	command.slot = tfx__spawn_location_slot(location_id);
-	command.position = { position[0], position[1], position[2] };
-	user_location_list->commands.push_back(command);
 }
 
 void tfx_TeleportSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float position[3]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return;
+	tfx_user_spawn_location_request_t *request = tfx__get_spawn_location_request(pm, location_id);
+	if (request) {
+		request->position = { position[0], position[1], position[2] };
+		request->flags |= tfxUserSpawnLocationRequestFlags_teleport;
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_teleport;
-	command.slot = tfx__spawn_location_slot(location_id);
-	command.position = { position[0], position[1], position[2] };
-	user_location_list->commands.push_back(command);
 }
 
-void tfx_SetSpawnLocationTweaks(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4], float size_factor, float velocity_factor) {
+//Flags the tweaks as changed, so only call it when one is about to be written
+tfxINTERNAL tfx_user_spawn_requested_tweaks_t *tfx__change_spawn_location_tweaks(tfx_stage pm, tfxSpawnLocationID location_id) {
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
+	if (!user_location_list) {
+		return nullptr;
+	}
+	tfxU32 slot = tfx__spawn_location_slot(location_id);
+	user_location_list->requests[slot].flags |= tfxUserSpawnLocationRequestFlags_tweaks_changed;
+	return &user_location_list->requested_tweaks[slot];
+}
+
+void tfx_SetSpawnLocationRotation(tfx_stage pm, tfxSpawnLocationID location_id, float rotation[4]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return;
-	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_tweaks;
-	command.slot = tfx__spawn_location_slot(location_id);
-	command.packed_rotation = tfxPACKED_W_QUATERNION;
-	if (rotation) {
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
 		//The api takes x, y, z, w, tfx_quaternion_t stores w first
-		command.packed_rotation = tfx__pack16bit_quaternion(tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]));
+		requested_tweaks->packed_rotation = tfx__pack16bit_quaternion(tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]));
 	}
-	command.size_factor = size_factor;
-	command.velocity_factor = velocity_factor;
-	user_location_list->commands.push_back(command);
 }
 
-tfxINTERNAL void tfx__pause_spawn_location(tfx_stage pm, tfxSpawnLocationID location_id, bool paused) {
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return;
+void tfx_SetSpawnLocationLifeMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float life) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.life = life;
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_pause;
-	command.slot = tfx__spawn_location_slot(location_id);
-	command.flags = paused ? tfxUserSpawnLocationFlags_paused : 0;
-	user_location_list->commands.push_back(command);
+}
+
+void tfx_SetSpawnLocationParticleWidthMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float width) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.particle_width = width;
+	}
+}
+
+void tfx_SetSpawnLocationParticleHeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float height) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.particle_height = height;
+	}
+}
+
+void tfx_SetSpawnLocationVelocityMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float velocity) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.velocity = velocity;
+	}
+}
+
+void tfx_SetSpawnLocationSpinMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float spin) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.spin = spin;
+	}
+}
+
+void tfx_SetSpawnLocationIntensityMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float intensity) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.intensity = intensity;
+	}
+}
+
+void tfx_SetSpawnLocationSplatterMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float splatter) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.splatter = splatter;
+	}
+}
+
+void tfx_SetSpawnLocationWeightMultiplier(tfx_stage pm, tfxSpawnLocationID location_id, float weight) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.weight = weight;
+	}
+}
+
+void tfx_SetSpawnLocationNoiseOffset(tfx_stage pm, tfxSpawnLocationID location_id, float noise_offset) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx_user_spawn_requested_tweaks_t *requested_tweaks = tfx__change_spawn_location_tweaks(pm, location_id);
+	if (requested_tweaks) {
+		requested_tweaks->multipliers.noise_offset = noise_offset;
+	}
 }
 
 void tfx_PauseSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__pause_spawn_location(pm, location_id, true);
+	tfx_user_spawn_location_request_t *request = tfx__get_spawn_location_request(pm, location_id);
+	if (request) {
+		request->flags |= tfxUserSpawnLocationRequestFlags_paused;
+	}
 }
 
 void tfx_ResumeSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx__pause_spawn_location(pm, location_id, false);
+	tfx_user_spawn_location_request_t *request = tfx__get_spawn_location_request(pm, location_id);
+	if (request) {
+		request->flags &= ~tfxUserSpawnLocationRequestFlags_paused;
+	}
 }
 
 void tfx_SoftExpireSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, float milliseconds) {
@@ -23569,37 +23778,26 @@ void tfx_SoftExpireSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id, f
 	if (!user_location_list) {
 		return;
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_soft_expire;
-	command.slot = tfx__spawn_location_slot(location_id);
-	command.expire_time = milliseconds;
-	user_location_list->commands.push_back(command);
+	tfxU32 slot = tfx__spawn_location_slot(location_id);
+	//Once applied the countdown is running, so a second soft expire has nothing to change
+	if (!(user_location_list->requests[slot].flags & tfxUserSpawnLocationRequestFlags_expiring)) {
+		user_location_list->requested_tweaks[slot].expire_time = milliseconds;
+		user_location_list->requests[slot].flags |= tfxUserSpawnLocationRequestFlags_expiring;
+	}
 }
 
 bool tfx_SpawnLocationIsSpawning(tfx_stage pm, tfxSpawnLocationID location_id) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return false;
-	}
-	//A location added this update isn't live until the next one applies the command, and it will spawn when it is
-	if (!tfx__user_spawn_location_is_live(user_location_list, (tfxU32)location_id)) {
-		return true;
-	}
-	return !(user_location_list->locations[tfx__spawn_location_slot(location_id)].flags & tfxUserSpawnLocationFlags_paused);
+	tfx_user_spawn_location_request_t *request = tfx__get_spawn_location_request(pm, location_id);
+	return request && !(request->flags & (tfxUserSpawnLocationRequestFlags_paused | tfxUserSpawnLocationRequestFlags_expiring));
 }
 
 void tfx_RemoveSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx_user_spawn_locations_t *user_location_list = tfx__get_spawn_location_owner(pm, location_id);
-	if (!user_location_list) {
-		return;
+	if (user_location_list) {
+		tfx__free_spawn_location_slot(user_location_list, tfx__spawn_location_slot(location_id));
 	}
-	tfx_user_spawn_location_command_t command = {};
-	command.type = tfx_user_spawn_location_command_remove;
-	command.slot = tfx__spawn_location_slot(location_id);
-	user_location_list->commands.push_back(command);
-	tfx__free_spawn_location_slot(user_location_list, command.slot);
 }
 
 void tfx_ClearSpawnLocations(tfx_stage pm, tfxEffectID effect_index) {
@@ -23737,42 +23935,45 @@ void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float 
 
 void tfx_SetEffectLifeMultiplier(tfx_stage pm, tfxEffectID effect_index, float life) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.life = life;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.life = life;
 }
 
 void tfx_SetEffectParticleWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.size_x = width;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.size_x = width;
 }
 
 void tfx_SetEffectParticleHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.size_y = height;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.size_y = height;
 }
 
 void tfx_SetEffectVelocityMultiplier(tfx_stage pm, tfxEffectID effect_index, float velocity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.velocity = velocity;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.velocity = velocity;
 }
 
 void tfx_SetEffectSpinMultiplier(tfx_stage pm, tfxEffectID effect_index, float spin) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.spin = spin;
+	tfx_parent_spawn_controls_t &spawn_multipliers = pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers;
+	spawn_multipliers.spin = spin;
+	spawn_multipliers.pitch_spin = spin;
+	spawn_multipliers.yaw_spin = spin;
 }
 
 void tfx_SetEffectIntensityMultiplier(tfx_stage pm, tfxEffectID effect_index, float intensity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.intensity = intensity;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.intensity = intensity;
 }
 
 void tfx_SetEffectSplatterMultiplier(tfx_stage pm, tfxEffectID effect_index, float splatter) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.splatter = splatter;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.splatter = splatter;
 }
 
 void tfx_SetEffectWeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float weight) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.weight = weight;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.weight = weight;
 }
 
 void tfx_SetEffectOverallScale(tfx_stage pm, tfxEffectID effect_index, float overall_scale) {
