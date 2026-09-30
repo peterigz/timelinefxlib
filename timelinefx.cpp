@@ -11091,7 +11091,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			}
 			tfx_effect_descriptor source_effect = effect_state.source_effect;
 			if (source_effect->effect_flags & tfxEffectPropertyFlags_marked_for_deletion) {
-				tfx_HardExpireEffect(pm, effect_index.index);
+				tfx_HardExpireEffect(pm, tfx__effect_id(pm, effect_index.index));
 			} else if (source_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
 				tfx__restart_stage_effect(pm, effect_index.index);
 			}
@@ -11433,14 +11433,14 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
-		&pm->effects[preview_effect_index].local_rotations,
-		&pm->effects[preview_effect_index].overall_scale,
-		&pm->effects[preview_effect_index].world_position,
-		&pm->effects[preview_effect_index].local_position,
-		&pm->effects[preview_effect_index].translation,
-		&pm->effects[preview_effect_index].rotation,
-		&pm->effects[preview_effect_index]
+	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].world_rotations,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].overall_scale,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].world_position,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].local_position,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].translation,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].rotation,
+		&pm->effects[tfx__effect_slot(preview_effect_index)]
 	);
 TFX_ENABLE_COMPILER_WARNING()
 
@@ -11590,14 +11590,14 @@ TFX_ENABLE_COMPILER_WARNING()
 	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	tfx__transform_3d(&pm->effects[preview_effect_index].world_rotations,
-		&pm->effects[preview_effect_index].local_rotations,
-		&pm->effects[preview_effect_index].overall_scale,
-		&pm->effects[preview_effect_index].world_position,
-		&pm->effects[preview_effect_index].local_position,
-		&pm->effects[preview_effect_index].translation,
-		&pm->effects[preview_effect_index].rotation,
-		&pm->effects[preview_effect_index]
+	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].world_rotations,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].overall_scale,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].world_position,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].local_position,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].translation,
+		&pm->effects[tfx__effect_slot(preview_effect_index)].rotation,
+		&pm->effects[tfx__effect_slot(preview_effect_index)]
 	);
 TFX_ENABLE_COMPILER_WARNING()
 
@@ -13072,7 +13072,7 @@ bool tfx_IsBookmarkCrossed(tfx_stage pm, tfxEffectID effect_id, tfxU32 bookmark_
 		return false;
 	}
 	//An empty slot never has its bit set, so the time check the crossing test does is not repeated here
-	return (pm->effects[effect_id].bookmarks_crossed & (tfxU8)(1 << bookmark_index)) > 0;
+	return (pm->effects[tfx__effect_slot(effect_id)].bookmarks_crossed & (tfxU8)(1 << bookmark_index)) > 0;
 }
 
 void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
@@ -13081,8 +13081,9 @@ void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
 
 void tfx_AdvanceEffectTime(tfx_stage pm, tfxEffectID effect_id, float time) {
 	TFX_VALIDATE_EFFECT(pm, effect_id, );
-	time += pm->effects[effect_id].age;
-	tfx__add_warmup_effect(pm, effect_id, time);
+	tfxU32 slot = tfx__effect_slot(effect_id);
+	time += pm->effects[slot].age;
+	tfx__add_warmup_effect(pm, slot, time);
 }
 
 void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
@@ -13487,8 +13488,21 @@ tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effe
 	target_emitters.free();
 }
 
+//Lets tfx__add_effect_to_stage refuse an add made from inside the update rather than wait on itself
+static thread_local tfx_stage tfx__stage_updating_on_this_thread = nullptr;
+
 tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect) {
 	tfxPROFILE;
+	if (tfx__stage_updating_on_this_thread == pm) {
+		TFX_ASSERT(0 && "Effects can't be added to a stage from inside its update, for example from an effect update callback");
+		return tfxINVALID;
+	}
+	if (tfx__is_recording_on_another_thread(pm)) {
+		TFX_ASSERT(0 && "Effects can't be added to a stage while it's recording sprite data");
+		return tfxINVALID;
+	}
+	//The update rotates the in-use lists and walks the emitter and ribbon bucket lists that building the effect pushes into
+	tfx__wait_for_stage_update(pm);
 	tfx__sync_lock(&pm->add_effect_mutex);
 
 	tfxU32 buffer = pm->current_ebuff;
@@ -13512,8 +13526,9 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 	}
 	tfx__reset_effect_state(pm, parent_index.index, effect);
 	tfx__build_stage_effect_emitters(pm, parent_index.index, effect);
+	tfxEffectID effect_id = tfx__effect_id(pm, parent_index.index);
 	tfx__sync_unlock(&pm->add_effect_mutex);
-	return parent_index.index;
+	return effect_id;
 }
 
 void tfx__purge_expired_effects(tfx_stage pm) {
@@ -13553,7 +13568,7 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 			tfx__clear_user_spawn_locations(effect.user_spawn_locations);
 		}
 		effect.effect_flags &= ~tfxEffectPropertyFlags_user_spawn_locations;
-		pm->free_effects.push_back(effect_index);
+		tfx__free_effect_slot(pm, effect_index);
 	}
 
 	//Ribbon emitters are owned by the buckets rather than the effect so they need walking separately.
@@ -14064,7 +14079,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		//Second tick after time-out: emitters are already freed and the slot is idle, so recycle it.
 		//Deferred during warmup — the entry stays in current_ebuff and the next normal tick frees it.
 		tfx__sync_lock(&pm->add_effect_mutex);
-		pm->free_effects.push_back(effect_index);
+		tfx__free_effect_slot(pm, effect_index);
 		tfx__sync_unlock(&pm->add_effect_mutex);
 	}
 
@@ -14246,6 +14261,7 @@ void tfx__update_stage(void *data) {
 
 	tfx__sync_lock(&pm->updating);
 	pm->flags |= tfxStageFlags_updating;
+	tfx__stage_updating_on_this_thread = pm;
 
 	if (pm->flags & tfxStageFlags_auto_order_effects) {
 		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
@@ -14664,6 +14680,7 @@ void tfx__update_stage(void *data) {
 
 	pm->flags &= ~tfxStageFlags_update_base_values;
 	pm->flags &= ~tfxStageFlags_updating;
+	tfx__stage_updating_on_this_thread = nullptr;
 	tfx__sync_unlock(&pm->updating);
 }
 
@@ -14807,20 +14824,29 @@ void *tfx_GetSpriteImagePointer(tfx_stage pm, tfxU32 property_indexes) {
 void tfx_SoftExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
+	pm->effects[tfx__effect_slot(effect_index)].state_flags |= tfxEmitterStateFlags_stop_spawning;
 }
 
 void tfx_HardExpireEffect(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.state_flags |= tfxEmitterStateFlags_stop_spawning;
+	effect.state_flags |= tfxEmitterStateFlags_remove;
+}
+
+bool tfx_IsEffectExpired(tfx_stage pm, tfxEffectID effect_index) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	if (!tfx__valid_effect_id(pm, effect_index)) {
+		return true;
+	}
+	return (pm->effects[tfx__effect_slot(effect_index)].state_flags & tfxEffectStateFlags_remove) > 0;
 }
 
 void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
-	return pm->effects[effect_index].user_data;
+	return pm->effects[tfx__effect_slot(effect_index)].user_data;
 }
 
 void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
@@ -17148,6 +17174,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->emitters.clear();
 	pm->ribbon_emitters.clear();
 	tfx__free_all_user_spawn_locations(pm);
+	tfx__retire_effect_slots(pm);
 	pm->effects.clear();
 	pm->particle_id = 0;
 	pm->spawn_work.clear();
@@ -17233,6 +17260,7 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->ribbon_segment_buckets.FreeAll();
 	pm->emitters_check_capture.free();
 	pm->free_effects.free();
+	pm->effect_generations.free();
 	pm->free_gpu_ribbon_emitters.free();
 	pm->free_emitters.free();
 	pm->free_ribbon_emitters.free();
@@ -17572,9 +17600,9 @@ tfx_ribbon_buffer_info_t tfx_GenerateRibbonBufferInfo(tfxU32 tessellation) {
 	return info;
 }
 
-void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data) {
+void tfx_SetEffectUserData(tfx_stage pm, tfxEffectID effect_index, void *data) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].user_data = data;
+	pm->effects[tfx__effect_slot(effect_index)].user_data = data;
 }
 
 void tfx_DisableStageSpawning(tfx_stage pm, bool yesno) {
@@ -21630,7 +21658,7 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	translation.z = tfx__sample_multi_node_graph(&transform_list.graphs[tfxTransform_translate_z_index], age, oscillator_time);
 
 	if (pm->effects[index].source_effect->update_callback) {
-		pm->effects[index].source_effect->update_callback(pm, index);
+		pm->effects[index].source_effect->update_callback(pm, tfx__effect_id(pm, index));
 	}
 
 }
@@ -23044,10 +23072,6 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	sprite_data->has_ribbons = false;
 }
 
-bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id) {
-	return id != tfxINVALID && pm->effects.capacity > id;
-}
-
 bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimationID id) {
 	return id != tfxINVALID && animation_manager->instances.current_size > id;
 }
@@ -23129,6 +23153,10 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 	pm->emitters.reserve(pm->max_effects);
 	pm->ribbon_emitters.reserve(pm->max_effects);
 	pm->effects.reserve(pm->max_effects);
+	//Keeps the top slot below tfxEFFECT_SLOT_MASK so no id can come out as tfxINVALID
+	TFX_ASSERT(pm->effects.capacity < tfxEFFECT_SLOT_MASK);
+	//Starting at 1 so an id is never just its slot, which would hide call sites that forget to decode it
+	pm->effect_generations.resize(pm->effects.capacity, 1);
 	pm->particle_indexes.reserve(effects_limit);    //todo: Handle this better.
 	pm->spawn_work.reserve(effects_limit);
 	pm->ribbon_work.reserve(effects_limit);
@@ -23174,48 +23202,58 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 void tfx_SetEffectPosition(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_vec3_t position(x, y, z);
-	pm->effects[effect_index].local_position = position;
+	pm->effects[tfx__effect_slot(effect_index)].local_position = position;
 }
 
 void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
+	pm->effects[tfx__effect_slot(effect_index)].local_position = { position[0], position[1], position[2] };
 }
 
 void tfx_TeleportEffect(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position = tfx_vec3_t(x, y, z);
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_no_tween_this_update;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.local_position = tfx_vec3_t(x, y, z);
+	effect.state_flags |= tfxEffectStateFlags_no_tween_this_update;
 }
 
 void tfx_TeleportEffectVec3(tfx_stage pm, tfxEffectID effect_index, float position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position = { position[0], position[1], position[2] };
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_no_tween_this_update;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.local_position = { position[0], position[1], position[2] };
+	effect.state_flags |= tfxEffectStateFlags_no_tween_this_update;
 }
 
-//A spawn location id is the effect index in the upper 32 bits, then the slot's generation and the slot itself, so an id goes stale when its slot is reused
-tfxINTERNAL tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation) {
-	return slot | (generation << tfxSPAWN_LOCATION_SLOT_BITS);
+bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id) {
+	if (id == tfxINVALID) {
+		return false;
+	}
+	tfxU32 slot = tfx__effect_slot(id);
+	return slot < pm->effects.current_size && tfx__effect_id(pm, slot) == id;
 }
 
-tfxINTERNAL tfxSpawnLocationID tfx__make_spawn_location_id(tfxEffectID effect_index, tfxU32 slot, tfxU32 generation) {
-	return ((tfxU64)effect_index << 32) | tfx__spawn_location_local_id(slot, generation);
+//Could have been handed out by this stage at some point, even if it's stale now
+tfxINTERNAL bool tfx__effect_id_in_range(tfx_stage pm, tfxEffectID id) {
+	return id != tfxINVALID && tfx__effect_slot(id) < pm->effect_generations.current_size;
 }
 
-tfxINTERNAL tfxEffectID tfx__spawn_location_effect_index(tfxSpawnLocationID location_id) {
-	return (tfxEffectID)(location_id >> 32);
+tfxINTERNAL void tfx__free_effect_slot(tfx_stage pm, tfx_effect_index_t effect_index) {
+	pm->effect_generations[effect_index.index]++;
+	pm->free_effects.push_back(effect_index);
 }
 
-tfxINTERNAL tfxU32 tfx__spawn_location_slot(tfxSpawnLocationID location_id) {
-	return (tfxU32)location_id & tfxSPAWN_LOCATION_SLOT_MASK;
+//For when every effect is dropped at once without going through the free list
+tfxINTERNAL void tfx__retire_effect_slots(tfx_stage pm) {
+	for (tfxU32 &generation : pm->effect_generations) {
+		generation++;
+	}
 }
 
-tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_user_spawn_locations(tfx_stage pm, tfxEffectID effect_index) {
-	if (effect_index >= pm->effects.current_size) {
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_user_spawn_locations(tfx_stage pm, tfxEffectID effect_id) {
+	if (!tfx__valid_effect_id(pm, effect_id)) {
 		return nullptr;
 	}
-	tfx_effect_state_t &effect = pm->effects[effect_index];
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_id)];
 	if (!(effect.effect_flags & tfxEffectPropertyFlags_user_spawn_locations)) {
 		return nullptr;
 	}
@@ -23227,7 +23265,7 @@ tfxINTERNAL tfx_user_spawn_locations_t *tfx__get_spawn_location_owner(tfx_stage 
 	if (location_id == tfxINVALID_SPAWN_LOCATION) {
 		return nullptr;
 	}
-	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, tfx__spawn_location_effect_index(location_id));
+	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, tfx__spawn_location_effect_id(location_id));
 	if (!user_location_list) {
 		return nullptr;
 	}
@@ -23607,17 +23645,17 @@ void tfx_SetAnimationScale(tfx_animation_manager animation_manager, tfxAnimation
 
 void tfx_MoveEffectVec3(tfx_stage pm, tfxEffectID effect_index, float amount[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position += { amount[0], amount[1], amount[2] };
+	pm->effects[tfx__effect_slot(effect_index)].local_position += { amount[0], amount[1], amount[2] };
 }
 
 void tfx_MoveEffect(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_position += {x, y, z};
+	pm->effects[tfx__effect_slot(effect_index)].local_position += {x, y, z};
 }
 
 tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float out_position[3]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	tfx_vec3_t position = pm->effects[effect_index].local_position;
+	tfx_vec3_t position = pm->effects[tfx__effect_slot(effect_index)].local_position;
 	out_position[0] = position.x;
 	out_position[1] = position.y;
 	out_position[2] = position.z;
@@ -23625,7 +23663,7 @@ tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, fl
 
 tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 *sprite_count) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
-	tfx_effect_instance_data_t &instance_data = pm->effects[effect_index].instance_data;
+	tfx_effect_instance_data_t &instance_data = pm->effects[tfx__effect_slot(effect_index)].instance_data;
 	*sprite_count = instance_data.instance_count;
 	return &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[instance_data.instance_start_index];
 }
@@ -23653,25 +23691,28 @@ void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 
 void tfx_SetEffectRoll(tfx_stage pm, tfxEffectID effect_index, float roll) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_rotations.roll = roll;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.local_rotations.roll = roll;
+	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pitch) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_rotations.pitch = pitch;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.local_rotations.pitch = pitch;
+	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].local_rotations.yaw = yaw;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.local_rotations.yaw = yaw;
+	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z, tfx_effect_face face) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	tfx_effect_state_t &effect = pm->effects[effect_index];
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 
 	tfx_vec3_t direction = tfx_vec3_t(x, y, z) - effect.world_position;
 	float distance = tfx__length_vec3(&direction);
@@ -23687,71 +23728,75 @@ void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y,
 
 void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].emitter_size.x = width;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.emitter_size.x = width;
+	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].emitter_size.y = height;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.emitter_size.y = height;
+	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float depth) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].emitter_size.z = depth;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.emitter_size.z = depth;
+	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void tfx_SetEffectLifeMultiplier(tfx_stage pm, tfxEffectID effect_index, float life) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.life = life;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.life = life;
 }
 
 void tfx_SetEffectParticleWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.size_x = width;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.size_x = width;
 }
 
 void tfx_SetEffectParticleHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.size_y = height;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.size_y = height;
 }
 
 void tfx_SetEffectVelocityMultiplier(tfx_stage pm, tfxEffectID effect_index, float velocity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.velocity = velocity;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.velocity = velocity;
 }
 
 void tfx_SetEffectSpinMultiplier(tfx_stage pm, tfxEffectID effect_index, float spin) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.spin = spin;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.spin = spin;
 }
 
 void tfx_SetEffectIntensityMultiplier(tfx_stage pm, tfxEffectID effect_index, float intensity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.intensity = intensity;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.intensity = intensity;
 }
 
 void tfx_SetEffectSplatterMultiplier(tfx_stage pm, tfxEffectID effect_index, float splatter) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.splatter = splatter;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.splatter = splatter;
 }
 
 void tfx_SetEffectWeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float weight) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].spawn_controls.weight = weight;
+	pm->effects[tfx__effect_slot(effect_index)].spawn_controls.weight = weight;
 }
 
 void tfx_SetEffectOverallScale(tfx_stage pm, tfxEffectID effect_index, float overall_scale) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].overall_scale = overall_scale;
-	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_overall_scale;
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	effect.overall_scale = overall_scale;
+	effect.state_flags |= tfxEffectStateFlags_override_overall_scale;
 }
 
 void tfx_SetEffectBaseNoiseOffset(tfx_stage pm, tfxEffectID effect_index, float noise_offset) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
-	pm->effects[effect_index].noise_base_offset = noise_offset;
+	pm->effects[tfx__effect_slot(effect_index)].noise_base_offset = noise_offset;
 }
 
 tfx_version_t tfx_GetVersion() {

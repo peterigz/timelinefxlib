@@ -3,7 +3,7 @@
 
 #define TFX_VERSION_NAME "Alpha"
 #define TFX_VERSION_MAJOR 0
-#define TFX_VERSION_MINOR 36
+#define TFX_VERSION_MINOR 37
 #define TFX_VERSION_PATCH 0
 
 #define TFX_STRINGIFY(x) #x
@@ -556,7 +556,7 @@ typedef struct tfx_ribbon_buffer_info_s {
 typedef struct tfx_stage_info_s {
 	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
-	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
+	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
@@ -1278,7 +1278,13 @@ Two ways to synchronise before you read that data:
 Anything that reads stage state through a path NOT in that list (for example reading the instance buffer pointer
 you cached last frame, or touching the raw buffers directly) must be preceded by tfx_CompleteStageWork, otherwise
 you will race the worker threads. Mutators such as tfx_SetEffectPosition are also only safe once the update work
-for the frame has completed so it's a good idea to set positions before the call to tfx_UpdateStage. 
+for the frame has completed so it's a good idea to set positions before the call to tfx_UpdateStage.
+
+Adding an effect (tfx_AddEffectTemplateToStage) is the exception: it waits for any update in flight to finish
+before it adds, so it's always safe to call. The cheapest place to add effects is still before tfx_UpdateStage
+though, otherwise the add blocks until the update is done. Effects can't be added from inside the stage's own
+update (from an effect update callback for example) or while the stage is recording sprite data, those adds
+are refused and return tfxINVALID.
 */
 
 /*
@@ -1649,7 +1655,8 @@ then the effect will look the same each time. Note that seed of 0 is invalid, it
 tfxAPI void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed);
 
 /*
-Add an effect to a tfx_stage_t from an effect template
+Add an effect to a tfx_stage_t from an effect template. If the stage is part way through an update this waits for it to finish first,
+see the threading contract above tfx_CreateStageInfo.
 * @param pm                         A pointer to an initialised tfx_stage_t.
 * @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_CreateEffectTemplate
 * @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
@@ -1669,6 +1676,7 @@ test things out you can add an effect direct from a library using this command.
 */
 tfxAPI tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect);
 
+//Only checks the id against tfxINVALID, use tfx_IsEffectExpired to find out if the effect is still running
 tfxAPI bool tfx_EffectIDIsValid(tfxEffectID id);
 tfxAPI bool tfx_AnimationIDIsValid(tfxAnimationID id);
 
@@ -1817,6 +1825,18 @@ Expire an effect by telling it to stop spawning particles and remove all associa
 tfxAPI void tfx_HardExpireEffect(tfx_stage pm, tfxEffectID effect_index);
 
 /*
+Find out if an effect has finished, either because it has been removed from the stage or because it is about to be. Once an effect
+is removed its slot is recycled for the next effect that you add, but the old id is never reused so it will keep reporting as expired
+and any other calls you make with it are ignored. Use this to know when to let go of an id you're holding on to.
+Like the other effect functions this should be called either before tfx_UpdateStage or after tfx_CompleteStageWork so that it isn't
+racing the stage update.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @returns               True if the effect has expired or the id is stale or invalid
+*/
+tfxAPI bool tfx_IsEffectExpired(tfx_stage pm, tfxEffectID effect_index);
+
+/*
 Get effect user data
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToStage
@@ -1851,7 +1871,7 @@ Set the effect user data for an effect already added to a effect manager
 * @param effect_index		The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param user_data			A void* pointing to the user_data that you want to store in the effect
 */
-tfxAPI void tfx_SetEffectUserData(tfx_stage pm, tfxU32 effect_index, void *data);
+tfxAPI void tfx_SetEffectUserData(tfx_stage pm, tfxEffectID effect_index, void *data);
 
 /*
 Force a effect manager to only run in single threaded mode. In other words, only use the main thread to update particles
@@ -1897,7 +1917,7 @@ as the remaining particles come to the end of their life. Any single particles w
 tfxAPI void tfx_DisableStageSpawning(tfx_stage pm, bool yesno);
 
 /*
-Get the buffer of effect indexes in the effect manager.
+Get the buffer of effect indexes in the effect manager. These are the effects' slots in the stage, not the ids returned by tfx_AddEffectTemplateToStage.
 * @param pm               A pointer to a tfx_stage_t.
 * @param depth            The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
 * @param count			  A pointer to an int that you can pass in that will be filled with the count of effects in the array
@@ -1916,14 +1936,16 @@ tfxAPI tfxU32 *tfx_GetStageEmitterBuffer(tfx_stage pm, int *count);
 
 /*
 Error-handling contract for the effect manager functions that take a tfxEffectID (below):
-Every such function validates the id. In debug builds an invalid id trips an assert at the call site.
-In release builds the call is a documented no-op instead of undefined behaviour: mutators return
+Every such function validates the id. An id that fails validation makes the call a no-op: mutators return
 without touching any state, functions that return a pointer return NULL, and functions that return a
-value return 0. This means a stale effect id (for example one that expired a frame earlier than the
-caller expected) can never write through a bad index and corrupt the effect manager. Effect ids are
-produced by tfx_AddEffectTemplateToStage and should be treated as invalid once the effect has
-expired or been removed. The same contract applies to the animation manager functions that take a
-tfxAnimationID.
+value return 0.
+Effect ids are produced by tfx_AddEffectTemplateToStage and carry a generation for their slot in the stage.
+When an effect expires and is removed, or the stage is cleared, its id goes stale and is never handed out
+again even though the slot is recycled. So holding on to an id after the effect has gone is safe: calls made
+with it are silently skipped rather than landing on whatever effect took the slot. Use tfx_IsEffectExpired
+to find out when an id has gone stale. Malformed ids such as tfxINVALID still trip an assert in debug builds.
+The animation manager functions that take a tfxAnimationID are validated the same way but those ids have no
+generation, so they assert when invalid and should be treated as invalid once the instance has expired.
 */
 
 /*
@@ -2798,7 +2820,8 @@ Set the same user data for all effects and emitters/sub effects in the effect te
 tfxAPI void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data);
 
 /*
-Set an update callback for the root effect in the effect template.
+Set an update callback for the root effect in the effect template. The callback runs during the stage update, which may be on the
+stage's update thread, so it can't add effects to the same stage.
 * @param t                        A pointer to a tfx_effect_template_t
 * @param update_callback          A pointer to the call back function
 */

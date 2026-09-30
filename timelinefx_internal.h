@@ -89,9 +89,10 @@ typedef void *tfx_pool;
 #endif
 #endif
 
+//Stale ids (the effect expired and its slot moved on) are expected so only malformed ids assert
 #define TFX_VALIDATE_EFFECT(pm, effect_id, return_value) do { \
 if (!tfx__valid_effect_id(pm, effect_id)) { \
-	TFX_ASSERT(0 && "Invalid effect id passed to TimelineFX API function"); \
+	TFX_ASSERT(tfx__effect_id_in_range(pm, effect_id) && "Invalid effect id passed to TimelineFX API function"); \
 	return return_value; \
 } \
 } while (0)
@@ -1620,11 +1621,11 @@ tfx_allocator *tfxGetAllocator();
 #define tfxINVALID 0xFFFFFFFF
 #define tfxSPAWN_LOCATION_SLOT_BITS 20
 #define tfxSPAWN_LOCATION_SLOT_MASK ((1u << tfxSPAWN_LOCATION_SLOT_BITS) - 1)
+#define tfxEFFECT_SLOT_BITS 16
+#define tfxEFFECT_SLOT_MASK ((1u << tfxEFFECT_SLOT_BITS) - 1)
 #define tfxUNINIT_MAGIC 0xDEADBEEF
 #define tfxSTRUCT_IDENTIFIER 0x71F8
 #define tfxINIT_MAGIC(struct_type) (struct_type | tfxSTRUCT_IDENTIFIER);
-
-
 
 #define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 #define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
@@ -7398,6 +7399,8 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfxU32> control_emitter_queue;
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
+	//Per effect slot, bumped whenever the slot is freed so effect ids from its previous use go stale
+	tfx_vector_t<tfxU32> effect_generations;
 	tfx_vector_t<tfxU32> free_emitters;
 	tfx_vector_t<tfxU32> free_gpu_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_ribbon_emitters;
@@ -7622,6 +7625,14 @@ tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfx
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
+//An effect id is the slot's generation above the slot itself, so an id goes stale when its slot is freed
+tfxINTERNAL inline tfxEffectID tfx__effect_id(tfx_stage pm, tfxU32 slot) { return slot | (pm->effect_generations[slot] << tfxEFFECT_SLOT_BITS); }
+tfxINTERNAL inline tfxU32 tfx__effect_slot(tfxEffectID effect_id) { return effect_id & tfxEFFECT_SLOT_MASK; }
+//A spawn location id is the effect id in the upper 32 bits, then the slot's generation and the slot itself, so an id goes stale when its slot is reused
+tfxINTERNAL inline tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation) { return slot | (generation << tfxSPAWN_LOCATION_SLOT_BITS); }
+tfxINTERNAL inline tfxSpawnLocationID tfx__make_spawn_location_id(tfxEffectID effect_id, tfxU32 slot, tfxU32 generation) { return ((tfxU64)effect_id << 32) | tfx__spawn_location_local_id(slot, generation); }
+tfxINTERNAL inline tfxEffectID tfx__spawn_location_effect_id(tfxSpawnLocationID location_id) { return (tfxEffectID)(location_id >> 32); }
+tfxINTERNAL inline tfxU32 tfx__spawn_location_slot(tfxSpawnLocationID location_id) { return (tfxU32)location_id & tfxSPAWN_LOCATION_SLOT_MASK; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_stage pm);
 tfxINTERNAL void tfx__free_gpu_emitter(tfx_stage pm, tfxU32 index);
@@ -7791,14 +7802,15 @@ tfxINTERNAL inline void tfx__wait_for_stage_update(tfx_stage pm) {
 //it finishes. Re-entrant calls from the recording thread itself pass through
 //immediately (tfx__record_sprite_data internally calls tfx_ReconfigureStage
 //and tfx_ClearStage while the recording flag is still set).
+tfxINTERNAL inline bool tfx__is_recording_on_another_thread(tfx_stage pm) {
+	tfx__sync_lock(&pm->update_thread_mutex);
+	bool recording = (pm->flags & tfxStageFlags_recording_sprites) != 0
+		&& !tfx__thread_id_equal(pm->recording_thread_id, tfx__current_thread_id());
+	tfx__sync_unlock(&pm->update_thread_mutex);
+	return recording;
+}
 tfxINTERNAL inline void tfx__wait_for_external_recording(tfx_stage pm) {
-	tfx_thread_id_t me = tfx__current_thread_id();
-	for (;;) {
-		tfx__sync_lock(&pm->update_thread_mutex);
-		bool blocked = (pm->flags & tfxStageFlags_recording_sprites) != 0
-			&& !tfx__thread_id_equal(pm->recording_thread_id, me);
-		tfx__sync_unlock(&pm->update_thread_mutex);
-		if (!blocked) break;
+	while (tfx__is_recording_on_another_thread(pm)) {
 		tfx__thread_sleep_ms(1);
 	}
 }
@@ -9682,11 +9694,13 @@ tfxINTERNAL void tfx__free_all_spawn_location_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_user_spawn_locations(tfx_stage pm);
 tfxINTERNAL void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length);
 tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
-tfxINTERNAL tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
 tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 tfxINTERNAL bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id);
+tfxINTERNAL bool tfx__effect_id_in_range(tfx_stage pm, tfxEffectID id);
+tfxINTERNAL void tfx__free_effect_slot(tfx_stage pm, tfx_effect_index_t effect_index);
+tfxINTERNAL void tfx__retire_effect_slots(tfx_stage pm);
 tfxINTERNAL bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimationID id);
 
 //--------------------------------
