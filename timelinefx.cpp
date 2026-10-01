@@ -10689,6 +10689,7 @@ tfx_library tfx_CreateLibrary() {
 	library->magic = tfxINIT_MAGIC(tfx_struct_type_effect_library);
 	library->version = 1;
 	library->file_version = tfxFILE_VERSION;
+	library->path_cache_id = tfx_AtomicAdd32(&tfxCurrentContext->library_path_cache_counter, 1);
 	tfx__init_library(library);
 	tfxStore->libraries.Insert((tfxKey)library, library);
 	return library;
@@ -13306,11 +13307,11 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
 	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
 	//Emitters sharing a path but wanting different sample densities must not share a cached array
-	tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
+	tfxKey cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.path_attributes, ribbon_emitter.samples_per_segment);
 	tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
 	ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
 	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
-		tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
+		tfxKey morph_cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.morph_path_attributes, ribbon_emitter.samples_per_segment);
 		tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
 		ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
 	}
@@ -13404,6 +13405,7 @@ tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effe
 			if (child->type == tfxEmitterType) {
 				index = tfx__get_emitter_slot(pm);
 				if (index == tfxINVALID) {
+					TFX_ASSERT(0 && "Emitter pool full; callers must check tfx__effect_emitters_fit first");
 					break;
 				}
 				effect_state.emitter_indexes[pm->current_ebuff].push_back(index);
@@ -13428,6 +13430,10 @@ tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effe
 
 			} else if (child->type == tfxRibbonType) {
 				index = tfx__get_ribbon_slot(pm);
+				if (index == tfxINVALID) {
+					TFX_ASSERT(0 && "Ribbon emitter pool full; callers must check tfx__effect_emitters_fit first");
+					break;
+				}
 
 				tfx__reset_ribbon_emitter_state(pm, index, parent_index, child, &seed_index);
 				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(child);
@@ -13522,6 +13528,10 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 
 	TFX_ASSERT(effect->type == tfxEffectType);
 	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
+		return tfxINVALID;
+	}
+	if (!tfx__effect_emitters_fit(pm, effect)) {
 		tfx__sync_unlock(&pm->add_effect_mutex);
 		return tfxINVALID;
 	}
@@ -13636,7 +13646,12 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 
 	tfx__release_stage_effect_emitters(pm, effect_slot);
 	tfx__reset_effect_state(pm, effect_slot, source_effect);
-	tfx__build_stage_effect_emitters(pm, effect_slot, source_effect);
+	if (tfx__effect_emitters_fit(pm, source_effect)) {
+		tfx__build_stage_effect_emitters(pm, effect_slot, source_effect);
+	} else {
+		//The reloaded effect has more emitters than the stage has room for, so it ends instead of restarting
+		overrides |= tfxEmitterStateFlags_stop_spawning | tfxEmitterStateFlags_remove;
+	}
 	if (effect.user_spawn_locations) {
 		effect.user_spawn_locations->flags |= tfxUserSpawnLocationListFlags_restart_pending;
 	}
@@ -14431,7 +14446,6 @@ void tfx__update_stage(void *data) {
 			//only contains warming emitters, so we can dispatch unconditionally per bucket. We skip the
 			//control_ribbons (appearance writes) phase entirely during warmup since no GPU instances
 			//are read until the first post-warmup frame.
-			pm->running_ribbon_vertex_count = 0;
 			//Pre-reserve so .next() can never reallocate while worker threads hold &work_entry pointers into
 			//this vector. ribbon_control_work is cleared each warmup tick so one entry per bucket is enough.
 			pm->ribbon_control_work.reserve(pm->ribbon_segment_buckets.Size());
@@ -14546,7 +14560,6 @@ void tfx__update_stage(void *data) {
 			tfx__simulate_emitter_control(pm, index, is_recording);
 		}
 
-		pm->running_ribbon_vertex_count = 0;
 		//Pre-reserve so .next() can never reallocate while worker threads hold &work_entry pointers into this
 		//vector. Both the control_ribbons phase here and the control_ribbons_ages phase below push one entry
 		//per bucket and the vector is only cleared after both complete, so reserve two entries per bucket.
@@ -14570,7 +14583,6 @@ void tfx__update_stage(void *data) {
 			tfx__simulate_emitter_age(pm, index);
 		}
 
-		pm->running_ribbon_vertex_count = 0;
 		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 			TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
@@ -16553,8 +16565,6 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 
 	if (bucket->highest_ribbon_index >= bucket->lowest_ribbon_index) {
 		pm.flags |= tfxStageFlags_has_ribbons_to_draw;
-		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
-		pm.running_ribbon_vertex_count += ribbon_count * ribbon_emitter.segment_count * bucket->buffer_info.vertices_per_segment;
 	}
 }
 
@@ -16921,10 +16931,13 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements() {
 
 void tfx_CopyRibbonDataToStagingBuffers(tfx_stage stage, void *segments_dst, void *ribbons_dst, void *emitters_dst) {
 	TFX_ASSERT_HANDLE(stage);
-	//The caller sizes the destinations for a single stage copy, so the batch has no capacity limit
-	tfx_ribbon_batch_t batch = tfx_BeginRibbonBatch(segments_dst, SIZE_MAX, ribbons_dst, SIZE_MAX, emitters_dst, SIZE_MAX);
+	//The stage budgets and the ribbon emitter pool keep everything inside the worst case helpers
+	tfx_ribbon_batch_t batch = tfx_BeginRibbonBatch(segments_dst, tfx_GetSegmentBufferMaxSizeInBytes(stage), ribbons_dst, tfx_GetRibbonBufferMaxSizeInBytes(stage),
+		emitters_dst, tfx_GetEmitterBufferMaxSizeInBytes(stage));
 	tfx_ribbon_batch_offsets_t stage_offsets;
-	tfx_AddStageToRibbonBatch(&batch, stage, &stage_offsets);
+	bool added = tfx_AddStageToRibbonBatch(&batch, stage, &stage_offsets);
+	TFX_ASSERT(added);	//The stage outgrew its ribbon budgets, which should be impossible
+	(void)added;
 }
 
 tfx_ribbon_batch_t tfx_BeginRibbonBatch(void *segments_dst, size_t segments_capacity, void *ribbons_dst, size_t ribbons_capacity, void *emitters_dst, size_t emitters_capacity) {
@@ -17030,7 +17043,7 @@ size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_stage pm) {
 }
 
 size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_stage pm) {
-	return pm->info.max_effects * sizeof(tfx_gpu_ribbon_emitter_t);
+	return pm->info.max_ribbon_emitters * sizeof(tfx_gpu_ribbon_emitter_t);
 }
 
 size_t tfx_GetParticlePropertiesBufferSizeInBytes(tfx_library library) {
@@ -17197,7 +17210,9 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 			pm->instance_buffer_for_recording[1][layer].clear();
 		}
 	}
-	pm->running_ribbon_vertex_count = 0;
+	pm->ribbon_rows_allocated = 0;
+	pm->ribbon_spine_segments_allocated = 0;
+	pm->ribbon_path_samples_allocated = 0;
 	pm->current_ribbon_count = 0;
 	pm->current_particle_count = 0;
 }
@@ -17415,6 +17430,21 @@ tfxU32 tfx__get_ribbon_slot(tfx_stage pm) {
 	return pm->ribbon_emitters.current_size - 1;
 }
 
+//Emitters are paired with each other while an effect is built, so an effect gets all of its emitters or none
+bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor effect) {
+	tfxU32 particle_emitters_needed = 0;
+	tfxU32 ribbon_emitters_needed = 0;
+	for (tfx_effect_descriptor child : effect->children) {
+		if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_enabled && !(child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden)) {
+			particle_emitters_needed += child->type == tfxEmitterType ? 1 : 0;
+			ribbon_emitters_needed += child->type == tfxRibbonType ? 1 : 0;
+		}
+	}
+	tfxU32 particle_emitters_available = pm->free_emitters.current_size + pm->emitters.capacity - pm->emitters.current_size;
+	tfxU32 ribbon_emitters_available = pm->free_ribbon_emitters.current_size + pm->ribbon_emitters.capacity - pm->ribbon_emitters.current_size;
+	return particle_emitters_needed <= particle_emitters_available && ribbon_emitters_needed <= ribbon_emitters_available;
+}
+
 
 void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]) {
 	pm->camera_front.x = front[0];
@@ -17490,24 +17520,36 @@ void tfx__free_gpu_emitter(tfx_stage pm, tfxU32 index) {
 	pm->free_gpu_ribbon_emitters.push_back(index);
 }
 
+//Can refuse near the limit while another thread holds a reservation it is about to roll back, but never overshoots
+bool tfx__reserve_ribbon_budget(volatile tfxU32 *allocated, tfxU32 amount, tfxU32 limit) {
+	tfxU32 previous = tfx_AtomicAdd32(allocated, amount);
+	if (previous + amount > limit) {
+		tfx_AtomicAdd32(allocated, 0u - amount);
+		return false;
+	}
+	return true;
+}
+
 tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter) {
 	TFX_ASSERT(bucket->flags & tfxRibbonBucketFlags_initialised);
 	if (bucket->free_ribbons.current_size) {
 		bucket->active_ribbons++;
 		return bucket->free_ribbons.pop_back();
 	}
-	tfxU32 start_index = ribbon_emitter->static_segment_start_index;
-	pm->running_ribbon_vertex_count += ribbon_emitter->segment_count * bucket->buffer_info.vertices_per_segment;
-	if (pm->running_ribbon_vertex_count < (pm->info.max_ribbon_segments * bucket->buffer_info.vertices_per_segment)) {
-		tfxU32 index = tfx__add_soa_row(&bucket->ribbons_buffer, true);
-		tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[index];
-		ribbon.start_index = start_index;
-		bucket->active_ribbons++;
-		TFX_ASSERT(index < bucket->ribbons_buffer.current_size);
-		return index;
+	//A new row is copied and tessellated every frame from now on, whether or not a ribbon lives in it
+	if (!tfx__reserve_ribbon_budget(&pm->ribbon_rows_allocated, 1, pm->info.max_ribbons)) {
+		return tfxINVALID;
 	}
-	pm->running_ribbon_vertex_count -= ribbon_emitter->segment_count * bucket->buffer_info.vertices_per_segment;
-	return tfxINVALID;
+	if (!tfx__reserve_ribbon_budget(&pm->ribbon_spine_segments_allocated, ribbon_emitter->segment_count, pm->info.max_ribbon_segments)) {
+		tfx_AtomicAdd32(&pm->ribbon_rows_allocated, 0u - 1u);
+		return tfxINVALID;
+	}
+	tfxU32 index = tfx__add_soa_row(&bucket->ribbons_buffer, true);
+	tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[index];
+	ribbon.start_index = ribbon_emitter->static_segment_start_index;
+	bucket->active_ribbons++;
+	TFX_ASSERT(index < bucket->ribbons_buffer.current_size);
+	return index;
 }
 
 void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_hash, tfxU32 ribbon_index) {
@@ -17572,6 +17614,13 @@ tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU
 void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter) {
 	tfx_ribbon_emitter_properties_t *properties = tfx__get_ribbon_emitter_properties(ribbon_emitter);
 	properties->ribbon_bucket_id = tfxRibbonBucketID(properties->bucket_info);
+}
+
+//path_attributes indexes one library's paths, so two libraries in a stage must not share a block through it
+tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment) {
+	tfxU64 key_parts[2] = { library->path_cache_id, ((tfxU64)path_attributes << 32) | samples_per_segment };
+	tfx_hasher_t hasher;
+	return tfx_Hash(&hasher, key_parts, sizeof(key_parts), 0);
 }
 
 void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
@@ -21015,23 +21064,35 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		ribbon_emitter.morph_segment_start_index = tfxINVALID;
 	}
 
+	tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
+	tfxKey cache_key = 0;
+	tfxKey morph_cache_key = 0;
+	//Instances added in the same frame all miss the add time lookup, so the first one to spawn here stores the block for the rest
+	if (ribbon_emitter.static_segment_start_index == tfxINVALID) {
+		cache_key = tfx__ribbon_path_cache_key(library, ribbon_emitter.state_properties.path_attributes, ribbon_emitter.samples_per_segment);
+		tfxU32 *cached_index = ribbon_bucket->cached_static_path_segments.AtPtr(cache_key);
+		ribbon_emitter.static_segment_start_index = cached_index ? *cached_index : tfxINVALID;
+	}
+	if (morph_path && ribbon_emitter.morph_segment_start_index == tfxINVALID) {
+		morph_cache_key = tfx__ribbon_path_cache_key(library, ribbon_emitter.state_properties.morph_path_attributes, ribbon_emitter.samples_per_segment);
+		tfxU32 *cached_index = ribbon_bucket->cached_static_path_segments.AtPtr(morph_cache_key);
+		ribbon_emitter.morph_segment_start_index = cached_index ? *cached_index : tfxINVALID;
+	}
 	bool needs_static_block = ribbon_emitter.static_segment_start_index == tfxINVALID;
 	bool needs_morph_block = morph_path && ribbon_emitter.morph_segment_start_index == tfxINVALID;
 	if (needs_static_block || needs_morph_block) {
-		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
-
 		//More samples than segments are stored so that a sliding clip window still has path detail to read.
-		//This is a segment storage budget, not the vertex budget that running_ribbon_vertex_count tracks.
+		//This is a segment storage budget, not the spine budget tfx__grab_ribbon reserves, and it is stage wide because
+		//every bucket's blocks are copied into the one segment buffer.
 		//Both blocks are reserved together or neither is, otherwise the emitter renders un-morphed with no diagnostic.
 		tfxU32 required_samples = (needs_static_block ? ribbon_emitter.stored_sample_count : 0) + (needs_morph_block ? ribbon_emitter.stored_sample_count : 0);
-		if (ribbon_bucket->segments.current_size + required_samples <= pm.info.max_ribbon_segments) {
+		if (tfx__reserve_ribbon_budget(&pm.ribbon_path_samples_allocated, required_samples, pm.info.max_ribbon_segments)) {
 			if (needs_static_block) {
 				ribbon_emitter.static_segment_start_index = ribbon_bucket->segments.current_size;
 				ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
 				tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
 				tfx__sample_path_into_segments(path, &segments[ribbon_emitter.static_segment_start_index], ribbon_emitter.stored_sample_count);
 				ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count;
-				tfxKey cache_key = ((tfxKey)ribbon_emitter.state_properties.path_attributes << 32) | ribbon_emitter.samples_per_segment;
 				ribbon_bucket->cached_static_path_segments.Insert(cache_key, ribbon_emitter.static_segment_start_index);
 			}
 			if (needs_morph_block) {
@@ -21039,7 +21100,6 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				ribbon_bucket->segments.resize(ribbon_bucket->segments.current_size + ribbon_emitter.stored_sample_count);
 				tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
 				tfx__sample_path_into_segments(morph_path, &segments[ribbon_emitter.morph_segment_start_index], ribbon_emitter.stored_sample_count);
-				tfxKey morph_cache_key = ((tfxKey)ribbon_emitter.state_properties.morph_path_attributes << 32) | ribbon_emitter.samples_per_segment;
 				ribbon_bucket->cached_static_path_segments.Insert(morph_cache_key, ribbon_emitter.morph_segment_start_index);
 			}
 		} else {
@@ -23272,8 +23332,10 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	info.warmup_delta_time = 1000.0 / 60.0;
 	info.max_particles = 10000;
 	info.max_effects = 1000;
+	info.max_emitters = 0;
 	info.max_ribbon_segments = 32678;
 	info.max_ribbons = 1000;
+	info.max_ribbon_emitters = 0;
 	info.ribbon_tessellation = 1;
 	info.multi_threaded_batch_size = 4096;
 	info.sort_passes = 3;
@@ -23334,25 +23396,28 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 
 	pm->effects_in_use[0].reserve(pm->max_effects);
 	pm->effects_in_use[1].reserve(pm->max_effects);
-	pm->control_emitter_queue.reserve(pm->max_effects);
+	pm->control_emitter_queue.reserve(pm->info.max_emitters);
 
 	pm->free_effects.reserve(pm->max_effects);
 	pm->emitters.set_alignment(16);
 	pm->ribbon_emitters.set_alignment(16);
 	pm->gpu_ribbon_emitters.set_alignment(16);
 	pm->effects.set_alignment(16);
-	pm->emitters.reserve(pm->max_effects);
-	pm->ribbon_emitters.reserve(pm->max_effects);
+	//Neither pool is ever grown: tfx__get_emitter_slot and tfx__get_ribbon_slot refuse once they are full, which is
+	//what bounds the per emitter work queues below and the ribbon emitter GPU buffer
+	pm->emitters.reserve(pm->info.max_emitters);
+	pm->ribbon_emitters.reserve(pm->info.max_ribbon_emitters);
 	pm->effects.reserve(pm->max_effects);
 	//Keeps the top slot below tfxEFFECT_SLOT_MASK so no id can come out as tfxINVALID
 	TFX_ASSERT(pm->effects.capacity < tfxEFFECT_SLOT_MASK);
 	//Starting at 1 so an id is never just its slot, which would hide call sites that forget to decode it
 	pm->effect_generations.resize(pm->effects.capacity, 1);
 	pm->particle_indexes.reserve(effects_limit);    //todo: Handle this better.
-	pm->spawn_work.reserve(effects_limit);
+	//Spawn and age take one entry per particle emitter a frame, control at least one
+	pm->spawn_work.reserve(pm->info.max_emitters);
 	pm->ribbon_work.reserve(effects_limit);
-	pm->control_work.reserve(effects_limit);
-	pm->age_work.reserve(effects_limit);
+	pm->control_work.reserve(pm->info.max_emitters);
+	pm->age_work.reserve(pm->info.max_emitters);
 }
 
 tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
@@ -23374,6 +23439,12 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	//unrelated stages. tfx_AtomicAdd32 returns the pre-add value, so the first stage is 0.
 	pm->stage_index = tfx_AtomicAdd32(&tfxCurrentContext->stage_index_counter, 1);
 	pm->info = info;
+	if (pm->info.max_emitters == 0) {
+		pm->info.max_emitters = info.max_effects * 3;
+	}
+	if (pm->info.max_ribbon_emitters == 0) {
+		pm->info.max_ribbon_emitters = info.max_effects;
+	}
 	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
 

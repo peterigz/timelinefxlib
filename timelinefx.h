@@ -557,11 +557,13 @@ typedef struct tfx_stage_info_s {
 	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535.
+	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit returns tfxINVALID.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
 											//nearest multiple of 32.
-	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager.
+	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager. Ribbons stop spawning once it is reached.
+	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this effect manager, 0 to match max_effects. Adding an effect whose ribbon emitters won't fit returns tfxINVALID.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
@@ -1548,7 +1550,7 @@ Worst-case size in bytes of the ribbon instance buffer for a single stage, based
 tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_stage pm);
 
 /*
-Worst-case size in bytes of the ribbon emitter buffer for a single stage.
+Worst-case size in bytes of the ribbon emitter buffer for a single stage, based on its configured max_ribbon_emitters.
 * @param pm                        A handle to an initialised tfx_stage_t.
 */
 tfxAPI size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_stage pm);
@@ -1583,7 +1585,7 @@ tfxAPI size_t tfx_GetTotalRibbonBufferMaxSizeInBytes(void);
 tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes(void);
 
 /*
-When a effect manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
+When a effect manager updates particles it creates work queues to handle the work. By default these each have room for max_emitters entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
 run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you
 could reduce the numbers as well if needed (they don't take a lot of space though)

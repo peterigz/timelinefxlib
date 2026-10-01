@@ -5060,6 +5060,7 @@ typedef struct tfx_context_s {
 	int number_of_threads_in_addition_to_main;
 	bool suspended;
 	tfxU32 stage_index_counter;
+	tfxU32 library_path_cache_counter;
 	tfxU32 volatile tracy_worker_count;
 	tfx_vector_t<tfx_vec3_t> icosphere_points[6];
 } tfx_context_t;
@@ -7466,7 +7467,11 @@ typedef struct tfx_stage_s {
 
 
 	tfxU32 layer_sizes[tfxLAYERS];
-	tfxU32 running_ribbon_vertex_count;
+	//Stage wide totals across every ribbon bucket, reserved atomically by the per bucket spawn threads. Rows and path
+	//blocks are never reclaimed before a stage clear, so these only grow and bound what the staging copy can write.
+	volatile tfxU32 ribbon_rows_allocated;
+	volatile tfxU32 ribbon_spine_segments_allocated;
+	volatile tfxU32 ribbon_path_samples_allocated;
 
 	int mt_batch_size;
 	//We might not need these now.
@@ -7561,6 +7566,9 @@ typedef struct tfx_shape_file_s {
 typedef struct tfx_library_s {
 	tfxU32 magic;
 	tfxErrorFlags error_flags;
+	//Names this library in the stages' ribbon path caches. Never reused, unlike the address of a freed library.
+	//A refresh needs no new one: an updated effect is given new path slots, so its old blocks can't be matched.
+	tfxU32 path_cache_id;
 	tfx_storage_map_t<tfx_effect_descriptor> effect_paths;
 	tfx_vector_t<tfx_effect_descriptor> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
@@ -7655,10 +7663,13 @@ tfxINTERNAL inline tfxU32 tfx__spawn_location_slot(tfxSpawnLocationID location_i
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_gpu_ribbon_emitter(tfx_stage pm);
 tfxINTERNAL void tfx__free_gpu_emitter(tfx_stage pm, tfxU32 index);
+tfxINTERNAL bool tfx__reserve_ribbon_budget(volatile tfxU32 *allocated, tfxU32 amount, tfxU32 limit);
+tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor effect);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation);
+tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
 
