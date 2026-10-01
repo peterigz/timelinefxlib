@@ -6327,7 +6327,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_vec3_t local_position;						
 	tfx_vec3_t world_position;					
 	tfx_vec3_t captured_position;	
-	tfx_vec3_t world_rotations;
 	tfx_quaternion_t captured_rotation;
 	tfx_quaternion_t rotation;
 	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
@@ -6392,7 +6391,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
 	tfx_vec3_t local_rotations;
-	tfx_vec3_t world_rotations;
 	tfx_bounding_box_t bounding_box;
 
 	tfx_library library;
@@ -6576,7 +6574,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
 	tfx_vec3_t local_rotations;
-	tfx_vec3_t world_rotations;
 	tfx_quaternion_t rotation;
 	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
 	tfx_vec3_t creation_rotations;
@@ -7749,7 +7746,7 @@ tfxAPI_EDITOR void tfx__catmull_rom_spline_gradient_3d(const tfx_vec4_t *p0, con
 tfxAPI_EDITOR float tfx__vec3_length_fast(tfx_vec3_t const *v);
 tfxAPI_EDITOR void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
-tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
+tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter);
 
 //Reads just the 64 byte header. Reports 0 for a package written before the version was recorded there.

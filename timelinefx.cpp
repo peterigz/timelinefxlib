@@ -1588,11 +1588,9 @@ float tfx__interpolate_float(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
+void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
 	*out_q = tfx__euler_to_quaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
 	*out_scale = parent->overall_scale;
-
-	*out_rotations = parent->world_rotations + *out_local_rotations;
 
 	*out_q = *out_q * parent->rotation;
 	tfx_vec3_t translated_vec = *out_local_position + *out_translation;
@@ -11435,8 +11433,7 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].world_rotations,
-		&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
+	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].overall_scale,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].world_position,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].local_position,
@@ -11592,8 +11589,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
-	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].world_rotations,
-		&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
+	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].overall_scale,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].world_position,
 		&pm->effects[tfx__effect_slot(preview_effect_index)].local_position,
@@ -13234,7 +13230,6 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.amount_remainder = 0.f;
 	emitter.qty_step_size = 0.f;
 	emitter.emitter_size = 0.f;
-	emitter.world_rotations = 0.f;
 	emitter.creation_rotations = tfx_vec3_t();
 	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
@@ -13633,6 +13628,7 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 	tfx_vec3_t emitter_size = effect.emitter_size;
 	tfx_parent_spawn_controls_t spawn_multipliers = effect.spawn_multipliers;
 	float overall_scale = effect.overall_scale;
+	tfx_quaternion_t rotation = effect.rotation;
 	float noise_base_offset = effect.noise_base_offset;
 	void *user_data = effect.user_data;
 	tfxEmitterStateFlags overrides = effect.state_flags & (tfxEffectStateFlags_override_overall_scale
@@ -13647,6 +13643,7 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 
 	effect.local_position = local_position;
 	effect.local_rotations = local_rotations;
+	effect.rotation = rotation;
 	effect.emitter_size = emitter_size;
 	effect.spawn_multipliers = spawn_multipliers;
 	effect.overall_scale = overall_scale;
@@ -15722,7 +15719,7 @@ typedef struct tfx_instance_pass_s {
 
 	//----Spin. can_spin_pitch_and_yaw picks which of the two mutually exclusive rotation offset arrays the
 	//bank allocated, so it also picks which of the two spin paths may run.
-	tfxWideFloat world_rotations_z;
+	tfxWideFloat emitter_roll;
 	tfxWideFloat emitter_qw;
 	tfxWideFloat emitter_qx;
 	tfxWideFloat emitter_qy;
@@ -15816,7 +15813,6 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
 
 	//----Spin
-	pass->world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	pass->emitter_qw = tfxWideSetSingle(emitter.rotation.w);
 	pass->emitter_qx = tfxWideSetSingle(emitter.rotation.x);
 	pass->emitter_qy = tfxWideSetSingle(emitter.rotation.y);
@@ -15832,6 +15828,8 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->has_spin_roll = (control_profile & tfxEmitterControlProfile_spin) != 0;
 	pass->has_spin_3d = (control_profile & tfxEmitterControlProfile_spin3d) != 0;
 	pass->relative_angle = (property_flags & tfxEmitterPropertyFlags_relative_angle) != 0;
+	//Twist of the emitter rotation about the roll axis, only read by the roll-only spin path
+	pass->emitter_roll = pass->relative_angle && !pass->spin_pitch_and_yaw ? tfxWideSetSingle(2.f * atan2f(emitter.rotation.x, emitter.rotation.w)) : tfxWideSetZero;
 
 	//----Size
 	pass->size_packed_scale_amount = tfxWideSetSingle(32767.f / 64.f);
@@ -15974,7 +15972,7 @@ tfxINTERNAL inline void tfx__block_particle_spin(const tfx_instance_pass_t *pass
 			rotation_roll = tfxWideMul(tfx__sample_wide_graph(&pass->spin_roll_sampler, life), tfxWideLoad(&bank.base_roll_spin[index]));
 		}
 		if (pass->relative_angle) {
-			rotation_roll = tfxWideAdd(rotation_roll, pass->world_rotations_z);
+			rotation_roll = tfxWideAdd(rotation_roll, pass->emitter_roll);
 		}
 		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
 		tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll, &block->packed_quaternion_xy.m, &block->packed_quaternion_zw.m);
@@ -17639,8 +17637,9 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	if (!(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
 		effect.world_position = effect.local_position + effect.translation;
 		effect.world_position += effect.source_effect->emitter_handle * effect.overall_scale;
-		effect.world_rotations = effect.local_rotations;
-		effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
+		if (!(effect.state_flags & tfxEffectStateFlags_override_orientiation)) {
+			effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
+		}
 	}
 
 	if (effect.state_flags & tfxEffectStateFlags_no_tween_this_update || effect.state_flags & tfxEffectStateFlags_no_tween) {
@@ -18014,7 +18013,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	}
 	local_rotations += ribbon_emitter.creation_rotations;
 
-	tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
+	tfx__transform_3d(&local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
 
 	if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_no_tween_this_update) {
 		ribbon_emitter.captured_position = ribbon_emitter.world_position;
@@ -18195,7 +18194,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 	local_rotations += emitter.creation_rotations;
 
-	tfx__transform_3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
+	tfx__transform_3d(&local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
 
 	if (shared_properties.emission_type == tfxSpawnOnRibbon && emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative && emitter.other_emitter_index != tfxINVALID) {
 		//Spawn-on-ribbon where both this emitter and the ribbon are relative: adopt the ribbon emitter's world rotation
@@ -24020,24 +24019,36 @@ void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 	pm->effect_index_position = 0;
 }
 
+tfxINTERNAL void tfx__override_effect_rotations(tfx_effect_state_t &effect) {
+	effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
+	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
+}
+
 void tfx_SetEffectRoll(tfx_stage pm, tfxEffectID effect_index, float roll) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.local_rotations.roll = roll;
-	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx__override_effect_rotations(effect);
 }
 
 void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pitch) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.local_rotations.pitch = pitch;
-	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx__override_effect_rotations(effect);
 }
 
 void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.local_rotations.yaw = yaw;
+	tfx__override_effect_rotations(effect);
+}
+
+void tfx_SetEffectRotation(tfx_stage pm, tfxEffectID effect_index, float rotation[4]) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
+	tfx_quaternion_t quaternion = tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]);
 	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
@@ -24054,7 +24065,7 @@ void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y,
 
 	tfx__solve_face_rotations(direction, face, &effect.local_rotations);
 
-	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
+	tfx__override_effect_rotations(effect);
 }
 
 void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width) {

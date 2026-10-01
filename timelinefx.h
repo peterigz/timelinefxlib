@@ -2227,6 +2227,15 @@ Set the yaw of a effect
 tfxAPI void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw);
 
 /*
+Set the orientation of an effect with a quaternion, overriding the rotation graphs set in the TimelineFX editor. tfx_SetEffectRoll/Pitch/Yaw
+and tfx_PointEffectAt replace it rather than adjust it, they work from their own angles.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
+* @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param rotation        A float[4] quaternion as x, y, z, w. It should be normalized before you pass it in.
+*/
+tfxAPI void tfx_SetEffectRotation(tfx_stage pm, tfxEffectID effect_index, float rotation[4]);
+
+/*
 Orient an effect towards a specific point
 * @param tfx_stage       A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current yaw of the effect that was
 *                        set in the TimelineFX editor.
