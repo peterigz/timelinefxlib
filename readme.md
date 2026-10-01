@@ -18,7 +18,7 @@ So far some of the features of the Library:
 * Can pre-bake effects so that they can be animated entirely in a compute shader for ultimate speed. The baked data can also be compressed to save up to 90% memory depending on the effect. The compute shader does the job of interpolating the sprite data to keep things smooth between frames.
 * Render both 2d or 3d particles.
 * Render agnostic, just a few simple integrations to get it drawing in your own renderer. (See shaders folder for example shaders)
-* Runs on Intel/ARM CPUs, currently tested on Windows and Mac. Should build on Linux but I don't actively test for that yet.
+* Runs on Intel/ARM CPUs, currently tested on Windows and Linux. Should build on Mac too but I don't actively test for that yet.
 * Many different types of effects are possible with more coming as features are added.
 
 I will build out proper examples of how to integrate this library with any renderer very soon so watch this space. In the meantime you will find some examples in by [own renderer here](https://github.com/peterigz/zest).
