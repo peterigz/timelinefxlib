@@ -2962,23 +2962,6 @@ typedef enum {
 	tfxBakingDone
 } tfx_record_progress;
 
-//Used in file loading - for loading effects library
-typedef enum {
-	tfxString,
-	tfxSInt,
-	tfxUInt,
-	tfxFloat,
-	tfxDouble,
-	tfxBool,
-	tfxColor,
-	tfxUInt64,
-	tfxFloat3,
-	tfxFloat2,
-	tfxAttributeGraph,
-	tfxTransformGraph,
-	tfxGraphProperty,
-} tfx_data_type;
-
 //Block designators for loading effects library and other files like animation sprite data
 //The values of existing enums below must never change or older files won't load anymore!
 typedef enum {

@@ -435,6 +435,36 @@ typedef enum {
 	tfxMaxDescriptorTypes
 } tfx_effect_descriptor_type;
 
+//Used in file loading - for loading effects library
+typedef enum {
+	tfxString,
+	tfxSInt,
+	tfxUInt,
+	tfxFloat,
+	tfxDouble,
+	tfxBool,
+	tfxColor,
+	tfxUInt64,
+	tfxFloat3,
+	tfxFloat2,
+	tfxAttributeGraph,
+	tfxTransformGraph,
+	tfxGraphProperty,
+} tfx_data_type;
+
+//A property read with tfx_GetDescriptorProperty. type is one of tfxUInt, tfxSInt, tfxFloat, tfxBool, tfxUInt64 or tfxString
+typedef struct tfx_property_value_s {
+	tfx_data_type type;
+	union {
+		tfxU32 uint_value;
+		int int_value;
+		float float_value;
+		bool bool_value;
+		tfxU64 uint64_value;
+		const char *string_value;
+	};
+} tfx_property_value_t;
+
 typedef enum {
 	tfxColorInterpolation_linear_srgb = 0,
 	tfxColorInterpolation_oklch,
@@ -1147,28 +1177,91 @@ Output all the effect names in a library to the console
 tfxAPI void tfx_ListEffectNames(tfx_library library);
 
 /*
-Get an effect in the library by it's index. If you need to get an effect in a folder or an emitter then you can use tfx_GetLibraryEffectPath instead.
+Get a top level descriptor in the library by it's index, which will be an effect or a folder (check with tfx_GetDescriptorType). Use with
+tfx_GetLibraryRootDescriptorCount to loop over the library, and tfx_GetDescriptorChildCount/tfx_GetDescriptorChild to get the effects in a folder
+or the emitters in an effect. To get a descriptor by it's path use tfx_GetLibraryDescriptor instead.
 * @param tfx_library                A valid pointer to a tfx_library
+* @param index                      Index of the descriptor, must be less than tfx_GetLibraryRootDescriptorCount
 */
-tfxAPI tfx_effect_descriptor tfx_GetEffectByIndex(tfx_library library, int index);
+tfxAPI tfx_effect_descriptor tfx_GetLibraryRootDescriptor(tfx_library library, tfxU32 index);
 
 /*
-Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
-You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the effect manager
+Get a folder, effect or emitter in the library by it's path. So for example, if you want to get the emitter "spark" in effect "explosion" then you could do
+tfx_GetLibraryDescriptor(library, "explosion/spark"). You will need this function to apply user data and update callbacks to effects and emitters before
+adding the effect to the effect manager. Returns NULL if the path doesn't exist.
 * @param tfx_library_t                A valid pointer to a tfx_library_t
-* @param const char *path             Path to the effect or emitter
+* @param const char *path             Path to the folder, effect or emitter
 */
-tfxAPI tfx_effect_descriptor tfx_GetLibraryEffect(tfx_library library, const char *path);
+tfxAPI tfx_effect_descriptor tfx_GetLibraryDescriptor(tfx_library library, const char *path);
 
 /*
-Check whether a path resolves to an effect or emitter in the library. tfx_GetLibraryEffectPath asserts
-in debug builds and returns NULL in release builds when a path is missing, so use this to probe a path
-safely before looking it up.
+Check whether a path resolves to a folder, effect or emitter in the library.
 * @param library                A valid pointer to a tfx_library_t
-* @param path                   Path to the effect or emitter
+* @param path                   Path to the folder, effect or emitter
 * @returns                      true if the path exists in the library
 */
-tfxAPI bool tfx_IsValidEffectPath(tfx_library library, const char *path);
+tfxAPI bool tfx_IsValidDescriptorPath(tfx_library library, const char *path);
+
+/*
+Get the number of top level descriptors in a library, which are effects and folders. Loop over them with tfx_GetLibraryRootDescriptor, for example to build a tree view:
+	for (tfxU32 index = 0; index != tfx_GetLibraryRootDescriptorCount(library); ++index) {
+		tfx_effect_descriptor descriptor = tfx_GetLibraryRootDescriptor(library, index);
+		if (tfx_GetDescriptorType(descriptor) == tfxFolder) {
+			for (tfxU32 child_index = 0; child_index != tfx_GetDescriptorChildCount(descriptor); ++child_index) {
+				tfx_effect_descriptor effect = tfx_GetDescriptorChild(descriptor, child_index);
+			}
+		}
+	}
+* @param library                A valid pointer to a tfx_library_t
+*/
+tfxAPI tfxU32 tfx_GetLibraryRootDescriptorCount(tfx_library library);
+
+/*
+Get the type of an effect descriptor: tfxEffectType, tfxEmitterType (particle emitter), tfxRibbonType or tfxFolder
+* @param descriptor             A valid effect descriptor
+*/
+tfxAPI tfx_effect_descriptor_type tfx_GetDescriptorType(tfx_effect_descriptor descriptor);
+
+/*
+Get the full path of a folder, effect or emitter in the library, for example "My Folder/Explosion/Sparks". You can pass this to tfx_GetLibraryDescriptor
+* @param descriptor             A valid effect descriptor
+*/
+tfxAPI const char *tfx_GetDescriptorPath(tfx_effect_descriptor descriptor);
+
+/*
+Get the name of a folder, effect or emitter
+* @param descriptor             A valid effect descriptor
+*/
+tfxAPI const char *tfx_GetDescriptorName(tfx_effect_descriptor descriptor);
+
+/*
+Get the number of children of a descriptor. A folder's children are effects and an effect's children are its particle and ribbon emitters,
+so use this with tfx_GetDescriptorChild and tfx_GetDescriptorType to check whether an effect has any ribbons, for example. Emitters have no children.
+* @param descriptor             A valid effect descriptor
+*/
+tfxAPI tfxU32 tfx_GetDescriptorChildCount(tfx_effect_descriptor descriptor);
+
+/*
+Get a child of a descriptor by index
+* @param descriptor             A valid effect descriptor
+* @param index                  Index of the child, must be less than tfx_GetDescriptorChildCount
+*/
+tfxAPI tfx_effect_descriptor tfx_GetDescriptorChild(tfx_effect_descriptor descriptor, tfxU32 index);
+
+/*
+Read a property of an effect, emitter or ribbon by the same name it's saved under in the library file, for example "spawn_amount",
+"emission_type", "relative_position" or "warmup_time". Graphs are not properties, use the graph functions for those.
+	tfx_property_value_t value;
+	if (tfx_GetDescriptorProperty(emitter, "spawn_amount", &value)) {
+		printf("%u\n", value.uint_value);
+	}
+* @param descriptor             A valid effect descriptor
+* @param property_name          Name of the property
+* @param out_value              Filled with the value and its type. string_value points into the descriptor so it's only valid while the descriptor is
+* @returns                      false if the property name is unknown or doesn't apply to this type of descriptor (an emitter only property read from
+								an effect for example), in which case out_value is left untouched
+*/
+tfxAPI bool tfx_GetDescriptorProperty(tfx_effect_descriptor descriptor, const char *property_name, tfx_property_value_t *out_value);
 
 /*
 Free all the memory used by a library
@@ -2372,13 +2465,6 @@ Set the base noise offset for an effect
 						value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the effect manager, but you could call it any time you wanted for a constantly changing noise offset.
 */
 tfxAPI void tfx_SetEffectBaseNoiseOffset(tfx_stage pm, tfxEffectID effect_index, float noise_offset);
-
-/*
-Get the name of an effect
-* @param pm                A pointer to the effect
-* @returns                const char * name
-*/
-tfxAPI const char *tfx_GetEffectName(tfx_effect_descriptor effect);
 
 
 //--------------------------------
