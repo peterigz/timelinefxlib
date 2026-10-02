@@ -5208,6 +5208,9 @@ tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path) {
 //and bucket array free all reset size and capacity and drop the pointer - so nothing needs re-initialising.
 //Crucially the free lists are emptied too, which is what makes the reload's slot allocation deterministic.
 tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shapes) {
+	for (tfx_effect_template effect_template : library->effect_templates) {
+		tfx_FreeEffectTemplate(effect_template);
+	}
 	for (tfx_effect_descriptor effect : library->effects) {
 		tfx__free_effect(effect);
 	}
@@ -5237,6 +5240,7 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	for (tfx_sprite_data_t &sprite_data : library->pre_recorded_effects.data) {
 		tfx__free_sprite_data(&sprite_data);
 	}
+	library->effect_templates.free();
 	library->sprite_data_settings.free();
 	library->color_ramps.color_ramp_ids.FreeAll();
 	library->color_ramps.color_ramp_bitmaps.free();
@@ -5266,7 +5270,6 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	tfx__free_library_contents(library, false);
-	library->effect_templates.free();
 	library->library_file_path.Free();
 	tfxStore->libraries.Remove((tfxKey)library);
 	tfxFREE(library);
