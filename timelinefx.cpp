@@ -7433,7 +7433,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 	} else if (*field == "use_color_hint") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
 	} else if (*field == "static_ribbon") {
-		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
+		//Ribbons only spawn when static, so a value of 0 from an older library is ignored rather than leaving the ribbon unable to spawn
+		effect->ribbon_flags |= tfxRibbonPropertyFlags_static;
 	} else if (*field == "ribbon_path_morph") {
 		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_enable_morph; } else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_enable_morph; }
 	} else if (*field == "ribbon_noise") {
@@ -10472,7 +10473,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				ribbon->effect_flags = 0;
 				ribbon->state_properties.property_flags = 0;
 				ribbon->state_properties.shared_flags = 0;
-				ribbon->ribbon_flags = 0;
+				//Set before the properties are read so a ribbon saved without a static_ribbon line can still spawn
+				ribbon->ribbon_flags = tfxRibbonPropertyFlags_static;
 				ribbon->library = lib;
 				ribbon->state_properties.property_index = tfx__allocate_library_ribbon_emitter_properties(lib);
 				ribbon->state_properties.shared_index = tfx__allocate_library_shared_properties(lib);
