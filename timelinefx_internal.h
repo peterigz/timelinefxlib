@@ -7027,6 +7027,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
 	float overall_scale;
+	float emitter_age;					//Captured at dispatch because tfx__update_emitter advances emitter.age while the spawn may still be queued
 	//Running hash input for this frame's batch of particle uids, seeded in tfx__update_emitter and
 	//consumed one particle at a time by tfx__spawn_particle_age.
 	tfxU32 particle_uid;
@@ -7779,7 +7780,7 @@ tfxAPI_EDITOR tfx_quaternion_t tfx__unpack16bit_quaternion_from_gpu(tfxU64 q);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
-tfxINTERNAL tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t spawn_offset, tfx_vec3_t shape_scale, const tfx_emission_step_t *emission_step);
+tfxINTERNAL tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, float emission_range, tfx_vec3_t spawn_offset, tfx_vec3_t shape_scale, const tfx_emission_step_t *emission_step);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
 tfxINTERNAL void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed);
