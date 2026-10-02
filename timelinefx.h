@@ -755,9 +755,8 @@ tfx_* function used here is documented in full below.
     // ... upload `count` instances and issue your draw call ...
 
     // 7. Shutdown (see "Ownership and teardown ordering" below).
-    tfx_FreeEffectTemplate(explosion);
     tfx_FreeStage(stage);
-    tfx_FreeLibrary(library);
+    tfx_FreeLibrary(library);	(Also frees your effect templates which are stored here)
     tfx_EndTimelineFX();
 
 Ownership and teardown ordering
