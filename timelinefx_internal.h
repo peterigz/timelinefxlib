@@ -6487,6 +6487,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
+	tfxU32 lag_spine_padding;		//Named so {} zeroes it; implicit padding in the shaders' std430 layout
 	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_gpu_ribbon_emitter_t;
 
