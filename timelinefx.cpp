@@ -14204,7 +14204,33 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 
 	effect.active_emitters = 0;
 
+	//Read once: a removing emitter must not be updated, since that can queue spawn work against the particle bank freed below
+	const bool removing = (effect.state_flags & tfxEmitterStateFlags_remove) > 0;
+
 	for (int emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+		if (removing) {
+			emitter.state_flags |= tfxEmitterStateFlags_remove;
+			if (!warming_up) {
+				//Defer freeing during warmup — emitter stays in current_ebuff with _remove flag and the next normal tick frees it.
+				tfx__sync_lock(&pm->add_effect_mutex);
+				tfx__free_particle_list(pm, emitter_index);
+				if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
+					tfx__free_spawn_location_list(pm, emitter_index);
+				}
+				//Emitter is done spawning; decrement group's active count.
+				//The group tracking ring drains naturally as particles expire — no explicit cleanup needed.
+				{
+					if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+						pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
+						emitter.state_properties.gpu_group_index = tfxINVALID;
+					}
+				}
+				pm->free_emitters.push_back(emitter_index);
+				tfx__sync_unlock(&pm->add_effect_mutex);
+			}
+			continue;
+		}
 		//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
 		//by calling tfx_SetStageWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
 		//would cause more work entries to be created.
@@ -14213,7 +14239,6 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		spawn_work_entry->random = pm->threaded_random;
 		spawn_work_entry->emitter_index = emitter_index;
 		spawn_work_entry->next_buffer = next_buffer;
-		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 		tfx_library library = emitter.library;
 		spawn_work_entry->properties = &library->emitter_properties[emitter.state_properties.property_index];
 		spawn_work_entry->shared_properties = &library->shared_properties[emitter.state_properties.shared_index];
@@ -14225,29 +14250,10 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 
 		tfx__update_emitter(&pm->work_queue, spawn_work_entry);
 
-		if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
-			if (!warming_up) {
-				effect.emitter_indexes[next_buffer].push_back(emitter_index);
-			}
-			pm->control_emitter_queue.push_back(emitter_index);
-		} else if (!warming_up) {
-			//Defer freeing during warmup — emitter stays in current_ebuff with _remove flag and the next normal tick frees it.
-			tfx__sync_lock(&pm->add_effect_mutex);
-			tfx__free_particle_list(pm, emitter_index);
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
-				tfx__free_spawn_location_list(pm, emitter_index);
-			}
-			//Emitter is done spawning; decrement group's active count.
-			//The group tracking ring drains naturally as particles expire — no explicit cleanup needed.
-			{
-				if (emitter.state_properties.gpu_group_index != tfxINVALID) {
-					pm->gpu_groups[emitter.state_properties.gpu_group_index].active_emitter_count--;
-					emitter.state_properties.gpu_group_index = tfxINVALID;
-				}
-			}
-			pm->free_emitters.push_back(emitter_index);
-			tfx__sync_unlock(&pm->add_effect_mutex);
+		if (!warming_up) {
+			effect.emitter_indexes[next_buffer].push_back(emitter_index);
 		}
+		pm->control_emitter_queue.push_back(emitter_index);
 	}
 
 	if (!(pm->flags & tfxStageFlags_recording_sprites)) {
@@ -18004,21 +18010,32 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 		if (warming_up && !(effect.state_flags & tfxEffectStateFlags_warming_up)) {
 			continue;
 		}
-		tfx__update_ribbon_emitter(ribbon_emitter_index, &pm->work_queue, ribbon_work_entry);
-		if (!(effect.state_flags & tfxEmitterStateFlags_remove)) {
-			//Hold ebuff constant during warmup so non-warming emitters already in current_ebuff are not
-			//disturbed, and the normal frame's bucket walker rebuilds next_buffer from scratch.
+		if (effect.state_flags & tfxEmitterStateFlags_remove) {
+			ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_remove;
 			if (!warming_up) {
-				ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
+				//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
+				//The ribbons must be freed too: nothing ages them once the emitter leaves the control queue, so they would stay active in the bucket.
+				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
+					ribbon_work_entry->ribbon_bucket->ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+					tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
+				}
+				ribbon_emitter.ribbon_indexes[0].clear();
+				ribbon_emitter.ribbon_indexes[1].clear();
+				ribbon_emitter.active_ribbons = 0;
+				tfx__sync_lock(&pm->add_effect_mutex);
+				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
+				tfx__sync_unlock(&pm->add_effect_mutex);
 			}
-			ribbon_work_entry->ribbon_bucket->control_ribbon_queue.push_back(ribbon_emitter_index);
-		} else if (!warming_up) {
-			//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
-			tfx__sync_lock(&pm->add_effect_mutex);
-			tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
-			pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
-			tfx__sync_unlock(&pm->add_effect_mutex);
+			continue;
 		}
+		tfx__update_ribbon_emitter(ribbon_emitter_index, &pm->work_queue, ribbon_work_entry);
+		//Hold ebuff constant during warmup so non-warming emitters already in current_ebuff are not
+		//disturbed, and the normal frame's bucket walker rebuilds next_buffer from scratch.
+		if (!warming_up) {
+			ribbon_work_entry->ribbon_bucket->ribbon_emitter_indexes[next_buffer].push_back(ribbon_emitter_index);
+		}
+		ribbon_work_entry->ribbon_bucket->control_ribbon_queue.push_back(ribbon_emitter_index);
 	}
 }
 
@@ -18100,7 +18117,6 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	ribbon_emitter.ribbon_indexes[pm->current_ebuff ^ 1].clear();
 
 	tfx_effect_state_t &parent_effect = pm->effects[ribbon_emitter.parent_index];
-	ribbon_emitter.state_flags |= parent_effect.state_flags & tfxRibbonEmitterStateFlags_remove;
 
 	ribbon_work_entry->shared_properties = &ribbon_emitter.library->shared_properties[ribbon_emitter.state_properties.shared_index];
 
@@ -18265,7 +18281,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
 
 	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
-	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
 
 	spawn_work_entry->user_spawn_locations = nullptr;
 	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(spawn_work_entry->shared_properties->emission_type)) {
@@ -18364,14 +18379,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
-	const bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
-	//An effect flagged for removal (tfx_HardExpireEffect) has its emitters torn down this frame WITHOUT being
-	//added to the control queue, so the control/write phase never runs for them and nothing is written to the
-	//instance buffer. If we still reserved instance-buffer space and bumped instance_data.instance_count for
-	//their existing particles, that region would be drawn as stale/garbage sprites for one frame - a handful of
-	//wrong-position particles matching the dying effect's particle count. So skip the instance accounting for a
-	//removing effect, exactly as we do during warmup (which also never writes the instance buffer).
-	const bool skip_instance_accounting = warming_up || (parent_effect.state_flags & tfxEmitterStateFlags_remove) > 0;
+	const bool skip_instance_accounting = (pm->flags & tfxStageFlags_warming_up) > 0;
 	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
 	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
 	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
