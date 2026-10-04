@@ -13267,6 +13267,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	float range = effect->noise_base_offset_range;
 	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	effect_state->sort_passes = effect->sort_passes;
+	effect_state->sort_key = 0;
 	effect_state->emitter_indexes[0].clear();
 	effect_state->emitter_indexes[1].clear();
 	effect_state->emitter_start_size = 0;
@@ -13347,6 +13348,28 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	}
 }
 
+//Puts a ribbon emitter in the bucket for its segment count and sort key, picking up any path blocks that bucket already holds for it.
+//Needs the emitter's library, path attributes and samples_per_segment set first. Inserting a bucket can move the others.
+tfxINTERNAL tfx_ribbon_bucket_t *tfx__attach_ribbon_emitter_to_bucket(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon_emitter, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxU32 sort_key) {
+	tfxKey bucket_id = tfx__ribbon_bucket_key(ribbon_properties->bucket_info.segment_count, sort_key);
+	if (!pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
+		tfx__init_ribbon_segment_buffer(pm, bucket_id, &ribbon_properties->bucket_info, sort_key, 1);
+	}
+	ribbon_emitter.ribbon_bucket_id = bucket_id;
+	tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(bucket_id);
+	//Emitters sharing a path but wanting different sample densities must not share a cached array
+	tfxKey cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.path_attributes, ribbon_emitter.samples_per_segment);
+	tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
+	ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
+	ribbon_emitter.morph_segment_start_index = tfxINVALID;
+	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
+		tfxKey morph_cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.morph_path_attributes, ribbon_emitter.samples_per_segment);
+		tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
+		ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
+	}
+	return bucket;
+}
+
 tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_index, tfxEffectID parent_index, tfx_effect_descriptor src_emitter, tfxU32 *seed_index) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
 	tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(src_emitter);
@@ -13354,11 +13377,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	tfx_effect_state_t &effect_state = pm->effects[parent_index];
 	ribbon_emitter.segment_count = ribbon_properties->bucket_info.segment_count;
 	TFX_ASSERT(ribbon_emitter.segment_count <= tfxMAX_SEGMENT_COUNT);	//segment count for ribbon must not exceed the max segment count
-	if (!pm->ribbon_segment_buckets.ValidKey(ribbon_properties->ribbon_bucket_id)) {
-		tfx__init_ribbon_segment_buffer(pm, ribbon_properties->ribbon_bucket_id, &ribbon_properties->bucket_info, 1);
-	}
 	effect_state.active_emitters++;
-	ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
 	ribbon_emitter.state_properties = src_emitter->state_properties;
 	ribbon_emitter.state_properties.image_frame_rate = src_emitter->state_properties.image->animation_frames > 1 && src_emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties->frame_rate : 0.f;
 	ribbon_emitter.state_properties.gpu_property_index = tfx__grab_gpu_ribbon_emitter(pm);
@@ -13389,20 +13408,10 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.lag_history_head = 0;
 	ribbon_emitter.lag_history_count = 0;
 	ribbon_emitter.state_flags = ribbon_emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxRibbonEmitterStateFlags_orient_to_camera_pending : 0;
-	ribbon_emitter.morph_segment_start_index = tfxINVALID;
 	TFX_ASSERT(ribbon_emitter.state_properties.path_attributes != tfxINVALID);
-	tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
 	ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
 	ribbon_emitter.stored_sample_count = ribbon_emitter.segment_count * ribbon_emitter.samples_per_segment;
-	//Emitters sharing a path but wanting different sample densities must not share a cached array
-	tfxKey cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.path_attributes, ribbon_emitter.samples_per_segment);
-	tfxU32 *cached_path_segment_index = bucket->cached_static_path_segments.AtPtr(cache_key);
-	ribbon_emitter.static_segment_start_index = cached_path_segment_index == nullptr ? tfxINVALID : *cached_path_segment_index;
-	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
-		tfxKey morph_cache_key = tfx__ribbon_path_cache_key(ribbon_emitter.library, ribbon_emitter.state_properties.morph_path_attributes, ribbon_emitter.samples_per_segment);
-		tfxU32 *cached_morph_segment_index = bucket->cached_static_path_segments.AtPtr(morph_cache_key);
-		ribbon_emitter.morph_segment_start_index = cached_morph_segment_index == nullptr ? tfxINVALID : *cached_morph_segment_index;
-	}
+	tfx__attach_ribbon_emitter_to_bucket(pm, ribbon_emitter, ribbon_properties, effect_state.sort_key);
 }
 
 //Release all the emitter owned items of an effect. The effect keeps it's id.
@@ -13524,15 +13533,13 @@ tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effe
 				}
 
 				tfx__reset_ribbon_emitter_state(pm, index, parent_index, child, &seed_index);
-				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(child);
-				tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_properties->ribbon_bucket_id);
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
+				tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
 				bucket->ribbon_emitter_indexes[pm->current_ebuff].push_back(index);
 
 				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
 				if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 					source_emitters.push_back({ ribbon_emitter.source_ribbon->path_hash, index, tfxRibbonType });
-					ribbon_emitter.ribbon_bucket_id = ribbon_properties->ribbon_bucket_id;
 				} else if (shared_properties->emission_type == tfxOtherEmitter) {
 					target_emitters.push_back({ shared_properties->paired_emitter_hash, index, tfxRibbonType });
 				}
@@ -13729,11 +13736,14 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 	tfx_quaternion_t rotation = effect.rotation;
 	float noise_base_offset = effect.noise_base_offset;
 	void *user_data = effect.user_data;
+	tfxU32 sort_key = effect.sort_key;
 	tfxEmitterStateFlags overrides = effect.state_flags & (tfxEffectStateFlags_override_overall_scale
 		| tfxEffectStateFlags_override_orientiation | tfxEffectStateFlags_override_size_multiplier);
 
 	tfx__release_stage_effect_emitters(pm, effect_slot);
 	tfx__reset_effect_state(pm, effect_slot, source_effect);
+	//Restored before the rebuild because the ribbon emitters pick their bucket from it
+	effect.sort_key = sort_key;
 	if (tfx__effect_emitters_fit(pm, source_effect)) {
 		tfx__build_stage_effect_emitters(pm, effect_slot, source_effect);
 	} else {
@@ -14380,6 +14390,33 @@ void tfx__set_stage_timings(tfx_stage pm, double elapsed_time, double max_frame_
 	pm->new_compute_particle_index = 0;
 }
 
+tfxINTERNAL inline bool tfx__effect_sorts_before(const tfx_effect_index_t &effect, const tfx_effect_index_t &other, bool by_depth) {
+	if (effect.sort_key != other.sort_key) {
+		return effect.sort_key < other.sort_key;
+	}
+	return by_depth && effect.depth > other.depth;
+}
+
+//Insertion sort as the list is nearly always in order already from the previous frame
+tfxINTERNAL void tfx__sort_effects_in_use(tfx_stage pm) {
+	tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
+	const bool by_depth = (pm->flags & tfxStageFlags_auto_order_effects) > 0;
+	if (pm->flags & tfxStageFlags_sort_effects_by_key) {
+		for (tfx_effect_index_t &effect_index : effects_in_use) {
+			effect_index.sort_key = pm->effects[effect_index.index].sort_key;
+		}
+	}
+	for (tfxU32 i = 1; i < effects_in_use.current_size; ++i) {
+		tfx_effect_index_t key = effects_in_use[i];
+		int j = i - 1;
+		while (j >= 0 && tfx__effect_sorts_before(key, effects_in_use[j], by_depth)) {
+			effects_in_use[j + 1] = effects_in_use[j];
+			--j;
+		}
+		effects_in_use[j + 1] = key;
+	}
+}
+
 void tfx__update_stage(void *data) {
 	tfx_stage pm = (tfx_stage)data;
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
@@ -14391,17 +14428,8 @@ void tfx__update_stage(void *data) {
 	pm->flags |= tfxStageFlags_updating;
 	tfx__stage_updating_on_this_thread = pm;
 
-	if (pm->flags & tfxStageFlags_auto_order_effects) {
-		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
-		for (tfxU32 i = 1; i < effects_in_use.current_size; ++i) {
-			tfx_effect_index_t key = effects_in_use[i];
-			int j = i - 1;
-			while (j >= 0 && key.depth > effects_in_use[j].depth) {
-				effects_in_use[j + 1] = effects_in_use[j];
-				--j;
-			}
-			effects_in_use[j + 1] = key;
-		}
+	if (pm->flags & (tfxStageFlags_auto_order_effects | tfxStageFlags_sort_effects_by_key)) {
+		tfx__sort_effects_in_use(pm);
 	}
 
 	pm->gpu_current_time_ms += (float)pm->frame_length;
@@ -14527,6 +14555,9 @@ void tfx__update_stage(void *data) {
 			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
 				bucket.control_ribbon_queue.clear();
+				if (bucket.ribbon_emitter_indexes[pm->current_ebuff].current_size == 0) {
+					continue;
+				}
 				TFX_ASSERT(pm->ribbon_work.current_size != pm->ribbon_work.capacity);
 				tfx_ribbon_work_entry_t *ribbon_work_entry = &pm->ribbon_work.next();
 				ribbon_work_entry->random = pm->threaded_random;
@@ -14547,6 +14578,9 @@ void tfx__update_stage(void *data) {
 			pm->ribbon_control_work.reserve(pm->ribbon_segment_buckets.Size());
 			while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 				tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+				if (bucket.control_ribbon_queue.current_size == 0) {
+					continue;
+				}
 				TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 				tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 				work_entry.pm = pm;
@@ -14622,6 +14656,10 @@ void tfx__update_stage(void *data) {
 		tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
 		bucket.control_ribbon_queue.clear();
 		bucket.ribbon_emitter_indexes[next_buffer].clear();
+		//A bucket with no emitters has nothing to update, which matters once buckets are kept per sort key
+		if (bucket.ribbon_emitter_indexes[pm->current_ebuff].current_size == 0) {
+			continue;
+		}
 		TFX_ASSERT(pm->ribbon_work.current_size != pm->ribbon_work.capacity);
 		tfx_ribbon_work_entry_t *ribbon_work_entry = &pm->ribbon_work.next();
 		ribbon_work_entry->random = pm->threaded_random;
@@ -14661,6 +14699,9 @@ void tfx__update_stage(void *data) {
 		pm->ribbon_control_work.reserve(pm->ribbon_segment_buckets.Size() * 2);
 		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
 			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+			if (bucket.control_ribbon_queue.current_size == 0) {
+				continue;
+			}
 			TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
 			work_entry.pm = pm;
@@ -14679,9 +14720,12 @@ void tfx__update_stage(void *data) {
 		}
 
 		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+			if (bucket.control_ribbon_queue.current_size == 0) {
+				continue;
+			}
 			TFX_ASSERT(pm->ribbon_control_work.current_size != pm->ribbon_control_work.capacity);
 			tfx_control_ribbon_work_entry_t &work_entry = pm->ribbon_control_work.next();
-			tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
 			work_entry.pm = pm;
 			work_entry.ribbon_bucket = &bucket;
 			work_entry.ribbon_count = 0;
@@ -16823,6 +16867,92 @@ void tfx_ToggleStageOrderEffects(tfx_stage pm, bool yesno) {
 	}
 }
 
+//Live ribbons are rows in their bucket's storage, so an effect can only change bucket while it has none
+tfxINTERNAL bool tfx__effect_has_live_ribbons(tfx_stage pm, tfxU32 effect_slot) {
+	for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
+		for (tfxU32 ribbon_emitter_index : bucket.ribbon_emitter_indexes[pm->current_ebuff]) {
+			tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+			if (ribbon_emitter.parent_index == effect_slot && ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+//Moves an effect's ribbon emitters, which must have no live ribbons, to the bucket for its current sort key
+tfxINTERNAL void tfx__rebucket_effect_ribbon_emitters(tfx_stage pm, tfxU32 effect_slot) {
+	tmpStack(tfxU32, moved_emitters);
+	for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets.data) {
+		for (int buffer = 0; buffer != 2; ++buffer) {
+			tfxU32 keep = 0;
+			for (tfxU32 i = 0; i != bucket.ribbon_emitter_indexes[buffer].current_size; ++i) {
+				tfxU32 ribbon_emitter_index = bucket.ribbon_emitter_indexes[buffer][i];
+				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+				if (ribbon_emitter.parent_index != effect_slot) {
+					bucket.ribbon_emitter_indexes[buffer][keep++] = ribbon_emitter_index;
+					continue;
+				}
+				//Both buffers hold the same emitter indexes, so only collect them once
+				if (buffer == (int)pm->current_ebuff) {
+					TFX_ASSERT(ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size == 0);
+					moved_emitters.push_back(ribbon_emitter_index);
+				}
+			}
+			bucket.ribbon_emitter_indexes[buffer].shrink(keep);
+		}
+	}
+	if (moved_emitters.empty()) {
+		moved_emitters.free();
+		return;
+	}
+	//Attached after the walk above because creating a bucket can move the bucket storage
+	tfx_effect_state_t &effect = pm->effects[effect_slot];
+	for (tfxU32 ribbon_emitter_index : moved_emitters) {
+		tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+		tfx_ribbon_bucket_t *bucket = tfx__attach_ribbon_emitter_to_bucket(pm, ribbon_emitter, tfx__get_ribbon_emitter_properties(ribbon_emitter.source_ribbon), effect.sort_key);
+		bucket->ribbon_emitter_indexes[pm->current_ebuff].push_back(ribbon_emitter_index);
+	}
+	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+		if (emitter.other_emitter_index != tfxINVALID) {
+			emitter.state_properties.ribbon_bucket_id = pm->ribbon_emitters[emitter.other_emitter_index].ribbon_bucket_id;
+		}
+	}
+	moved_emitters.free();
+}
+
+void tfx_SetEffectSortKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 sort_key) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	tfxU32 effect_slot = tfx__effect_slot(effect_index);
+	if (pm->effects[effect_slot].sort_key == sort_key) {
+		return;
+	}
+	if (tfx__is_recording_on_another_thread(pm)) {
+		TFX_ASSERT(0 && "An effect's sort key can't be changed while the stage is recording sprite data");
+		return;
+	}
+	//The update writes the stage flags and walks the ribbon bucket lists
+	tfx__wait_for_stage_update(pm);
+	tfx__sync_lock(&pm->add_effect_mutex);
+	if (tfx__effect_has_live_ribbons(pm, effect_slot)) {
+		tfx__sync_unlock(&pm->add_effect_mutex);
+		TFX_ASSERT(0 && "An effect's sort key can't change while it has live ribbons. Set the key straight after adding the effect");
+		return;
+	}
+	pm->effects[effect_slot].sort_key = sort_key;
+	if (sort_key) {
+		pm->flags |= tfxStageFlags_sort_effects_by_key;
+	}
+	tfx__rebucket_effect_ribbon_emitters(pm, effect_slot);
+	tfx__sync_unlock(&pm->add_effect_mutex);
+}
+
+tfxU32 tfx_GetEffectSortKey(tfx_stage pm, tfxEffectID effect_index) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, 0);
+	return pm->effects[tfx__effect_slot(effect_index)].sort_key;
+}
+
 void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed) {
 	tfx_RandomReseed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
 	tfx_RandomReseed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
@@ -16873,11 +17003,12 @@ double tfx_GetUpdateTime(tfx_stage pm) {
 	return pm->update_time;
 }
 
-tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxKey bucket_hash) {
+tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key) {
 	tfx_ribbon_bucket_t *bucket = nullptr;
 	tfx__wait_for_stage_update(pm);
-	if (pm->ribbon_segment_buckets.ValidKey(bucket_hash)) {
-		bucket = &pm->ribbon_segment_buckets.At(bucket_hash);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key);
+	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
+		bucket = &pm->ribbon_segment_buckets.At(bucket_id);
 	}
 	return bucket;
 }
@@ -16899,10 +17030,11 @@ bool tfx_HasRibbonsToDraw(tfx_stage pm) {
 	return false;
 }
 
-tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxKey bucket_hash) {
+tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key) {
 	tfx_ribbon_buffer_info_t info{};
-	if (pm->ribbon_segment_buckets.ValidKey(bucket_hash)) {
-		info = pm->ribbon_segment_buckets.At(bucket_hash).buffer_info;
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key);
+	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
+		info = pm->ribbon_segment_buckets.At(bucket_id).buffer_info;
 	}
 	return info;
 }
@@ -16972,6 +17104,7 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 		}
 		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
 		ribbon_dispatch->ribbon_data = bucket;
+		ribbon_dispatch->sort_key = bucket->sort_key;
 		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
 		ribbon_dispatch->index_offset = ribbon_dispatch->last_index_offset;
 		ribbon_dispatch->vertex_offset = ribbon_dispatch->last_vertex_offset;
@@ -17718,8 +17851,9 @@ tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, t
 	return tfx_Hash(&hasher, key_parts, sizeof(key_parts), 0);
 }
 
-void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation) {
+void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, int tessellation) {
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
+	bucket.sort_key = sort_key;
 	memset(&bucket.ribbons, 0, sizeof(tfx_ribbon_soa_t));
 	bucket.segments.init();
 	bucket.segments.set_alignment(16);
@@ -24185,6 +24319,39 @@ bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **inst
 
 void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 	pm->effect_index_position = 0;
+}
+
+bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count) {
+	TFX_ASSERT(layer < tfxLAYERS);
+	tfx__wait_for_stage_update(pm);
+	tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
+	//Effects with nothing on this layer are skipped rather than read, as ones added since the update have no offsets yet
+	while (pm->effect_index_position < effects_in_use.current_size && pm->effects[effects_in_use[pm->effect_index_position].index].instance_data.sprite_index_point[layer] == 0) {
+		pm->effect_index_position++;
+	}
+	if (pm->effect_index_position >= effects_in_use.current_size) {
+		*sort_key = 0;
+		*instances = nullptr;
+		*instance_count = 0;
+		return false;
+	}
+	const tfx_effect_index_t &first_effect = effects_in_use[pm->effect_index_position];
+	const tfx_effect_instance_data_t &first_data = pm->effects[first_effect.index].instance_data;
+	*sort_key = first_effect.sort_key;
+	*instances = &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[pm->layer_start[layer] + first_data.layer_offset[layer]];
+	tfxU32 count = 0;
+	//Effects sharing a key were spawned one after the other, so their slices of the layer run on from each other
+	while (pm->effect_index_position < effects_in_use.current_size) {
+		const tfx_effect_index_t &effect_index = effects_in_use[pm->effect_index_position];
+		tfxU32 effect_count = pm->effects[effect_index.index].instance_data.sprite_index_point[layer];
+		if (effect_count && effect_index.sort_key != first_effect.sort_key) {
+			break;
+		}
+		count += effect_count;
+		pm->effect_index_position++;
+	}
+	*instance_count = count;
+	return true;
 }
 
 tfxINTERNAL void tfx__override_effect_rotations(tfx_effect_state_t &effect) {

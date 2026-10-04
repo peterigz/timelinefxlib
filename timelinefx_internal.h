@@ -3141,6 +3141,7 @@ typedef enum {
 	tfxStageFlags_has_ribbons_to_draw               	= 1 << 20,
 	tfxStageFlags_record_with_compute_image_index   	= 1 << 21,
 	tfxStageFlags_warming_up		                	= 1 << 23,
+	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -6394,6 +6395,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	float noise_base_offset;
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
+	tfxU32 sort_key;
 
 	//Any bookmarks that exist in the effect
 	float bookmarks[tfxMAX_BOOKMARKS];
@@ -6921,6 +6923,7 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_storage_map_t cached_static_path_segments;
 #endif
 	tfxRibbonBucketFlags flags;
+	tfxU32 sort_key;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_compute_fx_global_state_s {
@@ -7269,6 +7272,7 @@ typedef struct tfx_animation_manager_s {
 typedef struct tfx_effect_index_s {
 	tfxEffectID index;
 	float depth;
+	tfxU32 sort_key;			//Copied from the effect before sorting so the order the frame was laid out in can be read back with it
 }tfx_effect_index_t;
 
 typedef struct tfx_warmup_entry_s {
@@ -7633,6 +7637,8 @@ tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfx
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
 #define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count
+//A stage keeps a separate bucket per effect sort key, so ribbons from differently keyed effects are never dispatched together
+tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 sort_key) { return ((tfxKey)sort_key << 32) | segment_count; }
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
@@ -7652,7 +7658,7 @@ tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor ef
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation);
+tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, int tessellation);
 tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);

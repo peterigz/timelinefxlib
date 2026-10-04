@@ -618,6 +618,7 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 last_vertex_offset;
 	tfxU32 last_ribbon_offset;
 	tfxU32 last_segment_offset;
+	tfxU32 sort_key;						//The sort key of every effect whose ribbons are in this bucket, see tfx_SetEffectSortKey
 } tfx_ribbon_dispatch_t;
 
 typedef struct tfx_ribbon_buffer_requirements_s {
@@ -1365,7 +1366,7 @@ Two ways to synchronise before you read that data:
     you before returning, so you can call them directly after tfx_UpdateStage without calling
     tfx_CompleteStageWork first:
         tfx_GetInstanceBuffer, tfx_GetInstanceBufferByLayer, tfx_GetInstanceCount, tfx_GetInstanceCountByLayer,
-        tfx_GetNextInstanceBuffer, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
+        tfx_GetNextInstanceBuffer, tfx_GetNextInstanceKeyRange, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
         tfx_GetRibbonBufferRequirements, tfx_CopyRibbonDataToStagingBuffers, tfx_ClearStage and tfx_FreeStage.
 
 Anything that reads stage state through a path NOT in that list (for example reading the instance buffer pointer
@@ -1422,6 +1423,30 @@ use to update the depth of each effect in the scene.
 tfxAPI void tfx_ToggleStageOrderEffects(tfx_stage pm, bool yesno);
 
 /*
+Give an effect a sort key. Within each layer of the instance buffer effects are ordered by sort key (lowest first) and then by depth if tfx_ToggleStageOrderEffects
+is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library. Use
+tfx_GetNextInstanceKeyRange to get those ranges. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
+Set the key straight after adding the effect. Live ribbons are stored in their bucket, so the key of an effect can't change while any of its ribbons are
+alive: the call asserts and leaves the key as it was. Keys take effect on the next tfx_UpdateStage and effects have a key of 0 until you set one.
+This waits for any stage update in progress, so call it before tfx_UpdateStage rather than straight after.
+Keep keys to a small set you reuse: every distinct key gets its own ribbon buckets with their own copies of the ribbon paths, and these stay allocated
+(counting against max_ribbon_segments) until the stage is cleared. For example when swapping between an old and a reloaded library, alternate between
+two keys rather than giving each new library load a new key.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @param sort_key                 The key to sort the effect by
+*/
+tfxAPI void tfx_SetEffectSortKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 sort_key);
+
+/*
+Get the sort key of an effect, see tfx_SetEffectSortKey.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @returns tfxU32                 The effect's sort key
+*/
+tfxAPI tfxU32 tfx_GetEffectSortKey(tfx_stage pm, tfxEffectID effect_index);
+
+/*
 Get the billboard buffer in the effect manager containing all the sprite instances that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
@@ -1454,13 +1479,14 @@ Get the update time being used by the effect manager.
 tfxAPI double tfx_GetUpdateTime(tfx_stage pm);
 
 /*
-Get the ribbon buffer for a given segment size. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
+Get the ribbon buffer for a given segment size and effect sort key. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
 a vertex buffer for rendering.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
-* @returns						  A pointer to a tfx_ribbon_bucket_t
+* @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
+* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count and key
 */
-tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxKey bucket_id);
+tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key);
 
 /*
 Call this to determine whether or not any effect manager has ribbon_emitters to draw this frame.
@@ -1469,12 +1495,13 @@ Call this to determine whether or not any effect manager has ribbon_emitters to 
 tfxAPI bool tfx_HasRibbonsToDraw(tfx_stage pm);
 
 /*
-Get a struct containing the info you need to compute and render ribbon_emitters of a specific length. 
+Get a struct containing the info you need to compute and render ribbon_emitters of a specific length and effect sort key.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
-* @returns						  A tfx_ribbon_buffer_info_t struct
+* @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
+* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count and key
 */
-tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxKey bucket_id);
+tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key);
 
 /*
 --------------------------------
@@ -2296,6 +2323,20 @@ tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t
 * @param pm						A pointer to a tfx_stage_t
 */
 tfxAPI void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm);
+
+/*
+Get the instances on one layer one sort key at a time, so each call gives you a single contiguous range of every effect sharing a key (see tfx_SetEffectSortKey).
+Call it in a while loop until it returns false, then call tfx_ResetInstanceBufferLoopIndex before the next layer. Ranges come in key order and the instances
+pointer is inside the buffer returned by tfx_GetInstanceBuffer, so subtract that to get the first instance for a draw call from one uploaded buffer.
+This shares its loop index with tfx_GetNextInstanceBuffer, so don't interleave the two.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param layer                    The layer to get the ranges for
+* @param sort_key                 Set to the sort key of the effects in this range
+* @param instances                Set to the first instance in the range
+* @param instance_count           Set to the number of instances in the range
+* @returns bool                   true while there is another range, false when there are no more on this layer
+*/
+tfxAPI bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count);
 
 /*
 Set the roll of an effect
