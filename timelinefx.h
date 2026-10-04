@@ -257,7 +257,7 @@ typedef enum tfx_image_format {
 
 typedef enum {
 	tfxStageSetup_none,
-	tfxStageSetup_group_sprites_by_effect,
+	tfxStageSetup_auto_order_effects,
 } tfx_stage_setup;
 
 //Which local axis of an effect is treated as the direction it faces, used by tfx_PointEffectAt. TimelineFX is
@@ -585,7 +585,7 @@ typedef struct tfx_ribbon_buffer_info_s {
 //This struct is used for configuring a effect manager on creation
 typedef struct tfx_stage_info_s {
 	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
-	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
+	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535.
 	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit returns tfxINVALID.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
@@ -598,9 +598,8 @@ typedef struct tfx_stage_info_s {
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
-	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping instance_data by effect.
-	bool group_sprites_by_effect;           //Set to true to group all instance_data by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
-	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
+	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space.
+	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_stage pm, void *user_data);
@@ -1430,7 +1429,8 @@ tfxAPI tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage  pm);
 
 /*
 Get the billboard buffer in the effect manager containing all the sprite instances for a specific layer that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
-You can then use tfx_GetInstanceCountByLayer for the draw call.
+You can then use tfx_GetInstanceCountByLayer for the draw call. The instance buffer is grouped by layer, so each layer is one contiguous range across every effect in the stage and can be drawn with its own pipeline.
+Within a layer, effects are in the same order as the stage's effect list (sorted by depth when auto_order_effects is on).
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
 tfxAPI tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer);
@@ -2270,23 +2270,27 @@ Get the current position of an effect
 tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float out_position[3]);
 
 /*
-You can use this function to get the billboard buffer of a specific effect. 
+You can use this function to get the instances of a specific effect on one layer. The instance buffer is grouped by layer, so an effect's instances are only
+contiguous within each layer; call this once per layer to get all of them.
 * @param pm						A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param layer					The layer to get the instances for
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						tfx_instance_t pointer to the buffer
 */
-tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 *sprite_count);
+tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
 
 /*
-You can use this function to get each billboard buffer for every effect that is currently active in the effect manager. Generally you would call this inside a for loop for each layer.
+You can use this function to get each effect's instances on one layer for every effect that is currently active in the effect manager. Generally you would call this
+in a while loop inside a for loop over each layer, calling tfx_ResetInstanceBufferLoopIndex before each layer.
 * @param pm						A pointer to a tfx_stage_t where the effect is being managed
+* @param layer					The layer to get the instances for
 * @param tfx_sprite_billboard_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
 * @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the effect manager
 */
-tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfx_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
+tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*After calling GetNextBillboard/SpriteBuffer in a while loop you can call this to reset the index for the next frame
 * @param pm						A pointer to a tfx_stage_t

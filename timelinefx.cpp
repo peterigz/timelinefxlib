@@ -13267,7 +13267,6 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	float range = effect->noise_base_offset_range;
 	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	effect_state->sort_passes = effect->sort_passes;
-	effect_state->instance_data.instance_start_index = tfxINVALID;
 	effect_state->emitter_indexes[0].clear();
 	effect_state->emitter_indexes[1].clear();
 	effect_state->emitter_start_size = 0;
@@ -14156,7 +14155,7 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
-void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count) {
+void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer) {
 	tfxPROFILE;
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
@@ -14170,8 +14169,9 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 	effect.emitter_start_size = effect.emitter_indexes[pm->current_ebuff].current_size;
 
 	tfx_effect_instance_data_t &instance_data = pm->effects[effect_index.index].instance_data;
-	instance_data.instance_start_index = tfxINVALID;
 	memset(instance_data.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	//Effects spawn one at a time, so each layer's running size is exactly the instances earlier effects put there
+	memcpy(instance_data.layer_offset, pm->layer_sizes, sizeof(tfxU32) * tfxLAYERS);
 	instance_data.instance_count = 0;
 
 	tfx__update_effect(pm, effect_index.index);
@@ -14255,17 +14255,20 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		}
 		pm->control_emitter_queue.push_back(emitter_index);
 	}
+}
 
-	if (!(pm->flags & tfxStageFlags_recording_sprites)) {
-		instance_data.cumulative_index_point[0] = 0;
-		instance_data.cumulative_index_point[1] = instance_data.sprite_index_point[0];
-		instance_data.cumulative_index_point[2] = instance_data.cumulative_index_point[1] + instance_data.sprite_index_point[1];
-		instance_data.cumulative_index_point[3] = instance_data.cumulative_index_point[2] + instance_data.sprite_index_point[2];
-	} else {
-		memset(instance_data.cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+//Lays the instance buffer out layer by layer so that each layer is one contiguous range that can be drawn with its own pipeline
+tfxINTERNAL void tfx__set_layer_starts(tfx_stage pm) {
+	//Each layer records into its own buffer, so every layer starts at 0
+	if (pm->flags & tfxStageFlags_recording_sprites && pm->flags & tfxStageFlags_using_uids) {
+		memset(pm->layer_start, 0, sizeof(tfxU32) * tfxLAYERS);
+		return;
 	}
-	instance_data.instance_start_index = *last_instance_count;
-	*last_instance_count += instance_data.instance_count;
+	tfxU32 running_start = 0;
+	for (tfxEachLayer) {
+		pm->layer_start[layer] = running_start;
+		running_start += pm->layer_sizes[layer];
+	}
 }
 
 void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording) {
@@ -14418,8 +14421,6 @@ void tfx__update_stage(void *data) {
 	
 	pm->control_emitter_queue.clear();
 
-	tfxU32 last_instance_count = 0;
-
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
 	//Warm up any effects in the warm up list. Each tick batches all warming-up effects through the same
 	//phases as the normal update so threading is fully utilised. The warmup list is double-buffered:
@@ -14442,7 +14443,6 @@ void tfx__update_stage(void *data) {
 			pm->control_emitter_queue.clear();
 			pm->spawn_work.clear();
 			pm->instance_buffer.clear();
-			last_instance_count = 0;
 			pm->gpu_current_time_ms += (float)pm->frame_length;
 			tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 
@@ -14450,7 +14450,7 @@ void tfx__update_stage(void *data) {
 			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
 				pm->effects[entry.effect_index].state_flags |= tfxEffectStateFlags_warming_up;
 				tfx_effect_index_t effect_index = { entry.effect_index, 0.f };
-				tfx__simulate_effect_spawn(pm, effect_index, pm->current_ebuff, &last_instance_count);
+				tfx__simulate_effect_spawn(pm, effect_index, pm->current_ebuff);
 				tfx_effect_state_t &effect = pm->effects[entry.effect_index];
 				if (effect.total_age < entry.millisecs) {
 					pm->warmup_effects[next_warmup_buffer].push_back(entry);
@@ -14460,6 +14460,7 @@ void tfx__update_stage(void *data) {
 					effect.state_flags &= ~tfxEffectStateFlags_pending_warmup;
 				}
 			}
+			tfx__set_layer_starts(pm);
 			for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
 				//Defer any spawn work to here for emitters with ordered effects so the required buffer space can
 				//be calculated before any spawning happens.
@@ -14600,12 +14601,11 @@ void tfx__update_stage(void *data) {
 	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
 	pm->effects_in_use[next_buffer].clear();
 
-	last_instance_count = 0;
-
 	for (tfxU32 i = 0; i != effects_start_size; ++i) {
 		tfx_effect_index_t &effect_index = pm->effects_in_use[pm->current_ebuff][i];
-		tfx__simulate_effect_spawn(pm, effect_index, next_buffer, &last_instance_count);
+		tfx__simulate_effect_spawn(pm, effect_index, next_buffer);
 	}
+	tfx__set_layer_starts(pm);
 
 	for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
 		//We defer any spawn work to here for any emitters that have ordered effects so that the required buffer space can be calculated
@@ -15977,7 +15977,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->play_once = (shared_flags & tfxSharedEmitterPropertyFlags_play_once) != 0;
 
 	//----Instance write
-	pass->instance_offset = work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+	pass->instance_offset = work_entry->instance_offset;
 	pass->layer = work_entry->layer << 28;
 	pass->wrap_single_sprite = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -16708,7 +16708,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		if (is_ordered) {                //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+				tfxU32 sprite_depth_index = bank.depth_index[index_j] + work_entry->instance_offset;
 				bool new_id = bank.age[index_j] == 0 && (bank.flags_single_loop_count[index_j] & 0xFF) > 0 && !is_wrapped ? true : false;
 				sprite_uids[sprite_depth_index].uid = new_id ? tfx__seedgen_u32(bank.uid[index_j] ^ (bank.flags_single_loop_count[index_j] & 0xFF)) : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
@@ -16852,11 +16852,7 @@ tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
-	tfxU32 layer_offset = 0;
-	for (tfxU32 i = 0; i < layer; ++i) {
-		layer_offset += pm->layer_sizes[i];
-	}
-	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + layer_offset;
+	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + pm->layer_start[layer];
 }
 
 int tfx_GetInstanceCount(tfx_stage pm) {
@@ -17301,6 +17297,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->instance_buffer.clear();
 	for (tfxEachLayer) {
 		pm->layer_sizes[layer] = 0;
+		pm->layer_start[layer] = 0;
 		pm->instance_buffer_for_recording[0][layer].clear();
 		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
 			pm->instance_buffer_for_recording[1][layer].clear();
@@ -17450,8 +17447,9 @@ void tfx_UpdateStageBaseValues(tfx_stage pm) {
 //for: left behind, the next generation of particles is appended after them and indexes past the end of
 //the sprite buffer. Reset when a slot is handed out, and again when a running effect is rebuilt in place.
 tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *instance_data) {
-	instance_data->instance_start_index = tfxINVALID;
 	instance_data->instance_count = 0;
+	memset(instance_data->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(instance_data->layer_offset, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(instance_data->depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(instance_data->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	for (tfxEachLayer) {
@@ -17476,7 +17474,8 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
 	}
 	pm->effects.current_size++;
 	tfx_effect_instance_data_t *instance_data = &pm->effects[pm->effects.current_size - 1].instance_data;
-	instance_data->instance_start_index = tfxINVALID;
+	memset(instance_data->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(instance_data->layer_offset, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(instance_data->depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(instance_data->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	instance_data->instance_count = 0;
@@ -22538,9 +22537,8 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 
 	work_entry->layer = work_entry->shared_properties->layer;
 	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
-	work_entry->cumulative_index_point = instance_data.cumulative_index_point[work_entry->layer];
-	work_entry->effect_instance_offset = instance_data.instance_start_index;
-	work_entry->sprites_index = emitter.sprites_index + work_entry->running_sprite_offset + work_entry->cumulative_index_point + work_entry->effect_instance_offset;
+	work_entry->instance_offset = pm->layer_start[work_entry->layer] + instance_data.layer_offset[work_entry->layer];
+	work_entry->sprites_index = emitter.sprites_index + work_entry->running_sprite_offset + work_entry->instance_offset;
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	tfx_effect_instance_data_t &sprites = pm->effects[emitter.parent_index].instance_data;
 	work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
@@ -23440,13 +23438,11 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	info.sort_passes = 3;
 	info.double_buffer_sprites = true;
 	info.dynamic_sprite_allocation = true;
-	info.group_sprites_by_effect = false;
 	info.auto_order_effects = false;
 	info.grow_staging_buffer_callback = nullptr;
 	info.max_particles = 5000;
 	switch (setup) {
-	case tfxStageSetup_group_sprites_by_effect:
-		info.group_sprites_by_effect = true;
+	case tfxStageSetup_auto_order_effects:
 		info.auto_order_effects = true;
 		break;
     default: break;
@@ -23454,7 +23450,7 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	return info;
 }
 
-void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
+void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 	pm->lookup_mode = tfxFast;
 	pm->current_ebuff = 0;
 	pm->current_ribbon_count = 0;
@@ -23545,7 +23541,7 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 		pm->info.max_ribbon_emitters = info.max_effects;
 	}
 	pm->warmup_delta_time = info.warmup_delta_time;
-	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
+	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.multi_threaded_batch_size);
 
 	pm->flags |= info.auto_order_effects ? tfxStageFlags_auto_order_effects : 0;
 
@@ -24161,14 +24157,16 @@ tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, fl
 	out_position[2] = position.z;
 }
 
-tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 *sprite_count) {
+tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, nullptr);
+	TFX_ASSERT(layer < tfxLAYERS);
 	tfx_effect_instance_data_t &instance_data = pm->effects[tfx__effect_slot(effect_index)].instance_data;
-	*sprite_count = instance_data.instance_count;
-	return &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[instance_data.instance_start_index];
+	*sprite_count = instance_data.sprite_index_point[layer];
+	return &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[pm->layer_start[layer] + instance_data.layer_offset[layer]];
 }
 
-bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
+bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
+	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
 	if (pm->effect_index_position >= pm->effects_in_use[pm->current_ebuff].current_size) {
 		*instances = nullptr;
@@ -24179,8 +24177,8 @@ bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfx_instance_t **instances, tfx_eff
 	tfx_effect_index_t effect_index = pm->effects_in_use[pm->current_ebuff][pm->effect_index_position];
 	pm->effect_index_position++;
 	tfx_effect_instance_data_t &data = pm->effects[effect_index.index].instance_data;
-	*instance_count = data.instance_count;
-	*instances = &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[data.instance_start_index];
+	*instance_count = data.sprite_index_point[layer];
+	*instances = &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[pm->layer_start[layer] + data.layer_offset[layer]];
 	*instance_data = &data;
 	return true;
 }

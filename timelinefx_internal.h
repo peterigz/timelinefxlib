@@ -5798,10 +5798,9 @@ typedef struct tfx_effect_instance_data_s {
 	tfx_vector_t depth_indexes[tfxLAYERS][2];
 #endif
 	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 cumulative_index_point[tfxLAYERS];
+	tfxU32 layer_offset[tfxLAYERS];				//Where this effect's instances start within each layer of the instance buffer
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
-	tfxU32 instance_start_index;
 	tfxU32 instance_count;
 } tfx_effect_instance_data_t;
 
@@ -7058,8 +7057,7 @@ typedef struct tfx_control_work_entry_s {
 	tfxU32 start_diff;
 	tfxU32 running_sprite_offset;
 	tfxU32 sprites_index;
-	tfxU32 cumulative_index_point;
-	tfxU32 effect_instance_offset;
+	tfxU32 instance_offset;
 	tfxU32 sprite_buffer_end_index;
 	tfxU32 emitter_index;
 	tfx_stage pm;
@@ -7452,6 +7450,7 @@ typedef struct tfx_stage_s {
 
 
 	tfxU32 layer_sizes[tfxLAYERS];
+	tfxU32 layer_start[tfxLAYERS];
 	//Stage wide totals across every ribbon bucket, reserved atomically by the per bucket spawn threads. Rows and path
 	//blocks are never reclaimed before a stage clear, so these only grow and bound what the staging copy can write.
 	volatile tfxU32 ribbon_rows_allocated;
@@ -7783,7 +7782,7 @@ tfxINTERNAL void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_
 //--------------------------------
 //Effect_manager_functions
 //--------------------------------
-tfxINTERNAL void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count);
+tfxINTERNAL void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer);
 tfxINTERNAL void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording);
 tfxINTERNAL void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__set_stage_timings(tfx_stage stage, double elapsed_time, double max_frame_length);
@@ -9712,7 +9711,7 @@ tfxINTERNAL void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_lengt
 tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
-tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
+tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
 tfxINTERNAL bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id);
 tfxINTERNAL bool tfx__effect_id_in_range(tfx_stage pm, tfxEffectID id);
 tfxINTERNAL void tfx__free_effect_slot(tfx_stage pm, tfx_effect_index_t effect_index);
