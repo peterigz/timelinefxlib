@@ -6269,6 +6269,7 @@ typedef struct tfx_parent_spawn_controls_s {
 typedef struct tfx_common_state_properties_s {
 	float loop_length;
 	float max_life;
+	tfxU32 gpu_capacity_estimate;		//Particles in flight for one instance, only measured for run_on_gpu emitters
 	float end_frame;
 	float delay_spawning;
 	float image_frame_rate;
@@ -6482,35 +6483,39 @@ tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_
 // Compiles away to nothing when not defined.
 // #define tfxGPU_VALIDATION
 
-//Per-frame spawn record used by the group tracking ring to drive deterministic head bumping.
-//One entry is sealed per update tick; the ring is sized to hold life_ceiling_ms worth of ticks.
+//Per-tick spawn record used by the group tracking ring to drive deterministic head bumping.
+//Particle life is fixed at spawn, so each batch carries the exact longest life in it.
 typedef struct tfx_gpu_spawn_tracking_s {
-	float  spawn_time_ms;    //Absolute time (ms) when this batch of particles was spawned
-	tfxU32 particle_count;  //Total particles spawned into this group during that tick
+	double spawn_time_ms;	//Absolute time (ms) when this batch of particles was sealed
+	float  max_age_ms;		//Longest max_age of any particle in the batch
+	tfxU32 particle_count;	//Total particles spawned into this group during that tick
 } tfx_gpu_spawn_tracking_t;
 
-//One GPU particle ring buffer shared by all emitters with the same control profile and life bucket.
-//Particles from different emitters are interleaved; each particle carries its emitter param index
-//so the compute shader can look up the correct graphs for that particle.
+//One GPU particle ring per emitter instance, so the head only ever waits on that instance's own particles.
+//Freed with its emitter: the emitter outlives every particle it spawned, which is what makes that safe.
 typedef struct tfx_gpu_particle_group_s {
-	tfxU32  property_index;			//The property index of the emitter to identify it
-	float   life_ceiling_ms;		//All particles guaranteed expired after this many ms from spawn
-	tfxU32  ring_head;				//Oldest live particle position in the group ring
-	tfxU32  ring_tail;				//Next write position in the group ring
-	tfxU32  current_size;			//The current number of particles in the buffer.
-	tfxU32  ring_capacity;			//Total particle slots; grows as emitters join during initialisation
-	tfxU64  gpu_buffer_size_bytes;	//Set by renderer when the GPU buffer is allocated
-	//Tracking ring: one entry per update tick; capacity = ceil(life_ceiling_ms / 8ms) + 2
+	tfxU32  emitter_index;				//tfxINVALID while the group is in the free list
+	tfxU32  property_index;				//The property index of the emitter to identify it
+	tfxU32  ring_head;					//Oldest live particle position in the group ring
+	tfxU32  ring_tail;					//Next write position in the group ring
+	tfxU32  current_size;				//The current number of particles in the buffer.
+	tfxU32  ring_capacity;				//Total particle slots, grows when spawns overflow it
+	//When the ring grows with particles in flight it is linearised to [0, current_size). These hold the layout the
+	//GPU buffer still has so the renderer can copy the live particles across. Zero capacity means nothing is pending.
+	tfxU32  pending_relayout_capacity;
+	tfxU32  pending_relayout_head;
+	tfxU32  pending_relayout_count;
+	tfxU64  gpu_buffer_size_bytes;		//Set by renderer when the GPU buffer is allocated
+	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
 #ifdef __cplusplus
 	tfx_vector_t<tfx_gpu_spawn_tracking_t> tracking;
 #else
 	tfx_vector_t tracking;
 #endif
-	tfxU32  tracking_head;			//Index of the oldest valid tracking entry
-	tfxU32  tracking_count;			//Number of valid entries currently in the tracking ring
-	tfxU32  tracking_capacity;		//Fixed at creation; sized for minimum 8ms tick (120fps)
-	tfxU32  frame_spawn_count;		//Particles spawned into this group this frame; sealed into tracking at tick
-	tfxU32  active_emitter_count;	//Number of emitters currently assigned to this group
+	tfxU32  tracking_head;				//Index of the oldest valid tracking entry
+	tfxU32  tracking_count;				//Number of valid entries currently in the tracking ring
+	tfxU32  frame_spawn_count;			//Particles spawned into this group this tick; sealed into tracking at the next tick
+	float   frame_max_age_ms;			//Longest particle life spawned into this group this tick
 } tfx_gpu_particle_group_t;
 //---- end GPU compute particle buffer management ----
 
@@ -7015,6 +7020,7 @@ typedef struct tfx_spawn_work_entry_s {
 	//consumed one particle at a time by tfx__spawn_particle_age.
 	tfxU32 particle_uid;
 	tfxU32 spawn_ordinal;				//Particles the emitter spawned before this batch, drives the stepped angle distributions
+	float spawned_max_age;				//Longest life in this batch after every life multiplier, only measured for GPU emitters
 }tfx_spawn_work_entry_t;
 
 //Sampled once per spawn batch so each ribbon only has to pick a point
@@ -7387,7 +7393,8 @@ typedef struct tfx_stage_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
 	//GPU compute particle buffer management
-	tfx_storage_map_t<tfx_gpu_particle_group_t> gpu_groups;	//One entry per unique (profile_flags, life_bucket) combination
+	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;		//One per run_on_gpu emitter instance, indexed by state_properties.gpu_group_index
+	tfx_vector_t<tfxU32> free_gpu_groups;
 
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
@@ -7507,7 +7514,7 @@ typedef struct tfx_stage_s {
 	//These can possibly be removed at some point, they're debugging variables
 	tfxU32 particle_id;
 
-	float gpu_current_time_ms;										//Running absolute time in ms, used for group tracking head bumps
+	double gpu_current_time_ms;										//Running absolute time in ms, used for group tracking head bumps
 
 	tfxStageFlags flags;
 	//The length of time that passed since the last time Update() was called
@@ -7932,10 +7939,14 @@ tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, 
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
-tfxINTERNAL tfxU32 tfx__find_or_create_gpu_group(tfx_stage pm, tfxU32 property_index, float max_life);
-tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index);
-tfxINTERNAL tfxU32 tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 count, float current_time_ms);
-tfxINTERNAL void   tfx__tick_gpu_groups(tfx_stage pm, float current_time_ms);
+tfxINTERNAL void   tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter);
+tfxINTERNAL void   tfx__grow_gpu_group(tfx_gpu_particle_group_t *group, tfxU32 new_capacity);
+tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_effect_descriptor emitter_descriptor);
+tfxINTERNAL void   tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter);
+tfxINTERNAL void   tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 count);
+tfxINTERNAL void   tfx__measure_gpu_spawned_max_age(tfx_stage pm, tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL void   tfx__fold_gpu_group_spawn_ages(tfx_stage pm);
+tfxINTERNAL void   tfx__tick_gpu_groups(tfx_stage pm, double current_time_ms);
 tfxINTERNAL void   tfx__free_gpu_groups(tfx_stage pm);
 tfxINTERNAL void   tfx__clear_gpu_groups(tfx_stage pm);
 //---- end GPU compute particle buffer management functions ----
