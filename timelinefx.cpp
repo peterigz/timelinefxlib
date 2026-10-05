@@ -5306,7 +5306,10 @@ void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	tfx__free_library_contents(library, false);
 	library->library_file_path.Free();
-	tfxStore->libraries.Remove((tfxKey)library);
+	//Remove on a missing key erases whichever entry it lands on, and tfx_RefreshLibrary's disk library is never registered
+	if (tfxStore->libraries.ValidKey((tfxKey)library)) {
+		tfxStore->libraries.Remove((tfxKey)library);
+	}
 	tfxFREE(library);
 }
 
@@ -11111,6 +11114,8 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	//are taken from the hashes the rows record rather than from the images themselves, which is all a diff
 	//needs and is what keeps a refresh from reading every image in the file on every save.
 	tfx_library disk_library = tfx_CreateLibrary();
+	//Unregistered so the compute node table, rebuilt over every registered library, never gets entries for it
+	tfxStore->libraries.Remove((tfxKey)disk_library);
 	tfx__load_effect_library_package(package, disk_library, nullptr, nullptr, nullptr, true);
 
 	//At this point we should stop any stage work that's happening, we're about to edit effects that might be in flight
