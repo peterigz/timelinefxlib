@@ -2448,8 +2448,9 @@ bool tfx__is_emitter_type(tfx_effect_descriptor emitter) {
 	return emitter->type == tfxEmitterType || emitter->type == tfxRibbonType;
 }
 
+//Pitch and yaw only shape the rotation a range produces, so a path with no range is never rotated however they are set
 tfxINTERNAL bool tfx__path_is_rotated(const tfx_path_settings_t *settings) {
-	return settings->rotation_range > 0 || settings->rotation_pitch != 0 || settings->rotation_yaw != 0;
+	return settings->rotation_range > 0;
 }
 
 tfxINTERNAL bool tfx__path_spawns_in_order(tfxSharedEmitterFlags shared_flags) {
@@ -13404,7 +13405,7 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
 		if (emitter->state_properties.path_attributes != tfxINVALID) {
 			tfx_emitter_path_t *path = &emitter->library->paths[emitter->state_properties.path_attributes];
-			state_flags |= (path->settings.rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
+			state_flags |= tfx__path_is_rotated(&path->settings) ? tfxEmitterStateFlags_has_rotated_path : 0;
 		}
 	}
 }
