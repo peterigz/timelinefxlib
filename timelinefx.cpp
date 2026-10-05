@@ -14234,8 +14234,12 @@ tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effec
 }
 
 void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {
+	if (pm->emitters[index].particles_index == tfxINVALID) {
+		return;
+	}
 	if (pm->free_particle_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
 		pm->free_particle_lists.At(pm->emitters[index].source_emitter->path_hash).push_back(pm->emitters[index].particles_index);
+		pm->emitters[index].particles_index = tfxINVALID;
 	}
 	else if (pm->emitters[index].particles_index != tfxINVALID) {
 		pm->free_particle_lists.Insert(pm->emitters[index].source_emitter->path_hash, {});
@@ -14420,6 +14424,7 @@ tfxINTERNAL void tfx__set_layer_starts(tfx_stage pm) {
 
 void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording) {
 	tfxPROFILE;
+	TFX_ASSERT(pm->emitters[index].particles_index < pm->particle_array_buffers.current_size);
 	tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 	int particles_to_update = bank.current_size;
 	tfxU32 running_start_index = 0;
@@ -15064,13 +15069,10 @@ void tfx__shutdown_update_thread(tfx_stage pm) {
 }
 
 void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
-	//This zone measures what the CALLER pays, not what the update costs - the drain below plus
-	//tfx__wait_for_stage_update_locked is the only place the caller blocks. If this bar is wide the
-	//update is no longer overlapping the caller's frame.
+	//This zone measures what the CALLER pays, not what the update costs - tfx__wait_for_stage_update_locked
+	//is the only place the caller blocks. If this bar is wide the update is no longer overlapping the caller's frame.
 	tfxPROFILE;
-	//Wait for the previous frame's update thread to finish
-	tfx__complete_all_work(&pm->work_queue);
-
+	//Don't drain pm->work_queue here: an update can still be in flight and only its own thread may complete that queue
 	if ((pm->flags & tfxStageFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
 		tfx__sync_lock(&pm->update_thread_mutex);
 		if (pm->flags & tfxStageFlags_recording_sprites) {

@@ -4985,6 +4985,7 @@ typedef struct tfx_work_queue_s {
 	volatile tfx_uint entry_completion_count;
 	volatile int next_read_entry;
 	volatile int next_write_entry;
+	volatile tfx_uint completing_thread_count;	//Debug only
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 } tfx_work_queue_t;
 
@@ -5214,11 +5215,19 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 }
 
 tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
+#ifndef NDEBUG
+	//A second completer's reset below would release the producer while its work is still running
+	tfx_uint completing_threads = tfx__atomic_increment(&queue->completing_thread_count);
+	TFX_ASSERT(completing_threads == 1 && "Only the thread that adds work to a queue may complete it");
+#endif
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfx__do_next_work_queue_entry(queue);
 	}
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
+#ifndef NDEBUG
+	tfx_AtomicAdd32(&queue->completing_thread_count, 0u - 1u);
+#endif
 }
 
 #ifdef _WIN32
