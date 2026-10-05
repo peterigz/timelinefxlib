@@ -2910,6 +2910,8 @@ tfxAPI size_t tfx_CalculateAnimationOffsetsBufferSize(size_t instance_count);
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a effect manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
+Changes made through the template setters (tfx_SetTemplate*, tfx_ScaleTemplate*, tfx_Enable/DisableTemplateEmitter, tfx_SetEffectTemplateWarmupTime)
+are re-applied when tfx_RefreshLibrary rebuilds the template. Edits made directly on descriptors fetched from the template are not.
 * @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
 * @param name                       The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
 //Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library

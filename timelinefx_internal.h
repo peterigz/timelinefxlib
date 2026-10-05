@@ -7600,10 +7600,36 @@ typedef struct tfx_library_s {
 } tfx_library_t;
 #endif
 
+typedef enum {
+	tfx_template_override_user_data,
+	tfx_template_override_user_data_all,
+	tfx_template_override_update_callback,
+	tfx_template_override_warmup_time,
+	tfx_template_override_emitter_enabled,
+	tfx_template_override_single_spawn_amount,
+	tfx_template_override_global_graph_scale,
+	tfx_template_override_emitter_graph_scale,
+} tfx_template_override_type;
+
+//A template setter call, kept so it can be replayed when a refresh rebuilds the template's clone
+typedef struct tfx_template_override_s {
+	tfx_template_override_type type;
+	tfxU32 graph_index;
+	tfxKey path_hash;		//Key into the template's paths map
+	union {
+		void *user_data;
+		void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
+		float amount;
+		tfxU32 count;
+		bool enabled;
+	};
+} tfx_template_override_t;
+
 #ifdef __cplusplus
 typedef struct tfx_effect_template_s {
 	tfxU32 magic;
 	tfx_storage_map_t<tfx_effect_descriptor> paths;
+	tfx_storage_map_t<tfx_template_override_t> overrides;
 	tfx_effect_descriptor effect;				//Null between a tfx_ResetTemplate and the next prepare
 	tfx_effect_descriptor original_effect;		//Null once the original has been deleted from the library
 	tfx_library library;						//The library this is registered with, reachable when neither descriptor is
@@ -9728,6 +9754,9 @@ tfxINTERNAL bool tfx__valid_animation_id(tfx_animation_manager animation_manager
 //Effect templates
 //--------------------------------
 tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_descriptor effect_emitter, const char *path);
+tfxINTERNAL void tfx__apply_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override);
+tfxINTERNAL void tfx__set_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override);
+tfxINTERNAL void tfx__replay_template_overrides(tfx_effect_template effect_template);
 
 //--------------------------------
 //Library functions, internal/Editor functions

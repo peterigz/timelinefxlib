@@ -3695,6 +3695,7 @@ tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *na
 	}
 	memset((void *)effect_template, 0, sizeof(tfx_effect_template_t));
 	effect_template->paths.init();
+	effect_template->overrides.init();
 	effect_template->magic = tfxINIT_MAGIC(tfx_struct_type_effect_template);
 	tfx_ResetTemplate(effect_template);
 	tfx__prepare_library_effect_template_path(library, name, effect_template);
@@ -5421,16 +5422,20 @@ void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter)
 	}
 }
 
+tfxINTERNAL void tfx__update_graph_sampling(tfx_graph_t *graph) {
+	graph->flags |= tfxGraphFlags_multi_node_graph;
+	if (graph->type == tfxOvertime_blendfactor) {
+		tfx__update_lerp_graph(graph);
+	} else if (!tfx__is_color_graph_type(graph->type) && (tfx__is_lerp_graph(graph))) {
+		tfx__update_lerp_graph(graph);
+		tfx__update_graph_wide_oscillator(graph);
+	}
+}
+
 void tfx__update_all_library_graphs(tfx_library library) {
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
-			graph.flags |= tfxGraphFlags_multi_node_graph;
-			if (graph.type == tfxOvertime_blendfactor) {
-				tfx__update_lerp_graph(&graph);
-			} else if (!tfx__is_color_graph_type(graph.type) && (tfx__is_lerp_graph(&graph))) {
-				tfx__update_lerp_graph(&graph);
-				tfx__update_graph_wide_oscillator(&graph);
-			}
+			tfx__update_graph_sampling(&graph);
 		}
 	}
 	tfx__create_color_ramp_bitmaps(library);
@@ -11145,6 +11150,8 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 			}
 			if (latest_effect->effect_flags & tfxEffectPropertyFlags_was_updated) {
 				tfx__update_effect_template(effect_template, latest_effect);
+				//Before the graph and gpu property passes below, so a replayed graph scale gets its derived data rebuilt
+				tfx__replay_template_overrides(effect_template);
 			}
 		}
 	}
@@ -11433,16 +11440,12 @@ tfxRefreshFlags tfx_RefreshShape(tfx_library library, const char *shape_name, tf
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
-	tmpStack(tfx_effect_descriptor, stack);
-	stack.push_back(t->effect);
-	while (stack.size()) {
-		tfx_effect_descriptor current = stack.pop_back();
-		current->user_data = data;
-		for (tfx_effect_descriptor sub : current->children) {
-			stack.push_back(sub);
-		}
-	}
-	stack.free();
+	TFX_ASSERT_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_user_data_all;
+	template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+	template_override.user_data = data;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
@@ -12939,50 +12942,163 @@ void tfx_RecordEffect(tfx_effect_descriptor effect, tfx_sprite_data_settings_t *
 	tfx__record_sprite_data(pm, effect, settings, sprite_data, update_frequency, camera_position, &progress);
 }
 
-void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
+tfxINTERNAL tfxKey tfx__template_override_key(tfx_effect_template effect_template, tfx_template_override_t *template_override) {
+	struct {
+		tfxKey path_hash;
+		tfxU32 type;
+		tfxU32 graph_index;
+	} key_fields = { template_override->path_hash, (tfxU32)template_override->type, template_override->graph_index };
+	return tfx_Hash(&effect_template->overrides.hasher, &key_fields, sizeof(key_fields), 0);
+}
+
+tfxINTERNAL void tfx__scale_template_graph(tfx_graph_t *original_graph, tfx_graph_t *graph, float amount) {
+	tfx__copy_graph(original_graph, graph, false);
+	tfx__multiply_all_graph_values(graph, amount);
+	tfx__update_graph_sampling(graph);
+}
+
+//Silently skips a path the current version of the effect no longer has, so a replay never asserts
+void tfx__apply_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override) {
+	tfx_effect_descriptor *found = effect_template->paths.AtPtr(template_override->path_hash);
+	if (!found) {
+		return;
+	}
+	tfx_effect_descriptor descriptor = *found;
+	tfx_library library = effect_template->library;
+	switch (template_override->type) {
+	case tfx_template_override_user_data:
+		descriptor->user_data = template_override->user_data;
+		break;
+	case tfx_template_override_user_data_all: {
+		tmpStack(tfx_effect_descriptor, stack);
+		stack.push_back(descriptor);
+		while (stack.size()) {
+			tfx_effect_descriptor current = stack.pop_back();
+			current->user_data = template_override->user_data;
+			for (tfx_effect_descriptor sub : current->children) {
+				stack.push_back(sub);
+			}
+		}
+		stack.free();
+		break;
+	}
+	case tfx_template_override_update_callback:
+		descriptor->update_callback = template_override->update_callback;
+		break;
+	case tfx_template_override_warmup_time:
+		descriptor->warmup_time = template_override->amount;
+		break;
+	case tfx_template_override_emitter_enabled:
+		if (descriptor->type != tfxEmitterType) {
+			break;
+		}
+		if (template_override->enabled) {
+			descriptor->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
+		} else {
+			descriptor->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_enabled;
+		}
+		break;
+	case tfx_template_override_single_spawn_amount:
+		if (descriptor->state_properties.shared_index != tfxINVALID) {
+			tfx__get_shared_emitter_properties(descriptor)->spawn_amount = template_override->count;
+		}
+		break;
+	case tfx_template_override_global_graph_scale: {
+		tfx_effect_descriptor original_effect = effect_template->original_effect;
+		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
+		tfx_graph_t *original_graph = &library->graphs[original_effect->state_properties.graph_list_index].graphs[template_override->graph_index];
+		tfx__scale_template_graph(original_graph, graph, template_override->amount);
+		break;
+	}
+	case tfx_template_override_emitter_graph_scale: {
+		//A clone keeps the library path it was cloned from, which unlike the template path includes any folder
+		tfx_effect_descriptor original_emitter = tfx_GetLibraryDescriptor(library, descriptor->path.c_str());
+		if (descriptor->type != tfxEmitterType || !original_emitter || original_emitter->type != tfxEmitterType) {
+			break;
+		}
+		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
+		tfx_graph_t *original_graph = &library->graphs[original_emitter->state_properties.graph_list_index].graphs[template_override->graph_index];
+		tfx__scale_template_graph(original_graph, graph, template_override->amount);
+		break;
+	}
+	}
+}
+
+void tfx__set_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override) {
+	if (template_override->type == tfx_template_override_user_data_all) {
+		//Overwrites every per-path user data, so those entries must not be replayed after it
+		tmpStack(tfxKey, user_data_keys);
+		for (tfxU32 index = 0; index != effect_template->overrides.map.current_size; ++index) {
+			if (effect_template->overrides.data[effect_template->overrides.map[index].index].type == tfx_template_override_user_data) {
+				user_data_keys.push_back(effect_template->overrides.map[index].key);
+			}
+		}
+		for (tfxKey key : user_data_keys) {
+			effect_template->overrides.Remove(key);
+		}
+		user_data_keys.free();
+	}
+	tfx_template_override_t &stored = effect_template->overrides.Insert(tfx__template_override_key(effect_template, template_override), *template_override);
+	tfx__apply_template_override(effect_template, &stored);
+}
+
+void tfx__replay_template_overrides(tfx_effect_template effect_template) {
+	for (tfx_template_override_t &template_override : effect_template->overrides.data) {
+		tfx__apply_template_override(effect_template, &template_override);
+	}
+}
+
+tfxINTERNAL void tfx__set_template_emitter_enabled(tfx_effect_template t, const char *path, bool enabled) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
-	tfx_effect_descriptor emitter = t->paths.At(path);
-	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those. 
-	emitter->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_enabled;
+	TFX_ASSERT(t->paths.At(path)->type == tfxEmitterType);    //Must be an emitter that you're trying to enable or disable
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_emitter_enabled;
+	template_override.path_hash = t->paths.MakeKey(path);
+	template_override.enabled = enabled;
+	tfx__set_template_override(t, &template_override);
+}
+
+void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
+	tfx__set_template_emitter_enabled(t, path, false);
 }
 
 void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path) {
-	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
-	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
-	tfx_effect_descriptor emitter = t->paths.At(path);
-	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those
-	emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
+	tfx__set_template_emitter_enabled(t, path, true);
 }
 
 void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float amount) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT(graph_index < tfxEffectGraphs_max_index);
-	tfx_graph_t &graph = t->effect->library->graphs[t->effect->state_properties.graph_list_index].graphs[graph_index];
-	tfx_graph_t &original_graph = t->original_effect->library->graphs[t->original_effect->state_properties.graph_list_index].graphs[graph_index];
-	tfx__copy_graph(&original_graph, &graph, false);
-	tfx__multiply_all_graph_values(&graph, amount);
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_global_graph_scale;
+	template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+	template_override.graph_index = (tfxU32)graph_index;
+	template_override.amount = amount;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
-	TFX_ASSERT(amount >= 0);                            //Amount must not be less than 0
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
-	tfx_effect_descriptor emitter = t->paths.At(emitter_path);
-	tfx__get_shared_emitter_properties(emitter)->spawn_amount = amount;
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_single_spawn_amount;
+	template_override.path_hash = t->paths.MakeKey(emitter_path);
+	template_override.count = amount;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float amount) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT(graph_index < tfxEmitterGraphs_max_index);	 //Not a valid graph index
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
-	tfx_effect_descriptor emitter = t->paths.At(emitter_path);
-	TFX_ASSERT(emitter->type == tfxEmitterType);			 //The path does not point to a emitter type
-	tfx_graph_t &graph = emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[graph_index];
-	tfx_effect_descriptor original_emitter = tfx_GetLibraryDescriptor(t->effect->library, emitter_path);
-	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->state_properties.graph_list_index].graphs[graph_index];
-	tfx__copy_graph(&original_graph, &graph, false);
-	tfx__multiply_all_graph_values(&graph, amount);
+	TFX_ASSERT(t->paths.At(emitter_path)->type == tfxEmitterType);			 //The path does not point to a emitter type
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_emitter_graph_scale;
+	template_override.path_hash = t->paths.MakeKey(emitter_path);
+	template_override.graph_index = (tfxU32)graph_index;
+	template_override.amount = amount;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx_ClearBaseLifetimeGraph(tfx_effect_descriptor emitter, float v) {
@@ -13066,6 +13182,7 @@ void tfx_ResetTemplate(tfx_effect_template t) {
 		//TFX_VALID_HANDLE check on a stale clone is not an answer.
 		t->effect = nullptr;
 	}
+	t->overrides.FreeAll();
 }
 
 tfx_effect_descriptor tfx_GetEffectFromTemplate(tfx_effect_template t) {
@@ -13089,17 +13206,32 @@ tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_descriptor emitter) {
 
 void tfx_SetTemplateUserData(tfx_effect_template t, const char *path, void *data) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	if (t->paths.ValidName(path)) t->paths.At(path)->user_data = data;
+	if (!t->paths.ValidName(path)) {
+		return;
+	}
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_user_data;
+	template_override.path_hash = t->paths.MakeKey(path);
+	template_override.user_data = data;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx_SetTemplateEffectUserData(tfx_effect_template t, void *data) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	t->effect->user_data = data;
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_user_data;
+	template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+	template_override.user_data = data;
+	tfx__set_template_override(t, &template_override);
 }
 
 void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_stage pm, tfxEffectID effect_index)) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
-	t->effect->update_callback = update_callback;
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_update_callback;
+	template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+	template_override.update_callback = update_callback;
+	tfx__set_template_override(t, &template_override);
 }
 
 tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect_template) {
@@ -13133,7 +13265,11 @@ bool tfx_AnimationIDIsValid(tfxAnimationID id) {
 void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect_template, float millisecs) {
 	TFX_ASSERT_HANDLE(effect_template);
 	TFX_ASSERT(millisecs > 0.f);
-	effect_template->effect->warmup_time = millisecs;
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_warmup_time;
+	template_override.path_hash = effect_template->paths.MakeKey(effect_template->effect->name.c_str());
+	template_override.amount = millisecs;
+	tfx__set_template_override(effect_template, &template_override);
 }
 
 bool tfx_IsFiniteEffect(tfx_effect_template effect_template) {
