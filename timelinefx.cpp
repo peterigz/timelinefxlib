@@ -11140,9 +11140,7 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 		}
 	}
 
-	//Opened once. The structure hash, the shape set and the effects all come out of this single read - there
-	//is never a second library alive, which is what the old diff-and-merge needed and what every derived
-	//value it imported out of that second library got wrong.
+	//Only the data file is read here; it is loaded into a throwaway disk library that the merge below diffs against
 	tfx_package package = tfx__create_package("");
 	tfx_stream_t library_data{};
 	tfxErrorFlags package_error = 0; 
@@ -14203,103 +14201,6 @@ tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effec
 		//A graph with no entry is treated as needing a resim, which is the safe direction to be wrong in
 		return tfx_change_tier_resim_on_pause;
 	}
-}
-
-//Applies an edited descriptor's properties to every emitter already running from it, without respawning.
-//Takes either an emitter or a ribbon emitter: they patch different live state, but a caller refreshing a
-//library after a reload should not have to know which it is holding.
-bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter) {
-	TFX_ASSERT_HANDLE(pm);
-	TFX_ASSERT_HANDLE(emitter);
-	tfx_CompleteStageWork(pm);
-	if (emitter->type == tfxRibbonType) {
-		tfx_ribbon_dispatch_t ribbon_dispatch{};
-		while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
-			for (tfxU32 e : ribbon_dispatch.ribbon_data->control_ribbon_queue) {
-				if (pm->ribbon_emitters[e].state_properties.property_index == emitter->state_properties.property_index) {
-					pm->ribbon_emitters[e].ribbon_property_flags = emitter->ribbon_flags;
-					pm->ribbon_emitters[e].state_properties.shared_flags = emitter->state_properties.shared_flags;
-					tfx_shared_properties_t &shared_properties = *tfx__get_shared_emitter_properties(emitter);
-					tfxEmitterStateFlags &state_flags = pm->ribbon_emitters[e].state_flags;
-					tfxEmitterStateFlags flags_we_want_to_keep = state_flags & tfxEmitterStateFlags_single_shot_done;
-					tfx_gpu_ribbon_emitter_t *gpu_properties = &pm->gpu_ribbon_emitters[pm->ribbon_emitters[e].state_properties.gpu_property_index];
-					gpu_properties->fixed_angle_normal = tfx__get_ribbon_emitter_properties(emitter)->fixed_angle_normal;
-
-					tfx_emitter_path_t *path = &pm->ribbon_emitters[e].library->paths[emitter->state_properties.path_attributes];
-					state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
-
-					if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
-						emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
-					}
-					state_flags |= flags_we_want_to_keep;
-
-					pm->ribbon_emitters[e].state_properties.image_frame_rate = emitter->state_properties.image->animation_frames > 1 && emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties.frame_rate : 0.f;
-					pm->ribbon_emitters[e].state_properties.end_frame = emitter->state_properties.end_frame;
-				}
-			}
-		}
-		//Every ribbon change can be applied in place
-		return false;
-	}
-	bool need_restart = false;
-	tfx__update_emitter_control_profile(emitter);
-	for (tfxU32 e : pm->control_emitter_queue) {
-		//A property index only identifies an emitter within its own library, so a stage running two of them
-		//would otherwise patch whichever matched first
-		if (pm->emitters[e].library != emitter->library
-			|| pm->emitters[e].state_properties.property_index != emitter->state_properties.property_index) {
-			continue;
-		}
-		//What this instance is actually running: callers may already have refreshed the descriptor's profile, so it is the only reliable before.
-		tfxEmitterControlProfileFlags live_control_profile = pm->emitters[e].state_properties.control_profile;
-		pm->emitters[e].state_properties.control_profile = emitter->state_properties.control_profile;
-		pm->emitters[e].state_properties.property_flags = emitter->state_properties.property_flags;
-		pm->emitters[e].state_properties.shared_flags = emitter->state_properties.shared_flags;
-		tfx_particle_emitter_properties_t &properties = *tfx__get_particle_emitter_properties(emitter);
-		tfx_shared_properties_t &shared_properties = *tfx__get_shared_emitter_properties(emitter);
-		tfx_gpu_particle_properties_t &gpu_properties = *tfx__get_gpu_particle_properties(emitter);
-		pm->emitters[e].state_properties.angle_offsets = emitter->state_properties.angle_offsets;
-		tfxEmitterStateFlags &state_flags = pm->emitters[e].state_flags;
-		tfxEmitterControlProfileFlags &control_profile = pm->emitters[e].state_properties.control_profile;
-		bool has_path = (live_control_profile & tfxEmitterControlProfile_path) > 0;
-		tfxEmitterStateFlags flags_we_want_to_keep = (state_flags & tfxEmitterStateFlags_single_shot_done) | (state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative);
-		state_flags = 0;
-		state_flags |= emitter->state_properties.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		state_flags |= (emitter->state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && shared_properties.single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
-		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && !(pm->flags & tfxStageFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
-		state_flags |= (shared_properties.emission_type != tfxLine && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || (shared_properties.emission_type == tfxLine && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal)) ? tfxEmitterStateFlags_not_line : 0;
-		state_flags |= properties.angle_settings != tfxAngleSettingFlags_align_roll && !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-		//A bit test, not an equality: angle_settings combines, and the spawn path that decides what the live
-		//particles were created with tests the bit
-		state_flags |= (properties.angle_settings & tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
-		state_flags |= shared_properties.emission_type == tfxLine && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
-		state_flags |= shared_properties.emission_type == tfxPath && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
-		state_flags |= emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once;
-		state_flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
-		state_flags |= properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
-		state_flags |= shared_properties.emission_type == tfxLine && emitter->state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
-		state_flags |= ((gpu_properties.flags & 0x3) == tfxBillboarding_free_align || (gpu_properties.flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
-		state_flags |= shared_properties.emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
-		if (shared_properties.emission_type == tfxPath) {
-			tfx_emitter_path_t *path = &pm->emitters[e].library->paths[emitter->state_properties.path_attributes];
-			state_flags |= (path->settings.rotation_range > 0 || path->settings.rotation_pitch != 0 || path->settings.rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
-		}
-
-		//Noise and path data are written at spawn, so a profile that now wants them has particles alive that never got them.
-		if ((live_control_profile & tfxEmitterControlProfile_has_any_noise) != (control_profile & tfxEmitterControlProfile_has_any_noise) || (!has_path && control_profile & tfxEmitterControlProfile_path)) {
-			need_restart = true;
-			break;
-		}
-
-		if (state_flags & tfxEmitterStateFlags_is_edge_traversal) {
-			emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_relative_position;
-		}
-		state_flags |= flags_we_want_to_keep;
-
-		pm->emitters[e].state_properties.image_frame_rate = emitter->state_properties.image->animation_frames > 1 && emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate ? shared_properties.frame_rate : 0.f;
-		pm->emitters[e].state_properties.end_frame = emitter->state_properties.end_frame;
-	}
-	return need_restart;
 }
 
 void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {

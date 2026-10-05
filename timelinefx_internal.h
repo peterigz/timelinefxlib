@@ -7785,7 +7785,6 @@ tfxAPI_EDITOR tfxErrorFlags tfx__read_package_library_version(const char *path, 
 //The change tier of a graph or a named property. One table, so the widgets and a reload diff agree.
 tfxAPI_EDITOR tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope);
 
-tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
@@ -7868,7 +7867,7 @@ unsigned TFX_THREAD_CALL tfx__update_stage_thread(void *data);
 #else
 void *tfx__update_stage_thread(void *data);
 #endif
-tfxINTERNAL void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter);
 
 //--------------------------------
 //Graph functions
