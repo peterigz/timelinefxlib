@@ -8069,6 +8069,7 @@ tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_properties(tfx_effect_descriptor descriptor);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);

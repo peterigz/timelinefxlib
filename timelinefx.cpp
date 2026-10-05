@@ -4852,6 +4852,10 @@ void tfx__free_library_properties(tfx_effect_descriptor descriptor) {
 	if (descriptor->type == tfxEmitterType) {
 		TFX_ASSERT(descriptor->state_properties.property_index < descriptor->library->emitter_properties.current_size);
 		tfx__free_library_emitter_properties(descriptor->library, descriptor->state_properties.property_index);
+		//Emitters only: every other type leaves gpu_property_index at zero, which is another emitter's slot
+		if (descriptor->state_properties.gpu_property_index != tfxINVALID) {
+			tfx__free_library_particle_gpu_properties(descriptor->library, descriptor->state_properties.gpu_property_index);
+		}
 	} else if (descriptor->type == tfxRibbonType) {
 		TFX_ASSERT(descriptor->state_properties.property_index < descriptor->library->ribbon_properties.current_size);
 		tfx__free_library_ribbon_properties(descriptor->library, descriptor->state_properties.property_index);
@@ -5126,6 +5130,13 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	properties.lag_time = 150.f;
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
+}
+
+void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT(index < library->particle_gpu_properties.current_size);
+	library->particle_gpu_properties[index] = tfx_gpu_particle_properties_t{};
+	library->free_particle_gpu_properties.push_back(index);
 }
 
 tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
