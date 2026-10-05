@@ -13385,7 +13385,7 @@ tfxU32 tfx_GetBookmarkIndex(tfx_effect_template effect_template, const char *nam
 }
 
 bool tfx_BookmarkIndexIsValid(tfxU32 bookmark_index) {
-	return bookmark_index >= tfxMAX_BOOKMARKS;
+	return bookmark_index < tfxMAX_BOOKMARKS;
 }
 
 bool tfx_IsBookmarkCrossed(tfx_stage pm, tfxEffectID effect_id, tfxU32 bookmark_index) {
