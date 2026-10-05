@@ -1836,7 +1836,38 @@ always be the earliest bookmark
 tfxAPI float tfx_GetBookmarkTime(tfx_effect_template effect, tfxU32 bookmark_index);
 
 /*
-Check if a specific bookmark time has been crossed for an effect running in the stage. 
+Get the number of bookmarks set in the effect. Bookmarks are packed, so slots 0 to count - 1 are all in use.
+* @param tfx_effect_template		A handle to the effect template
+* @returns tfxU32					The number of bookmarks, 0 to tfxMAX_BOOKMARKS
+*/
+tfxAPI tfxU32 tfx_GetBookmarkCount(tfx_effect_template effect);
+
+/*
+Get the name the bookmark was given in the editor. The pointer stays valid until the template is freed or the
+library is refreshed.
+* @param tfx_effect_template		A handle to the effect template
+* @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1
+* @returns const char*				The bookmark name, or an empty string if there is no bookmark in that slot
+*/
+tfxAPI const char *tfx_GetBookmarkName(tfx_effect_template effect, tfxU32 bookmark_index);
+
+/*
+Find the slot of a bookmark by its name. Bookmarks are ordered by time, so moving one in the editor can change
+the slot it lives in. Look up the slots you need by name once after creating the template, and again after
+calling tfx_RefreshLibrary, then pass them to tfx_IsBookmarkCrossed rather than hard coding slot numbers.
+If more than one bookmark has the same name then the earliest one is returned.
+* @param tfx_effect_template		A handle to the effect template
+* @param name						The name of the bookmark, case sensitive
+* @returns tfxU32					The bookmark slot, or tfxINVALID if no bookmark has that name. Check with tfx_BookmarkIndexIsValid
+*/
+tfxAPI tfxU32 tfx_GetBookmarkIndex(tfx_effect_template effect, const char *name);
+
+//Only checks the index against tfxINVALID, the value tfx_GetBookmarkIndex returns when no bookmark has the name
+tfxAPI bool tfx_BookmarkIndexIsValid(tfxU32 bookmark_index);
+
+/*
+Check if a specific bookmark time has been crossed for an effect running in the stage. Use tfx_GetBookmarkIndex
+to get the slot from the bookmark's name.
 * @param pm							A pointer to an initialised tfx_stage_t
 * @param effect_id					The effect id that is in the stage
 * @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1

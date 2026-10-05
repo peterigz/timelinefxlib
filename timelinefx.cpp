@@ -13359,6 +13359,35 @@ float tfx_GetBookmarkTime(tfx_effect_template effect_template, tfxU32 bookmark_i
 	return effect_template->effect->bookmarks[bookmark_index].time;
 }
 
+tfxU32 tfx_GetBookmarkCount(tfx_effect_template effect_template) {
+	TFX_ASSERT_HANDLE(effect_template);
+	return tfx__effect_bookmark_count(effect_template->effect);
+}
+
+const char *tfx_GetBookmarkName(tfx_effect_template effect_template, tfxU32 bookmark_index) {
+	TFX_ASSERT_HANDLE(effect_template);
+	if (bookmark_index >= tfxMAX_BOOKMARKS || effect_template->effect->bookmarks[bookmark_index].time == 0.f) {
+		return "";
+	}
+	return effect_template->effect->bookmarks[bookmark_index].name.c_str();
+}
+
+tfxU32 tfx_GetBookmarkIndex(tfx_effect_template effect_template, const char *name) {
+	TFX_ASSERT_HANDLE(effect_template);
+	TFX_ASSERT(name);
+	tfx_effect_descriptor effect = effect_template->effect;
+	for (tfxU32 bookmark_index = 0; bookmark_index != tfxMAX_BOOKMARKS && effect->bookmarks[bookmark_index].time != 0.f; ++bookmark_index) {
+		if (strcmp(effect->bookmarks[bookmark_index].name.c_str(), name) == 0) {
+			return bookmark_index;
+		}
+	}
+	return tfxINVALID;
+}
+
+bool tfx_BookmarkIndexIsValid(tfxU32 bookmark_index) {
+	return bookmark_index >= tfxMAX_BOOKMARKS;
+}
+
 bool tfx_IsBookmarkCrossed(tfx_stage pm, tfxEffectID effect_id, tfxU32 bookmark_index) {
 	TFX_VALIDATE_EFFECT(pm, effect_id, false);
 	if (bookmark_index >= tfxMAX_BOOKMARKS) {
