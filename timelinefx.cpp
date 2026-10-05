@@ -246,7 +246,15 @@ tfxINTERNAL void tfx__reset_object_callbacks() {
 					switch (struct_type) {
 						case tfx_struct_type_effect_template: {
 							tfx_effect_template effect_template = (tfx_effect_template)allocation;
-							effect_template->effect->update_callback = nullptr;
+							if (effect_template->effect) {
+								effect_template->effect->update_callback = nullptr;
+							}
+							//Otherwise a refresh that rebuilds the template replays a callback from the old module
+							for (tfx_template_override_t &template_override : effect_template->overrides.data) {
+								if (template_override.type == tfx_template_override_update_callback) {
+									template_override.update_callback = nullptr;
+								}
+							}
 							break;
 						}
 						default:
