@@ -2926,11 +2926,13 @@ Delete an effect template and free all memory associated with it
 tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
 
 /*
-Check to see if an effect template's original effect is no longer in the library after a called to tfxRefreshLibrary. 
-The template will still work becuase it clones all the data from the library so you can modify it but you might want to delete
-the template if it's not used now.
+Check whether the effect a template was cloned from has gone from the library file, as found by tfx_RefreshLibrary.
+While this is true, tfx_AddEffectTemplateToStage refuses the template and returns tfxINVALID, and the refresh that found
+the effect missing expires anything already running from it. The template is not freed: if a later refresh finds the
+effect in the file again, this goes back to false and the template can be used again. Call tfx_FreeEffectTemplate if you
+no longer need it.
 * @param effect_template    A handle to the effect template
-* @returns bool             True if the effect it was cloned from has been deleted from the library
+* @returns bool             True if the effect it was cloned from is no longer in the library file
 */
 tfxAPI bool tfx_EffectTemplateIsMarkedForDeletion(tfx_effect_template effect_template);
 

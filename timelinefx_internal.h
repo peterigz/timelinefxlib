@@ -5981,6 +5981,8 @@ typedef struct tfx_path_settings_s {
 typedef struct tfx_emitter_path_s {
 	tfx_path_settings_t settings;
 	tfx_path_buffers_t buffers;
+	tfxU32 generation;		//Bumped when the slot is freed so a reused slot never matches a ribbon path cache key made for its last occupant
+	bool is_free;
 } tfx_emitter_path_t;
 
 
@@ -7580,6 +7582,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_shared_emitter_properties;
 	tfx_vector_t<tfxU32> free_ribbon_emitter_properties;
 	tfx_vector_t<tfxU32> free_particle_gpu_properties;
+	tfx_vector_t<tfxU32> free_paths;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
 
@@ -8013,6 +8016,9 @@ tfxINTERNAL void tfx__migrate_ribbon_clip_graphs(tfx_library library);
 tfxINTERNAL tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs);
 tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
+//An initialised, empty path slot, reused from the free list when there is one
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_path(tfx_library library);
+tfxINTERNAL void tfx__free_library_path(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id);
@@ -8068,6 +8074,8 @@ tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descripto
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_properties(tfx_effect_descriptor descriptor);
+//Frees the graph lists and property slots of a snapshot that is not a descriptor, such as the editor's undo base
+tfxAPI_EDITOR void tfx__free_library_state_slots(tfx_library library, tfx_effect_descriptor_type type, tfx_common_state_properties_t *state_properties);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);

@@ -3610,20 +3610,16 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		}
 		tfx__update_emitter_gpu_properties(clone);
 		if (clone->state_properties.path_attributes != tfxINVALID) {
-			tfx_emitter_path_t new_path = {};
-			tfx_emitter_path_t &path_copy = destination_library->paths.push_back(new_path);
-			tfx__init_soa_buffer(&path_copy.buffers.node_buffer);
-			tfx__copy_path(&library->paths[clone->state_properties.path_attributes], "", &path_copy);
-			clone->state_properties.path_attributes = destination_library->paths.size() - 1;
-			tfx__build_path_nodes(&destination_library->paths.back());
+			tfxU32 path_index = tfx__allocate_library_path(destination_library);
+			tfx__copy_path(&library->paths[clone->state_properties.path_attributes], "", &destination_library->paths[path_index]);
+			clone->state_properties.path_attributes = path_index;
+			tfx__build_path_nodes(&destination_library->paths[path_index]);
 		}
 		if (clone->state_properties.morph_path_attributes != tfxINVALID) {
-			tfx_emitter_path_t new_morph_path = {};
-			tfx_emitter_path_t &morph_path_copy = destination_library->paths.push_back(new_morph_path);
-			tfx__init_soa_buffer(&morph_path_copy.buffers.node_buffer);
-			tfx__copy_path(&library->paths[clone->state_properties.morph_path_attributes], "", &morph_path_copy);
-			clone->state_properties.morph_path_attributes = destination_library->paths.size() - 1;
-			tfx__build_path_nodes(&destination_library->paths.back());
+			tfxU32 morph_path_index = tfx__allocate_library_path(destination_library);
+			tfx__copy_path(&library->paths[clone->state_properties.morph_path_attributes], "", &destination_library->paths[morph_path_index]);
+			clone->state_properties.morph_path_attributes = morph_path_index;
+			tfx__build_path_nodes(&destination_library->paths[morph_path_index]);
 		}
 	}
 
@@ -3825,8 +3821,37 @@ tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor effect, tfx_gra
 
 
 void tfx__initialise_path(tfx_emitter_path_t *path) {
+	tfxU32 generation = path->generation;
 	memset((void *)path, 0, sizeof(tfx_emitter_path_t));
+	path->generation = generation;
 	tfx__init_soa_buffer(&path->buffers.node_buffer);
+}
+
+tfxU32 tfx__allocate_library_path(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	tfxU32 index;
+	if (library->free_paths.size()) {
+		index = library->free_paths.pop_back();
+	} else {
+		tfx_emitter_path_t new_path = {};
+		library->paths.push_back(new_path);
+		index = library->paths.size() - 1;
+	}
+	tfx__initialise_path(&library->paths[index]);
+	return index;
+}
+
+void tfx__free_library_path(tfx_library library, tfxU32 index) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT(index < library->paths.size());
+	tfx_emitter_path_t *path = &library->paths[index];
+	TFX_ASSERT(!path->is_free);		//Path slot freed twice, so two descriptors were holding it
+	tfx__free_soa_buffer(&path->buffers.node_buffer);
+	path->buffers.nodes.free();
+	path->buffers.arc_lengths.free();
+	path->is_free = true;
+	path->generation++;
+	library->free_paths.push_back(index);
 }
 
 void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *dst) {
@@ -3837,10 +3862,8 @@ void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_
 
 tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.path_attributes == tfxINVALID) {
-		emitter->state_properties.path_attributes = emitter->library->paths.size();
-		tfx_emitter_path_t new_path = {};
-		tfx_emitter_path_t &path = emitter->library->paths.push_back(new_path);
-		tfx__initialise_path(&path);
+		emitter->state_properties.path_attributes = tfx__allocate_library_path(emitter->library);
+		tfx_emitter_path_t &path = emitter->library->paths[emitter->state_properties.path_attributes];
 		path.settings.flags = 0;
 		path.settings.node_count = 32;
 		path.settings.nodes_to_commit = 32;
@@ -3859,9 +3882,8 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor emitter) {
 }
 
 tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
-	tfx_emitter_path_t new_path = {};
-	tfx_emitter_path_t &path = library->paths.push_back(new_path);
-	tfx__initialise_path(&path);
+	tfxU32 index = tfx__allocate_library_path(library);
+	tfx_emitter_path_t &path = library->paths[index];
 	path.settings.flags = 0;
 	path.settings.name.Clear();
 	const float *nodes = tfx__path_preset_vline;
@@ -3880,7 +3902,7 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	path.settings.rotation_pitch = 0.f;
 	path.settings.rotation_yaw = 0.f;
 	path.settings.rotation_stagger = 0.f;
-	return library->paths.size() - 1;
+	return index;
 }
 
 tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor) {
@@ -4248,6 +4270,7 @@ void tfx__add_library_path(tfx_library library, tfx_effect_descriptor effect_des
 void tfx__build_all_library_paths(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	for (tfxBucketLoop(library->paths, i)) {
+		if (library->paths[i].is_free) continue;
 		tfx__build_path_nodes(&library->paths[i]);
 	}
 }
@@ -4844,22 +4867,43 @@ void tfx__free_library_graph_list(tfx_library library, tfxU32 index) {
 	tfx__free_library_graphs(&library->graphs[index]);
 }
 
+tfxINTERNAL void tfx__free_library_property_slots(tfx_library library, tfx_effect_descriptor_type type, tfx_common_state_properties_t *state_properties) {
+	if (state_properties->shared_index != tfxINVALID) {
+		tfx__free_library_shared_properties(library, state_properties->shared_index);
+	}
+	if (type == tfxEmitterType) {
+		TFX_ASSERT(state_properties->property_index < library->emitter_properties.current_size);
+		tfx__free_library_emitter_properties(library, state_properties->property_index);
+		//Emitters only: every other type leaves gpu_property_index at zero, which is another emitter's slot
+		if (state_properties->gpu_property_index != tfxINVALID) {
+			tfx__free_library_particle_gpu_properties(library, state_properties->gpu_property_index);
+		}
+	} else if (type == tfxRibbonType) {
+		TFX_ASSERT(state_properties->property_index < library->ribbon_properties.current_size);
+		tfx__free_library_ribbon_properties(library, state_properties->property_index);
+	}
+	if (state_properties->path_attributes != tfxINVALID) {
+		tfx__free_library_path(library, state_properties->path_attributes);
+	}
+	if (state_properties->morph_path_attributes != tfxINVALID) {
+		tfx__free_library_path(library, state_properties->morph_path_attributes);
+	}
+}
+
 void tfx__free_library_properties(tfx_effect_descriptor descriptor) {
 	TFX_ASSERT_HANDLE(descriptor);
-	if (descriptor->state_properties.shared_index != tfxINVALID) {
-		tfx__free_library_shared_properties(descriptor->library, descriptor->state_properties.shared_index);
+	tfx__free_library_property_slots(descriptor->library, descriptor->type, &descriptor->state_properties);
+}
+
+void tfx__free_library_state_slots(tfx_library library, tfx_effect_descriptor_type type, tfx_common_state_properties_t *state_properties) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	if (state_properties->graph_list_index != tfxINVALID) {
+		tfx__free_library_graph_list(library, state_properties->graph_list_index);
 	}
-	if (descriptor->type == tfxEmitterType) {
-		TFX_ASSERT(descriptor->state_properties.property_index < descriptor->library->emitter_properties.current_size);
-		tfx__free_library_emitter_properties(descriptor->library, descriptor->state_properties.property_index);
-		//Emitters only: every other type leaves gpu_property_index at zero, which is another emitter's slot
-		if (descriptor->state_properties.gpu_property_index != tfxINVALID) {
-			tfx__free_library_particle_gpu_properties(descriptor->library, descriptor->state_properties.gpu_property_index);
-		}
-	} else if (descriptor->type == tfxRibbonType) {
-		TFX_ASSERT(descriptor->state_properties.property_index < descriptor->library->ribbon_properties.current_size);
-		tfx__free_library_ribbon_properties(descriptor->library, descriptor->state_properties.property_index);
+	if (state_properties->transform_index != tfxINVALID) {
+		tfx__free_library_graph_list(library, state_properties->transform_index);
 	}
+	tfx__free_library_property_slots(library, type, state_properties);
 }
 
 void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index) {
@@ -5166,6 +5210,7 @@ void tfx__init_library(tfx_library library) {
 	library->free_animation_settings.init();
 	library->free_preview_camera_settings.init();
 	library->free_particle_emitter_properties.init();
+	library->free_paths.init();
 	library->free_infos.init();
 	library->free_keyframes.init();
 
@@ -5308,6 +5353,7 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	library->free_graph_lists.free();
 	library->free_keyframes.free();
 	library->free_particle_gpu_properties.free();
+	library->free_paths.free();
 
 	library->uid = 0;
 	library->color_ramps.color_ramp_count = 0;
@@ -18006,7 +18052,7 @@ void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emitter) {
 
 //path_attributes indexes one library's paths, so two libraries in a stage must not share a block through it
 tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment) {
-	tfxU64 key_parts[2] = { library->path_cache_id, ((tfxU64)path_attributes << 32) | samples_per_segment };
+	tfxU64 key_parts[3] = { library->path_cache_id, ((tfxU64)path_attributes << 32) | samples_per_segment, library->paths[path_attributes].generation };
 	tfx_hasher_t hasher;
 	return tfx_Hash(&hasher, key_parts, sizeof(key_parts), 0);
 }
