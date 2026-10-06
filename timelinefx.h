@@ -1467,6 +1467,20 @@ Get the number of instances within the instance buffer of a effect manager
 tfxAPI int tfx_GetInstanceCount(tfx_stage pm);
 
 /*
+Get the instances written by the update step before the one in tfx_GetInstanceBuffer. This is the buffer that each instance's captured_index points
+into, so upload it alongside the current buffer to interpolate between the last two steps, rather than relying on whatever you drew last frame.
+It's only kept when the stage was created with double_buffer_sprites set (the default).
+* @param pm                       A pointer to an intialised tfx_stage_t.
+*/
+tfxAPI tfx_instance_t *tfx_GetPreviousInstanceBuffer(tfx_stage pm);
+
+/*
+Get the number of instances in the buffer returned by tfx_GetPreviousInstanceBuffer.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+*/
+tfxAPI int tfx_GetPreviousInstanceCount(tfx_stage pm);
+
+/*
 Get the number of instances within the instance buffer of a effect manager for a specific layer.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
@@ -1917,10 +1931,25 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 		RenderParticles(game->pm, game);
 	}
 
+If you'd prefer to keep a higher timeline resolution and call the stage update multiple times then see tfx_UpdateStageSubSteps.
+
 * @param pm                    A pointer to an initialised tfx_stage_t.
 * @param double                the amount of time that elapsed since the last frame
 */
 tfxAPI void tfx_UpdateStage(tfx_stage pm, double elapsed);
+
+/*
+Update a stage in a number of fixed size steps with one call. All of the steps run on the stage's update thread, so like tfx_UpdateStage this returns
+without waiting for them, whereas calling tfx_UpdateStage once per step makes each call wait for the step before it. Use this when you simulate at a
+fixed rate and run more than one step in a frame. Only the last two steps write instances: the last is the one to draw and the one before it is what
+captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. The steps before those only simulate, which makes them cheaper.
+Positions you set on effects since the last update are spread evenly across the steps. tfx_UpdateStage(pm, elapsed) is the same as
+tfx_UpdateStageSubSteps(pm, elapsed, 1).
+* @param pm                    A pointer to an initialised tfx_stage_t.
+* @param step_length           The length of each step in milliseconds
+* @param step_count            The number of steps to run, must be at least 1
+*/
+tfxAPI void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function

@@ -11612,6 +11612,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	tfxU32 total_ribbons = 0;
 
 	pm->manager_work.elapsed_time = frame_length;
+	pm->manager_work.step_count = 1;
 	pm->manager_work.pm = pm;
 
 	while (frame < frames && offset < 99999) {
@@ -14559,16 +14560,8 @@ tfxINTERNAL void tfx__sort_effects_in_use(tfx_stage pm) {
 	}
 }
 
-void tfx__update_stage(void *data) {
-	tfx_stage pm = (tfx_stage)data;
-	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool write_instances) {
 	tfxPROFILE;
-
-	double elapsed_time = pm->manager_work.elapsed_time;
-
-	tfx__sync_lock(&pm->updating);
-	pm->flags |= tfxStageFlags_updating;
-	tfx__stage_updating_on_this_thread = pm;
 
 	if (pm->flags & (tfxStageFlags_auto_order_effects | tfxStageFlags_sort_effects_by_key)) {
 		tfx__sort_effects_in_use(pm);
@@ -14577,7 +14570,15 @@ void tfx__update_stage(void *data) {
 	pm->gpu_current_time_ms += (float)pm->frame_length;
 	tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 
-	pm->current_sprite_buffer = pm->flags & tfxStageFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
+	//A tick that writes no instances leaves both buffers alone so captured_index keeps pointing at the last written one
+	if (write_instances && (pm->flags & tfxStageFlags_double_buffer_sprites)) {
+		pm->current_sprite_buffer ^= 1;
+		tfx_buffer_t written_instances = pm->previous_instance_buffer;
+		pm->previous_instance_buffer = pm->instance_buffer;
+		pm->instance_buffer = written_instances;
+	} else if (!(pm->flags & tfxStageFlags_double_buffer_sprites)) {
+		pm->current_sprite_buffer = 0;
+	}
 	pm->flags &= ~tfxStageFlags_has_ribbons_to_draw;
 
 	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
@@ -14603,7 +14604,7 @@ void tfx__update_stage(void *data) {
 		//tfx__update_stage call, so without its own zone a warmup spike is indistinguishable from a slow frame.
 		tfxPROFILE_NAMED("Warmup Ticks");
 		tfxU32 current_warmup_buffer = 0;
-		pm->flags |= tfxStageFlags_warming_up;
+		pm->flags |= tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes;
 		tfx__set_stage_timings(pm, pm->warmup_delta_time, pm->max_frame_length);
 		while (pm->warmup_effects[current_warmup_buffer].current_size > 0) {
 			tfxU32 next_warmup_buffer = current_warmup_buffer ^ 1;
@@ -14761,7 +14762,7 @@ void tfx__update_stage(void *data) {
 		}
 		pm->warmup_effects[0].clear();
 		pm->warmup_effects[1].clear();
-		pm->flags &= ~tfxStageFlags_warming_up;
+		pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes);
 		//The last warmup tick left spawn_work and control_emitter_queue populated. The normal update below
 		//assumes both are empty before its spawn phase, so reset them here.
 		pm->control_emitter_queue.clear();
@@ -14773,6 +14774,9 @@ void tfx__update_stage(void *data) {
 	}
 
 	tfx__set_stage_timings(pm, elapsed_time, pm->max_frame_length);
+	if (!write_instances) {
+		pm->flags |= tfxStageFlags_skip_instance_writes;
+	}
 
 	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
 	pm->effects_in_use[next_buffer].clear();
@@ -14986,7 +14990,29 @@ void tfx__update_stage(void *data) {
 
 	pm->current_particle_count = pm->instance_buffer.current_size;
 
-	pm->flags &= ~tfxStageFlags_update_base_values;
+	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes);
+}
+
+void tfx__update_stage(void *data) {
+	tfx_stage pm = (tfx_stage)data;
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfxPROFILE;
+
+	double elapsed_time = pm->manager_work.elapsed_time;
+	tfxU32 step_count = pm->manager_work.step_count;
+	TFX_ASSERT(step_count > 0);
+
+	tfx__sync_lock(&pm->updating);
+	pm->flags |= tfxStageFlags_updating;
+	tfx__stage_updating_on_this_thread = pm;
+
+	for (tfxU32 step = 0; step != step_count; ++step) {
+		pm->steps_remaining = step_count - step;
+		//The last step is drawn and the one before it is what its captured_index interpolates from
+		tfx__update_stage_tick(pm, elapsed_time, pm->steps_remaining <= 2);
+	}
+	pm->steps_remaining = 0;
+
 	pm->flags &= ~tfxStageFlags_updating;
 	tfx__stage_updating_on_this_thread = nullptr;
 	tfx__sync_unlock(&pm->updating);
@@ -15069,6 +15095,14 @@ void tfx__shutdown_update_thread(tfx_stage pm) {
 }
 
 void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
+	tfx_UpdateStageSubSteps(pm, elapsed_time, 1);
+}
+
+void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count) {
+	TFX_ASSERT(step_count > 0);
+	if (step_count == 0) {
+		return;
+	}
 	//This zone measures what the CALLER pays, not what the update costs - tfx__wait_for_stage_update_locked
 	//is the only place the caller blocks. If this bar is wide the update is no longer overlapping the caller's frame.
 	tfxPROFILE;
@@ -15082,11 +15116,12 @@ void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
-		pm->manager_work.elapsed_time = elapsed_time;
+		pm->manager_work.elapsed_time = step_length;
+		pm->manager_work.step_count = step_count;
 		pm->manager_work.pm = pm;
 		tfx__wait_for_stage_update_locked(pm);
 		tfx__sync_unlock(&pm->update_thread_mutex);
-		tfx__apply_user_spawn_locations(pm, (float)tfx__Min(elapsed_time, (double)pm->max_frame_length));
+		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		tfx__update_stage(pm);
 	} else {
 		tfx__sync_lock(&pm->update_thread_mutex);
@@ -15095,14 +15130,15 @@ void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
-		pm->manager_work.elapsed_time = elapsed_time;
+		pm->manager_work.elapsed_time = step_length;
+		pm->manager_work.step_count = step_count;
 		pm->manager_work.pm = pm;
 		//Drain the previous frame's update before publishing this frame's work. Same
 		//timing as before: the join point is the start of the NEXT tfx_UpdateStage (or an
 		//explicit tfx_CompleteStageWork), never the end of this one.
 		tfx__wait_for_stage_update_locked(pm);
 		//No update is running now so this is the one point where the update's view of the locations can change
-		tfx__apply_user_spawn_locations(pm, (float)tfx__Min(elapsed_time, (double)pm->max_frame_length));
+		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		bool spawned = tfx__ensure_update_thread_locked(pm);
 		if (spawned) {
 			//Publish the work and wake the thread. This does NOT wait for it - the update
@@ -15156,7 +15192,9 @@ void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
 
 void tfx_GetCapturedInstanceTransform(tfx_stage pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
-	tfx_float32x4_t position = static_cast<tfx_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position;
+	tfx__wait_for_stage_update(pm);
+	const tfx_buffer_t &captured_instances = pm->flags & tfxStageFlags_double_buffer_sprites ? pm->previous_instance_buffer : pm->instance_buffer;
+	tfx_float32x4_t position = static_cast<tfx_instance_t *>(captured_instances.data)[index & 0x0FFFFFFF].position;
 	out_position[0] = position.x;
 	out_position[1] = position.y;
 	out_position[2] = position.z;
@@ -16975,10 +17013,12 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 											(pm->flags & tfxStageFlags_recording_sprites);
 
 	tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_instance_t));
+	tfxReconfigureBuffer(&pm->previous_instance_buffer, sizeof(tfx_instance_t));
 
 	pm->flags |= current_flags;
 
 	pm->instance_buffer.clear();
+	pm->previous_instance_buffer.clear();
 	for (tfxEachLayer) {
 		pm->unique_sprite_ids[0][layer].clear();
 		if (pm->flags & tfxStageFlags_double_buffer_sprites) {
@@ -17128,6 +17168,19 @@ int tfx_GetInstanceCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
 	return pm->instance_buffer.current_size;
+}
+
+tfx_instance_t *tfx_GetPreviousInstanceBuffer(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	TFX_ASSERT(pm->flags & tfxStageFlags_double_buffer_sprites);	//Only kept when the stage double buffers sprites
+	tfx__wait_for_stage_update(pm);
+	return tfxCastBufferRef(tfx_instance_t, pm->previous_instance_buffer);
+}
+
+int tfx_GetPreviousInstanceCount(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	tfx__wait_for_stage_update(pm);
+	return pm->previous_instance_buffer.current_size;
 }
 
 int tfx_GetInstanceCountByLayer(tfx_stage pm, tfxU32 layer) {
@@ -17565,8 +17618,9 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	//that double-dispatches age work against the same bank.
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
-	pm->flags &= ~tfxStageFlags_warming_up;
+	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes);
 	pm->instance_buffer.clear();
+	pm->previous_instance_buffer.clear();
 	for (tfxEachLayer) {
 		pm->layer_sizes[layer] = 0;
 		pm->layer_start[layer] = 0;
@@ -17608,6 +17662,7 @@ void tfx_FreeStage(tfx_stage pm) {
 		}
 	}
 	pm->instance_buffer.free();
+	pm->previous_instance_buffer.free();
 	for (tfxEachLayer) {
 		pm->instance_buffer_for_recording[0][layer].free();
 		pm->instance_buffer_for_recording[1][layer].free();
@@ -18061,6 +18116,9 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 
 	if (effect.state_flags & tfxEffectStateFlags_no_tween_this_update || effect.state_flags & tfxEffectStateFlags_no_tween) {
 		effect.captured_position = effect.world_position;
+	} else if (pm->steps_remaining > 1 && !(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
+		//The position is set once per update, so each sub step covers an even share of the distance left
+		effect.world_position = effect.captured_position + (effect.world_position - effect.captured_position) * (1.f / (float)pm->steps_remaining);
 	}
 
 	effect.total_age += (float)pm->frame_length;
@@ -22912,7 +22970,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 				tfx__control_particle_line_behaviour_loop(&pm->work_queue, work_entry);
 			}
 		}
-		if (!(pm->flags & tfxStageFlags_warming_up)) {
+		if (!(pm->flags & tfxStageFlags_skip_instance_writes)) {
 			//There's no need to call controll functions in warm up if they don't write back to the particle bank.
 			//Transform, spin, size, color, hide and image frame are all fused into this one pass so that each
 			//tfx_instance_t is written once, whole, rather than streamed over six times.
@@ -23822,8 +23880,13 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 		pm->max_cpu_particles_per_layer[layer] = info.max_particles;
 	}
 
+	tfxU32 instance_capacity = tfxMax((info.max_particles / tfxDataWidth + 1) * tfxDataWidth, 8);
 	pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_instance_t), 16);
-	pm->instance_buffer.reserve(tfxMax((info.max_particles / tfxDataWidth + 1) * tfxDataWidth, 8));
+	pm->instance_buffer.reserve(instance_capacity);
+	pm->previous_instance_buffer = tfxCreateBuffer(sizeof(tfx_instance_t), 16);
+	if (info.double_buffer_sprites) {
+		pm->previous_instance_buffer.reserve(instance_capacity);
+	}
 
 	tfx__free_all_particle_lists(pm);
 	return pm;

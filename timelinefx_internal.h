@@ -3142,6 +3142,7 @@ typedef enum {
 	tfxStageFlags_record_with_compute_image_index   	= 1 << 21,
 	tfxStageFlags_warming_up		                	= 1 << 23,
 	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
+	tfxStageFlags_skip_instance_writes              	= 1 << 25,		//Warmup and intermediate sub steps: simulate the particles without writing instances
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -7107,6 +7108,7 @@ typedef struct tfx_control_work_entry_s {
 typedef struct tfx_stage_work_entry_s {
 	tfx_stage pm;
 	double elapsed_time;
+	tfxU32 step_count;
 } tfx_stage_work_entry_t;
 
 typedef struct tfx_control_ribbon_work_entry_s {
@@ -7439,8 +7441,12 @@ typedef struct tfx_stage_s {
 	tfx_stage_info_t info;
 	//Banks of instance_data. All emitters write their sprite data to these banks. 
 	tfx_buffer_t instance_buffer;
+	//The instances written by the update before instance_buffer's, which captured_index points into. Only kept when double buffering sprites
+	tfx_buffer_t previous_instance_buffer;
 	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
 	tfxU32 current_sprite_buffer;
+	//Sub steps left in this update including the current one, so effects can spread the movement since the last update across them
+	tfxU32 steps_remaining;
 	tfxU32 highest_depth_index;
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
