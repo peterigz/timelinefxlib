@@ -11613,6 +11613,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	pm->manager_work.elapsed_time = frame_length;
 	pm->manager_work.step_count = 1;
+	pm->manager_work.write_step_count = 1;
 	pm->manager_work.pm = pm;
 
 	while (frame < frames && offset < 99999) {
@@ -14990,7 +14991,8 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	pm->current_particle_count = pm->instance_buffer.current_size;
 
-	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes);
+	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
+	pm->flags |= write_instances ? 0 : tfxStageFlags_instances_not_written;
 }
 
 void tfx__update_stage(void *data) {
@@ -15000,6 +15002,7 @@ void tfx__update_stage(void *data) {
 
 	double elapsed_time = pm->manager_work.elapsed_time;
 	tfxU32 step_count = pm->manager_work.step_count;
+	tfxU32 write_step_count = pm->manager_work.write_step_count;
 	TFX_ASSERT(step_count > 0);
 
 	tfx__sync_lock(&pm->updating);
@@ -15008,8 +15011,7 @@ void tfx__update_stage(void *data) {
 
 	for (tfxU32 step = 0; step != step_count; ++step) {
 		pm->steps_remaining = step_count - step;
-		//The last step is drawn and the one before it is what its captured_index interpolates from
-		tfx__update_stage_tick(pm, elapsed_time, pm->steps_remaining <= 2);
+		tfx__update_stage_tick(pm, elapsed_time, pm->steps_remaining <= write_step_count);
 	}
 	pm->steps_remaining = 0;
 
@@ -15094,8 +15096,10 @@ void tfx__shutdown_update_thread(tfx_stage pm) {
 	pm->update_thread_started = false;
 }
 
+tfxINTERNAL void tfx__do_stage_update(tfx_stage pm, double step_length, tfxU32 step_count, tfxU32 write_step_count);
+
 void tfx_UpdateStage(tfx_stage pm, double elapsed_time) {
-	tfx_UpdateStageSubSteps(pm, elapsed_time, 1);
+	tfx__do_stage_update(pm, elapsed_time, 1, 1);
 }
 
 void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count) {
@@ -15103,6 +15107,15 @@ void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count
 	if (step_count == 0) {
 		return;
 	}
+	//The last step is drawn and the one before it is what its captured_index interpolates from
+	tfx__do_stage_update(pm, step_length, step_count, 2);
+}
+
+void tfx_UpdateStageSubStep(tfx_stage pm, double step_length, tfxUpdateStepFlags flags) {
+	tfx__do_stage_update(pm, step_length, 1, (flags & tfxUpdateStepFlags_write_instances) ? 1 : 0);
+}
+
+tfxINTERNAL void tfx__do_stage_update(tfx_stage pm, double step_length, tfxU32 step_count, tfxU32 write_step_count) {
 	//This zone measures what the CALLER pays, not what the update costs - tfx__wait_for_stage_update_locked
 	//is the only place the caller blocks. If this bar is wide the update is no longer overlapping the caller's frame.
 	tfxPROFILE;
@@ -15116,10 +15129,11 @@ void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
+		tfx__wait_for_stage_update_locked(pm);
 		pm->manager_work.elapsed_time = step_length;
 		pm->manager_work.step_count = step_count;
+		pm->manager_work.write_step_count = write_step_count;
 		pm->manager_work.pm = pm;
-		tfx__wait_for_stage_update_locked(pm);
 		tfx__sync_unlock(&pm->update_thread_mutex);
 		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		tfx__update_stage(pm);
@@ -15130,13 +15144,15 @@ void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count
 			tfx__sync_unlock(&pm->update_thread_mutex);
 			return;
 		}
-		pm->manager_work.elapsed_time = step_length;
-		pm->manager_work.step_count = step_count;
-		pm->manager_work.pm = pm;
 		//Drain the previous frame's update before publishing this frame's work. Same
 		//timing as before: the join point is the start of the NEXT tfx_UpdateStage (or an
 		//explicit tfx_CompleteStageWork), never the end of this one.
 		tfx__wait_for_stage_update_locked(pm);
+		//Only after the wait: the update in flight reads manager_work outside the mutex
+		pm->manager_work.elapsed_time = step_length;
+		pm->manager_work.step_count = step_count;
+		pm->manager_work.write_step_count = write_step_count;
+		pm->manager_work.pm = pm;
 		//No update is running now so this is the one point where the update's view of the locations can change
 		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		bool spawned = tfx__ensure_update_thread_locked(pm);
@@ -17154,6 +17170,7 @@ Get the billboard buffer in the particle manager containing all the 3d billboard
 tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer);
 }
 
@@ -17161,12 +17178,14 @@ tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + pm->layer_start[layer];
 }
 
 int tfx_GetInstanceCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	return pm->instance_buffer.current_size;
 }
 
@@ -17186,6 +17205,7 @@ int tfx_GetPreviousInstanceCount(tfx_stage pm) {
 int tfx_GetInstanceCountByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	TFX_ASSERT(layer < tfxLAYERS);
 	return pm->layer_sizes[layer];
 }
@@ -17618,7 +17638,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	//that double-dispatches age work against the same bank.
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
-	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes);
+	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
 	pm->instance_buffer.clear();
 	pm->previous_instance_buffer.clear();
 	for (tfxEachLayer) {
@@ -24504,6 +24524,7 @@ tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID eff
 bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **instances, tfx_effect_instance_data_t **instance_data, tfxU32 *instance_count) {
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	if (pm->effect_index_position >= pm->effects_in_use[pm->current_ebuff].current_size) {
 		*instances = nullptr;
 		*instance_data = nullptr;
@@ -24526,6 +24547,7 @@ void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count) {
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
+	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
 	tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
 	//Effects with nothing on this layer are skipped rather than read, as ones added since the update have no offsets yet
 	while (pm->effect_index_position < effects_in_use.current_size && pm->effects[effects_in_use[pm->effect_index_position].index].instance_data.sprite_index_point[layer] == 0) {

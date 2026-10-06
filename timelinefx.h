@@ -991,6 +991,13 @@ typedef enum {
 
 typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bits
 
+typedef enum {
+	tfxUpdateStepFlags_none = 0,
+	tfxUpdateStepFlags_write_instances			= 1 << 0,		//Write the instance buffer this step. Set it on the last two steps before you draw
+} tfx_update_step_flag_bits;
+
+typedef tfxU32 tfxUpdateStepFlags;              //tfx_update_step_flag_bits
+
 typedef struct tfx_refresh_result_s {
 	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags
 	tfxU32 library_version;              //The library_version found on disk, or the loaded one if unreadable
@@ -1950,6 +1957,20 @@ tfx_UpdateStageSubSteps(pm, elapsed, 1).
 * @param step_count            The number of steps to run, must be at least 1
 */
 tfxAPI void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count);
+
+/*
+Update a stage by a single step, choosing whether the step writes instances. Use this instead of tfx_UpdateStageSubSteps when you need to change
+things in the stage between steps, like moving an effect along with something in your own fixed step simulation. Each call waits for the step
+before it to finish, so do your own work for the next step before calling it again and the two will overlap. Steps that don't write instances
+are cheaper. Pass tfxUpdateStepFlags_write_instances on the last two steps before you draw: the last is the buffer to draw and the one before
+it is what captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. If only the last step writes, the previous buffer
+is whatever the last write before it was, so you interpolate across all the steps since then. Don't read the instance buffer after a step that
+didn't write instances, it doesn't describe the particles until the next step that does.
+* @param pm                    A pointer to an initialised tfx_stage_t.
+* @param step_length           The length of the step in milliseconds
+* @param flags                 tfxUpdateStepFlags_write_instances to write the instance buffer, or tfxUpdateStepFlags_none
+*/
+tfxAPI void tfx_UpdateStageSubStep(tfx_stage pm, double step_length, tfxUpdateStepFlags flags);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function

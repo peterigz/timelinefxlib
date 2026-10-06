@@ -3143,6 +3143,7 @@ typedef enum {
 	tfxStageFlags_warming_up		                	= 1 << 23,
 	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
 	tfxStageFlags_skip_instance_writes              	= 1 << 25,		//Warmup and intermediate sub steps: simulate the particles without writing instances
+	tfxStageFlags_instances_not_written             	= 1 << 26,		//The last tick skipped instance writes, so the instance buffer doesn't match the simulation
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -7109,6 +7110,7 @@ typedef struct tfx_stage_work_entry_s {
 	tfx_stage pm;
 	double elapsed_time;
 	tfxU32 step_count;
+	tfxU32 write_step_count;		//How many of the last steps write instances
 } tfx_stage_work_entry_t;
 
 typedef struct tfx_control_ribbon_work_entry_s {
