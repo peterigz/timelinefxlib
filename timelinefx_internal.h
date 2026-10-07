@@ -5697,8 +5697,13 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 
 #include <tracy/Tracy.hpp>
 
+#if defined(tfxTRACY_TRANSIENT) && defined(TRACY_ENABLE)
+#define tfxPROFILE SuppressVarShadowWarning(ZoneTransient(___tracy_scoped_zone, true))
+#define tfxPROFILE_NAMED(name) SuppressVarShadowWarning(ZoneTransientN(___tracy_scoped_zone, name, true))
+#else
 #define tfxPROFILE ZoneScoped
 #define tfxPROFILE_NAMED(name) ZoneScopedN(name)
+#endif
 #define tfxPROFILE_VALUE(value) ZoneValue(value)
 #define tfxPROFILE_TEXT(format, ...) ZoneTextF(format, ##__VA_ARGS__)
 

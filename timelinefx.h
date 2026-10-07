@@ -31,6 +31,11 @@
 //the library into Tracy zones. Without it they compile away to nothing, so a shipping
 //build pays for no instrumentation at all.
 //#define tfxTRACY
+//Define tfxTRACY_TRANSIENT instead of tfxTRACY when the library lives in a module that can be unloaded (e.g. a hot reloaded DLL)
+//#define tfxTRACY_TRANSIENT
+#if defined(tfxTRACY_TRANSIENT) && !defined(tfxTRACY)
+#define tfxTRACY
+#endif
 #define TFX_THREAD_SAFE
 //#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
