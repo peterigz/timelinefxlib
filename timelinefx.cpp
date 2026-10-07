@@ -97,29 +97,50 @@ size_t tfxGetNextPower(size_t n) {
 	return 1ULL << (tfx__scan_reverse(n) + 1);
 }
 
-void tfxAddHostMemoryPool(size_t size) {
-	TFX_ASSERT(tfxStore->memory_pool_count < 32);    //Reached the max number of memory pools
+//Must be called with the pool growth lock held
+bool tfxAddHostMemoryPool(size_t size) {
+	if (tfxStore->memory_pool_count >= tfxMAX_MEMORY_POOLS) {
+		TFX_ASSERT(false);    //Reached the max number of memory pools
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Reached the maximum number of memory pools (%i).\n", TFX_ERROR_NAME, tfxMAX_MEMORY_POOLS);
+		return false;
+	}
+	size_t required_size = size + tfx__BLOCK_POINTER_OFFSET + tfx__BLOCK_SIZE_OVERHEAD + tfx__MEMORY_ALIGNMENT * 2;
 	size_t pool_size = tfxStore->default_memory_pool_size;
-	if (pool_size <= size) {
-		pool_size = tfxGetNextPower(size);
+	if (pool_size < required_size) {
+		pool_size = tfxGetNextPower(required_size);
 	}
 	TFX_PRINT_NOTICE(TFX_NOTICE_COLOR"%s: Ran out of memory, creating a new pool of size %zu. \n", TFX_NOTICE_NAME, pool_size);
-	tfxStore->memory_pools[tfxStore->memory_pool_count] = (tfx_pool *)tfxCurrentContext->allocation_callbacks.allocate(tfxCurrentContext->allocation_callbacks.user_data, pool_size, 16);
-	TFX_ASSERT(tfxStore->memory_pools[tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
-	tfx_AddPool(tfxMemoryAllocator, (tfx_pool *)tfxStore->memory_pools[tfxStore->memory_pool_count], pool_size);
+	tfx_pool *pool = (tfx_pool *)tfxCurrentContext->allocation_callbacks.allocate(tfxCurrentContext->allocation_callbacks.user_data, pool_size, 16);
+	if (!pool) {
+		TFX_ASSERT(false);    //Unable to allocate more memory. Out of memory?
+		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Unable to allocate a new memory pool of size %zu.\n", TFX_ERROR_NAME, pool_size);
+		return false;
+	}
+	tfx_AddPool(tfxMemoryAllocator, pool, pool_size);
+	tfxStore->memory_pools[tfxStore->memory_pool_count] = pool;
 	tfxStore->memory_pool_sizes[tfxStore->memory_pool_count] = pool_size;
 	tfxStore->memory_pool_count++;
+	return true;
 }
 
+tfxINTERNAL inline void tfx__lock_pool_growth() {
+	while (tfx__compare_and_exchange(&tfxStore->pool_growth_access, 1, 0) != 0);
+}
+
+tfxINTERNAL inline void tfx__unlock_pool_growth() {
+	tfx__store_release(&tfxStore->pool_growth_access, 0);
+}
+
+//Each slow path retries before growing so threads that failed together only add one pool
 void *tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
-	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 25794944) {
-		int d = 0;
-	}
 	if (!allocation) {
-		tfxAddHostMemoryPool(size);
+		tfx__lock_pool_growth();
 		allocation = tfx_Allocate(tfxMemoryAllocator, size);
+		while (!allocation && tfxAddHostMemoryPool(size)) {
+			allocation = tfx_Allocate(tfxMemoryAllocator, size);
+		}
+		tfx__unlock_pool_growth();
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
@@ -127,13 +148,14 @@ void *tfxAllocate(size_t size) {
 
 void *tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
-	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	if (offset_from_allocator == 25794944) {
-		int d = 0;
-	}
-	if (!allocation) {
-		tfxAddHostMemoryPool(size);
+	//A size of 0 frees the memory and returns null
+	if (!allocation && size) {
+		tfx__lock_pool_growth();
 		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+		while (!allocation && tfxAddHostMemoryPool(size)) {
+			allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+		}
+		tfx__unlock_pool_growth();
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
@@ -141,14 +163,14 @@ void *tfxReallocate(void *memory, size_t size) {
 
 void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
-	ptrdiff_t offset_from_allocator = (ptrdiff_t)allocation - (ptrdiff_t)tfxMemoryAllocator;
-	tfx_header *block = tfx__block_from_allocation(allocation);
-	if (offset_from_allocator == 25794944) {
-		int d = 0;
-	}
 	if (!allocation) {
-		tfxAddHostMemoryPool(size);
+		size_t size_with_alignment_gap = size + alignment + sizeof(tfx_header);
+		tfx__lock_pool_growth();
 		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+		while (!allocation && tfxAddHostMemoryPool(size_with_alignment_gap)) {
+			allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+		}
+		tfx__unlock_pool_growth();
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;

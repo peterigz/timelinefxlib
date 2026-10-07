@@ -400,6 +400,12 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
 	return _InterlockedExchange((volatile long *)target, value);
 }
+
+//x86 stores are already release ordered, so only the compiler needs fencing
+static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_thread_access value) {
+	_ReadWriteBarrier();
+	*target = value;
+}
 #endif
 
 #define tfx__writebarrier _WriteBarrier();
@@ -443,6 +449,10 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 
 static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
 	return __sync_lock_test_and_set(target, value);
+}
+
+static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_thread_access value) {
+	__atomic_store_n(target, value, __ATOMIC_RELEASE);
 }
 
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
@@ -689,7 +699,7 @@ do { \
 } while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0)); \
 TFX_ASSERT(allocator->access != 0);
 
-#define tfx__unlock_thread_access(allocator) allocator->access = 0;
+#define tfx__unlock_thread_access(allocator) tfx__store_release(&allocator->access, 0);
 
 #else
 
@@ -1570,7 +1580,7 @@ tfx_size tfx_GetLinearAllocatorCapacity(tfx_linear_allocator_t *allocator) {
 #endif
 
 size_t tfxGetNextPower(size_t n);
-void tfxAddHostMemoryPool(size_t size);
+bool tfxAddHostMemoryPool(size_t size);
 void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
@@ -3910,14 +3920,13 @@ struct tfx_vector_t {
 	}
 
 	inline tfxU32        locked_push_back(const T &v) {
-		//suspect, just use a mutex instead?
-		while (tfx__compare_and_exchange((tfx_thread_access volatile *)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange((tfx_thread_access volatile *)&locked, 1, 0) != 0);
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
 		memcpy((void *)&data[current_size], (const void *)&v, sizeof(T));
 		tfxU32 index = current_size++;
-		tfx__exchange((tfx_thread_access volatile *)&locked, 0);
+		tfx__store_release((tfx_thread_access volatile *)&locked, 0);
 		return index;
 	}
 	inline T &push_back(const T &v) {
@@ -4655,12 +4664,13 @@ struct tfx_bucket_array_t {
 	}
 
 	inline tfxU32 locked_push_back(const T &v) {
-		while (tfx__compare_and_exchange(&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange(&locked, 1, 0) != 0);
 
 		push_back(v);
+		tfxU32 index = current_size - 1;
 
-		tfx__exchange(&locked, 0);
-		return current_size - 1;
+		tfx__store_release(&locked, 0);
+		return index;
 	}
 
 	inline T *insert(tfxU32 insert_index, const T &v) {
@@ -5009,6 +5019,7 @@ typedef struct tfx_data_types_dictionary_s {
 
 //Global variables
 typedef struct tfx_storage_s {
+	tfx_thread_access volatile pool_growth_access;
 	tfxU32 memory_pool_count;
 	size_t default_memory_pool_size;
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
