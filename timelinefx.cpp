@@ -24630,7 +24630,7 @@ void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw) {
 void tfx_SetEffectRotation(tfx_stage pm, tfxEffectID effect_index, float rotation[4]) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
-	tfx_quaternion_t quaternion = tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]);
+	effect.rotation = tfx_quaternion_t(rotation[3], rotation[0], rotation[1], rotation[2]);
 	effect.state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
