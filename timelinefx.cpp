@@ -17828,10 +17828,11 @@ tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *ins
 }
 
 tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm) {
-    tfx_effect_index_t parent_index;
+    tfx_effect_index_t parent_index = {};
 	if (!pm->free_effects.empty()) {
         tfx__readbarrier;
 		parent_index = pm->free_effects.pop_back();
+		parent_index.sort_key = 0;
 		//Reset the bookkeeping in the instance data here or it can cause a crash and glitches 
 		//further down the road.
 		tfx__reset_effect_instance_data(&pm->effects[parent_index.index].instance_data);
