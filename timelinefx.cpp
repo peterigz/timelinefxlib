@@ -2453,8 +2453,6 @@ tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
 
 void tfx__update_emitter_max_life(tfx_effect_descriptor effect) {
 	effect->state_properties.max_life = tfx__get_max_life(effect);
-	const bool gpu_emitter = effect->type == tfxEmitterType && effect->state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu;
-	effect->state_properties.gpu_capacity_estimate = gpu_emitter ? tfx__compute_max_gpu_particles(effect) : 0;
 }
 
 bool tfx__is_finite_emitter(tfx_effect_descriptor emitter) {
@@ -5395,6 +5393,12 @@ void tfx_FreeLibrary(tfx_library library) {
 	tfxFREE(library);
 }
 
+//The graph slots Shaders/tfx_gpu_particles.slang reads from a particle emitter's block of the lookups
+static const tfx_graph_type tfx__gpu_particle_graph_order[] = {
+	tfxOvertime_intensity, tfxOvertime_alpha_sharpness, tfxOvertime_curved_alpha, tfxOvertime_gradient_mapper, tfxOvertime_velocity, tfxOvertime_width,
+	tfxOvertime_height, tfxOvertime_weight, tfxOvertime_pitch_spin, tfxOvertime_yaw_spin, tfxOvertime_roll_spin, tfxOvertime_stretch,
+};
+
 void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor, stack);
 	//tfxStore->all_graph_nodes.clear();
@@ -5430,6 +5434,8 @@ void tfx__update_library_compute_nodes() {
 					for (tfx_graph_t &graph : library->graphs[current->state_properties.graph_list_index].graphs) {
 
 						if (!tfx__gpu_overtime_graph(&graph)) continue;
+
+						TFX_ASSERT(current->type != tfxEmitterType || index - current->gpu_lookup_offset >= tfxArrayCount(tfx__gpu_particle_graph_order) || graph.type == tfx__gpu_particle_graph_order[index - current->gpu_lookup_offset]);
 
 						tfx_gpu_graph_data_t graph_data{};
 						TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
@@ -13098,6 +13104,11 @@ void tfx__apply_template_override(tfx_effect_template effect_template, tfx_templ
 			tfx__get_shared_emitter_properties(descriptor)->spawn_amount = template_override->count;
 		}
 		break;
+	case tfx_template_override_gpu_capacity:
+		if (descriptor->type == tfxEmitterType) {
+			descriptor->state_properties.gpu_capacity_override = template_override->count;
+		}
+		break;
 	case tfx_template_override_global_graph_scale: {
 		tfx_effect_descriptor original_effect = effect_template->original_effect;
 		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
@@ -13180,6 +13191,17 @@ void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter
 	template_override.type = tfx_template_override_single_spawn_amount;
 	template_override.path_hash = t->paths.MakeKey(emitter_path);
 	template_override.count = amount;
+	tfx__set_template_override(t, &template_override);
+}
+
+void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char *emitter_path, tfxU32 capacity) {
+	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
+	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
+	TFX_ASSERT(t->paths.At(emitter_path)->type == tfxEmitterType);			 //The path does not point to a emitter type
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_gpu_capacity;
+	template_override.path_hash = t->paths.MakeKey(emitter_path);
+	template_override.count = capacity;
 	tfx__set_template_override(t, &template_override);
 }
 
@@ -13802,35 +13824,6 @@ tfxINTERNAL void tfx__build_stage_effect_emitters(tfx_stage pm, tfxEffectID effe
 					target_emitters.push_back({ shared_properties->paired_emitter_hash, index, tfxRibbonType });
 				}
 			}
-
-			/*if (pm->flags & tfxStageFlags_use_compute_shader && tfx_GetEffectInfo(child)->children.empty()) {
-				int free_slot = AddComputeController();
-				if (free_slot != -1) {
-					emitter.compute_slot_id = free_slot;
-					emitter.state_properties.property_flags |= tfxEmitterPropertyFlags_is_bottom_emitter;
-					tfx_compute_controller_t &c = *(static_cast<tfx_compute_controller_t*>(compute_controller_ptr) + free_slot);
-					c.flags = 0;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_random_color;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_relative_position;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_relative_angle;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_edge_traversal;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_base_uniform_size;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_lifetime_uniform_size;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_reverse_animation;
-					c.flags |= emitter.state_properties.property_flags & tfxParticleControlFlags_play_once;
-					c.flags |= ((properties.emission_type[emitter.property_index] == tfxPoint) << 3);
-					c.flags |= ((properties.emission_type[emitter.property_index] == tfxArea) << 4);
-					c.flags |= ((properties.emission_type[emitter.property_index] == tfxLine) << 5);
-					c.flags |= ((properties.emission_type[emitter.property_index] == tfxEllipse) << 6);
-					c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxLoop) << 7);
-					c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxKill) << 8);
-					c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxLetFree) << 9);
-					properties.compute_flags[emitter.property_index] = c.flags;
-					c.image_handle = properties.image_handle[emitter.property_index];
-					c.image_handle = properties.image_handle[emitter.property_index];
-				}
-			}*/
-
 		}
 	}
 
@@ -13880,10 +13873,6 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 	tfxU32 buffer = pm->current_ebuff;
 
 	TFX_ASSERT(effect->type == tfxEffectType);
-	if (pm->flags & tfxStageFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
-		tfx__sync_unlock(&pm->add_effect_mutex);
-		return tfxINVALID;
-	}
 	if (!tfx__effect_emitters_fit(pm, effect)) {
 		tfx__sync_unlock(&pm->add_effect_mutex);
 		return tfxINVALID;
@@ -14345,10 +14334,28 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
+tfxINTERNAL void tfx__age_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, float frame_length) {
+	for (tfxU32 slot : user_location_list->active_slots) {
+		tfx_user_spawn_location_t &location = user_location_list->locations[slot];
+		if (location.flags & tfxUserSpawnLocationFlags_fresh) {
+			location.flags &= ~tfxUserSpawnLocationFlags_fresh;
+			continue;
+		}
+		//Holding the timeline means the amount graph resumes where it left off and a single shot it hasn't reached yet isn't skipped over
+		if (!(location.flags & tfxUserSpawnLocationFlags_paused)) {
+			location.previous_age = location.age;
+			location.age += frame_length;
+		}
+	}
+}
+
 void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer) {
 	tfxPROFILE;
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
+	if (effect.state_flags & tfxEffectStateFlags_user_spawn_locations && effect.user_spawn_locations) {
+		tfx__age_user_spawn_locations(effect.user_spawn_locations, (float)pm->frame_length);
+	}
 	float &timeout_counter = effect.timeout_counter;
 	//During warmup the ebuff is held constant so we mustn't clear or push to next_buffer's lists. If
 	//an effect/emitter expires during warmup it stays in current_ebuff with the _remove flag set and
@@ -14436,7 +14443,9 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		if (!warming_up) {
 			effect.emitter_indexes[next_buffer].push_back(emitter_index);
 		}
-		pm->control_emitter_queue.push_back(emitter_index);
+		if (emitter.state_properties.gpu_group_index == tfxINVALID || warming_up) {
+			pm->control_emitter_queue.push_back(emitter_index);
+		}
 	}
 }
 
@@ -14561,7 +14570,6 @@ void tfx__set_stage_timings(tfx_stage pm, double elapsed_time, double max_frame_
 	pm->frame_length_wide = tfxWideSetSingle((float)pm->frame_length);
 	pm->update_time = elapsed_time / 1000.0;
 	pm->update_time_wide = tfxWideSetSingle((float)pm->update_time);
-	pm->new_compute_particle_index = 0;
 }
 
 tfxINTERNAL inline bool tfx__effect_sorts_before(const tfx_effect_index_t &effect, const tfx_effect_index_t &other, bool by_depth) {
@@ -14598,8 +14606,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 		tfx__sort_effects_in_use(pm);
 	}
 
-	pm->gpu_current_time_ms += pm->frame_length;
-	tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
+	tfx__begin_gpu_frame(pm);
 
 	//A tick that writes no instances leaves both buffers alone so captured_index keeps pointing at the last written one
 	if (write_instances && (pm->flags & tfxStageFlags_double_buffer_sprites)) {
@@ -14645,8 +14652,6 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 			pm->control_emitter_queue.clear();
 			pm->spawn_work.clear();
 			pm->instance_buffer.clear();
-			pm->gpu_current_time_ms += pm->frame_length;
-			tfx__tick_gpu_groups(pm, pm->gpu_current_time_ms);
 
 			//Spawn phase — issued for every warming effect, runs in parallel
 			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
@@ -14670,7 +14675,6 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 			}
 			pm->deffered_spawn_work.clear();
 			tfx__complete_all_work(&pm->work_queue);
-			tfx__fold_gpu_group_spawn_ages(pm);
 			pm->user_spawn_runs.clear();
 			tfx_AdvanceRandom(&pm->threaded_random);
 
@@ -14827,7 +14831,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	pm->deffered_spawn_work.clear();
 
 	tfx__complete_all_work(&pm->work_queue);
-	tfx__fold_gpu_group_spawn_ages(pm);
+	if (pm->gpu_groups.current_size) {
+		tfx__record_gpu_groups(pm);
+	}
 	pm->user_spawn_runs.clear();
 
 	tfx_ribbon_dispatch_t ribbon_dispatch{};
@@ -14923,6 +14929,10 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	pm->ribbon_control_work.clear();
 
 	tfx__update_ribbon_buffer_requirements(pm);
+
+	if (pm->gpu_groups.current_size) {
+		tfx__layout_gpu_instances(pm);
+	}
 
 	{
 		//Braces exist only to scope the zone: this walks every depth index of every in-use effect on
@@ -17057,7 +17067,6 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 
 	tfxStageFlags current_flags = (pm->flags & tfxStageFlags_dynamic_sprite_allocation) |
 											(pm->flags & tfxStageFlags_double_buffer_sprites) |
-											(pm->flags & tfxStageFlags_record_with_compute_image_index) |
 											(pm->flags & tfxStageFlags_recording_sprites);
 
 	tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_instance_t));
@@ -17764,7 +17773,6 @@ void tfx_FreeStage(tfx_stage pm) {
 	pm->emitters.free();
 	pm->gpu_ribbon_emitters.free();
 	pm->ribbon_emitters.free();
-	pm->free_compute_controllers.free();
 	pm->particle_id = 0;
 	pm->spawn_work.free();
 	pm->ribbon_work.free();
@@ -18665,6 +18673,16 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
 
+	//While warming up a GPU emitter runs on the CPU, but its bank is packed into the ring afterwards so it's still clamped to fit
+	const bool on_gpu = emitter.state_properties.gpu_group_index != tfxINVALID && !(pm->flags & tfxStageFlags_warming_up);
+	spawn_work_entry->gpu_ring_free = tfxINVALID;
+	if (emitter.state_properties.gpu_group_index != tfxINVALID) {
+		tfx_gpu_particle_group_t &group = pm->gpu_groups[emitter.state_properties.gpu_group_index];
+		tfxU32 ring_free = on_gpu ? tfx__advance_gpu_group(pm, &emitter) : group.capacity - group.current_size;
+		tfxU32 bank_size = emitter.particles_index != tfxINVALID ? pm->particle_array_buffers[emitter.particles_index].current_size : 0;
+		spawn_work_entry->gpu_ring_free = ring_free > bank_size ? ring_free - bank_size : 0;
+	}
+
 	spawn_work_entry->user_spawn_locations = nullptr;
 	if (parent_effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(spawn_work_entry->shared_properties->emission_type)) {
 		spawn_work_entry->user_spawn_locations = parent_effect.user_spawn_locations;
@@ -18708,6 +18726,10 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		return;
 	}
 	spawn_work_entry->root_effect_flags = pm->effects[emitter.parent_index].effect_flags;
+	if (on_gpu) {
+		//The GPU instances aren't in the effect's depth order, so the spawn mustn't add depth indexes for them
+		spawn_work_entry->root_effect_flags &= ~tfxEffectPropertyFlags_is_ordered;
+	}
 	bool ordered_effect = (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_age_order) || (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 
 	emitter.state_flags |= parent_effect.state_flags & (tfxEffectStateFlags_no_tween | tfxEffectStateFlags_no_tween_this_update);
@@ -18747,7 +18769,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		emitter.captured_position = emitter.world_position;
 	}
 
-	//bool is_compute = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->flags & tfxStageFlags_use_compute_shader;
 	tfxU32 max_spawn_count = tfx__new_sprites_needed(pm, spawn_work_entry, emitter_index, &parent_effect, &shared_properties);
 	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
 
@@ -18762,7 +18783,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
-	const bool skip_instance_accounting = (pm->flags & tfxStageFlags_warming_up) > 0;
+	const bool skip_instance_accounting = (pm->flags & tfxStageFlags_warming_up) > 0 || on_gpu;
 	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
 	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
 	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
@@ -18826,7 +18847,8 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	//A sparse decay tail can leave no particles alive between spawns, which must not time the effect out
 	bool single_decay_pending = emitter.single_decay_age > 0.f && !(emitter.state_flags & (tfxEmitterStateFlags_single_shot_done | tfxEmitterStateFlags_stop_spawning));
-	if (particle_buffer.current_size != 0 || single_decay_pending) {
+	bool ring_has_particles = emitter.state_properties.gpu_group_index != tfxINVALID && pm->gpu_groups[emitter.state_properties.gpu_group_index].current_size != 0;
+	if (particle_buffer.current_size != 0 || single_decay_pending || ring_has_particles) {
 		parent_effect.active_emitters++;
 	}
 
@@ -18845,7 +18867,9 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	tfx__set_user_spawn_decay_source(&source, entry->shared_properties, (float)pm->frame_length);
 	source.delay = emitter.state_properties.delay_spawning;
 	source.loop_length = emitter.source_emitter->state_properties.loop_length;
-	source.distance_rate = pm->update_time > 0.0 ? tfx__spawn_rate_over_distance(emitter, entry->properties, entry->shared_properties) / (float)pm->update_time : 0.f;
+	//captured_position only moves once per tfx_UpdateStage, so each sub step takes its share of the move and warmup ticks none of it
+	const bool counts_distance = pm->update_time > 0.0 && !(pm->flags & tfxStageFlags_warming_up);
+	source.distance_rate = counts_distance ? tfx__spawn_rate_over_distance(emitter, entry->properties, entry->shared_properties) / ((float)pm->update_time * (float)tfx__Max(pm->manager_work.step_count, (tfxU32)1)) : 0.f;
 	source.single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	//Matches the area scaling tfx__new_sprites_needed applies to the whole amount
 	if (!source.single && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
@@ -18911,16 +18935,16 @@ tfxINTERNAL double tfx__user_spawn_ribbon_weights(tfx_ribbon_work_entry_t *entry
 }
 
 //The amount a single emitter with match_amount_to_grid_points spawns so that every grid point gets one particle
-tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_particle_emitter_state_t &emitter, const tfx_shared_properties_t *shared_properties) {
+tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_common_state_properties_t &state_properties, const tfx_shared_properties_t *shared_properties, float spawn_quantity) {
 	float x = tfxMax(shared_properties->grid_points.x, 1.f);
 	float y = tfxMax(shared_properties->grid_points.y, 1.f);
 	float z = tfxMax(shared_properties->grid_points.z, 1.f);
 	switch (shared_properties->emission_type) {
 	case tfx_emission_type::tfxArea:
-		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) {
+		if (state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) {
 			return x * y * z;
 		}
-		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends) {
+		else if (state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends) {
 			return x * z * 2 + y * z * 2 - 4 * z;
 		}
 		return x * z * 2 + (y - 2) * (x * 2 + z * 2 - 4);
@@ -18936,7 +18960,7 @@ tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_particle_emitter_state
 	default:
 		break;
 	}
-	return (float)emitter.spawn_quantity;
+	return spawn_quantity;
 }
 
 //Sizes this update's burst and decay tail for every spawn point of a single other_emitter, storing each point's amount for the spawn to read back
@@ -19180,7 +19204,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		}
 		float burst_amount = 0.f;
 		if (emitter.single_decay_age == 0.f) {
-			burst_amount = match_grid_points ? tfx__grid_points_spawn_amount(emitter, shared_properties) : (float)emitter.spawn_quantity;
+			burst_amount = match_grid_points ? tfx__grid_points_spawn_amount(emitter.state_properties, shared_properties, (float)emitter.spawn_quantity) : (float)emitter.spawn_quantity;
 		}
 		float frame_length = (float)pm->frame_length;
 		tfxU32 decay_amount = tfx__single_decay_spawn_amount((float)shared_properties->single_decay_amount * global_amount, emitter.single_decay_age, emitter.single_decay_age + frame_length, shared_properties->single_decay_time, shared_properties->single_decay_shape);
@@ -19244,7 +19268,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	else {
 		//A decaying emitter already sized its burst to the grid above
 		if (match_grid_points && !single_decay) {
-			emitter.spawn_quantity = tfx__grid_points_spawn_amount(emitter, shared_properties);
+			emitter.spawn_quantity = tfx__grid_points_spawn_amount(emitter.state_properties, shared_properties, (float)emitter.spawn_quantity);
 		}
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
@@ -19350,7 +19374,6 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	work_entry->tween = tween;
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
-	work_entry->spawned_max_age = 0.f;
 	work_entry->particle_data = &pm->particle_arrays[emitter.particles_index];
 
 	if (tween >= 1) {
@@ -19392,8 +19415,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		}
 	} 
 
-	if ((emitter.state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu) && work_entry->amount_to_spawn > 0) {
-		tfx__gpu_group_record_spawns(pm, work_entry->emitter_index, work_entry->amount_to_spawn);
+	if (work_entry->amount_to_spawn > work_entry->gpu_ring_free) {
+		pm->gpu_dropped_spawns += work_entry->amount_to_spawn - work_entry->gpu_ring_free;
+		work_entry->amount_to_spawn = work_entry->gpu_ring_free;
 	}
 
 	if (work_entry->user_spawn_locations) {
@@ -19549,9 +19573,6 @@ void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, t
 	tfx__spawn_particle_spin(&pm->work_queue, work_entry);
 	if (work_entry->user_spawn_locations) {
 		tfx__spawn_particle_user_location_tweaks(&pm->work_queue, work_entry);
-	}
-	if (emitter.state_properties.gpu_group_index != tfxINVALID) {
-		tfx__measure_gpu_spawned_max_age(pm, work_entry);
 	}
 }
 
@@ -20029,6 +20050,27 @@ void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data)
 	TFX_ASSERT(particle == entry->amount_to_spawn);
 }
 
+//Scalar twins of the euler order in tfx__block_particle_spin: q = yaw(y) * pitch(x) * roll(z)
+tfxINTERNAL inline tfx_quaternion_t tfx__spin_euler_to_quaternion(tfx_vec3_t angles) {
+	const float sin_pitch = sinf(angles.pitch * .5f), cos_pitch = cosf(angles.pitch * .5f);
+	const float sin_yaw = sinf(angles.yaw * .5f), cos_yaw = cosf(angles.yaw * .5f);
+	const float sin_roll = sinf(angles.roll * .5f), cos_roll = cosf(angles.roll * .5f);
+	return tfx_quaternion_t(
+		cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw,
+		cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw,
+		cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw,
+		sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw);
+}
+
+tfxINTERNAL inline tfx_vec3_t tfx__quaternion_to_spin_euler(const tfx_quaternion_t &q) {
+	const float sin_pitch = 2.f * (q.w * q.x - q.y * q.z);
+	tfx_vec3_t angles;
+	angles.pitch = asinf(tfx__Clamp(-1.f, 1.f, sin_pitch));
+	angles.yaw = atan2f(2.f * (q.w * q.y + q.z * q.x), 1.f - 2.f * (q.x * q.x + q.y * q.y));
+	angles.roll = atan2f(2.f * (q.w * q.z + q.x * q.y), 1.f - 2.f * (q.z * q.z + q.x * q.x));
+	return angles;
+}
+
 //The per location multipliers, and for a non relative emitter the emission direction, which is already in world space by the time it
 //gets here so the location's rotation goes on top of it. Relative emitters take their rotation live in the transform instead. Splatter
 //is applied where it's generated, in tfx__spawn_particle_micro_update
@@ -20042,6 +20084,9 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 	if (!(user_location_list.flags & tfxUserSpawnLocationListFlags_has_factors) && !rotate_emission) {
 		return;
 	}
+	//Relative angle particles turn with the emitter live, so the location's part of that rotation is baked into their angle offsets
+	const bool rotate_angle = rotate_emission && (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
+	const bool spin_pitch_and_yaw = (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) != 0;
 
 	tfx_particle_soa_t &bank = *entry->particle_data;
 	//Matches how the effect's own particle height multiplier is applied in tfx__spawn_particle_size
@@ -20071,6 +20116,11 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 		const bool add_noise_offset = multiply_run && offset_noise && multipliers.noise_offset != 0.f;
 		const float inverse_life = multipliers.life > 0.f ? 1.f / multipliers.life : FLT_MAX;
 		tfx_quaternion_t rotation = rotate_run ? tfx__unpack16bit_quaternion(location.packed_rotation) : tfx_quaternion_t();
+		const bool rotate_angle_run = rotate_run && rotate_angle;
+		//The shader composes conj(emitter) * particle, and the location sits in front of the emitter: conj(location * emitter) = conj(emitter) * conj(location)
+		const tfx_quaternion_t inverse_rotation(rotation.w, -rotation.x, -rotation.y, -rotation.z);
+		//Matches the emitter's twist about the roll axis that the roll only spin adds live
+		const float location_roll = rotate_angle_run && !spin_pitch_and_yaw ? 2.f * atan2f(rotation.x, rotation.w) : 0.f;
 		for (tfxU32 i = 0; i != run.count; ++i) {
 			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
 			if (scale_size) {
@@ -20104,6 +20154,15 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 				tfx_vec3_t normal = tfx__unpack10bit_unsigned(bank.velocity_normal[index]);
 				normal = tfx__rotate_vector_quaternion(&rotation, normal);
 				bank.velocity_normal[index] = tfx__pack10bit_unsigned(&normal);
+			}
+			if (rotate_angle_run) {
+				if (spin_pitch_and_yaw) {
+					tfx_vec3_t offsets = tfx__unpack10bit_unsigned(bank.rotation_offsets[index]) * tfxPI2;
+					offsets = tfx__quaternion_to_spin_euler(inverse_rotation * tfx__spin_euler_to_quaternion(offsets)) * (1.f / tfxPI2);
+					bank.rotation_offsets[index] = tfx__pack10bit_unsigned(&offsets);
+				} else {
+					bank.rotation_offset[index] += location_roll;
+				}
 			}
 		}
 	}
@@ -22402,68 +22461,210 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 
 //---- GPU compute particle buffer management ----
 
-
 //Compute the maximum number of simultaneously live particles an emitter can produce.
-//Used to determine each emitter's contribution to its group's ring_capacity.
-tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
-	float max_life_ms = tfx__get_max_life(child);
-	tfx_graph_t *amount_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index];
-	if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
-		float max_amount_per_frame = tfx__get_graph_max_value(amount_graph);
-		tfx_shared_properties_t *shared_props = tfx__get_shared_emitter_properties(child);
-		tfxU32 total = shared_props->spawn_amount + shared_props->spawn_amount_variation;
-		total += tfx__has_single_decay(shared_props) ? shared_props->single_decay_amount : 0;
-		total += (tfxU32)ceilf(max_amount_per_frame);
-		return tfx__Max(total, (tfxU32)1);
-	} else {
-		//Scan across the emitter's age to find the peak spawn rate, accounting for
-		//amount variation and the parent effect's global amount multiplier.
-		tfx_graph_t *amount_variation_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index];
-		float amount_last_frame = tfx__get_graph_last_frame(amount_graph, 60.f);
-		float variation_last_frame = tfx__get_graph_last_frame(amount_variation_graph, 60.f);
-		float max_amount_per_sec = 0.f;
-		float last_frame = fmaxf(amount_last_frame, variation_last_frame);
-		if (last_frame > 0) {
-			for (float f = 0; f < last_frame; ++f) {
-				float global_adjust = 1.f;
-				if (child->parent) {
-					global_adjust = tfx__get_graph_value_by_age(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index], f);
-				}
-				float amount = tfx__get_graph_value_by_age(amount_graph, f) + tfx__get_graph_value_by_age(amount_variation_graph, f);
-				amount *= global_adjust;
-				if (amount > max_amount_per_sec) {
-					max_amount_per_sec = amount;
-				}
-			}
-		} else {
-			max_amount_per_sec = tfx__get_graph_first_value(amount_graph) + tfx__get_graph_first_value(amount_variation_graph);
-		}
-		//max particles in flight = max_spawn_per_sec * max_life_sec
-		//The amount graph value is already in particles per second (it gets
-		//multiplied by update_time during spawning to produce per-frame counts).
-		float max_life_sec = max_life_ms / 1000.f;
-		tfxU32 result = (tfxU32)ceilf(max_amount_per_sec * max_life_sec);
-		result += (tfxU32)ceilf(max_amount_per_sec * 2.f / 60.f);	//2-frame timing slop
-		return tfx__Max(result, (tfxU32)1);
+//The spawn ratio multiplier tfx__new_sprites_needed applies, at the largest emitter size the graphs allow
+tfxINTERNAL float tfx__max_spawn_ratio_scale(tfx_effect_descriptor emitter, tfx_emission_type emission_type) {
+	if (!(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio)) {
+		return 1.f;
 	}
+	tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
+	tfx_vec3_t size(tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_property_width_index]),
+		tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_property_height_index]),
+		tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_property_depth_index]));
+	if (emitter->parent && emitter->parent->type == tfxEffectType) {
+		tfx_graph_list_t &effect_graph_list = emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index];
+		size.x *= tfx__get_graph_max_value(&effect_graph_list.graphs[tfxEffect_global_emitter_width_index]);
+		size.y *= tfx__get_graph_max_value(&effect_graph_list.graphs[tfxEffect_global_emitter_height_index]);
+		size.z *= tfx__get_graph_max_value(&effect_graph_list.graphs[tfxEffect_global_emitter_depth_index]);
+	}
+	switch (emission_type) {
+	case tfxArea:
+	case tfxEllipse:
+		return tfxMax(0.1f, size.x) * tfxMax(0.1f, size.y) * tfxMax(0.1f, size.z) / 50.f;
+	case tfxDisc:
+		return tfxMax(0.1f, size.x) * tfxMax(0.1f, size.z) / 50.f;
+	case tfxLine:
+		return size.y / 100.f;
+	default:
+		break;
+	}
+	return 1.f;
 }
 
+//The emitter an other emitter spawns from, which multiplies its amount by however many particles that has alive
+tfxINTERNAL tfx_effect_descriptor tfx__other_emitter_source(tfx_effect_descriptor emitter) {
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+	if (shared_properties->emission_type != tfxOtherEmitter || !shared_properties->paired_emitter_hash || !emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
+		return nullptr;
+	}
+	tfx_effect_descriptor source = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
+	return source != emitter && source->type == tfxEmitterType ? source : nullptr;
+}
 
-//Linearises the ring to [0, current_size) at the larger capacity. The first relayout since the renderer last
-//consumed one records the old layout, later ones in the same window only change the capacity.
-void tfx__grow_gpu_group(tfx_gpu_particle_group_t *group, tfxU32 new_capacity) {
-	if (new_capacity <= group->ring_capacity) {
+//The depth only guards against two other emitters sourcing from each other
+tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child, tfxU32 depth) {
+	float max_life_ms = tfx__get_max_life(child);
+	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
+	tfx_effect_descriptor source = depth < 4 ? tfx__other_emitter_source(child) : nullptr;
+	const bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
+	//A single other emitter bursts at every source particle. A looping one only spawns per source particle with the spawn ratio, otherwise its amount is shared between them
+	const bool per_source_particle = source && (is_single || (child->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio));
+	float source_particles = per_source_particle ? (float)tfx__estimate_particles_in_flight(source, depth + 1) : 1.f;
+	tfx_graph_t *amount_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index];
+	if (is_single) {
+		//The burst is spawn_amount, or the grid point count when the amount matches the grid, never the amount graph
+		const float global_amount = child->parent ? tfx__get_graph_max_value(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index]) : 1.f;
+		float total = (float)(shared_properties->spawn_amount + shared_properties->spawn_amount_variation) * global_amount;
+		if ((child->state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) && (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid)) {
+			total = tfx__grid_points_spawn_amount(child->state_properties, shared_properties, total);
+		}
+		total += tfx__has_single_decay(shared_properties) ? (float)shared_properties->single_decay_amount * global_amount : 0.f;
+		if (per_source_particle) {
+			//Every source particle spawns the burst once, and the sources turn over every source life while the burst outlives them
+			float source_life_ms = tfx__Max(tfx__get_max_life(source), 1.f);
+			return tfx__Max((tfxU32)ceilf(total * source_particles * (max_life_ms / source_life_ms + 1.f)), (tfxU32)1);
+		}
+		return tfx__Max((tfxU32)ceilf(total), (tfxU32)1);
+	}
+	//Scan across the emitter's age to find the peak spawn rate, accounting for
+	//amount variation and the parent effect's global amount multiplier.
+	tfx_graph_t *amount_variation_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index];
+	float amount_last_frame = tfx__get_graph_last_frame(amount_graph, 60.f);
+	float variation_last_frame = tfx__get_graph_last_frame(amount_variation_graph, 60.f);
+	float max_amount_per_sec = 0.f;
+	float last_frame = fmaxf(amount_last_frame, variation_last_frame);
+	if (last_frame > 0) {
+		for (float f = 0; f < last_frame; ++f) {
+			float global_adjust = 1.f;
+			if (child->parent) {
+				global_adjust = tfx__get_graph_value_by_age(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index], f);
+			}
+			float amount = tfx__get_graph_value_by_age(amount_graph, f) + tfx__get_graph_value_by_age(amount_variation_graph, f);
+			amount *= global_adjust;
+			if (amount > max_amount_per_sec) {
+				max_amount_per_sec = amount;
+			}
+		}
+	} else {
+		max_amount_per_sec = tfx__get_graph_first_value(amount_graph) + tfx__get_graph_first_value(amount_variation_graph);
+	}
+	max_amount_per_sec *= tfx__max_spawn_ratio_scale(child, shared_properties->emission_type) * source_particles;
+	//max particles in flight = max_spawn_per_sec * max_life_sec
+	//The amount graph value is already in particles per second (it gets
+	//multiplied by update_time during spawning to produce per-frame counts).
+	float max_life_sec = max_life_ms / 1000.f;
+	tfxU32 result = (tfxU32)ceilf(max_amount_per_sec * max_life_sec);
+	result += (tfxU32)ceilf(max_amount_per_sec * 2.f / 60.f);	//2-frame timing slop
+	return tfx__Max(result, (tfxU32)1);
+}
+
+//Sizes each instance's GPU ring for one spawn location.
+tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child) {
+	return tfx__estimate_particles_in_flight(child, 0);
+}
+
+//The pool hands out whole multiples of this, so ring ranges never leave a sliver too small to reuse
+#define tfxGPU_BUFFER_GRANULARITY 64
+#define tfxGPU_EXPIRY_MARGIN 1.0
+#define tfxGPU_WARMED_BATCHES 16
+
+tfxINTERNAL tfxU32 tfx__round_up_gpu_ring_capacity(tfxU32 capacity) {
+	return ((tfx__Max(capacity, (tfxU32)1) + tfxGPU_BUFFER_GRANULARITY - 1) / tfxGPU_BUFFER_GRANULARITY) * tfxGPU_BUFFER_GRANULARITY;
+}
+
+tfxINTERNAL void tfx__gpu_pool_add_callback(void *user_data, void *block) {
+	tfx_stage pm = (tfx_stage)user_data;
+	tfx_remote_header *remote_block = (tfx_remote_header *)block;
+	remote_block->size = pm->info.gpu_particle_capacity;
+	remote_block->memory_offset = 0;
+}
+
+tfxINTERNAL void tfx__gpu_pool_split_callback(void *user_data, tfx_header *block, tfx_header *trimmed_block, tfx_size remote_size) {
+	tfx_remote_header *remote_block = (tfx_remote_header *)tfx_BlockUserExtensionPtr(block);
+	tfx_remote_header *trimmed_remote_block = (tfx_remote_header *)tfx_BlockUserExtensionPtr(trimmed_block);
+	trimmed_remote_block->size = remote_block->size - remote_size;
+	remote_block->size = remote_size;
+	trimmed_remote_block->memory_offset = remote_block->memory_offset + remote_size;
+}
+
+void tfx__init_gpu_pool(tfx_stage pm) {
+	if (pm->info.gpu_particle_capacity == 0) {
 		return;
 	}
-	if (group->current_size > 0 && group->pending_relayout_capacity == 0) {
-		group->pending_relayout_capacity = group->ring_capacity;
-		group->pending_relayout_head = group->ring_head;
-		//This tick's reservations aren't on the GPU yet, only the particles before them need copying
-		group->pending_relayout_count = group->current_size - group->frame_spawn_count;
+	pm->info.gpu_particle_capacity = tfx__round_up_gpu_ring_capacity(pm->info.gpu_particle_capacity);
+	pm->gpu_pool_allocator = tfx_InitialiseAllocatorForRemote(tfxALLOCATE(tfx_AllocatorSize()));
+	tfx_SetBlockExtensionSize(pm->gpu_pool_allocator, sizeof(tfx_remote_header));
+	tfx_SetMinimumAllocationSize(pm->gpu_pool_allocator, tfxGPU_BUFFER_GRANULARITY);
+	pm->gpu_pool_allocator->remote_user_data = pm;
+	pm->gpu_pool_allocator->add_pool_callback = tfx__gpu_pool_add_callback;
+	pm->gpu_pool_allocator->split_block_callback = tfx__gpu_pool_split_callback;
+	tfx_size block_memory_size = tfx_CalculateRemoteBlockPoolSize(pm->gpu_pool_allocator, pm->info.gpu_particle_capacity);
+	pm->gpu_pool_blocks = tfxALLOCATE(block_memory_size);
+	tfx_AddRemotePool(pm->gpu_pool_allocator, pm->gpu_pool_blocks, block_memory_size, pm->info.gpu_particle_capacity);
+}
+
+//An emitter other emitters spawn from stays on the CPU, which is the only place its particle positions exist
+tfxINTERNAL bool tfx__gpu_kernel_supports(tfx_particle_emitter_state_t &emitter) {
+	return !(emitter.state_properties.shared_flags & (tfxSharedEmitterPropertyFlags_relative_position | tfxSharedEmitterPropertyFlags_spawn_location_source)) && !(emitter.state_properties.control_profile & tfxEmitterControlProfile_forces);
+}
+
+tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter) {
+	TFX_ASSERT_HANDLE(emitter);
+	if (emitter->type != tfxEmitterType || !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu)) {
+		return 0;
 	}
-	group->ring_head = 0;
-	group->ring_tail = group->current_size;
-	group->ring_capacity = new_capacity;
+	if (emitter->state_properties.gpu_capacity_override) {
+		return emitter->state_properties.gpu_capacity_override;
+	}
+	//Not cached: an other emitter's estimate follows its source, which a load can't resolve yet and an edit to the source changes
+	return tfx__compute_max_gpu_particles(emitter);
+}
+
+//A full pool still gives the emitter a ring, with no capacity, so it drops its spawns instead of falling back to the CPU
+void tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_effect_descriptor emitter_descriptor) {
+	if (emitter_index == tfxINVALID || !pm->gpu_pool_allocator || pm->flags & (tfxStageFlags_recording_sprites | tfxStageFlags_gpu_simulation_off)) {
+		return;
+	}
+	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+	if (!tfx__gpu_kernel_supports(emitter)) {
+		return;
+	}
+	tfxU32 group_index;
+	if (pm->free_gpu_groups.current_size) {
+		group_index = pm->free_gpu_groups.pop_back();
+	} else {
+		group_index = pm->gpu_groups.current_size;
+		pm->gpu_groups.push_back(tfx_gpu_particle_group_t{});
+	}
+	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
+	group.tracking.resize(64);
+	group.emitter_index = emitter_index;
+	group.property_index = emitter.state_properties.property_index;
+	group.layer = tfx__get_shared_emitter_properties(emitter_descriptor)->layer;
+	tfxU32 capacity = tfx__round_up_gpu_ring_capacity(tfx_GetEmitterGPUCapacity(emitter_descriptor));
+	tfx_remote_header *pool_block = (tfx_remote_header *)tfx_AllocateRemote(pm->gpu_pool_allocator, capacity);
+	if (pool_block) {
+		group.pool_block = pool_block;
+		group.base = (tfxU32)pool_block->memory_offset;
+		group.capacity = capacity;
+	}
+	emitter.state_properties.gpu_group_index = group_index;
+}
+
+void tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter) {
+	tfxU32 group_index = emitter->state_properties.gpu_group_index;
+	if (group_index == tfxINVALID) return;
+	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
+	//A released ring gets no dispatch, so its range is free for another ring straight away
+	if (group.pool_block) {
+		tfx_FreeRemote(pm->gpu_pool_allocator, group.pool_block);
+	}
+	group.tracking.free();
+	group.ticks.free();
+	group = tfx_gpu_particle_group_t{};
+	group.emitter_index = tfxINVALID;
+	pm->free_gpu_groups.push_back(group_index);
+	emitter->state_properties.gpu_group_index = tfxINVALID;
 }
 
 tfxINTERNAL void tfx__grow_gpu_group_tracking(tfx_gpu_particle_group_t *group) {
@@ -22481,128 +22682,422 @@ tfxINTERNAL void tfx__grow_gpu_group_tracking(tfx_gpu_particle_group_t *group) {
 	linear_tracking.free();
 }
 
-//The estimate is cached on the descriptor by tfx__update_emitter_max_life and only measured here when run_on_gpu was
-//switched on since. tfx__gpu_group_record_spawns grows past a stale one.
-void tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_effect_descriptor emitter_descriptor) {
-	if (emitter_index == tfxINVALID) return;
-	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-	tfxU32 group_index;
-	if (pm->free_gpu_groups.current_size) {
-		group_index = pm->free_gpu_groups.pop_back();
-	} else {
-		group_index = pm->gpu_groups.current_size;
-		pm->gpu_groups.push_back(tfx_gpu_particle_group_t{});
+//Called from the emitter's update on every tick that isn't warming up. Moves the head past batches whose longest lived particle
+//died in the previous tick. A long lived batch holds back the shorter ones behind it, which only keeps slots longer than needed,
+//never shorter. Returns the ring's free slots.
+tfxU32 tfx__advance_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter) {
+	tfx_gpu_particle_group_t &group = pm->gpu_groups[emitter->state_properties.gpu_group_index];
+	group.flags |= tfxGPUGroupFlags_updated_this_tick;
+	while (group.tracking_count > 0) {
+		tfx_gpu_spawn_tracking_t &front = group.tracking[group.tracking_head];
+		if (group.time_ms < front.expire_ms) {
+			break;
+		}
+		group.head = (group.head + front.particle_count) % group.capacity;
+		group.current_size -= front.particle_count;
+		group.bumped_total += front.particle_count;
+		group.tracking_head = (group.tracking_head + 1) % group.tracking.current_size;
+		group.tracking_count--;
 	}
-	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
-	group.tracking.resize(64);
-	group.emitter_index = emitter_index;
-	group.property_index = emitter.state_properties.property_index;
-	tfxU32 capacity_estimate = emitter.state_properties.gpu_capacity_estimate;
-	if (capacity_estimate == 0) {
-		capacity_estimate = tfx__compute_max_gpu_particles(emitter_descriptor);
-	}
-	tfx__grow_gpu_group(&group, capacity_estimate);
-	emitter.state_properties.gpu_group_index = group_index;
+	group.time_ms += pm->frame_length;
+	return group.capacity - group.current_size;
 }
 
-void tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter) {
-	tfxU32 group_index = emitter->state_properties.gpu_group_index;
-	if (group_index == tfxINVALID) return;
-	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
-	group.tracking.free();
-	group = tfx_gpu_particle_group_t{};
-	group.emitter_index = tfxINVALID;
-	pm->free_gpu_groups.push_back(group_index);
-	emitter->state_properties.gpu_group_index = tfxINVALID;
-}
-
-//Reserve ring slots for this tick's spawns. Grows rather than drops when the estimate was too small, runtime spawn
-//multipliers and user spawn locations aren't part of it.
-void tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 count) {
-	tfxU32 group_index = pm->emitters[emitter_index].state_properties.gpu_group_index;
-	if (group_index == tfxINVALID || count == 0) return;
-	tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
-	if (group.current_size + count > group.ring_capacity) {
-		tfx__grow_gpu_group(&group, tfx__Max(group.current_size + count, group.ring_capacity + group.ring_capacity / 2));
-	}
-	group.ring_tail = (group.ring_tail + count) % group.ring_capacity;
-	group.current_size += count;
-	group.frame_spawn_count += count;
-}
-
-//Runs at the end of the spawn pipeline so every life multiplier (effect, factor graph, user spawn location) has been applied.
-void tfx__measure_gpu_spawned_max_age(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
-	tfx_particle_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
-	tfx_soa_buffer_t *particle_buffer = &pm->particle_array_buffers[emitter.particles_index];
-	const float *inv_max_age = pm->particle_arrays[emitter.particles_index].inv_max_age;
-	float smallest_inverse_max_age = tfxMAX_FLOAT;
-	for (tfxU32 i = 0; i != work_entry->amount_to_spawn; ++i) {
-		smallest_inverse_max_age = tfx__Min(smallest_inverse_max_age, inv_max_age[tfx__get_circular_index(particle_buffer, work_entry->spawn_start_index + i)]);
-	}
-	work_entry->spawned_max_age = work_entry->amount_to_spawn > 0 ? 1.f / smallest_inverse_max_age : 0.f;
-}
-
-//Spawn work runs in parallel, so the per batch ages are folded into their groups once it has all completed.
-void tfx__fold_gpu_group_spawn_ages(tfx_stage pm) {
-	if (pm->gpu_groups.current_size == 0) {
+//A frame stays readable until the first tick after it was fetched, which starts the next one
+void tfx__begin_gpu_frame(tfx_stage pm) {
+	if (!(pm->flags & tfxStageFlags_gpu_frame_fetched)) {
 		return;
 	}
-	for (tfx_spawn_work_entry_t &work_entry : pm->spawn_work) {
-		if (work_entry.amount_to_spawn == 0) continue;
-		tfxU32 group_index = pm->emitters[work_entry.emitter_index].state_properties.gpu_group_index;
-		if (group_index == tfxINVALID) continue;
-		tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
-		group.frame_max_age_ms = tfx__Max(group.frame_max_age_ms, work_entry.spawned_max_age);
+	pm->flags &= ~tfxStageFlags_gpu_frame_fetched;
+	pm->gpu_spawn_hot.clear();
+	pm->gpu_spawn_cold.clear();
+	pm->gpu_frame_dispatches.clear();
+	pm->gpu_frame_ticks.clear();
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+		group.ticks.clear();
 	}
 }
 
-//Called once per tick from tfx_UpdateStage. Seals the previous tick's spawns into the tracking ring, then bumps
-//ring_head past batches whose longest lived particle has expired. A long lived batch holds back the shorter
-//ones behind it, which only keeps slots longer than needed, never shorter.
-void tfx__tick_gpu_groups(tfx_stage pm, double current_time_ms) {
-	tfxPROFILE;
-	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
-		if (group.frame_spawn_count > 0) {
-			if (group.tracking_count == group.tracking.current_size) {
-				tfx__grow_gpu_group_tracking(&group);
-			}
-			tfxU32 write_position = (group.tracking_head + group.tracking_count) % group.tracking.current_size;
-			tfx_gpu_spawn_tracking_t &entry = group.tracking[write_position];
-			entry.spawn_time_ms = current_time_ms;
-			entry.max_age_ms = group.frame_max_age_ms;
-			entry.particle_count = group.frame_spawn_count;
-			group.tracking_count++;
-			group.frame_spawn_count = 0;
-			group.frame_max_age_ms = 0.f;
-		}
+tfxINTERNAL void tfx__push_gpu_batch(tfx_gpu_particle_group_t &group, double expire_ms, tfxU32 particle_count) {
+	if (group.tracking_count == group.tracking.current_size) {
+		tfx__grow_gpu_group_tracking(&group);
+	}
+	tfx_gpu_spawn_tracking_t &entry = group.tracking[(group.tracking_head + group.tracking_count) % group.tracking.current_size];
+	entry.expire_ms = expire_ms;
+	entry.particle_count = particle_count;
+	group.tracking_count++;
+}
 
-		while (group.tracking_count > 0) {
-			tfx_gpu_spawn_tracking_t &front = group.tracking[group.tracking_head];
-			if (current_time_ms - front.spawn_time_ms < (double)front.max_age_ms) {
-				break;
-			}
-			group.ring_head = (group.ring_head + front.particle_count) % group.ring_capacity;
-			group.tracking_head = (group.tracking_head + 1) % group.tracking.current_size;
-			group.tracking_count--;
-			group.current_size -= front.particle_count;
+//Counts the bank rows that will be packed and sets them as tracking batches. A batch is bumped once the ring time before a
+//tick reaches the ring time before this one plus the batch's longest remaining life: that's the tick its last particle died in.
+//A bank whose ages spread wider than a frame is a warmed up one, packed in age order, so it's split into batches that can
+//each be bumped as they die instead of all waiting on the youngest.
+tfxINTERNAL tfxU32 tfx__set_gpu_batches(tfx_stage pm, tfx_gpu_particle_group_t &group, tfxU32 particles_index) {
+	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[particles_index];
+	tfx_particle_soa_t &bank = pm->particle_arrays[particles_index];
+	//The margin keeps float age rounding from bumping a particle the tick before it dies
+	const double previous_time_ms = group.time_ms - pm->frame_length + tfxGPU_EXPIRY_MARGIN;
+	tfxU32 live = 0;
+	float longest_remaining_life = 0.f;
+	float youngest_age = tfxMAX_FLOAT;
+	float oldest_age = 0.f;
+	for (tfxU32 i = 0; i != buffer.current_size; ++i) {
+		const tfxU32 index = tfx__get_circular_index(&buffer, i);
+		if (bank.flags_single_loop_count[index] & tfxParticleFlags_remove) {
+			continue;
+		}
+		const float age = bank.age[index];
+		longest_remaining_life = tfx__Max(longest_remaining_life, 1.f / bank.inv_max_age[index] - age);
+		youngest_age = tfx__Min(youngest_age, age);
+		oldest_age = tfx__Max(oldest_age, age);
+		live++;
+	}
+	if (live == 0) {
+		return 0;
+	}
+	if (oldest_age - youngest_age <= (float)pm->frame_length) {
+		tfx__push_gpu_batch(group, previous_time_ms + longest_remaining_life, live);
+		return live;
+	}
+	const tfxU32 batch_size = (live + tfxGPU_WARMED_BATCHES - 1) / tfxGPU_WARMED_BATCHES;
+	tfxU32 batch_count = 0;
+	longest_remaining_life = 0.f;
+	for (tfxU32 i = 0; i != buffer.current_size; ++i) {
+		const tfxU32 index = tfx__get_circular_index(&buffer, i);
+		if (bank.flags_single_loop_count[index] & tfxParticleFlags_remove) {
+			continue;
+		}
+		longest_remaining_life = tfx__Max(longest_remaining_life, 1.f / bank.inv_max_age[index] - bank.age[index]);
+		if (++batch_count == batch_size) {
+			tfx__push_gpu_batch(group, previous_time_ms + longest_remaining_life, batch_count);
+			batch_count = 0;
+			longest_remaining_life = 0.f;
 		}
 	}
+	if (batch_count) {
+		tfx__push_gpu_batch(group, previous_time_ms + longest_remaining_life, batch_count);
+	}
+	return live;
+}
+
+//Serial over the rings once spawning has finished: reserves this tick's rows and slots and records the tick. The packing
+//itself runs in parallel afterwards. Normal ticks only, a warming emitter is simulated on the CPU and its ring stays empty.
+void tfx__record_gpu_groups(tfx_stage pm) {
+	tfxPROFILE;
+	pm->gpu_pack_work.clear();
+	pm->gpu_pack_work.reserve(pm->gpu_groups.current_size);
+	const float delta_time_seconds = (float)pm->frame_length * 0.001f;
+	for (tfxU32 group_index = 0; group_index != pm->gpu_groups.current_size; ++group_index) {
+		tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
+		if (group.emitter_index == tfxINVALID || !(group.flags & tfxGPUGroupFlags_updated_this_tick)) {
+			continue;
+		}
+		group.flags &= ~tfxGPUGroupFlags_updated_this_tick;
+		tfx_particle_emitter_state_t &emitter = pm->emitters[group.emitter_index];
+		if (group.capacity == 0) {
+			if (emitter.particles_index != tfxINVALID) {
+				tfx__clear_soa_buffer(&pm->particle_array_buffers[emitter.particles_index]);
+			}
+			continue;
+		}
+		tfxU32 live = emitter.particles_index != tfxINVALID ? tfx__set_gpu_batches(pm, group, emitter.particles_index) : 0;
+		TFX_ASSERT(live <= group.capacity - group.current_size);	//The spawn clamp should have kept the bank within the ring's free slots
+		if (group.ticks.current_size == 0) {
+			group.window_bumped_total = group.bumped_total;
+		}
+		group.upload_offset = pm->gpu_spawn_hot.current_size;
+		group.upload_count = live;
+		if (live) {
+			pm->gpu_spawn_hot.resize(pm->gpu_spawn_hot.current_size + live);
+			pm->gpu_spawn_cold.resize(pm->gpu_spawn_cold.current_size + live);
+			group.tail = (group.tail + live) % group.capacity;
+			group.current_size += live;
+			group.spawned_total += live;
+			tfx_gpu_pack_work_entry_t &work_entry = pm->gpu_pack_work.next();
+			work_entry.pm = pm;
+			work_entry.group_index = group_index;
+		} else if (emitter.particles_index != tfxINVALID) {
+			tfx__clear_soa_buffer(&pm->particle_array_buffers[emitter.particles_index]);
+		}
+
+		tfx_particle_emitter_properties_t *properties = &emitter.library->emitter_properties[emitter.state_properties.property_index];
+		tfx_gpu_particle_tick_t tick;
+		tick.head = group.head;
+		tick.count = group.current_size;
+		tick.spawn_count = live;
+		tick.upload_offset = group.upload_offset;
+		tick.frame_length = (float)pm->frame_length;
+		tick.update_time = (float)pm->update_time;
+		tick.overall_scale = pm->effects[emitter.parent_index].overall_scale;
+		tick.velocity_adjuster = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.age, emitter.oscillator_time);
+		tfx__drag_frame_coefficients(properties->drag_half_life, delta_time_seconds, &tick.drag_alpha, &tick.acceleration_scale);
+		tick.drag_alpha_variation = 0.f;
+		tick.acceleration_scale_variation = 0.f;
+		if (properties->drag_variation > 0.f) {
+			float max_drag_alpha;
+			float max_acceleration_scale;
+			tfx__drag_frame_coefficients(properties->drag_half_life + properties->drag_variation, delta_time_seconds, &max_drag_alpha, &max_acceleration_scale);
+			tick.drag_alpha_variation = max_drag_alpha - tick.drag_alpha;
+			tick.acceleration_scale_variation = max_acceleration_scale - tick.acceleration_scale;
+		}
+		group.ticks.push_back(tick);
+	}
+	for (tfx_gpu_pack_work_entry_t &work_entry : pm->gpu_pack_work) {
+		if (!(pm->flags & tfxStageFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+			tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__pack_gpu_group);
+		} else {
+			tfx__pack_gpu_group(&pm->work_queue, &work_entry);
+		}
+	}
+	tfx__complete_all_work(&pm->work_queue);
+}
+
+//The emitter's CPU bank only ever holds this tick's spawns, or the whole warmed bank on the first tick after a warmup
+void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_gpu_pack_work_entry_t *work_entry = static_cast<tfx_gpu_pack_work_entry_t *>(data);
+	tfx_stage pm = work_entry->pm;
+	tfx_gpu_particle_group_t &group = pm->gpu_groups[work_entry->group_index];
+	tfx_particle_emitter_state_t &emitter = pm->emitters[group.emitter_index];
+	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
+	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
+	tfx_gpu_particle_hot_t *hot = &pm->gpu_spawn_hot[group.upload_offset];
+	tfx_gpu_particle_cold_t *cold = &pm->gpu_spawn_cold[group.upload_offset];
+	const float image_frame_rate_per_millisecond = emitter.state_properties.image_frame_rate * 0.001f;
+	tfxU32 row = 0;
+	for (tfxU32 i = 0; i != buffer.current_size; ++i) {
+		const tfxU32 index = tfx__get_circular_index(&buffer, i);
+		if (bank.flags_single_loop_count[index] & tfxParticleFlags_remove) {
+			continue;
+		}
+		const float age = bank.age[index];
+		const float inv_max_age = bank.inv_max_age[index];
+		tfx_gpu_particle_hot_t &hot_row = hot[row];
+		hot_row.position_x = bank.position_x[index];
+		hot_row.position_y = bank.position_y[index];
+		hot_row.position_z = bank.position_z[index];
+		hot_row.flags = tfxGPUParticleFlags_none;
+		hot_row.velocity_x = bank.velocity_x[index];
+		hot_row.velocity_y = bank.velocity_y[index];
+		hot_row.velocity_z = bank.velocity_z[index];
+		hot_row.age = age;
+		tfx_gpu_particle_cold_t &cold_row = cold[row];
+		cold_row.uid = bank.uid[index];
+		cold_row.inv_max_age = inv_max_age;
+		cold_row.velocity_normal = bank.velocity_normal[index];
+		cold_row.base_velocity = bank.base_velocity[index];
+		cold_row.base_weight = bank.base_weight[index];
+		cold_row.base_size_x = bank.base_size_x[index];
+		cold_row.base_size_y = bank.base_size_y[index];
+		cold_row.intensity_factor = bank.intensity_factor[index];
+		cold_row.random_color = bank.random_color[index];
+		cold_row.rotation_offsets = bank.rotation_offsets[index];
+		cold_row.base_roll_spin = bank.base_roll_spin[index];
+		cold_row.base_pitch_spin = bank.base_pitch_spin[index];
+		cold_row.base_yaw_spin = bank.base_yaw_spin[index];
+		cold_row.image_start_frame = bank.image_frame[index] - image_frame_rate_per_millisecond * age;
+		cold_row.spawn_location = bank.spawn_location[index];
+		cold_row.padding = 0;
+		row++;
+	}
+	TFX_ASSERT(row == group.upload_count);
+	tfx__clear_soa_buffer(&buffer);
+}
+
+//Lays the GPU instances out after the CPU ones, layer by layer, ring position i of a ring at instance_start + i
+void tfx__layout_gpu_instances(tfx_stage pm) {
+	pm->gpu_instance_start = pm->instance_buffer.current_size;
+	tfxU32 running_start = pm->gpu_instance_start;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		pm->gpu_layer_start[layer] = running_start;
+		for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+			if (group.emitter_index == tfxINVALID || group.layer != layer) {
+				continue;
+			}
+			group.instance_start = running_start;
+			running_start += group.current_size;
+		}
+		pm->gpu_layer_count[layer] = running_start - pm->gpu_layer_start[layer];
+	}
+	pm->gpu_instance_count = running_start - pm->gpu_instance_start;
+}
+
+tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emitter_state_t &emitter, tfx_particle_emitter_properties_t *properties) {
+	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
+	const tfxParticleEmitterFlags property_flags = emitter.state_properties.property_flags;
+	const tfxEmitterControlProfileFlags control_profile = emitter.state_properties.control_profile;
+	tfxGPUParticleDispatchFlags flags = tfxGPUParticleDispatchFlags_none;
+	flags |= properties->vector_align_type == tfxVectorAlignType_emission ? tfxGPUParticleDispatchFlags_align_emission : 0;
+	flags |= properties->vector_align_type == tfxVectorAlignType_emitter ? tfxGPUParticleDispatchFlags_align_emitter : 0;
+	flags |= shared_flags & tfxSharedEmitterPropertyFlags_random_color ? tfxGPUParticleDispatchFlags_random_color : 0;
+	flags |= property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size ? tfxGPUParticleDispatchFlags_lifetime_uniform_size : 0;
+	flags |= property_flags & tfxEmitterPropertyFlags_base_uniform_size ? tfxGPUParticleDispatchFlags_base_uniform_size : 0;
+	flags |= shared_flags & tfxSharedEmitterPropertyFlags_do_not_render ? tfxGPUParticleDispatchFlags_do_not_render : 0;
+	flags |= control_profile & tfxEmitterControlProfile_spin ? tfxGPUParticleDispatchFlags_spin_roll : 0;
+	flags |= control_profile & tfxEmitterControlProfile_spin3d ? tfxGPUParticleDispatchFlags_spin_3d : 0;
+	flags |= emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw ? tfxGPUParticleDispatchFlags_spin_pitch_and_yaw : 0;
+	flags |= property_flags & tfxEmitterPropertyFlags_relative_angle ? tfxGPUParticleDispatchFlags_relative_angle : 0;
+	flags |= shared_flags & tfxSharedEmitterPropertyFlags_play_once ? tfxGPUParticleDispatchFlags_play_once : 0;
+	flags |= shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation ? tfxGPUParticleDispatchFlags_reverse_animation : 0;
+	flags |= properties->drag_variation > 0.f ? tfxGPUParticleDispatchFlags_drag_variation : 0;
+	return flags;
+}
+
+tfx_gpu_particle_buffer_sizes_t tfx_GetGPUParticleBufferSizes(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);
+	tfx_gpu_particle_buffer_sizes_t sizes;
+	sizes.hot_bytes = (size_t)pm->info.gpu_particle_capacity * sizeof(tfx_gpu_particle_hot_t);
+	sizes.cold_bytes = (size_t)pm->info.gpu_particle_capacity * sizeof(tfx_gpu_particle_cold_t);
+	return sizes;
+}
+
+bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
+	TFX_ASSERT_HANDLE(pm);
+	TFX_ASSERT(frame);
+	tfx__wait_for_stage_update(pm);
+	memset(frame, 0, sizeof(tfx_gpu_particle_frame_t));
+	if (!pm->gpu_pool_allocator || pm->flags & tfxStageFlags_gpu_frame_fetched) {
+		return false;
+	}
+	pm->flags |= tfxStageFlags_gpu_frame_fetched;
+	pm->gpu_frame_dispatches.clear();
+	pm->gpu_frame_ticks.clear();
+	const bool can_capture = (pm->flags & tfxStageFlags_double_buffer_sprites) != 0;
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+		if (group.emitter_index == tfxINVALID) {
+			continue;
+		}
+		//Only a ring that was written this frame is in the buffer the next frame interpolates from
+		if (group.ticks.current_size == 0 || group.capacity == 0) {
+			group.flags &= ~tfxGPUGroupFlags_has_written;
+			continue;
+		}
+		tfx_particle_emitter_state_t &emitter = pm->emitters[group.emitter_index];
+		tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
+		tfx_particle_emitter_properties_t *properties = &emitter.library->emitter_properties[emitter.state_properties.property_index];
+		tfx_gpu_particle_dispatch_t dispatch;
+		memset(&dispatch, 0, sizeof(tfx_gpu_particle_dispatch_t));
+		dispatch.base = group.base;
+		dispatch.capacity = group.capacity;
+		dispatch.first_tick = pm->gpu_frame_ticks.current_size;
+		dispatch.tick_count = group.ticks.current_size;
+		for (tfx_gpu_particle_tick_t &tick : group.ticks) {
+			pm->gpu_frame_ticks.push_back(tick);
+		}
+		dispatch.slot_start = group.ticks[0].head;
+		dispatch.slot_count = tfx__Min(group.bumped_total + group.current_size - group.window_bumped_total, group.capacity);
+		dispatch.flags = tfx__gpu_dispatch_flags(emitter, properties);
+		dispatch.graph_offset = emitter.source_emitter->gpu_lookup_offset;
+		dispatch.property_index = emitter.state_properties.gpu_property_index << 16;
+		dispatch.instance_start = group.instance_start;
+		if (can_capture && group.flags & tfxGPUGroupFlags_has_written) {
+			dispatch.flags |= tfxGPUParticleDispatchFlags_capture;
+			dispatch.previous_instance_start = group.written_instance_start;
+			dispatch.bumped_since_write = group.bumped_total - group.written_bumped_total;
+			dispatch.spawned_since_write = group.spawned_total - group.written_spawned_total;
+		}
+		dispatch.global_intensity = effect.spawn_controls.intensity;
+		dispatch.global_stretch = effect.stretch;
+		dispatch.image_frame_rate = emitter.state_properties.image_frame_rate;
+		dispatch.end_frame = emitter.state_properties.end_frame;
+		const bool roll_only = !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw);
+		dispatch.emitter_roll = roll_only && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle ? 2.f * atan2f(emitter.rotation.x, emitter.rotation.w) : 0.f;
+		dispatch.emitter_rotation[0] = emitter.rotation.x;
+		dispatch.emitter_rotation[1] = emitter.rotation.y;
+		dispatch.emitter_rotation[2] = emitter.rotation.z;
+		dispatch.emitter_rotation[3] = emitter.rotation.w;
+		pm->gpu_frame_dispatches.push_back(dispatch);
+		group.written_instance_start = group.instance_start;
+		group.written_bumped_total = group.bumped_total;
+		group.written_spawned_total = group.spawned_total;
+		group.flags |= tfxGPUGroupFlags_has_written;
+	}
+	frame->dispatches = pm->gpu_frame_dispatches.data;
+	frame->ticks = pm->gpu_frame_ticks.data;
+	frame->spawn_hot = pm->gpu_spawn_hot.data;
+	frame->spawn_cold = pm->gpu_spawn_cold.data;
+	frame->dispatch_count = pm->gpu_frame_dispatches.current_size;
+	frame->tick_count = pm->gpu_frame_ticks.current_size;
+	frame->spawn_count = pm->gpu_spawn_hot.current_size;
+	frame->gpu_instance_start = pm->gpu_instance_start;
+	frame->gpu_instance_count = pm->gpu_instance_count;
+	for (tfxEachLayer) {
+		frame->gpu_layer_start[layer] = pm->gpu_layer_start[layer];
+		frame->gpu_layer_count[layer] = pm->gpu_layer_count[layer];
+	}
+	return frame->dispatch_count > 0;
+}
+
+void tfx_SetStageGPUSimulation(tfx_stage pm, bool enabled) {
+	TFX_ASSERT_HANDLE(pm);
+	tfx__wait_for_stage_update(pm);
+	if (enabled) {
+		pm->flags &= ~tfxStageFlags_gpu_simulation_off;
+	} else {
+		pm->flags |= tfxStageFlags_gpu_simulation_off;
+	}
+}
+
+bool tfx_StageGPUSimulationIsOn(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);
+	return pm->gpu_pool_allocator && !(pm->flags & tfxStageFlags_gpu_simulation_off);
+}
+
+tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);
+	tfx__wait_for_stage_update(pm);
+	tfx_gpu_particle_stats_t stats;
+	memset(&stats, 0, sizeof(tfx_gpu_particle_stats_t));
+	stats.capacity = pm->info.gpu_particle_capacity;
+	stats.dropped_spawns = pm->gpu_dropped_spawns;
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+		if (group.emitter_index == tfxINVALID) {
+			continue;
+		}
+		if (group.capacity == 0) {
+			stats.blocked_emitters++;
+			continue;
+		}
+		stats.allocated += group.capacity;
+		stats.live_particles += group.current_size;
+		stats.ring_count++;
+	}
+	return stats;
 }
 
 void tfx__clear_gpu_groups(tfx_stage pm) {
 	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+		if (group.pool_block) {
+			tfx_FreeRemote(pm->gpu_pool_allocator, group.pool_block);
+		}
 		group.tracking.free();
+		group.ticks.free();
 	}
 	pm->gpu_groups.clear();
 	pm->free_gpu_groups.clear();
+	pm->gpu_spawn_hot.clear();
+	pm->gpu_spawn_cold.clear();
+	pm->gpu_frame_dispatches.clear();
+	pm->gpu_frame_ticks.clear();
+	pm->gpu_instance_count = 0;
+	memset(pm->gpu_layer_count, 0, sizeof(tfxU32) * tfxLAYERS);
 }
 
 void tfx__free_gpu_groups(tfx_stage pm) {
-	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
-		group.tracking.free();
-	}
+	tfx__clear_gpu_groups(pm);
 	pm->gpu_groups.free();
 	pm->free_gpu_groups.free();
+	pm->gpu_pack_work.free();
+	pm->gpu_spawn_hot.free();
+	pm->gpu_spawn_cold.free();
+	pm->gpu_frame_dispatches.free();
+	pm->gpu_frame_ticks.free();
+	if (pm->gpu_pool_allocator) {
+		tfxFREE(pm->gpu_pool_blocks);
+		tfxFREE(pm->gpu_pool_allocator);
+		pm->gpu_pool_blocks = nullptr;
+		pm->gpu_pool_allocator = nullptr;
+	}
 }
 //---- end GPU compute particle buffer management ----
 
@@ -23879,13 +24374,6 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 	pm->current_ebuff = 0;
 	pm->current_ribbon_count = 0;
 	pm->current_particle_count = 0;
-	pm->highest_compute_controller_index = 0;
-	pm->new_compute_particle_ptr = nullptr;
-	pm->compute_controller_ptr = nullptr;
-	pm->max_compute_controllers = 10000;
-	pm->max_new_compute_particles = 10000;
-	pm->new_compute_particle_index = 0;
-	pm->new_particles_count = 0;
 	pm->current_sprite_buffer = 0;
 	pm->max_frame_length = 240.f;
 	pm->unique_particle_id = 0;
@@ -23968,6 +24456,7 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.multi_threaded_batch_size);
 
 	pm->flags |= info.auto_order_effects ? tfxStageFlags_auto_order_effects : 0;
+	tfx__init_gpu_pool(pm);
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = info.max_particles;
@@ -24207,10 +24696,11 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				continue;
 			}
 			if (restarting) {
-				//Mirrors a fresh add, which skips ageing on the update it arrives in, so single shots at delay 0 still fire
+				//Mirrors a fresh add, which skips ageing on the tick it arrives in, so single shots at delay 0 still fire
 				location.captured_position = location.position;
 				location.age = 0.f;
 				location.previous_age = -1.f;
+				location.flags |= tfxUserSpawnLocationFlags_fresh;
 				//A soft expiring location is on its way out whatever the restart did, so it keeps its own countdown
 				if (location.flags & tfxUserSpawnLocationFlags_counting_down && !(location.flags & tfxUserSpawnLocationFlags_expiring)) {
 					if (user_location_list->auto_remove_time > 0.f) {
@@ -24237,11 +24727,6 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 					}
 				}
 				location.captured_position = location.position;
-				//Holding the timeline means the amount graph resumes where it left off and a single shot it hasn't reached yet isn't skipped over
-				if (!(location.flags & tfxUserSpawnLocationFlags_paused)) {
-					location.previous_age = location.age;
-					location.age += frame_length;
-				}
 			}
 			tfx__apply_user_spawn_location_request(pm, user_location_list, slot);
 			user_location_list->active_slots[kept++] = slot;
@@ -24275,7 +24760,7 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 			tweaks.expire_countdown = 0.f;
 			location.age = 0.f;
 			location.previous_age = -1.f;
-			location.flags = tfxUserSpawnLocationFlags_active;
+			location.flags = tfxUserSpawnLocationFlags_active | tfxUserSpawnLocationFlags_fresh;
 			if (request.flags & tfxUserSpawnLocationRequestFlags_transient) {
 				location.flags |= tfxUserSpawnLocationFlags_transient;
 			}

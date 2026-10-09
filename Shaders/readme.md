@@ -27,6 +27,17 @@ Ribbons take an extra step compared to billboards. The library writes out ribbon
 
 The vertex shader then transforms those vertices, unpacks that segment index, samples the over-length shading graphs (intensity, gradient map, curved alpha, sharpness) and ping-pongs the U coordinate so a texture can wrap repeatedly along the ribbon without a flipped seam at each wrap point.
 
+## GPU simulated particles
+
+| Shader | What it does |
+| --- | --- |
+| `tfx_gpu_particles.slang` | Simulates `run_on_gpu` emitters and writes their instances |
+| `tfx_graphs.slang` | The graph lookup it imports, the same sampling the CPU uses |
+
+These are Slang rather than GLSL, so they can grow into variants and user hooks. Compile `simulate_particles` from `tfx_gpu_particles.slang` with `TimelineFXLib/Shaders` on the include path.
+
+On a stage with a `gpu_particle_capacity`, `tfx_GetGPUParticleFrame` hands you dispatch records, tick records and the rows spawned since the last fetch. Dispatch the kernel once per record with `tfx_gpu_particle_push_t` as push constants and `(slot_count + 255) / 256` groups. Each thread owns one ring slot: it takes in any spawn that lands in its slot, runs every tick of the fetch, keeps the particle state in two storage buffers you size once from `tfx_GetGPUParticleBufferSizes`, and writes its instance into the same instance buffer as the CPU particles, in the range after them. The vertex and fragment shaders above draw them unchanged.
+
 ## Compute shaders for pre-baked effects
 
 For maximum speed you can pre-bake an effect to sprite data and update the instance buffer on the GPU instead of simulating on the CPU:

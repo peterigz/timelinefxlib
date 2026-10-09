@@ -602,6 +602,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
+	tfxU32 gpu_particle_capacity;			//Particles across every run_on_gpu emitter on the stage, fixed for the stage's life. 0 runs those emitters on the CPU. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
@@ -625,6 +626,143 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 last_segment_offset;
 	tfxU32 sort_key;						//The sort key of every effect whose ribbons are in this bucket, see tfx_SetEffectSortKey
 } tfx_ribbon_dispatch_t;
+
+//The state of one GPU simulated particle that changes every update, one per pool slot
+typedef struct tfx_gpu_particle_hot_s {		//32 bytes
+	float position_x, position_y, position_z;
+	tfxU32 flags;							//tfxGPUParticleFlags
+	float velocity_x, velocity_y, velocity_z;
+	float age;								//Milliseconds
+} tfx_gpu_particle_hot_t;
+
+//The state of one GPU simulated particle that is fixed when it spawns, one per pool slot
+typedef struct tfx_gpu_particle_cold_s {	//64 bytes
+	tfxU32 uid;
+	float inv_max_age;
+	tfxU32 velocity_normal;					//Packed 10 bit xyz
+	float base_velocity;
+	float base_weight;
+	float base_size_x;
+	float base_size_y;
+	float intensity_factor;
+	float random_color;
+	tfxU32 rotation_offsets;				//Packed 10 bit pitch, yaw, roll, or the roll angle's float bits when the emitter can't spin pitch and yaw
+	float base_roll_spin;
+	float base_pitch_spin;
+	float base_yaw_spin;
+	float image_start_frame;				//The frame at age 0, so the current frame is image_start_frame + image_frame_rate * age
+	tfxU32 spawn_location;
+	tfxU32 padding;
+} tfx_gpu_particle_cold_t;
+
+//One emitter instance's ring at one update tick. A dispatch runs every tick record it points to in order
+typedef struct tfx_gpu_particle_tick_s {	//48 bytes
+	tfxU32 head;							//Ring slot of the oldest particle after this tick's bump
+	tfxU32 count;							//Particles in the ring after this tick's spawns
+	tfxU32 spawn_count;						//The last spawn_count of those were spawned this tick
+	tfxU32 upload_offset;					//Into tfx_gpu_particle_frame_t spawn_hot and spawn_cold for this tick's spawns
+	float frame_length;						//Milliseconds
+	float update_time;						//Seconds
+	float overall_scale;
+	float velocity_adjuster;
+	float drag_alpha;						//Fraction of the velocity drag removes this tick
+	float acceleration_scale;				//Seconds of acceleration that survive the drag
+	float drag_alpha_variation;
+	float acceleration_scale_variation;
+} tfx_gpu_particle_tick_t;
+
+typedef enum {
+	tfxGPUParticleDispatchFlags_none = 0,
+	tfxGPUParticleDispatchFlags_capture = 1 << 0,						//The ring was written into the previous instance buffer, so its particles can interpolate
+	tfxGPUParticleDispatchFlags_align_emission = 1 << 1,
+	tfxGPUParticleDispatchFlags_align_emitter = 1 << 2,
+	tfxGPUParticleDispatchFlags_random_color = 1 << 3,
+	tfxGPUParticleDispatchFlags_lifetime_uniform_size = 1 << 4,
+	tfxGPUParticleDispatchFlags_base_uniform_size = 1 << 5,
+	tfxGPUParticleDispatchFlags_do_not_render = 1 << 6,
+	tfxGPUParticleDispatchFlags_spin_roll = 1 << 7,
+	tfxGPUParticleDispatchFlags_spin_3d = 1 << 8,
+	tfxGPUParticleDispatchFlags_spin_pitch_and_yaw = 1 << 9,			//rotation_offsets holds packed pitch, yaw and roll
+	tfxGPUParticleDispatchFlags_relative_angle = 1 << 10,
+	tfxGPUParticleDispatchFlags_play_once = 1 << 11,
+	tfxGPUParticleDispatchFlags_reverse_animation = 1 << 12,
+	tfxGPUParticleDispatchFlags_drag_variation = 1 << 13,
+} tfx_gpu_particle_dispatch_flag_bits;
+
+typedef tfxU32 tfxGPUParticleDispatchFlags;      //tfx_gpu_particle_dispatch_flag_bits
+
+typedef enum {
+	tfxGPUParticleFlags_none = 0,
+	tfxGPUParticleFlags_remove = 1 << 0,								//Expired, drawn with zero size until the ring head passes it
+} tfx_gpu_particle_flag_bits;
+
+typedef tfxU32 tfxGPUParticleFlags;              //tfx_gpu_particle_flag_bits
+
+//One emitter instance's ring for one tfx_GetGPUParticleFrame. Upload them verbatim and dispatch once per record
+typedef struct tfx_gpu_particle_dispatch_s {	//96 bytes
+	tfxU32 base;							//First pool slot of the ring
+	tfxU32 capacity;						//Ring slots
+	tfxU32 first_tick;						//Into tfx_gpu_particle_frame_t ticks
+	tfxU32 tick_count;
+	tfxU32 slot_start;						//Threads cover ring slots [slot_start, slot_start + slot_count) wrapped by capacity
+	tfxU32 slot_count;
+	tfxU32 flags;							//tfxGPUParticleDispatchFlags
+	tfxU32 graph_offset;					//Into the graph lookups from tfx_GetGPUGraphLookupsBuffer
+	tfxU32 property_index;					//gpu property index << 16, as tfx_instance_t indexes expects it
+	tfxU32 instance_start;					//Ring position i on the last tick writes instance instance_start + i
+	tfxU32 previous_instance_start;			//Where ring position 0 was written in the previous instance buffer
+	tfxU32 bumped_since_write;				//Particles that left the ring since the previous write
+	tfxU32 spawned_since_write;				//Particles that joined the ring since the previous write, they have nothing to interpolate from
+	float global_intensity;
+	float global_stretch;
+	float image_frame_rate;					//Frames per second
+	float end_frame;
+	float emitter_roll;
+	tfxU32 padding[2];
+	float emitter_rotation[4];				//Quaternion xyzw
+} tfx_gpu_particle_dispatch_t;
+
+//Everything the stage simulated on the GPU since the last tfx_GetGPUParticleFrame
+typedef struct tfx_gpu_particle_frame_s {
+	const tfx_gpu_particle_dispatch_t *dispatches;
+	const tfx_gpu_particle_tick_t *ticks;
+	const tfx_gpu_particle_hot_t *spawn_hot;
+	const tfx_gpu_particle_cold_t *spawn_cold;
+	tfxU32 dispatch_count;
+	tfxU32 tick_count;
+	tfxU32 spawn_count;
+	tfxU32 gpu_instance_start;				//The GPU instances follow the CPU ones, so this is the CPU instance count
+	tfxU32 gpu_instance_count;
+	tfxU32 gpu_layer_start[tfxLAYERS];
+	tfxU32 gpu_layer_count[tfxLAYERS];
+} tfx_gpu_particle_frame_t;
+
+//Push constants for the reference kernel, Shaders/tfx_gpu_particles.slang. Buffers are bindless indexes, dispatch_index picks the record
+typedef struct tfx_gpu_particle_push_s {
+	tfxU32 hot_buffer_index;				//tfx_gpu_particle_hot_t per pool slot, read and written
+	tfxU32 cold_buffer_index;				//tfx_gpu_particle_cold_t per pool slot, written when a particle is ingested
+	tfxU32 instance_buffer_index;			//The instance buffer the CPU instances were uploaded to
+	tfxU32 spawn_hot_buffer_index;			//tfx_gpu_particle_frame_t spawn_hot
+	tfxU32 spawn_cold_buffer_index;			//tfx_gpu_particle_frame_t spawn_cold
+	tfxU32 dispatch_buffer_index;			//tfx_gpu_particle_frame_t dispatches
+	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks
+	tfxU32 graph_buffer_index;				//tfx_GetGPUGraphLookupsBuffer
+	tfxU32 dispatch_index;
+} tfx_gpu_particle_push_t;
+
+typedef struct tfx_gpu_particle_stats_s {
+	tfxU32 capacity;						//Pool slots, tfx_stage_info_t gpu_particle_capacity
+	tfxU32 allocated;						//Pool slots held by rings
+	tfxU32 live_particles;					//Particles in every ring, including expired ones the head hasn't passed yet
+	tfxU32 ring_count;
+	tfxU32 blocked_emitters;				//GPU emitters that got no ring because the pool was full, raise gpu_particle_capacity
+	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, raise the capacity with tfx_SetTemplateEmitterGPUCapacity
+} tfx_gpu_particle_stats_t;
+
+typedef struct tfx_gpu_particle_buffer_sizes_s {
+	size_t hot_bytes;
+	size_t cold_bytes;
+} tfx_gpu_particle_buffer_sizes_t;
 
 typedef struct tfx_ribbon_buffer_requirements_s {
 	tfxU32 segment_buffer_size_in_bytes;
@@ -1379,7 +1517,8 @@ Two ways to synchronise before you read that data:
     tfx_CompleteStageWork first:
         tfx_GetInstanceBuffer, tfx_GetInstanceBufferByLayer, tfx_GetInstanceCount, tfx_GetInstanceCountByLayer,
         tfx_GetNextInstanceBuffer, tfx_GetNextInstanceKeyRange, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
-        tfx_GetRibbonBufferRequirements, tfx_CopyRibbonDataToStagingBuffers, tfx_ClearStage and tfx_FreeStage.
+        tfx_GetRibbonBufferRequirements, tfx_CopyRibbonDataToStagingBuffers, tfx_GetGPUParticleFrame,
+        tfx_GetGPUParticleStats, tfx_SetStageGPUSimulation, tfx_ClearStage and tfx_FreeStage.
 
 Anything that reads stage state through a path NOT in that list (for example reading the instance buffer pointer
 you cached last frame, or touching the raw buffers directly) must be preceded by tfx_CompleteStageWork, otherwise
@@ -1728,6 +1867,93 @@ tfxAPI size_t tfx_GetTotalSegmentIndexBufferMaxSizeInBytes(void);
 tfxAPI size_t tfx_GetTotalRibbonBufferMaxSizeInBytes(void);
 
 tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes(void);
+
+/*
+--------------------------------
+GPU particle simulation
+--------------------------------
+Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
+instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
+for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
+tfx_SetStageGPUSimulation has it off, and when they use relative position, forces, or are the source another emitter
+spawns from. An effect with a Run on GPU emitter spawns at its spawn locations (tfx_AddSpawnLocation), never at its own
+position, so one instance of it serves every place it plays.
+
+The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
+its push constants. Customise it for things like collision; the records it reads are below.
+
+Every emitter instance gets a ring of fixed size in a pool of gpu_particle_capacity slots: the authored capacity from
+tfx_GetEmitterGPUCapacity, or whatever tfx_SetTemplateEmitterGPUCapacity set. A full ring drops spawns and a full pool
+leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats.
+
+Setup, once:
+  1. Create two storage buffers sized by tfx_GetGPUParticleBufferSizes, hot and cold. They hold the particles between
+     frames and never need resizing or clearing.
+  2. Upload the graph lookups from tfx_GetGPUGraphLookupsBuffer, as ribbons do.
+
+Per frame, after tfx_UpdateStage:
+  1. tfx_GetGPUParticleFrame. It returns false when no update ran since the last call: draw last frame's instance
+     buffer again, as you would for the CPU instances.
+  2. Upload the dispatches, ticks, spawn_hot and spawn_cold arrays verbatim.
+  3. Size the instance buffer for gpu_instance_start + gpu_instance_count instances and upload the CPU instances
+     from tfx_GetInstanceBuffer as normal. The GPU instances go after them.
+  4. One compute dispatch per tfx_gpu_particle_dispatch_t, (slot_count + 255) / 256 groups of 256. Each loops over
+     its own ticks, so there are no barriers between dispatches. Order the dispatches after the previous frame's.
+  5. Draw each layer as two ranges: the CPU range as normal and then [gpu_layer_start, + gpu_layer_count). The
+     captured_index of a GPU instance points into the previous instance buffer, just like a CPU one.
+
+The frame stays valid until the next tfx_UpdateStage. Updates that run without a fetch in between are all returned
+by the next fetch, so the GPU never misses a tick. The flip side is that every fetch must be dispatched: the next one's
+ticks carry on from the particle state this one leaves in the hot and cold buffers. If you won't dispatch this frame,
+don't fetch.
+*/
+
+/*
+Byte sizes of the two persistent buffers a stage's GPU particles live in. Fixed for the life of the stage.
+* @param pm                        A handle to an initialised tfx_stage_t.
+* @returns tfx_gpu_particle_buffer_sizes_t   Zero sizes when the stage has no gpu_particle_capacity.
+*/
+tfxAPI tfx_gpu_particle_buffer_sizes_t tfx_GetGPUParticleBufferSizes(tfx_stage pm);
+
+/*
+Everything to upload and dispatch for the GPU particles simulated since the last call. Implicitly completes any
+in-flight stage update.
+* @param pm                        A handle to an initialised tfx_stage_t.
+* @param frame                     Filled with the frame. Its pointers stay valid until the next tfx_UpdateStage.
+* @returns bool                    false when there's nothing to dispatch: no update since the last call, or no GPU emitters.
+*/
+tfxAPI bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame);
+
+/*
+Pool use, live particle count and the counters that say a capacity needs raising. Implicitly completes any in-flight
+stage update.
+* @param pm                        A handle to an initialised tfx_stage_t.
+*/
+tfxAPI tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm);
+
+/*
+Turn a stage's GPU simulation off or back on, for comparing it with the CPU simulation or falling back to the CPU.
+Effects added while it's off run their Run on GPU emitters on the CPU. Effects already running keep the simulation
+they started with, so restart them to switch. Implicitly completes any in-flight stage update.
+* @param pm                        A handle to an initialised tfx_stage_t.
+* @param enabled                   false runs Run on GPU emitters of newly added effects on the CPU.
+*/
+tfxAPI void tfx_SetStageGPUSimulation(tfx_stage pm, bool enabled);
+
+/*
+Whether effects added now would simulate their Run on GPU emitters on the GPU: the stage has a gpu_particle_capacity and
+tfx_SetStageGPUSimulation hasn't turned it off.
+* @param pm                        A handle to an initialised tfx_stage_t.
+*/
+tfxAPI bool tfx_StageGPUSimulationIsOn(tfx_stage pm);
+
+/*
+The ring capacity an instance of a Run on GPU emitter gets. Without an override this is what one spawn location needs,
+and every location adds its own amount, so an effect at N locations needs about N times it.
+* @param emitter                   A handle to an emitter descriptor.
+* @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.
+*/
+tfxAPI tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter);
 
 /*
 When a effect manager updates particles it creates work queues to handle the work. By default these each have room for max_emitters entries which should be
@@ -3124,6 +3350,14 @@ Set the single spawn amount for an emitter. Only affects emitters that have the 
 * @param amount					 A float of the amount that you want to set the single spawn amount to.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
+
+/*
+Set the ring capacity of a Run on GPU emitter, replacing the authored one from tfx_GetEmitterGPUCapacity. Use it to
+make room for many spawn locations or a large spawn multiplier. Only affects effects added after the call.
+* @param emitter_path			 const *char of the emitter path
+* @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity.
+*/
+tfxAPI void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char *emitter_path, tfxU32 capacity);
 
 /*
 Scale all nodes on an emitter graph

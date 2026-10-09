@@ -1679,7 +1679,6 @@ You can then use layer inside the loop to get the current layer
 typedef struct tfx_effect_descriptor_s tfx_effect_descriptor_t;
 typedef struct tfx_stage_s tfx_stage_t;
 typedef struct tfx_effect_template_s tfx_effect_template_t;
-typedef struct tfx_compute_particle_s tfx_compute_particle_t;
 typedef struct tfx_library_s tfx_library_t;
 typedef struct tfx_animation_manager_s tfx_animation_manager_t;
 
@@ -3042,7 +3041,6 @@ typedef tfxU32 tfxRibbonFlags;		            //tfx_ribbon_flag_bits
 typedef tfxU32 tfxRibbonBucketFlags;            //tfx_ribbon_bucket_flag_bits
 typedef tfxU32 tfxRibbonBucketComputeShaderType;//tfx_ribbon_compute_shader_type
 typedef tfxU32 tfxEffectStateFlags;             //tfx_effect_state_flag_bits
-typedef tfxU32 tfxParticleControlFlags;         //tfx_particle_control_flag_bits
 typedef tfxU32 tfxAttributeNodeFlags;           //tfx_attribute_node_flag_bits
 typedef tfxU32 tfxAngleSettingFlags;            //tfx_angle_setting_flag_bits
 typedef tfxU32 tfxStageFlags;					//tfx_stage_flag_bits
@@ -3138,7 +3136,6 @@ typedef enum {
 	tfxStageFlags_none                              	= 0,
 	tfxStageFlags_updating		                     	= 1,
 	tfxStageFlags_disable_spawning                  	= 2,
-	tfxStageFlags_use_compute_shader                	= 1 << 3,
 	tfxStageFlags_update_base_values                	= 1 << 6,
 	tfxStageFlags_dynamic_sprite_allocation         	= 1 << 7,
 	tfxStageFlags_animation_loops                   	= 1 << 9,
@@ -3149,11 +3146,12 @@ typedef enum {
 	tfxStageFlags_update_bounding_boxes             	= 1 << 17,
 	tfxStageFlags_auto_order_effects                	= 1 << 19,
 	tfxStageFlags_has_ribbons_to_draw               	= 1 << 20,
-	tfxStageFlags_record_with_compute_image_index   	= 1 << 21,
 	tfxStageFlags_warming_up		                	= 1 << 23,
 	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
 	tfxStageFlags_skip_instance_writes              	= 1 << 25,		//Warmup and intermediate sub steps: simulate the particles without writing instances
 	tfxStageFlags_instances_not_written             	= 1 << 26,		//The last tick skipped instance writes, so the instance buffer doesn't match the simulation
+	tfxStageFlags_gpu_frame_fetched                 	= 1 << 27,		//tfx_GetGPUParticleFrame has handed the frame out, so the next tick starts a new one
+	tfxStageFlags_gpu_simulation_off                	= 1 << 28,		//tfx_SetStageGPUSimulation turned it off, so effects added now run their GPU emitters on the CPU
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -3208,36 +3206,6 @@ typedef enum {
 	tfxAngleSettingFlags_specify_pitch                          = 1 << 6,
 	tfxAngleSettingFlags_specify_yaw                            = 1 << 7
 } tfx_angle_setting_flag_bits;
-
-                                                                                //All the state_flags needed by the ControlParticle function put into one typedef enum save typedef enum
-typedef enum {
-	tfxParticleControlFlags_none                                = 0,
-	tfxParticleControlFlags_remove                              = tfxSharedFlag_remove,
-	tfxParticleControlFlags_relative_position                   = 1 << 1,
-	tfxParticleControlFlags_relative_angle                      = 1 << 2,
-	tfxParticleControlFlags_point                               = 1 << 3,
-	tfxParticleControlFlags_area                                = 1 << 4,
-	tfxParticleControlFlags_line                                = 1 << 5,
-	tfxParticleControlFlags_ellipse                             = 1 << 6,
-	tfxParticleControlFlags_loop                                = 1 << 7,
-	tfxParticleControlFlags_kill                                = 1 << 8,
-	tfxParticleControlFlags_letFree                             = 1 << 9,
-	tfxParticleControlFlags_edge_traversal                      = 1 << 10,
-	tfxParticleControlFlags_random_color                        = 1 << 11,
-	tfxParticleControlFlags_base_uniform_size                   = 1 << 12,
-	tfxParticleControlFlags_lifetime_uniform_size               = 1 << 13,
-	tfxParticleControlFlags_animate                             = 1 << 14,
-	tfxParticleControlFlags_reverse_animation                   = 1 << 15,
-	tfxParticleControlFlags_play_once                           = 1 << 16,
-	tfxParticleControlFlags_align                               = 1 << 17,
-	tfxParticleControlFlags_emission                            = 1 << 18,
-	tfxParticleControlFlags_random_roll                         = 1 << 19,
-	tfxParticleControlFlags_specify_roll                        = 1 << 20,
-	tfxParticleControlFlags_random_pitch                        = 1 << 21,
-	tfxParticleControlFlags_specify_pitch                       = 1 << 22,
-	tfxParticleControlFlags_random_yaw                          = 1 << 23,
-	tfxParticleControlFlags_specify_yaw                         = 1 << 24,
-} tfx_particle_control_flag_bits;
 
 typedef enum {
 	tfxEffectPropertyFlags_none                                 = 0,
@@ -6194,8 +6162,6 @@ typedef struct tfx_particle_emitter_properties_s {
 	tfx_noise_type noise_algorithm;
 	//How particles should behave when they reach the end of the line
 	tfx_line_traversal_end_behaviour end_behaviour;
-	//Bit field of various boolean state_flags
-	tfxParticleControlFlags compute_flags;
 	//The amount of drag that particles have. 0 is the default which is no drag and standard legacy tfx kinetic behaviour
 	float drag_half_life;
 	//Added to the drag rate per particle, drawn from [0, variation] by hashing the particle uid. Stored as a
@@ -6298,7 +6264,7 @@ typedef struct tfx_parent_spawn_controls_s {
 typedef struct tfx_common_state_properties_s {
 	float loop_length;
 	float max_life;
-	tfxU32 gpu_capacity_estimate;		//Particles in flight for one instance, only measured for run_on_gpu emitters
+	tfxU32 gpu_capacity_override;		//Set by tfx_SetTemplateEmitterGPUCapacity, 0 uses the estimate
 	float end_frame;
 	float delay_spawning;
 	float image_frame_rate;
@@ -6509,69 +6475,69 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
 
 //---- GPU compute particle buffer management ----
-// Uncomment to enable Phase 3 CPU-side shadow buffer that mirrors GPU ring buffer layout for validation.
-// Compiles away to nothing when not defined.
-// #define tfxGPU_VALIDATION
 
-//Per-tick spawn record used by the group tracking ring to drive deterministic head bumping.
-//Particle life is fixed at spawn, so each batch carries the exact longest life in it.
+//Per-tick spawn record used by the ring tracking to drive deterministic head bumping.
+//Particle life is fixed at spawn, so each batch knows exactly when its longest lived particle dies.
 typedef struct tfx_gpu_spawn_tracking_s {
-	double spawn_time_ms;	//Absolute time (ms) when this batch of particles was sealed
-	float  max_age_ms;		//Longest max_age of any particle in the batch
-	tfxU32 particle_count;	//Total particles spawned into this group during that tick
+	double expire_ms;		//Once the ring time before a tick reaches this, every particle in the batch died in the tick before it
+	tfxU32 particle_count;
 } tfx_gpu_spawn_tracking_t;
 
-//One GPU particle ring per emitter instance, so the head only ever waits on that instance's own particles.
-//Freed with its emitter: the emitter outlives every particle it spawned, which is what makes that safe.
+typedef enum {
+	tfxGPUGroupFlags_none = 0,
+	tfxGPUGroupFlags_has_written = 1 << 0,			//Written into the instance buffer of a previous fetch, so it can interpolate
+	tfxGPUGroupFlags_updated_this_tick = 1 << 1,
+} tfx_gpu_group_flag_bits;
+
+typedef tfxU32 tfxGPUGroupFlags;
+
+//One GPU particle ring per emitter instance, a fixed range of the stage's pool. Freed with its emitter, which
+//outlives every particle it spawned.
 typedef struct tfx_gpu_particle_group_s {
 	tfxU32  emitter_index;				//tfxINVALID while the group is in the free list
-	tfxU32  property_index;				//The property index of the emitter to identify it
-	tfxU32  ring_head;					//Oldest live particle position in the group ring
-	tfxU32  ring_tail;					//Next write position in the group ring
-	tfxU32  current_size;				//The current number of particles in the buffer.
-	tfxU32  ring_capacity;				//Total particle slots, grows when spawns overflow it
-	//When the ring grows with particles in flight it is linearised to [0, current_size). These hold the layout the
-	//GPU buffer still has so the renderer can copy the live particles across. Zero capacity means nothing is pending.
-	tfxU32  pending_relayout_capacity;
-	tfxU32  pending_relayout_head;
-	tfxU32  pending_relayout_count;
-	tfxU64  gpu_buffer_size_bytes;		//Set by renderer when the GPU buffer is allocated
+	tfxU32  property_index;
+	tfxU32  base;						//First pool slot of the ring
+	tfxU32  capacity;					//0 when the pool had no room, the emitter then drops every spawn
+	tfxU32  head;						//Ring slot of the oldest particle
+	tfxU32  tail;						//Ring slot the next spawn goes in
+	tfxU32  current_size;
+	tfxU32  layer;
+	void   *pool_block;					//The remote allocation that holds the range
+	double  time_ms;					//Only advances on ticks that update the emitter, so effects warming up can't bump it
+	//Running totals that are allowed to wrap, only the difference between two readings is used
+	tfxU32  bumped_total;
+	tfxU32  spawned_total;
+	tfxU32  window_bumped_total;		//bumped_total on the first tick since the last fetch
+	tfxU32  written_bumped_total;		//The totals and instance start at the last fetch, so captured_index can find each particle
+	tfxU32  written_spawned_total;
+	tfxU32  written_instance_start;
+	tfxU32  instance_start;				//Where ring position 0 goes in the instance buffer, from the last tick's layout
+	tfxU32  upload_offset;				//This tick's rows in the stage's spawn upload arrays
+	tfxU32  upload_count;
+	tfxGPUGroupFlags flags;
 	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
 #ifdef __cplusplus
 	tfx_vector_t<tfx_gpu_spawn_tracking_t> tracking;
+	tfx_vector_t<tfx_gpu_particle_tick_t> ticks;	//Every tick since the last fetch
 #else
 	tfx_vector_t tracking;
+	tfx_vector_t ticks;
 #endif
 	tfxU32  tracking_head;				//Index of the oldest valid tracking entry
 	tfxU32  tracking_count;				//Number of valid entries currently in the tracking ring
-	tfxU32  frame_spawn_count;			//Particles spawned into this group this tick; sealed into tracking at the next tick
-	float   frame_max_age_ms;			//Longest particle life spawned into this group this tick
 } tfx_gpu_particle_group_t;
-//---- end GPU compute particle buffer management ----
 
-//---- GPU Validation Shadow Mode (Phase 3) ----
-//All particle fields that the GPU ring buffer will hold, one uint32 slot each.
-typedef enum tfx_gpu_particle_field_e {
-	tfx_gpu_field_position_x = 0,
-	tfx_gpu_field_position_y,
-	tfx_gpu_field_position_z,
-	tfx_gpu_field_age,
-	tfx_gpu_field_max_age,
-	tfx_gpu_field_life,
-	tfx_gpu_field_velocity_normal,          //packed uint (stored as float-sized slot)
-	tfx_gpu_field_base_velocity,
-	tfx_gpu_field_base_weight,
-	tfx_gpu_field_base_size_x,
-	tfx_gpu_field_base_size_y,
-	tfx_gpu_field_base_roll_spin,
-	tfx_gpu_field_intensity_factor,
-	tfx_gpu_field_random_color,
-	tfx_gpu_field_image_frame,
-	tfx_gpu_field_flags_single_loop_count,  //uint, stored as float-sized slot
-	tfx_gpu_field_noise_offset,
-	tfx_gpu_field_noise_resolution,
-	tfx_gpu_field_count
-} tfx_gpu_particle_field_t;
+typedef struct tfx_gpu_pack_work_entry_s {
+	struct tfx_stage_s *pm;
+	tfxU32 group_index;
+} tfx_gpu_pack_work_entry_t;
+
+//These are std430 layouts the shader mirrors
+tfx__static_assert(sizeof(tfx_gpu_particle_hot_t) == 32);
+tfx__static_assert(sizeof(tfx_gpu_particle_cold_t) == 64);
+tfx__static_assert(sizeof(tfx_gpu_particle_tick_t) == 48);
+tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 96);
+//---- end GPU compute particle buffer management ----
 
 typedef struct tfx_ribbon_lag_history_s {
 	float time;
@@ -6960,49 +6926,6 @@ typedef struct tfx_ribbon_bucket_s {
 	tfxU32 sort_key;
 } tfx_ribbon_bucket_t;
 
-typedef struct tfx_compute_fx_global_state_s {
-	tfxU32 start_index;
-	tfxU32 current_length;
-	tfxU32 max_index;
-	tfxU32 end_index;
-}tfx_compute_fx_global_state_t;
-
-typedef struct tfx_compute_controller_s {
-	tfx_vec2_t position;
-	float line_length;
-	float angle_offset;
-	tfx_vec4_t scale_rotation;              //Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
-	float end_frame;
-	tfxU32 normalised_values;				//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, position_negator, opacity
-	tfxParticleControlFlags flags;
-	tfxU32 image_data_index;				//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
-	tfx_vec2_t image_handle;
-	tfx_vec2_t emitter_handle;
-	float noise_offset;
-	float stretch;
-	float frame_rate;
-	float noise_resolution;
-} tfx_compute_controller_t;
-
-typedef struct tfx_compute_particle_s {
-	tfx_vec2_t local_position;
-	tfx_vec2_t base_size;
-
-	float base_velocity;
-	float base_roll_spin;
-	float base_weight;
-
-	float age;                            //The age of the particle, used by the controller to look up the current state on the graphs
-	float max_age;                        //max age before the particle expires
-	float emission_angle;                //Emission angle of the particle at spawn time
-
-	float noise_offset;                    //The random velocity added each frame
-	float noise_resolution;                //The random velocity added each frame
-	float image_frame;
-	tfxU32 control_slot_and_layer;    //index to the controller, and also stores the layer in the effect manager that the particle is on (layer << 3)
-	float local_rotation;
-}tfx_compute_particle_t;
-
 #ifdef __cplusplus
 typedef struct tfx_gpu_shapes_s {
 	tfxU32 magic;
@@ -7051,7 +6974,7 @@ typedef struct tfx_spawn_work_entry_s {
 	//consumed one particle at a time by tfx__spawn_particle_age.
 	tfxU32 particle_uid;
 	tfxU32 spawn_ordinal;				//Particles the emitter spawned before this batch, drives the stepped angle distributions
-	float spawned_max_age;				//Longest life in this batch after every life multiplier, only measured for GPU emitters
+	tfxU32 gpu_ring_free;				//Room left in the emitter's GPU ring, tfxINVALID when it doesn't have one
 }tfx_spawn_work_entry_t;
 
 //Sampled once per spawn batch so each ribbon only has to pick a point
@@ -7325,6 +7248,7 @@ typedef enum {
 	tfxUserSpawnLocationFlags_counting_down = 1 << 4,	//expire_countdown is running, the slot frees when it reaches zero
 	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
 	tfxUserSpawnLocationFlags_has_shape_scale = 1 << 6,	//An emitter width, height or depth multiplier isn't 1
+	tfxUserSpawnLocationFlags_fresh = 1 << 7,			//Added or restarted, so its first tick sees age 0 and fires single shots at delay 0
 } tfx_user_spawn_location_flag_bits;
 
 typedef enum {
@@ -7353,7 +7277,7 @@ typedef struct tfx_user_spawn_location_s {
 	tfxU32 generation;								//The slot generation when it was added, stale once the user removes it
 	tfxU64 packed_rotation;							//16 bit snorm quaternion, identity until the user sets one
 	float age;
-	float previous_age;								//Before the last update, -1 until the location has been through one
+	float previous_age;								//Before the last tick, -1 until the location has been through one
 } tfx_user_spawn_location_t;
 
 typedef struct tfx_user_spawn_multipliers_s {
@@ -7425,9 +7349,22 @@ typedef struct tfx_stage_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
-	//GPU compute particle buffer management
+	//GPU particle simulation, only used when info.gpu_particle_capacity is set
 	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;		//One per run_on_gpu emitter instance, indexed by state_properties.gpu_group_index
 	tfx_vector_t<tfxU32> free_gpu_groups;
+	tfx_allocator *gpu_pool_allocator;						//Hands out ring ranges of the pool, offsets are in particles
+	void *gpu_pool_blocks;									//Proxy block headers for gpu_pool_allocator
+	tfx_vector_t<tfx_gpu_pack_work_entry_t> gpu_pack_work;
+	//Everything since the last tfx_GetGPUParticleFrame, cleared by the first tick after it
+	tfx_vector_t<tfx_gpu_particle_hot_t> gpu_spawn_hot;
+	tfx_vector_t<tfx_gpu_particle_cold_t> gpu_spawn_cold;
+	tfx_vector_t<tfx_gpu_particle_dispatch_t> gpu_frame_dispatches;
+	tfx_vector_t<tfx_gpu_particle_tick_t> gpu_frame_ticks;
+	tfxU32 gpu_instance_start;
+	tfxU32 gpu_instance_count;
+	tfxU32 gpu_layer_start[tfxLAYERS];
+	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxU64 gpu_dropped_spawns;
 
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
@@ -7459,7 +7396,6 @@ typedef struct tfx_stage_s {
 	//Filled while emitters update one at a time and only read by the deferred spawn work after, so it can grow freely
 	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
-	tfx_vector_t<tfxU32> free_compute_controllers;
 
 	tfx_work_queue_t work_queue;
 	//The info config that was used to initialise the effect manager. This can be used to alter and the reconfigure the effect manager
@@ -7474,18 +7410,11 @@ typedef struct tfx_stage_s {
 	tfxU32 steps_remaining;
 	tfxU32 highest_depth_index;
 
-	//todo: document compute controllers once we've established this is how we'll be doing it.
-	void *compute_controller_ptr;
-	tfxU32 new_compute_particle_index;
-	tfxU32 new_particles_count;
-	void *new_compute_particle_ptr;
 	//The maximum number of effects that can be updated per frame in the effect manager. If you're running effects with particles that have sub effects then this number might need 
 	//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 	tfxU32 max_effects;
 	//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 	tfxU32 max_cpu_particles_per_layer[tfxLAYERS];
-	//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-	tfxU32 max_new_compute_particles;
 	//The current effect buffer in use, can be either 0 or 1
 	tfxU32 current_ebuff;
 	//For looping through active effects with GetNextEffect function
@@ -7535,9 +7464,6 @@ typedef struct tfx_stage_s {
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;
-	tfxU32 max_compute_controllers;
-	tfxU32 highest_compute_controller_index;
-	tfx_compute_fx_global_state_t compute_global_state;
 	tfx_lookup_mode lookup_mode;
 	//For when particles are ordered by distance from camera
 	tfx_vec3_t camera_front;
@@ -7551,8 +7477,6 @@ typedef struct tfx_stage_s {
 
 	//These can possibly be removed at some point, they're debugging variables
 	tfxU32 particle_id;
-
-	double gpu_current_time_ms;										//Running absolute time in ms, used for group tracking head bumps
 
 	tfxStageFlags flags;
 	//The length of time that passed since the last time Update() was called
@@ -7652,6 +7576,7 @@ typedef enum {
 	tfx_template_override_single_spawn_amount,
 	tfx_template_override_global_graph_scale,
 	tfx_template_override_emitter_graph_scale,
+	tfx_template_override_gpu_capacity,
 } tfx_template_override_type;
 
 //A template setter call, kept so it can be replayed when a refresh rebuilds the template's clone
@@ -8005,14 +7930,15 @@ tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, 
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
-tfxINTERNAL void   tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter);
-tfxINTERNAL void   tfx__grow_gpu_group(tfx_gpu_particle_group_t *group, tfxU32 new_capacity);
+tfxAPI_EDITOR void tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter);
+tfxINTERNAL void   tfx__init_gpu_pool(tfx_stage pm);
 tfxINTERNAL void   tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_effect_descriptor emitter_descriptor);
 tfxINTERNAL void   tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter);
-tfxINTERNAL void   tfx__gpu_group_record_spawns(tfx_stage pm, tfxU32 emitter_index, tfxU32 count);
-tfxINTERNAL void   tfx__measure_gpu_spawned_max_age(tfx_stage pm, tfx_spawn_work_entry_t *work_entry);
-tfxINTERNAL void   tfx__fold_gpu_group_spawn_ages(tfx_stage pm);
-tfxINTERNAL void   tfx__tick_gpu_groups(tfx_stage pm, double current_time_ms);
+tfxINTERNAL tfxU32 tfx__advance_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter);
+tfxINTERNAL void   tfx__begin_gpu_frame(tfx_stage pm);
+tfxINTERNAL void   tfx__record_gpu_groups(tfx_stage pm);
+tfxINTERNAL void   tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void   tfx__layout_gpu_instances(tfx_stage pm);
 tfxINTERNAL void   tfx__free_gpu_groups(tfx_stage pm);
 tfxINTERNAL void   tfx__clear_gpu_groups(tfx_stage pm);
 //---- end GPU compute particle buffer management functions ----
