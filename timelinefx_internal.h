@@ -400,6 +400,12 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
 	return _InterlockedExchange((volatile long *)target, value);
 }
+
+//x86 stores are already release ordered, so only the compiler needs fencing
+static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_thread_access value) {
+	_ReadWriteBarrier();
+	*target = value;
+}
 #endif
 
 #define tfx__writebarrier _WriteBarrier();
@@ -443,6 +449,10 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 
 static inline tfxLONG tfx__exchange(volatile tfx_thread_access *target, tfxLONG value) {
 	return __sync_lock_test_and_set(target, value);
+}
+
+static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_thread_access value) {
+	__atomic_store_n(target, value, __ATOMIC_RELEASE);
 }
 
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
@@ -689,7 +699,7 @@ do { \
 } while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0)); \
 TFX_ASSERT(allocator->access != 0);
 
-#define tfx__unlock_thread_access(allocator) allocator->access = 0;
+#define tfx__unlock_thread_access(allocator) tfx__store_release(&allocator->access, 0);
 
 #else
 
@@ -1570,7 +1580,7 @@ tfx_size tfx_GetLinearAllocatorCapacity(tfx_linear_allocator_t *allocator) {
 #endif
 
 size_t tfxGetNextPower(size_t n);
-void tfxAddHostMemoryPool(size_t size);
+bool tfxAddHostMemoryPool(size_t size);
 void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
@@ -3141,6 +3151,9 @@ typedef enum {
 	tfxStageFlags_has_ribbons_to_draw               	= 1 << 20,
 	tfxStageFlags_record_with_compute_image_index   	= 1 << 21,
 	tfxStageFlags_warming_up		                	= 1 << 23,
+	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
+	tfxStageFlags_skip_instance_writes              	= 1 << 25,		//Warmup and intermediate sub steps: simulate the particles without writing instances
+	tfxStageFlags_instances_not_written             	= 1 << 26,		//The last tick skipped instance writes, so the instance buffer doesn't match the simulation
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -3907,14 +3920,13 @@ struct tfx_vector_t {
 	}
 
 	inline tfxU32        locked_push_back(const T &v) {
-		//suspect, just use a mutex instead?
-		while (tfx__compare_and_exchange((tfx_thread_access volatile *)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange((tfx_thread_access volatile *)&locked, 1, 0) != 0);
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
 		memcpy((void *)&data[current_size], (const void *)&v, sizeof(T));
 		tfxU32 index = current_size++;
-		tfx__exchange((tfx_thread_access volatile *)&locked, 0);
+		tfx__store_release((tfx_thread_access volatile *)&locked, 0);
 		return index;
 	}
 	inline T &push_back(const T &v) {
@@ -4652,12 +4664,13 @@ struct tfx_bucket_array_t {
 	}
 
 	inline tfxU32 locked_push_back(const T &v) {
-		while (tfx__compare_and_exchange(&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange(&locked, 1, 0) != 0);
 
 		push_back(v);
+		tfxU32 index = current_size - 1;
 
-		tfx__exchange(&locked, 0);
-		return current_size - 1;
+		tfx__store_release(&locked, 0);
+		return index;
 	}
 
 	inline T *insert(tfxU32 insert_index, const T &v) {
@@ -4984,6 +4997,7 @@ typedef struct tfx_work_queue_s {
 	volatile tfx_uint entry_completion_count;
 	volatile int next_read_entry;
 	volatile int next_write_entry;
+	volatile tfx_uint completing_thread_count;	//Debug only
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 } tfx_work_queue_t;
 
@@ -5005,6 +5019,7 @@ typedef struct tfx_data_types_dictionary_s {
 
 //Global variables
 typedef struct tfx_storage_s {
+	tfx_thread_access volatile pool_growth_access;
 	tfxU32 memory_pool_count;
 	size_t default_memory_pool_size;
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
@@ -5213,11 +5228,19 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 }
 
 tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
+#ifndef NDEBUG
+	//A second completer's reset below would release the producer while its work is still running
+	tfx_uint completing_threads = tfx__atomic_increment(&queue->completing_thread_count);
+	TFX_ASSERT(completing_threads == 1 && "Only the thread that adds work to a queue may complete it");
+#endif
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfx__do_next_work_queue_entry(queue);
 	}
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
+#ifndef NDEBUG
+	tfx_AtomicAdd32(&queue->completing_thread_count, 0u - 1u);
+#endif
 }
 
 #ifdef _WIN32
@@ -5674,8 +5697,13 @@ tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, co
 
 #include <tracy/Tracy.hpp>
 
+#if defined(tfxTRACY_TRANSIENT) && defined(TRACY_ENABLE)
+#define tfxPROFILE SuppressVarShadowWarning(ZoneTransient(___tracy_scoped_zone, true))
+#define tfxPROFILE_NAMED(name) SuppressVarShadowWarning(ZoneTransientN(___tracy_scoped_zone, name, true))
+#else
 #define tfxPROFILE ZoneScoped
 #define tfxPROFILE_NAMED(name) ZoneScopedN(name)
+#endif
 #define tfxPROFILE_VALUE(value) ZoneValue(value)
 #define tfxPROFILE_TEXT(format, ...) ZoneTextF(format, ##__VA_ARGS__)
 
@@ -5798,10 +5826,9 @@ typedef struct tfx_effect_instance_data_s {
 	tfx_vector_t depth_indexes[tfxLAYERS][2];
 #endif
 	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 cumulative_index_point[tfxLAYERS];
+	tfxU32 layer_offset[tfxLAYERS];				//Where this effect's instances start within each layer of the instance buffer
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
-	tfxU32 instance_start_index;
 	tfxU32 instance_count;
 } tfx_effect_instance_data_t;
 
@@ -5981,6 +6008,8 @@ typedef struct tfx_path_settings_s {
 typedef struct tfx_emitter_path_s {
 	tfx_path_settings_t settings;
 	tfx_path_buffers_t buffers;
+	tfxU32 generation;		//Bumped when the slot is freed so a reused slot never matches a ribbon path cache key made for its last occupant
+	bool is_free;
 } tfx_emitter_path_t;
 
 
@@ -6396,6 +6425,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	float noise_base_offset;
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
+	tfxU32 sort_key;
 
 	//Any bookmarks that exist in the effect
 	float bookmarks[tfxMAX_BOOKMARKS];
@@ -6927,6 +6957,7 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_storage_map_t cached_static_path_segments;
 #endif
 	tfxRibbonBucketFlags flags;
+	tfxU32 sort_key;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_compute_fx_global_state_s {
@@ -7064,8 +7095,7 @@ typedef struct tfx_control_work_entry_s {
 	tfxU32 start_diff;
 	tfxU32 running_sprite_offset;
 	tfxU32 sprites_index;
-	tfxU32 cumulative_index_point;
-	tfxU32 effect_instance_offset;
+	tfxU32 instance_offset;
 	tfxU32 sprite_buffer_end_index;
 	tfxU32 emitter_index;
 	tfx_stage pm;
@@ -7101,6 +7131,8 @@ typedef struct tfx_control_work_entry_s {
 typedef struct tfx_stage_work_entry_s {
 	tfx_stage pm;
 	double elapsed_time;
+	tfxU32 step_count;
+	tfxU32 write_step_count;		//How many of the last steps write instances
 } tfx_stage_work_entry_t;
 
 typedef struct tfx_control_ribbon_work_entry_s {
@@ -7277,6 +7309,7 @@ typedef struct tfx_animation_manager_s {
 typedef struct tfx_effect_index_s {
 	tfxEffectID index;
 	float depth;
+	tfxU32 sort_key;			//Copied from the effect before sorting so the order the frame was laid out in can be read back with it
 }tfx_effect_index_t;
 
 typedef struct tfx_warmup_entry_s {
@@ -7433,8 +7466,12 @@ typedef struct tfx_stage_s {
 	tfx_stage_info_t info;
 	//Banks of instance_data. All emitters write their sprite data to these banks. 
 	tfx_buffer_t instance_buffer;
+	//The instances written by the update before instance_buffer's, which captured_index points into. Only kept when double buffering sprites
+	tfx_buffer_t previous_instance_buffer;
 	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
 	tfxU32 current_sprite_buffer;
+	//Sub steps left in this update including the current one, so effects can spread the movement since the last update across them
+	tfxU32 steps_remaining;
 	tfxU32 highest_depth_index;
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
@@ -7459,6 +7496,7 @@ typedef struct tfx_stage_s {
 
 
 	tfxU32 layer_sizes[tfxLAYERS];
+	tfxU32 layer_start[tfxLAYERS];
 	//Stage wide totals across every ribbon bucket, reserved atomically by the per bucket spawn threads. Rows and path
 	//blocks are never reclaimed before a stage clear, so these only grow and bound what the staging copy can write.
 	volatile tfxU32 ribbon_rows_allocated;
@@ -7584,6 +7622,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_shared_emitter_properties;
 	tfx_vector_t<tfxU32> free_ribbon_emitter_properties;
 	tfx_vector_t<tfxU32> free_particle_gpu_properties;
+	tfx_vector_t<tfxU32> free_paths;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
 
@@ -7604,10 +7643,36 @@ typedef struct tfx_library_s {
 } tfx_library_t;
 #endif
 
+typedef enum {
+	tfx_template_override_user_data,
+	tfx_template_override_user_data_all,
+	tfx_template_override_update_callback,
+	tfx_template_override_warmup_time,
+	tfx_template_override_emitter_enabled,
+	tfx_template_override_single_spawn_amount,
+	tfx_template_override_global_graph_scale,
+	tfx_template_override_emitter_graph_scale,
+} tfx_template_override_type;
+
+//A template setter call, kept so it can be replayed when a refresh rebuilds the template's clone
+typedef struct tfx_template_override_s {
+	tfx_template_override_type type;
+	tfxU32 graph_index;
+	tfxKey path_hash;		//Key into the template's paths map
+	union {
+		void *user_data;
+		void(*update_callback)(tfx_stage pm, tfxEffectID effect_index);
+		float amount;
+		tfxU32 count;
+		bool enabled;
+	};
+} tfx_template_override_t;
+
 #ifdef __cplusplus
 typedef struct tfx_effect_template_s {
 	tfxU32 magic;
 	tfx_storage_map_t<tfx_effect_descriptor> paths;
+	tfx_storage_map_t<tfx_template_override_t> overrides;
 	tfx_effect_descriptor effect;				//Null between a tfx_ResetTemplate and the next prepare
 	tfx_effect_descriptor original_effect;		//Null once the original has been deleted from the library
 	tfx_library library;						//The library this is registered with, reachable when neither descriptor is
@@ -7641,6 +7706,8 @@ tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfx
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
 #define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count
+//A stage keeps a separate bucket per effect sort key, so ribbons from differently keyed effects are never dispatched together
+tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 sort_key) { return ((tfxKey)sort_key << 32) | segment_count; }
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
@@ -7660,7 +7727,7 @@ tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor ef
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, int tessellation);
+tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, int tessellation);
 tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
@@ -7758,7 +7825,6 @@ tfxAPI_EDITOR tfxErrorFlags tfx__read_package_library_version(const char *path, 
 //The change tier of a graph or a named property. One table, so the widgets and a reload diff agree.
 tfxAPI_EDITOR tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effect_scope);
 
-tfxAPI_EDITOR bool tfx__refresh_live_emitter(tfx_stage pm, tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR void tfx__update_emitter_states_of_effect(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
@@ -7790,7 +7856,7 @@ tfxINTERNAL void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_
 //--------------------------------
 //Effect_manager_functions
 //--------------------------------
-tfxINTERNAL void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer, tfxU32 *last_instance_count);
+tfxINTERNAL void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer);
 tfxINTERNAL void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording);
 tfxINTERNAL void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__set_stage_timings(tfx_stage stage, double elapsed_time, double max_frame_length);
@@ -7841,7 +7907,7 @@ unsigned TFX_THREAD_CALL tfx__update_stage_thread(void *data);
 #else
 void *tfx__update_stage_thread(void *data);
 #endif
-tfxINTERNAL void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter);
 
 //--------------------------------
 //Graph functions
@@ -7993,6 +8059,9 @@ tfxINTERNAL void tfx__migrate_ribbon_clip_graphs(tfx_library library);
 tfxINTERNAL tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs);
 tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
+//An initialised, empty path slot, reused from the free list when there is one
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_path(tfx_library library);
+tfxINTERNAL void tfx__free_library_path(tfx_library library, tfxU32 index);
 tfxAPI_EDITOR tfx_emitter_path_t *tfx__get_path(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id);
@@ -8048,7 +8117,10 @@ tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descripto
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_properties(tfx_effect_descriptor descriptor);
+//Frees the graph lists and property slots of a snapshot that is not a descriptor, such as the editor's undo base
+tfxAPI_EDITOR void tfx__free_library_state_slots(tfx_library library, tfx_effect_descriptor_type type, tfx_common_state_properties_t *state_properties);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
@@ -9723,7 +9795,7 @@ tfxINTERNAL void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_lengt
 tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
-tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
+tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
 tfxINTERNAL bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id);
 tfxINTERNAL bool tfx__effect_id_in_range(tfx_stage pm, tfxEffectID id);
 tfxINTERNAL void tfx__free_effect_slot(tfx_stage pm, tfx_effect_index_t effect_index);
@@ -9734,6 +9806,9 @@ tfxINTERNAL bool tfx__valid_animation_id(tfx_animation_manager animation_manager
 //Effect templates
 //--------------------------------
 tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_descriptor effect_emitter, const char *path);
+tfxINTERNAL void tfx__apply_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override);
+tfxINTERNAL void tfx__set_template_override(tfx_effect_template effect_template, tfx_template_override_t *template_override);
+tfxINTERNAL void tfx__replay_template_overrides(tfx_effect_template effect_template);
 
 //--------------------------------
 //Library functions, internal/Editor functions

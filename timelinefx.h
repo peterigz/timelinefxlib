@@ -31,6 +31,11 @@
 //the library into Tracy zones. Without it they compile away to nothing, so a shipping
 //build pays for no instrumentation at all.
 //#define tfxTRACY
+//Define tfxTRACY_TRANSIENT instead of tfxTRACY when the library lives in a module that can be unloaded (e.g. a hot reloaded DLL)
+//#define tfxTRACY_TRANSIENT
+#if defined(tfxTRACY_TRANSIENT) && !defined(tfxTRACY)
+#define tfxTRACY
+#endif
 #define TFX_THREAD_SAFE
 //#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
@@ -257,7 +262,7 @@ typedef enum tfx_image_format {
 
 typedef enum {
 	tfxStageSetup_none,
-	tfxStageSetup_group_sprites_by_effect,
+	tfxStageSetup_auto_order_effects,
 } tfx_stage_setup;
 
 //Which local axis of an effect is treated as the direction it faces, used by tfx_PointEffectAt. TimelineFX is
@@ -585,7 +590,7 @@ typedef struct tfx_ribbon_buffer_info_s {
 //This struct is used for configuring a effect manager on creation
 typedef struct tfx_stage_info_s {
 	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
-	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
+	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535.
 	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit returns tfxINVALID.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
@@ -598,9 +603,8 @@ typedef struct tfx_stage_info_s {
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
-	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping instance_data by effect.
-	bool group_sprites_by_effect;           //Set to true to group all instance_data by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
-	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
+	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space.
+	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_stage pm, void *user_data);
@@ -619,6 +623,7 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 last_vertex_offset;
 	tfxU32 last_ribbon_offset;
 	tfxU32 last_segment_offset;
+	tfxU32 sort_key;						//The sort key of every effect whose ribbons are in this bucket, see tfx_SetEffectSortKey
 } tfx_ribbon_dispatch_t;
 
 typedef struct tfx_ribbon_buffer_requirements_s {
@@ -990,6 +995,13 @@ typedef enum {
 } tfx_spawn_location_add_flag_bits;
 
 typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bits
+
+typedef enum {
+	tfxUpdateStepFlags_none = 0,
+	tfxUpdateStepFlags_write_instances			= 1 << 0,		//Write the instance buffer this step. Set it on the last two steps before you draw
+} tfx_update_step_flag_bits;
+
+typedef tfxU32 tfxUpdateStepFlags;              //tfx_update_step_flag_bits
 
 typedef struct tfx_refresh_result_s {
 	tfxRefreshFlags flags;               //A combination of tfxRefreshFlags
@@ -1366,7 +1378,7 @@ Two ways to synchronise before you read that data:
     you before returning, so you can call them directly after tfx_UpdateStage without calling
     tfx_CompleteStageWork first:
         tfx_GetInstanceBuffer, tfx_GetInstanceBufferByLayer, tfx_GetInstanceCount, tfx_GetInstanceCountByLayer,
-        tfx_GetNextInstanceBuffer, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
+        tfx_GetNextInstanceBuffer, tfx_GetNextInstanceKeyRange, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
         tfx_GetRibbonBufferRequirements, tfx_CopyRibbonDataToStagingBuffers, tfx_ClearStage and tfx_FreeStage.
 
 Anything that reads stage state through a path NOT in that list (for example reading the instance buffer pointer
@@ -1423,6 +1435,30 @@ use to update the depth of each effect in the scene.
 tfxAPI void tfx_ToggleStageOrderEffects(tfx_stage pm, bool yesno);
 
 /*
+Give an effect a sort key. Within each layer of the instance buffer effects are ordered by sort key (lowest first) and then by depth if tfx_ToggleStageOrderEffects
+is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library. Use
+tfx_GetNextInstanceKeyRange to get those ranges. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
+Set the key straight after adding the effect. Live ribbons are stored in their bucket, so the key of an effect can't change while any of its ribbons are
+alive: the call asserts and leaves the key as it was. Keys take effect on the next tfx_UpdateStage and effects have a key of 0 until you set one.
+This waits for any stage update in progress, so call it before tfx_UpdateStage rather than straight after.
+Keep keys to a small set you reuse: every distinct key gets its own ribbon buckets with their own copies of the ribbon paths, and these stay allocated
+(counting against max_ribbon_segments) until the stage is cleared. For example when swapping between an old and a reloaded library, alternate between
+two keys rather than giving each new library load a new key.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @param sort_key                 The key to sort the effect by
+*/
+tfxAPI void tfx_SetEffectSortKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 sort_key);
+
+/*
+Get the sort key of an effect, see tfx_SetEffectSortKey.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @returns tfxU32                 The effect's sort key
+*/
+tfxAPI tfxU32 tfx_GetEffectSortKey(tfx_stage pm, tfxEffectID effect_index);
+
+/*
 Get the billboard buffer in the effect manager containing all the sprite instances that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
@@ -1430,7 +1466,8 @@ tfxAPI tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage  pm);
 
 /*
 Get the billboard buffer in the effect manager containing all the sprite instances for a specific layer that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
-You can then use tfx_GetInstanceCountByLayer for the draw call.
+You can then use tfx_GetInstanceCountByLayer for the draw call. The instance buffer is grouped by layer, so each layer is one contiguous range across every effect in the stage and can be drawn with its own pipeline.
+Within a layer, effects are in the same order as the stage's effect list (sorted by depth when auto_order_effects is on).
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
 tfxAPI tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer);
@@ -1440,6 +1477,20 @@ Get the number of instances within the instance buffer of a effect manager
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
 tfxAPI int tfx_GetInstanceCount(tfx_stage pm);
+
+/*
+Get the instances written by the update step before the one in tfx_GetInstanceBuffer. This is the buffer that each instance's captured_index points
+into, so upload it alongside the current buffer to interpolate between the last two steps, rather than relying on whatever you drew last frame.
+It's only kept when the stage was created with double_buffer_sprites set (the default).
+* @param pm                       A pointer to an intialised tfx_stage_t.
+*/
+tfxAPI tfx_instance_t *tfx_GetPreviousInstanceBuffer(tfx_stage pm);
+
+/*
+Get the number of instances in the buffer returned by tfx_GetPreviousInstanceBuffer.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+*/
+tfxAPI int tfx_GetPreviousInstanceCount(tfx_stage pm);
 
 /*
 Get the number of instances within the instance buffer of a effect manager for a specific layer.
@@ -1454,13 +1505,14 @@ Get the update time being used by the effect manager.
 tfxAPI double tfx_GetUpdateTime(tfx_stage pm);
 
 /*
-Get the ribbon buffer for a given segment size. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
+Get the ribbon buffer for a given segment size and effect sort key. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
 a vertex buffer for rendering.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
-* @returns						  A pointer to a tfx_ribbon_bucket_t
+* @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
+* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count and key
 */
-tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxKey bucket_id);
+tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key);
 
 /*
 Call this to determine whether or not any effect manager has ribbon_emitters to draw this frame.
@@ -1469,12 +1521,13 @@ Call this to determine whether or not any effect manager has ribbon_emitters to 
 tfxAPI bool tfx_HasRibbonsToDraw(tfx_stage pm);
 
 /*
-Get a struct containing the info you need to compute and render ribbon_emitters of a specific length. 
+Get a struct containing the info you need to compute and render ribbon_emitters of a specific length and effect sort key.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
-* @returns						  A tfx_ribbon_buffer_info_t struct
+* @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
+* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count and key
 */
-tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxKey bucket_id);
+tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key);
 
 /*
 --------------------------------
@@ -1809,7 +1862,38 @@ always be the earliest bookmark
 tfxAPI float tfx_GetBookmarkTime(tfx_effect_template effect, tfxU32 bookmark_index);
 
 /*
-Check if a specific bookmark time has been crossed for an effect running in the stage. 
+Get the number of bookmarks set in the effect. Bookmarks are packed, so slots 0 to count - 1 are all in use.
+* @param tfx_effect_template		A handle to the effect template
+* @returns tfxU32					The number of bookmarks, 0 to tfxMAX_BOOKMARKS
+*/
+tfxAPI tfxU32 tfx_GetBookmarkCount(tfx_effect_template effect);
+
+/*
+Get the name the bookmark was given in the editor. The pointer stays valid until the template is freed or the
+library is refreshed.
+* @param tfx_effect_template		A handle to the effect template
+* @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1
+* @returns const char*				The bookmark name, or an empty string if there is no bookmark in that slot
+*/
+tfxAPI const char *tfx_GetBookmarkName(tfx_effect_template effect, tfxU32 bookmark_index);
+
+/*
+Find the slot of a bookmark by its name. Bookmarks are ordered by time, so moving one in the editor can change
+the slot it lives in. Look up the slots you need by name once after creating the template, and again after
+calling tfx_RefreshLibrary, then pass them to tfx_IsBookmarkCrossed rather than hard coding slot numbers.
+If more than one bookmark has the same name then the earliest one is returned.
+* @param tfx_effect_template		A handle to the effect template
+* @param name						The name of the bookmark, case sensitive
+* @returns tfxU32					The bookmark slot, or tfxINVALID if no bookmark has that name. Check with tfx_BookmarkIndexIsValid
+*/
+tfxAPI tfxU32 tfx_GetBookmarkIndex(tfx_effect_template effect, const char *name);
+
+//Only checks the index against tfxINVALID, the value tfx_GetBookmarkIndex returns when no bookmark has the name
+tfxAPI bool tfx_BookmarkIndexIsValid(tfxU32 bookmark_index);
+
+/*
+Check if a specific bookmark time has been crossed for an effect running in the stage. Use tfx_GetBookmarkIndex
+to get the slot from the bookmark's name.
 * @param pm							A pointer to an initialised tfx_stage_t
 * @param effect_id					The effect id that is in the stage
 * @param bookmark_index				The bookmark slot, 0 to tfxMAX_BOOKMARKS - 1
@@ -1859,10 +1943,39 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 		RenderParticles(game->pm, game);
 	}
 
+If you'd prefer to keep a higher timeline resolution and call the stage update multiple times then see tfx_UpdateStageSubSteps.
+
 * @param pm                    A pointer to an initialised tfx_stage_t.
 * @param double                the amount of time that elapsed since the last frame
 */
 tfxAPI void tfx_UpdateStage(tfx_stage pm, double elapsed);
+
+/*
+Update a stage in a number of fixed size steps with one call. All of the steps run on the stage's update thread, so like tfx_UpdateStage this returns
+without waiting for them, whereas calling tfx_UpdateStage once per step makes each call wait for the step before it. Use this when you simulate at a
+fixed rate and run more than one step in a frame. Only the last two steps write instances: the last is the one to draw and the one before it is what
+captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. The steps before those only simulate, which makes them cheaper.
+Positions you set on effects since the last update are spread evenly across the steps. tfx_UpdateStage(pm, elapsed) is the same as
+tfx_UpdateStageSubSteps(pm, elapsed, 1).
+* @param pm                    A pointer to an initialised tfx_stage_t.
+* @param step_length           The length of each step in milliseconds
+* @param step_count            The number of steps to run, must be at least 1
+*/
+tfxAPI void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count);
+
+/*
+Update a stage by a single step, choosing whether the step writes instances. Use this instead of tfx_UpdateStageSubSteps when you need to change
+things in the stage between steps, like moving an effect along with something in your own fixed step simulation. Each call waits for the step
+before it to finish, so do your own work for the next step before calling it again and the two will overlap. Steps that don't write instances
+are cheaper. Pass tfxUpdateStepFlags_write_instances on the last two steps before you draw: the last is the buffer to draw and the one before
+it is what captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. If only the last step writes, the previous buffer
+is whatever the last write before it was, so you interpolate across all the steps since then. Don't read the instance buffer after a step that
+didn't write instances, it doesn't describe the particles until the next step that does.
+* @param pm                    A pointer to an initialised tfx_stage_t.
+* @param step_length           The length of the step in milliseconds
+* @param flags                 tfxUpdateStepFlags_write_instances to write the instance buffer, or tfxUpdateStepFlags_none
+*/
+tfxAPI void tfx_UpdateStageSubStep(tfx_stage pm, double step_length, tfxUpdateStepFlags flags);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
@@ -2270,28 +2383,46 @@ Get the current position of an effect
 tfxAPI void tfx_GetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, float out_position[3]);
 
 /*
-You can use this function to get the billboard buffer of a specific effect. 
+You can use this function to get the instances of a specific effect on one layer. The instance buffer is grouped by layer, so an effect's instances are only
+contiguous within each layer; call this once per layer to get all of them.
 * @param pm						A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
+* @param layer					The layer to get the instances for
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						tfx_instance_t pointer to the buffer
 */
-tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 *sprite_count);
+tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
 
 /*
-You can use this function to get each billboard buffer for every effect that is currently active in the effect manager. Generally you would call this inside a for loop for each layer.
+You can use this function to get each effect's instances on one layer for every effect that is currently active in the effect manager. Generally you would call this
+in a while loop inside a for loop over each layer, calling tfx_ResetInstanceBufferLoopIndex before each layer.
 * @param pm						A pointer to a tfx_stage_t where the effect is being managed
+* @param layer					The layer to get the instances for
 * @param tfx_sprite_billboard_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
 * @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the effect manager
 */
-tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfx_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
+tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*After calling GetNextBillboard/SpriteBuffer in a while loop you can call this to reset the index for the next frame
 * @param pm						A pointer to a tfx_stage_t
 */
 tfxAPI void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm);
+
+/*
+Get the instances on one layer one sort key at a time, so each call gives you a single contiguous range of every effect sharing a key (see tfx_SetEffectSortKey).
+Call it in a while loop until it returns false, then call tfx_ResetInstanceBufferLoopIndex before the next layer. Ranges come in key order and the instances
+pointer is inside the buffer returned by tfx_GetInstanceBuffer, so subtract that to get the first instance for a draw call from one uploaded buffer.
+This shares its loop index with tfx_GetNextInstanceBuffer, so don't interleave the two.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param layer                    The layer to get the ranges for
+* @param sort_key                 Set to the sort key of the effects in this range
+* @param instances                Set to the first instance in the range
+* @param instance_count           Set to the number of instances in the range
+* @returns bool                   true while there is another range, false when there are no more on this layer
+*/
+tfxAPI bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count);
 
 /*
 Set the roll of an effect
@@ -2865,6 +2996,8 @@ tfxAPI size_t tfx_CalculateAnimationOffsetsBufferSize(size_t instance_count);
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a effect manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
+Changes made through the template setters (tfx_SetTemplate*, tfx_ScaleTemplate*, tfx_Enable/DisableTemplateEmitter, tfx_SetEffectTemplateWarmupTime)
+are re-applied when tfx_RefreshLibrary rebuilds the template. Edits made directly on descriptors fetched from the template are not.
 * @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
 * @param name                       The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
 //Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
@@ -2879,11 +3012,13 @@ Delete an effect template and free all memory associated with it
 tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
 
 /*
-Check to see if an effect template's original effect is no longer in the library after a called to tfxRefreshLibrary. 
-The template will still work becuase it clones all the data from the library so you can modify it but you might want to delete
-the template if it's not used now.
+Check whether the effect a template was cloned from has gone from the library file, as found by tfx_RefreshLibrary.
+While this is true, tfx_AddEffectTemplateToStage refuses the template and returns tfxINVALID, and the refresh that found
+the effect missing expires anything already running from it. The template is not freed: if a later refresh finds the
+effect in the file again, this goes back to false and the template can be used again. Call tfx_FreeEffectTemplate if you
+no longer need it.
 * @param effect_template    A handle to the effect template
-* @returns bool             True if the effect it was cloned from has been deleted from the library
+* @returns bool             True if the effect it was cloned from is no longer in the library file
 */
 tfxAPI bool tfx_EffectTemplateIsMarkedForDeletion(tfx_effect_template effect_template);
 
