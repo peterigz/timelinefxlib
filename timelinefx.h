@@ -636,7 +636,7 @@ typedef struct tfx_gpu_particle_hot_s {		//32 bytes
 } tfx_gpu_particle_hot_t;
 
 //The state of one GPU simulated particle that is fixed when it spawns, one per pool slot
-typedef struct tfx_gpu_particle_cold_s {	//64 bytes
+typedef struct tfx_gpu_particle_cold_s {	//80 bytes
 	tfxU32 uid;
 	float inv_max_age;
 	tfxU32 velocity_normal;					//Packed 10 bit xyz
@@ -652,11 +652,15 @@ typedef struct tfx_gpu_particle_cold_s {	//64 bytes
 	float base_yaw_spin;
 	float image_start_frame;				//The frame at age 0, so the current frame is image_start_frame + image_frame_rate * age
 	tfxU32 spawn_location;
+	float noise_offset_x;					//Noise field sample offset in authored units, zero for white noise
+	float noise_offset_y;
+	float noise_offset_z;
+	float noise_resolution;
 	tfxU32 padding;
 } tfx_gpu_particle_cold_t;
 
 //One emitter instance's ring at one update tick. A dispatch runs every tick record it points to in order
-typedef struct tfx_gpu_particle_tick_s {	//48 bytes
+typedef struct tfx_gpu_particle_tick_s {	//64 bytes
 	tfxU32 head;							//Ring slot of the oldest particle after this tick's bump
 	tfxU32 count;							//Particles in the ring after this tick's spawns
 	tfxU32 spawn_count;						//The last spawn_count of those were spawned this tick
@@ -669,6 +673,8 @@ typedef struct tfx_gpu_particle_tick_s {	//48 bytes
 	float acceleration_scale;				//Seconds of acceleration that survive the drag
 	float drag_alpha_variation;
 	float acceleration_scale_variation;
+	float noise_amplitude;					//Noise strength times the effect's noise multiplier, times the motion randomness base for white noise. 0 before the force's delay
+	float noise_origin[3];					//Centre of a bounded noise field, in the particles' space
 } tfx_gpu_particle_tick_t;
 
 typedef enum {
@@ -691,7 +697,13 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_relative_scale_only = 1 << 15,			//A relative Other Emitter: positions are only scaled
 	tfxGPUParticleDispatchFlags_location_rotation = 1 << 16,			//A spawn location has a rotation, applied after the emitter's
 	tfxGPUParticleDispatchFlags_align_rotated_emission = 1 << 17,		//Emission alignment of a relative emitter, rotated by the emitter
+	tfxGPUParticleDispatchFlags_noise = 1 << 18,						//The emitter has a noise force, its algorithm is in the noise_algorithm bits
+	tfxGPUParticleDispatchFlags_noise_algorithm = 3 << 19,				//(flags >> tfxGPU_NOISE_ALGORITHM_SHIFT) & 3: white 0, simplex 1, curl 2, value 3
+	tfxGPUParticleDispatchFlags_noise_bounded = 1 << 21,				//The noise fades out by its profile at noise_radius from the tick's noise_origin
+	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
 } tfx_gpu_particle_dispatch_flag_bits;
+
+#define tfxGPU_NOISE_ALGORITHM_SHIFT 19
 
 typedef tfxU32 tfxGPUParticleDispatchFlags;      //tfx_gpu_particle_dispatch_flag_bits
 
@@ -703,7 +715,7 @@ typedef enum {
 typedef tfxU32 tfxGPUParticleFlags;              //tfx_gpu_particle_flag_bits
 
 //One emitter instance's ring for one tfx_GetGPUParticleFrame. Upload them verbatim and dispatch once per record
-typedef struct tfx_gpu_particle_dispatch_s {	//112 bytes
+typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	tfxU32 base;							//First pool slot of the ring
 	tfxU32 capacity;						//Ring slots
 	tfxU32 first_tick;						//Into tfx_gpu_particle_frame_t ticks
@@ -726,7 +738,10 @@ typedef struct tfx_gpu_particle_dispatch_s {	//112 bytes
 	tfxU32 location_count;
 	float emitter_rotation[4];				//Quaternion xyzw
 	float handle[3];						//Added to a relative position before the emitter rotation
-	tfxU32 padding;
+	float noise_radius;						//Authored units. A relative ring divides by it as it is, a world ring by noise_radius * the tick's overall_scale
+	float noise_swerve_gain_minus_one;
+	float noise_speed_gain_minus_swerve_gain;
+	tfxU32 padding[2];
 } tfx_gpu_particle_dispatch_t;
 
 //A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
@@ -1893,7 +1908,8 @@ GPU particle simulation
 Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
 instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
-tfx_SetStageGPUSimulation has it off, and when they use forces or are the source another emitter spawns from. An effect
+tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. Noise is the only force
+they keep: Run on GPU mutes the others, and turning it off again doesn't re-enable them. An effect
 with a Run on GPU emitter spawns at its spawn locations (tfx_AddSpawnLocation), never at its own position, so one instance
 of it serves every place it plays. Particles of a relative emitter follow the location they spawned at, through the
 spawn_locations table in each frame.

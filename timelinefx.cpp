@@ -5057,6 +5057,59 @@ static const tfx_graph_type tfx__gpu_particle_graph_order[] = {
 	tfxOvertime_height, tfxOvertime_weight, tfxOvertime_pitch_spin, tfxOvertime_yaw_spin, tfxOvertime_roll_spin, tfxOvertime_stretch,
 };
 
+//One segment of a lookup graph. A linear graph's curve points are put on the straight line between its ends, so a kernel that
+//always takes the bezier gets the same curve as one that checks the flag
+tfxINTERNAL tfx_gpu_graph_data_t tfx__gpu_graph_data(tfx_graph_t *graph) {
+	tfx_gpu_graph_data_t graph_data{};
+	TFX_ASSERT(graph->nodes.current_size);		//There must be nodes in the graph!
+	graph_data.node_data.x = graph->nodes[0].value;
+	graph_data.node_data.y = graph->nodes[0].right.y;
+	if (graph->nodes.current_size >= 2) {
+		graph_data.node_data.z = graph->nodes[1].left.y;
+		graph_data.node_data.w = graph->nodes[1].value;
+	} else {
+		graph_data.node_data.z = 0.f;
+		graph_data.node_data.w = 0.f;
+	}
+	if (!(graph->flags & tfxGraphFlags_use_bezier_sampling)) {
+		graph_data.node_data.y = tfx__linear_sampler(graph_data.node_data.x, graph_data.node_data.w, 1.f / 3.f);
+		graph_data.node_data.z = tfx__linear_sampler(graph_data.node_data.x, graph_data.node_data.w, 2.f / 3.f);
+	}
+	graph_data.oscillator.x = graph->oscillator.frequency;
+	graph_data.oscillator.y = graph->oscillator.amplitude;
+	graph_data.oscillator.z = graph->oscillator.offset_x;
+	graph_data.oscillator.w = graph->oscillator.offset_y;
+	graph_data.flags = (graph->flags & tfxGraphFlags_use_bezier_sampling) | (graph->flags & tfxGraphFlags_enable_oscillator);
+	graph_data.easing_type = graph->easing_type;
+	return graph_data;
+}
+
+//A bounded noise field reads its profile by tfx__wide_sample_force_profile's rules: linear easing, no oscillator, and bezier only when
+//tfx__graph_has_bezier_curves agrees. Zeroed for an emitter without one
+tfxINTERNAL tfx_gpu_graph_data_t tfx__gpu_noise_profile_graph_data(tfx_effect_descriptor emitter) {
+	tfx_gpu_graph_data_t graph_data{};
+	const tfx_force_t *force = tfx__get_enabled_noise_force(tfx__get_particle_emitter_properties(emitter));
+	if (!force || force->graph_list_index == tfxINVALID) {
+		return graph_data;
+	}
+	tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
+	//tfx__update_lerp_graph keeps a profile at exactly two nodes
+	if (profile_graph->nodes.current_size < 2) {
+		return graph_data;
+	}
+	graph_data.node_data.x = profile_graph->nodes[0].value;
+	graph_data.node_data.y = profile_graph->nodes[0].right.y;
+	graph_data.node_data.z = profile_graph->nodes[1].left.y;
+	graph_data.node_data.w = profile_graph->nodes[1].value;
+	graph_data.flags = tfx__graph_has_bezier_curves(profile_graph) ? tfxGraphFlags_use_bezier_sampling : 0;
+	if (!graph_data.flags) {
+		graph_data.node_data.y = tfx__linear_sampler(graph_data.node_data.x, graph_data.node_data.w, 1.f / 3.f);
+		graph_data.node_data.z = tfx__linear_sampler(graph_data.node_data.x, graph_data.node_data.w, 2.f / 3.f);
+	}
+	graph_data.easing_type = tfxGraphEasingType_linear;
+	return graph_data;
+}
+
 void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor, stack);
 	//tfxStore->all_graph_nodes.clear();
@@ -5095,34 +5148,14 @@ void tfx__update_library_compute_nodes() {
 
 						TFX_ASSERT(current->type != tfxEmitterType || index - current->gpu_lookup_offset >= tfxArrayCount(tfx__gpu_particle_graph_order) || graph.type == tfx__gpu_particle_graph_order[index - current->gpu_lookup_offset]);
 
-						tfx_gpu_graph_data_t graph_data{};
-						TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
-						graph_data.node_data.x = graph.nodes[0].value;
-						graph_data.node_data.y = graph.nodes[0].right.y;
-						if (graph.nodes.current_size >= 2) {
-							graph_data.node_data.z = graph.nodes[1].left.y;
-							graph_data.node_data.w = graph.nodes[1].value;
-						} else {
-							graph_data.node_data.z = 0.f;
-							graph_data.node_data.w = 0.f;
-						}
-
-						if (!(graph.flags & tfxGraphFlags_use_bezier_sampling)) {
-							//To avoid complications and shader variations to handle linear/bezier sampling, if bezier sampling is not set
-							//then we position the curve points so that the graph will be linear. Then we just do a bezier
-							//sample for all cases. That way we avoid conditions in the shader.
-							graph_data.node_data.y = (float)tfx__linear_sampler((1.f / 3.f), graph_data.node_data.x, graph_data.node_data.z);
-							graph_data.node_data.z = (float)tfx__linear_sampler((2.f / 3.f), graph_data.node_data.x, graph_data.node_data.z);
-						}
-						graph_data.oscillator.x = graph.oscillator.frequency;
-						graph_data.oscillator.y = graph.oscillator.amplitude;
-						graph_data.oscillator.z = graph.oscillator.offset_x;
-						graph_data.oscillator.w = graph.oscillator.offset_y;
-						graph_data.flags = (graph.flags & tfxGraphFlags_use_bezier_sampling) | (graph.flags & tfxGraphFlags_enable_oscillator);
-						graph_data.easing_type = graph.easing_type;
 						TFX_ASSERT(index < tfxStore->gpu_graph_data.current_size);
-						gpu_graph_data[index] = graph_data;
+						gpu_graph_data[index] = tfx__gpu_graph_data(&graph);
 						index++;
+					}
+					if (current->type == tfxEmitterType) {
+						TFX_ASSERT(index - current->gpu_lookup_offset <= tfxGPU_LOOKUP_NOISE_PROFILE);
+						index = current->gpu_lookup_offset + tfxGPU_LOOKUP_NOISE_PROFILE;
+						gpu_graph_data[index++] = tfx__gpu_noise_profile_graph_data(current);
 					}
 				}
 
@@ -5155,27 +5188,12 @@ void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter)
 
 		if (!tfx__gpu_overtime_graph(&graph)) continue;
 
-		tfx_gpu_graph_data_t graph_data{};
-		TFX_ASSERT(graph.nodes.current_size);		//There must be nodes in the graph!
-		graph_data.node_data.x = graph.nodes[0].value;
-		graph_data.node_data.y = graph.nodes[0].right.y;
-		if (graph.nodes.current_size >= 2) {
-			graph_data.node_data.z = graph.nodes[1].left.y;
-			graph_data.node_data.w = graph.nodes[1].value;
-		} else {
-			graph_data.node_data.z = 0.f;
-			graph_data.node_data.w = 0.f;
-		}
-
-		graph_data.oscillator.x = graph.oscillator.frequency;
-		graph_data.oscillator.y = graph.oscillator.amplitude;
-		graph_data.oscillator.z = graph.oscillator.offset_x;
-		graph_data.oscillator.w = graph.oscillator.offset_y;
-		graph_data.flags = (graph.flags & tfxGraphFlags_use_bezier_sampling) | (graph.flags & tfxGraphFlags_enable_oscillator);
-		graph_data.easing_type = graph.easing_type;
-		gpu_graph_data[emitter->gpu_lookup_offset + index] = graph_data;
+		gpu_graph_data[emitter->gpu_lookup_offset + index] = tfx__gpu_graph_data(&graph);
 
 		index++;
+	}
+	if (emitter->type == tfxEmitterType) {
+		gpu_graph_data[emitter->gpu_lookup_offset + tfxGPU_LOOKUP_NOISE_PROFILE] = tfx__gpu_noise_profile_graph_data(emitter);
 	}
 }
 
@@ -13707,6 +13725,14 @@ void tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter) {
 		return;
 	}
 	emitter->state_properties.property_flags &= ~(tfxEmitterPropertyFlags_edge_traversal | tfxEmitterPropertyFlags_use_path_as_trajectory | tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling | tfxEmitterPropertyFlags_alt_color_lifetime_sampling | tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
+	//Noise is the only force the kernel runs. The others are muted rather than removed so turning Run on GPU off can get them back
+	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
+	for (tfxU32 force_index = 0; force_index != emitter_properties->force_count; ++force_index) {
+		tfx_force_t *force = &emitter_properties->forces[force_index];
+		if (force->type != tfxForceNoise) {
+			force->flags &= ~tfxForceFlags_enabled;
+		}
+	}
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
 	//The kernel never loops a single, so its particles live once like any other
 	if (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit != 1) {
@@ -15286,17 +15312,57 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 //	bias -1	 speed_gain 0, swerve_gain 1   the medium steers, never speeds up or slows down
 //	bias  0	 speed_gain 1, swerve_gain 1   isotropic, the way noise has always behaved
 //	bias +1	 speed_gain 1, swerve_gain 0   the medium surges along the heading, never deflects
-tfxINTERNAL void tfx__setup_anisotropic_noise(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
-	float noise_speed_bias = work_entry->properties->noise_speed_bias;
+bool tfx__noise_gains(float noise_speed_bias, float *swerve_gain_minus_one, float *speed_gain_minus_swerve_gain) {
 	noise_speed_bias = noise_speed_bias < -1.f ? -1.f : (noise_speed_bias > 1.f ? 1.f : noise_speed_bias);
 	if (noise_speed_bias == 0.f) {
-		return;
+		*swerve_gain_minus_one = 0.f;
+		*speed_gain_minus_swerve_gain = 0.f;
+		return false;
 	}
 	const float speed_gain = 1.f + (noise_speed_bias < 0.f ? noise_speed_bias : 0.f);
 	const float swerve_gain = 1.f - (noise_speed_bias > 0.f ? noise_speed_bias : 0.f);
-	ctx.noise_swerve_gain_minus_one = tfxWideSetSingle(swerve_gain - 1.f);
-	ctx.noise_speed_gain_minus_swerve_gain = tfxWideSetSingle(speed_gain - swerve_gain);
+	*swerve_gain_minus_one = swerve_gain - 1.f;
+	*speed_gain_minus_swerve_gain = speed_gain - swerve_gain;
+	return true;
+}
+
+tfxINTERNAL void tfx__setup_anisotropic_noise(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
+	float swerve_gain_minus_one, speed_gain_minus_swerve_gain;
+	if (!tfx__noise_gains(work_entry->properties->noise_speed_bias, &swerve_gain_minus_one, &speed_gain_minus_swerve_gain)) {
+		return;
+	}
+	ctx.noise_swerve_gain_minus_one = tfxWideSetSingle(swerve_gain_minus_one);
+	ctx.noise_speed_gain_minus_swerve_gain = tfxWideSetSingle(speed_gain_minus_swerve_gain);
 	ctx.flags |= tfx_ctx_policy_flag_anisotropic_noise;
+}
+
+//Unlike the other position dependent types a noise field has a perfectly good unbounded form, so a radius of zero means
+//"everywhere" rather than "nothing". Only a bounded field needs an origin to measure from or a profile to fade by.
+void tfx__resolve_noise_force(const tfx_force_t *force, tfx_particle_emitter_state_t *emitter, tfx_effect_state_t *parent_effect, tfx_quaternion_t *inverse_emitter_rotation, bool to_local_space, float overall_scale, tfx_resolved_noise_force_t *resolved_noise) {
+	resolved_noise->strength = force->strength * parent_effect->noise;
+	resolved_noise->falloff_distance = 0.f;
+	resolved_noise->origin = { 0.f, 0.f, 0.f };
+	resolved_noise->profile_graph = nullptr;
+	const float falloff_distance = force->radius * (to_local_space ? 1.f : overall_scale);
+	if (falloff_distance > 0.f && force->graph_list_index != tfxINVALID) {
+		resolved_noise->falloff_distance = falloff_distance;
+		resolved_noise->profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
+		resolved_noise->origin = tfx__get_force_origin(force, emitter, parent_effect, inverse_emitter_rotation, to_local_space, overall_scale);
+	}
+}
+
+float tfx__sample_motion_randomness_base(tfx_particle_emitter_state_t *emitter) {
+	return tfx__sample_multi_node_graph(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], emitter->age, emitter->oscillator_time);
+}
+
+const tfx_force_t *tfx__get_enabled_noise_force(const tfx_particle_emitter_properties_t *properties) {
+	for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
+		const tfx_force_t *force = &properties->forces[force_index];
+		if (force->type == tfxForceNoise && force->flags & tfxForceFlags_enabled) {
+			return force;
+		}
+	}
+	return nullptr;
 }
 
 //Exact zero order hold integration of dv/dt = acceleration - drag_rate * velocity over one frame:
@@ -15501,21 +15567,17 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
 					*resolved = tfx_force_resolved_t{};
 					resolved->noise.algorithm = force->noise.algorithm;
-					resolved->strength = tfxWideSetSingle(strength);
-					//Unlike the other position dependent types a noise field has a perfectly good unbounded form, so a
-					//radius of zero means "everywhere" rather than "nothing". Only a bounded field needs an origin to
-					//measure from or a profile to fade by, so neither is resolved without one.
-					float falloff_distance = force->radius * bank_units_scale;
-					if (falloff_distance > 0.f && force->graph_list_index != tfxINVALID) {
-						tfx_graph_t *profile_graph = &emitter->library->graphs[force->graph_list_index].graphs[tfxForce_profile_index];
-						tfx_vec3_t origin = tfx__get_force_origin(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale);
-						resolved->origin_x = tfxWideSetSingle(origin.x);
-						resolved->origin_y = tfxWideSetSingle(origin.y);
-						resolved->origin_z = tfxWideSetSingle(origin.z);
-						resolved->falloff_scale = tfxWideSetSingle(1.f / falloff_distance);
-						resolved->profile_graph = profile_graph;
+					tfx_resolved_noise_force_t resolved_noise;
+					tfx__resolve_noise_force(force, emitter, parent_effect, &inverse_emitter_rotation, to_local_space, work_entry->overall_scale, &resolved_noise);
+					resolved->strength = tfxWideSetSingle(resolved_noise.strength);
+					if (resolved_noise.profile_graph) {
+						resolved->origin_x = tfxWideSetSingle(resolved_noise.origin.x);
+						resolved->origin_y = tfxWideSetSingle(resolved_noise.origin.y);
+						resolved->origin_z = tfxWideSetSingle(resolved_noise.origin.z);
+						resolved->falloff_scale = tfxWideSetSingle(1.f / resolved_noise.falloff_distance);
+						resolved->profile_graph = resolved_noise.profile_graph;
 						resolved->flags |= tfx_force_resolved_flag_bounded;
-						resolved->flags |= tfx__graph_has_bezier_curves(profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+						resolved->flags |= tfx__graph_has_bezier_curves(resolved_noise.profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
 					}
 					if (force->noise.algorithm != tfxWhiteNoise) {
 						ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
@@ -15529,7 +15591,7 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
 						tfx__setup_anisotropic_noise(work_entry, ctx);
 					} else if (force->noise.algorithm == tfxWhiteNoise) {
-						ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], ctx.emitter->age, ctx.emitter->oscillator_time));
+						ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_motion_randomness_base(ctx.emitter));
 						ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
 						ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
 						ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
@@ -22263,11 +22325,21 @@ void tfx__init_gpu_pool(tfx_stage pm) {
 }
 
 //An emitter other emitters spawn from stays on the CPU, which is the only place its particle positions exist. Relative particles
-//follow their spawn location, or are only scaled for an Other Emitter, so a relative emitter needs one or the other
+//follow their spawn location, or are only scaled for an Other Emitter, so a relative emitter needs one or the other.
+//Sanitizing leaves noise as the only enabled force, so a force that isn't noise means a live edit got there first.
 tfxINTERNAL bool tfx__gpu_kernel_supports(tfx_stage pm, tfx_particle_emitter_state_t &emitter) {
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
-	if (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source || emitter.state_properties.control_profile & tfxEmitterControlProfile_forces) {
+	if (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 		return false;
+	}
+	if (emitter.state_properties.control_profile & tfxEmitterControlProfile_forces) {
+		const tfx_particle_emitter_properties_t *properties = &emitter.library->emitter_properties[emitter.state_properties.property_index];
+		for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
+			const tfx_force_t *force = &properties->forces[force_index];
+			if (force->flags & tfxForceFlags_enabled && force->type != tfxForceNoise) {
+				return false;
+			}
+		}
 	}
 	if (!(shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		return true;
@@ -22448,6 +22520,26 @@ tfxINTERNAL tfxU32 tfx__set_gpu_batches(tfx_stage pm, tfx_gpu_particle_group_t &
 	return live;
 }
 
+//The resolve tfx_setup_forces_policy makes for this emitter on this tick, at the same point in it
+tfxINTERNAL void tfx__resolve_gpu_noise_tick(tfx_stage pm, tfx_particle_emitter_state_t &emitter, const tfx_particle_emitter_properties_t *properties, tfx_gpu_particle_tick_t *tick) {
+	const tfx_force_t *force = tfx__get_enabled_noise_force(properties);
+	if (!force || force->delay > emitter.age) {
+		return;
+	}
+	tfx_effect_state_t *parent_effect = &pm->effects[emitter.parent_index];
+	const bool to_local_space = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
+	tfx_quaternion_t inverse_emitter_rotation = emitter.rotation;
+	inverse_emitter_rotation.x = -inverse_emitter_rotation.x;
+	inverse_emitter_rotation.y = -inverse_emitter_rotation.y;
+	inverse_emitter_rotation.z = -inverse_emitter_rotation.z;
+	tfx_resolved_noise_force_t resolved_noise;
+	tfx__resolve_noise_force(force, &emitter, parent_effect, &inverse_emitter_rotation, to_local_space, parent_effect->overall_scale, &resolved_noise);
+	tick->noise_amplitude = force->noise.algorithm == tfxWhiteNoise ? resolved_noise.strength * tfx__sample_motion_randomness_base(&emitter) : resolved_noise.strength;
+	tick->noise_origin[0] = resolved_noise.origin.x;
+	tick->noise_origin[1] = resolved_noise.origin.y;
+	tick->noise_origin[2] = resolved_noise.origin.z;
+}
+
 //Serial over the rings once spawning has finished: reserves this tick's rows and slots and records the tick. The packing
 //itself runs in parallel afterwards. Normal ticks only, a warming emitter is simulated on the CPU and its ring stays empty.
 void tfx__record_gpu_groups(tfx_stage pm) {
@@ -22508,6 +22600,13 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 			tick.drag_alpha_variation = max_drag_alpha - tick.drag_alpha;
 			tick.acceleration_scale_variation = max_acceleration_scale - tick.acceleration_scale;
 		}
+		tick.noise_amplitude = 0.f;
+		tick.noise_origin[0] = 0.f;
+		tick.noise_origin[1] = 0.f;
+		tick.noise_origin[2] = 0.f;
+		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) {
+			tfx__resolve_gpu_noise_tick(pm, emitter, properties, &tick);
+		}
 		group.ticks.push_back(tick);
 	}
 	for (tfx_gpu_pack_work_entry_t &work_entry : pm->gpu_pack_work) {
@@ -22532,6 +22631,8 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	tfx_gpu_particle_hot_t *hot = &pm->gpu_spawn_hot[group.upload_offset];
 	tfx_gpu_particle_cold_t *cold = &pm->gpu_spawn_cold[group.upload_offset];
 	const float image_frame_rate_per_millisecond = emitter.state_properties.image_frame_rate * 0.001f;
+	//Only the noise spawners write the bank's noise fields, so an emitter without noise uploads zeros rather than stale rows
+	const bool has_noise = (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) != 0;
 	tfxU32 row = 0;
 	for (tfxU32 i = 0; i != buffer.current_size; ++i) {
 		const tfxU32 index = tfx__get_circular_index(&buffer, i);
@@ -22565,6 +22666,10 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		cold_row.base_yaw_spin = bank.base_yaw_spin[index];
 		cold_row.image_start_frame = bank.image_frame[index] - image_frame_rate_per_millisecond * age;
 		cold_row.spawn_location = bank.spawn_location[index];
+		cold_row.noise_offset_x = has_noise ? bank.noise_offset_x[index] : 0.f;
+		cold_row.noise_offset_y = has_noise ? bank.noise_offset_y[index] : 0.f;
+		cold_row.noise_offset_z = has_noise ? bank.noise_offset_z[index] : 0.f;
+		cold_row.noise_resolution = has_noise ? bank.noise_resolution[index] : 0.f;
 		cold_row.padding = 0;
 		row++;
 	}
@@ -22610,6 +22715,22 @@ tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emi
 	flags |= properties->drag_variation > 0.f ? tfxGPUParticleDispatchFlags_drag_variation : 0;
 	flags |= properties->vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position ? tfxGPUParticleDispatchFlags_align_rotated_emission : 0;
 	return flags;
+}
+
+//The parts of the emitter's noise force that only change with an edit. The per tick parts are in tfx__resolve_gpu_noise_tick
+tfxINTERNAL void tfx__gpu_dispatch_noise(const tfx_particle_emitter_properties_t *properties, tfx_gpu_particle_dispatch_t *dispatch) {
+	const tfx_force_t *force = tfx__get_enabled_noise_force(properties);
+	if (!force || force->noise.algorithm == tfxNoNoise) {
+		return;
+	}
+	dispatch->flags |= tfxGPUParticleDispatchFlags_noise | ((tfxU32)(force->noise.algorithm - tfxWhiteNoise) << tfxGPU_NOISE_ALGORITHM_SHIFT);
+	if (force->radius > 0.f && force->graph_list_index != tfxINVALID) {
+		dispatch->flags |= tfxGPUParticleDispatchFlags_noise_bounded;
+		dispatch->noise_radius = force->radius;
+	}
+	if (tfx__noise_gains(properties->noise_speed_bias, &dispatch->noise_swerve_gain_minus_one, &dispatch->noise_speed_gain_minus_swerve_gain)) {
+		dispatch->flags |= tfxGPUParticleDispatchFlags_noise_anisotropic;
+	}
 }
 
 //Each effect's table goes in once per fetch however many of its rings follow it
@@ -22720,6 +22841,9 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 			}
 		} else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
 			dispatch.flags |= tfxGPUParticleDispatchFlags_relative_scale_only;
+		}
+		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) {
+			tfx__gpu_dispatch_noise(properties, &dispatch);
 		}
 		pm->gpu_frame_dispatches.push_back(dispatch);
 		group.written_instance_start = group.instance_start;

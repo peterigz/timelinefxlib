@@ -4,6 +4,7 @@
 //within one fetch just ingests its new occupant at the tick it was spawned.
 
 import tfx_graphs;
+import tfx_noise;
 
 static const uint tfx_group_size = 256;
 
@@ -20,6 +21,10 @@ static const uint tfx_graph_pitch_spin = 8;
 static const uint tfx_graph_yaw_spin = 9;
 static const uint tfx_graph_roll_spin = 10;
 static const uint tfx_graph_stretch = 11;
+static const uint tfx_graph_velocity_turbulance = 12;
+static const uint tfx_graph_noise_resolution = 15;
+static const uint tfx_graph_motion_randomness = 16;
+static const uint tfx_graph_noise_profile = 21;			//tfxGPU_LOOKUP_NOISE_PROFILE
 
 //tfx_gpu_particle_dispatch_flag_bits
 static const uint tfx_dispatch_capture = 1 << 0;
@@ -40,6 +45,16 @@ static const uint tfx_dispatch_relative_location = 1 << 14;
 static const uint tfx_dispatch_relative_scale_only = 1 << 15;
 static const uint tfx_dispatch_location_rotation = 1 << 16;
 static const uint tfx_dispatch_align_rotated_emission = 1 << 17;
+static const uint tfx_dispatch_noise = 1 << 18;
+static const uint tfx_dispatch_noise_algorithm_shift = 19;
+static const uint tfx_dispatch_noise_bounded = 1 << 21;
+static const uint tfx_dispatch_noise_anisotropic = 1 << 22;
+
+//The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
+static const uint tfx_noise_white = 0;
+static const uint tfx_noise_simplex = 1;
+static const uint tfx_noise_curl = 2;
+static const uint tfx_noise_value = 3;
 
 //tfx_gpu_particle_flag_bits
 static const uint tfx_particle_remove = 1 << 0;
@@ -77,6 +92,10 @@ struct tfx_gpu_particle_cold {
 	float base_yaw_spin;
 	float image_start_frame;
 	uint spawn_location;
+	float noise_offset_x;				//Authored units, zero for white noise. Scalars, a float3 would align to 16 and break the C layout
+	float noise_offset_y;
+	float noise_offset_z;
+	float noise_resolution;
 	uint padding;
 };
 
@@ -94,6 +113,10 @@ struct tfx_gpu_particle_tick {
 	float acceleration_scale;
 	float drag_alpha_variation;
 	float acceleration_scale_variation;
+	float noise_amplitude;				//0 before the force's delay
+	float noise_origin_x;
+	float noise_origin_y;
+	float noise_origin_z;
 };
 
 //Mirrors tfx_gpu_particle_dispatch_t
@@ -120,7 +143,10 @@ struct tfx_gpu_particle_dispatch {
 	uint location_count;
 	float4 emitter_rotation;			//Quaternion xyzw
 	float3 handle;
-	uint padding;
+	float noise_radius;
+	float noise_swerve_gain_minus_one;
+	float noise_speed_gain_minus_swerve_gain;
+	uint2 padding;
 };
 
 //Mirrors tfx_gpu_spawn_location_t
@@ -237,11 +263,57 @@ tfx_gpu_graph_data tfx_graph(uint graph_offset, uint graph) {
 	return graph_buffers[push.graph_buffer_index][graph_offset + graph];
 }
 
-//tfx_apply_lookup_velocity, tfx_apply_lookup_weight, tfx_apply_velocity and tfx_apply_position, without forces
-void tfx_control_particle(inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_particle_tick tick, float life, tfx_gpu_graph_data velocity_graph, tfx_gpu_graph_data weight_graph, bool drag_variation) {
+//tfx_apply_forces for the noise force, the only one a GPU emitter keeps. Like the CPU it samples the field at the start of tick
+//position and splits against the previous velocity
+float3 tfx_noise_medium(tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float life) {
+	const uint flags = dispatch.flags;
+	const uint algorithm = (flags >> tfx_dispatch_noise_algorithm_shift) & 3u;
+	float3 medium;
+	if (algorithm == tfx_noise_white) {
+		const float motion_randomness = tfx_sample_graph(tfx_graph(dispatch.graph_offset, tfx_graph_motion_randomness), life);
+		medium = tfx_white_noise_direction(cold.uid, hot.age, cold.noise_resolution) * (tick.noise_amplitude * motion_randomness);
+	} else {
+		const float noise_resolution = (tfx_sample_graph(tfx_graph(dispatch.graph_offset, tfx_graph_noise_resolution), life) * cold.noise_resolution) * tick.overall_scale;
+		const float3 sample_position = hot.position / noise_resolution + float3(cold.noise_offset_x, cold.noise_offset_y, cold.noise_offset_z) * tick.overall_scale;
+		float3 direction;
+		if (algorithm == tfx_noise_simplex) {
+			direction = tfx_simplex_noise_direction(sample_position, life);
+		} else if (algorithm == tfx_noise_curl) {
+			direction = tfx_curl_noise_direction(sample_position, life);
+		} else {
+			direction = tfx_value_noise_direction(sample_position);
+		}
+		medium = direction * (tick.noise_amplitude * tfx_sample_graph(tfx_graph(dispatch.graph_offset, tfx_graph_velocity_turbulance), life));
+	}
+
+	//tfx__resolve_noise_force: a relative bank is in authored units, a world one already carries the overall scale
+	if ((flags & tfx_dispatch_noise_bounded) != 0) {
+		const float bank_units_scale = (flags & (tfx_dispatch_relative_location | tfx_dispatch_relative_scale_only)) != 0 ? 1.0 : tick.overall_scale;
+		const float falloff_distance = dispatch.noise_radius * bank_units_scale;
+		if (falloff_distance > 0.0) {
+			const float3 offset = hot.position - float3(tick.noise_origin_x, tick.noise_origin_y, tick.noise_origin_z);
+			const float length_squared = dot(offset, offset);
+			const float profile_time = (length_squared * rsqrt(max(length_squared, tfx_noise_epsilon))) * (1.0 / falloff_distance);
+			//tfx__wide_sample_force_profile kills the far edge rather than clamping to the graph's end value
+			medium *= profile_time < 1.0 ? tfx_sample_graph(tfx_graph(dispatch.graph_offset, tfx_graph_noise_profile), profile_time) : 0.0;
+		}
+	}
+
+	if ((flags & tfx_dispatch_noise_anisotropic) != 0) {
+		medium = tfx_split_medium_velocity(hot.velocity, medium, dispatch.noise_swerve_gain_minus_one, dispatch.noise_speed_gain_minus_swerve_gain);
+	}
+	return medium;
+}
+
+//tfx_apply_lookup_velocity, tfx_apply_lookup_weight, tfx_apply_forces, tfx_apply_velocity and tfx_apply_position
+void tfx_control_particle(tfx_gpu_particle_dispatch dispatch, inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_particle_tick tick, float life, tfx_gpu_graph_data velocity_graph, tfx_gpu_graph_data weight_graph, bool drag_variation) {
 	const float velocity = tfx_sample_graph(velocity_graph, life) * cold.base_velocity;
 	const float weight = tfx_sample_graph(weight_graph, life) * cold.base_weight;
 	float3 acceleration = tfx_unpack10bit(cold.velocity_normal) * velocity;
+	//Before the noise force's delay the CPU doesn't resolve it at all, which an amplitude of 0 stands for
+	if ((dispatch.flags & tfx_dispatch_noise) != 0 && tick.noise_amplitude != 0.0) {
+		acceleration += tfx_noise_medium(dispatch, tick, hot, cold, life);
+	}
 	acceleration.y -= weight;
 
 	//A particle that has only existed for part of the frame takes that part of the acceleration and drag. A 0ms tick gives the
@@ -458,7 +530,7 @@ void simulate_particles(uint3 thread_id : SV_DispatchThreadID) {
 		live = true;
 
 		const float life = hot.age * cold.inv_max_age;
-		tfx_control_particle(hot, cold, tick, life, velocity_graph, weight_graph, drag_variation);
+		tfx_control_particle(dispatch, hot, cold, tick, life, velocity_graph, weight_graph, drag_variation);
 		if (tick_index + 1 == end_tick) {
 			const float3 position = tfx_particle_world_position(dispatch, tick, hot, cold);
 			tfx_write_particle_instance(dispatch, tick, hot, cold, position, life, ring_position);

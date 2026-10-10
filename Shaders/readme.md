@@ -33,6 +33,7 @@ The vertex shader then transforms those vertices, unpacks that segment index, sa
 | --- | --- |
 | `tfx_gpu_particles.slang` | Simulates `run_on_gpu` emitters and writes their instances |
 | `tfx_graphs.slang` | The graph lookup it imports, the same sampling the CPU uses |
+| `tfx_noise.slang` | The noise force's white, simplex, curl and value fields it imports, ports of the CPU's wide noise |
 
 These are Slang rather than GLSL, so they can grow into variants and user hooks. Compile `simulate_particles` from `tfx_gpu_particles.slang` with `TimelineFXLib/Shaders` on the include path.
 
