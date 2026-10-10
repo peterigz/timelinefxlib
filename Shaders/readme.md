@@ -36,7 +36,7 @@ The vertex shader then transforms those vertices, unpacks that segment index, sa
 
 These are Slang rather than GLSL, so they can grow into variants and user hooks. Compile `simulate_particles` from `tfx_gpu_particles.slang` with `TimelineFXLib/Shaders` on the include path.
 
-On a stage with a `gpu_particle_capacity`, `tfx_GetGPUParticleFrame` hands you dispatch records, tick records and the rows spawned since the last fetch. Dispatch the kernel once per record with `tfx_gpu_particle_push_t` as push constants and `(slot_count + 255) / 256` groups. Each thread owns one ring slot: it takes in any spawn that lands in its slot, runs every tick of the fetch, keeps the particle state in two storage buffers you size once from `tfx_GetGPUParticleBufferSizes`, and writes its instance into the same instance buffer as the CPU particles, in the range after them. The vertex and fragment shaders above draw them unchanged.
+On a stage with a `gpu_particle_capacity`, `tfx_GetGPUParticleFrame` hands you dispatch records, tick records, the rows spawned since the last fetch and a table of spawn locations that relative particles follow. Dispatch the kernel once per record with `tfx_gpu_particle_push_t` as push constants and `(slot_count + 255) / 256` groups. Each thread owns one ring slot: it takes in any spawn that lands in its slot, runs every tick of the fetch, keeps the particle state in two storage buffers you size once from `tfx_GetGPUParticleBufferSizes`, and writes its instance into the same instance buffer as the CPU particles, in the range after them. The vertex and fragment shaders above draw them unchanged.
 
 ## Compute shaders for pre-baked effects
 
