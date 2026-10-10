@@ -5521,126 +5521,6 @@ struct tfx_mat3_t {
 };
 
 //-----------------------------------------------------------
-//Section: Simplex_Noise
-//-----------------------------------------------------------
-
-const float gradX[] =
-{
-	1,-1, 1,-1,
-	1,-1, 1,-1,
-	0, 0, 0, 0
-};
-
-const float gradY[] =
-{
-	1, 1,-1,-1,
-	0, 0, 0, 0,
-	1,-1, 1,-1
-};
-
-const float gradZ[] =
-{
-	0, 0, 0, 0,
-	1, 1,-1,-1,
-	1, 1,-1,-1
-};
-
-const tfxWideArray tfxF3_4 = tfxWideSetConst(1.0f / 3.0f);
-const tfxWideArray tfxF2_4 = tfxWideSetConst(.366025403f);
-const tfxWideArray tfxG2_4 = tfxWideSetConst(0.211324865f);
-const tfxWideArray tfxG2_4x2 = tfxWideSetConst(0.42264973f);
-const tfxWideArray tfxG3_4 = tfxWideSetConst(1.0f / 6.0f);
-const tfxWideArray tfxG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
-const tfxWideArray tfxG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
-const tfxWideArrayi tfxONE = tfxWideSetConst(1);
-const tfxWideArray tfxONEF = tfxWideSetConst(1.f);
-const tfxWideArray tfxZERO = tfxWideSetConst(0.f);
-const tfxWideArray tfxTHIRTYTWO = tfxWideSetConst(32.f);
-const tfxWideArrayi tfxFF = tfxWideSetConst(255);
-const tfxWideArray tfxPSIX = tfxWideSetConst(0.6f);
-
-
-/**
-* Permutation table. This is just a random jumble of all numbers 0-255.
-*
-* This produce a repeatable pattern of 256, but Ken Perlin stated
-* that it is not a problem for graphic texture as the noise features disappear
-* at a distance far enough to be able to see a repeatable pattern of 256.
-*
-* This needs to be exactly the same for all instances on all platforms,
-* so it's easiest to just keep it as static explicit data.
-* This also removes the need for any initialisation of this class.
-*
-* Note that making this an uint32_t[] instead of a uint8_t[] might make the
-* code run faster on platforms with a high penalty for unaligned single
-* byte addressing. Intel x86 is generally single-byte-friendly, but
-* some other CPUs are faster with 4-aligned reads.
-* However, a char[] is smaller, which avoids cache trashing, and that
-* is probably the most important aspect on most architectures.
-* This array is accessed a *lot* by the noise functions.
-* A vector-valued noise over 3D accesses it 96 times, and a
-* float-valued 4D noise 64 times. We want this to fit in the cache!
-*/
-const uint8_t tfx_permutation_table[] =
-{
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
-};
-
-static const uint8_t tfx_perm_mod12[] =
-{
-	7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
-	1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
-	8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
-	5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
-	5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
-	4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
-	2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
-	9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
-	1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
-	10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
-	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0,
-	7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
-	1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
-	8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
-	5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
-	5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
-	4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
-	2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
-	9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
-	1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
-	10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
-	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
-};
-
-// 4 noise samples using simd
-tfxWideFloat tfx__simd_noise_3d(const tfxWideFloat x4, const tfxWideFloat y4, const tfxWideFloat z4);
-
-//-----------------------------------------------------------
 //Section: Profiling
 //-----------------------------------------------------------
 
@@ -8311,6 +8191,151 @@ tfxINTERNAL inline void tfx__wide_value_noise_3d(tfxWideFloat x, tfxWideFloat y,
 	out_z = tfx__wide_lerp(slice_z, tfx__wide_lerp(edge_z, tfx__wide_lerp(near_z, far_z, fade_x), fade_y), fade_z);
 }
 
+//Each corner of the simplex cell around a sample point: its offset to the point and its lattice hash
+struct tfx_wide_simplex_cell_t {
+	tfxWideFloat x[4];
+	tfxWideFloat y[4];
+	tfxWideFloat z[4];
+	tfxWideInt hash[4];
+};
+
+//The lattice is premultiplied by the value noise primes and hashed the same way, so there is no permutation
+//table to gather from lane by lane.
+tfxINTERNAL inline void tfx__wide_simplex_cell(tfxWideFloat x, tfxWideFloat y, tfxWideFloat z, tfx_wide_simplex_cell_t &cell) {
+	const tfxWideFloat skew = tfxWideMul(tfxWideAdd(x, tfxWideAdd(y, z)), tfxWideSetSingle(1.f / 3.f));
+	const tfxWideFloat cell_x = tfxWideFloor(tfxWideAdd(x, skew));
+	const tfxWideFloat cell_y = tfxWideFloor(tfxWideAdd(y, skew));
+	const tfxWideFloat cell_z = tfxWideFloor(tfxWideAdd(z, skew));
+	const tfxWideFloat unskew = tfxWideMul(tfxWideAdd(tfxWideAdd(cell_x, cell_y), cell_z), tfxWideSetSingle(1.f / 6.f));
+	const tfxWideFloat x0 = tfxWideSub(x, tfxWideSub(cell_x, unskew));
+	const tfxWideFloat y0 = tfxWideSub(y, tfxWideSub(cell_y, unskew));
+	const tfxWideFloat z0 = tfxWideSub(z, tfxWideSub(cell_z, unskew));
+
+	//Which of the six tetrahedra the point is in decides the order the middle two corners step along the axes
+	const tfxWideFloat all_bits = tfxWideCast(tfxWideSetSinglei(-1));
+	const tfxWideFloat x_ge_y = tfxWideGreaterEqual(x0, y0);
+	const tfxWideFloat y_ge_z = tfxWideGreaterEqual(y0, z0);
+	const tfxWideFloat x_ge_z = tfxWideGreaterEqual(x0, z0);
+	const tfxWideFloat x_lt_y = tfxWideXOr(x_ge_y, all_bits);
+	const tfxWideFloat first_step_x = tfxWideAnd(x_ge_y, x_ge_z);
+	const tfxWideFloat first_step_y = tfxWideAnd(x_lt_y, y_ge_z);
+	const tfxWideFloat first_step_z = tfxWideXOr(tfxWideOr(x_ge_z, y_ge_z), all_bits);
+	const tfxWideFloat second_step_x = tfxWideOr(x_ge_y, x_ge_z);
+	const tfxWideFloat second_step_y = tfxWideOr(x_lt_y, y_ge_z);
+	const tfxWideFloat second_step_z = tfxWideXOr(tfxWideAnd(y_ge_z, x_ge_z), all_bits);
+
+	const tfxWideFloat one = tfxWideSetSingle(1.f);
+	const tfxWideFloat one_sixth = tfxWideSetSingle(1.f / 6.f);
+	const tfxWideFloat one_third = tfxWideSetSingle(1.f / 3.f);
+	const tfxWideFloat half = tfxWideSetSingle(0.5f);
+	cell.x[0] = x0;
+	cell.y[0] = y0;
+	cell.z[0] = z0;
+	cell.x[1] = tfxWideAdd(tfxWideSub(x0, tfxWideAnd(first_step_x, one)), one_sixth);
+	cell.y[1] = tfxWideAdd(tfxWideSub(y0, tfxWideAnd(first_step_y, one)), one_sixth);
+	cell.z[1] = tfxWideAdd(tfxWideSub(z0, tfxWideAnd(first_step_z, one)), one_sixth);
+	cell.x[2] = tfxWideAdd(tfxWideSub(x0, tfxWideAnd(second_step_x, one)), one_third);
+	cell.y[2] = tfxWideAdd(tfxWideSub(y0, tfxWideAnd(second_step_y, one)), one_third);
+	cell.z[2] = tfxWideAdd(tfxWideSub(z0, tfxWideAnd(second_step_z, one)), one_third);
+	cell.x[3] = tfxWideSub(x0, half);
+	cell.y[3] = tfxWideSub(y0, half);
+	cell.z[3] = tfxWideSub(z0, half);
+
+	//floor() is already integral, so the truncating convert is exact for negative cells too
+	const tfxWideInt prime_x = tfxWideSetSinglei(1619);
+	const tfxWideInt prime_y = tfxWideSetSinglei(31337);
+	const tfxWideInt prime_z = tfxWideSetSinglei(6971);
+	const tfxWideInt lattice_x = tfxWideMuli(tfxWideConverti(cell_x), prime_x);
+	const tfxWideInt lattice_y = tfxWideMuli(tfxWideConverti(cell_y), prime_y);
+	const tfxWideInt lattice_z = tfxWideMuli(tfxWideConverti(cell_z), prime_z);
+	cell.hash[0] = tfx__wide_seedgen_base(tfxWideAddi(lattice_x, lattice_y), lattice_z);
+	cell.hash[1] = tfx__wide_seedgen_base(tfxWideAddi(tfxWideAddi(lattice_x, tfxWideAndi(tfxWideCasti(first_step_x), prime_x)), tfxWideAddi(lattice_y, tfxWideAndi(tfxWideCasti(first_step_y), prime_y))), tfxWideAddi(lattice_z, tfxWideAndi(tfxWideCasti(first_step_z), prime_z)));
+	cell.hash[2] = tfx__wide_seedgen_base(tfxWideAddi(tfxWideAddi(lattice_x, tfxWideAndi(tfxWideCasti(second_step_x), prime_x)), tfxWideAddi(lattice_y, tfxWideAndi(tfxWideCasti(second_step_y), prime_y))), tfxWideAddi(lattice_z, tfxWideAndi(tfxWideCasti(second_step_z), prime_z)));
+	cell.hash[3] = tfx__wide_seedgen_base(tfxWideAddi(tfxWideAddi(lattice_x, prime_x), tfxWideAddi(lattice_y, prime_y)), tfxWideAddi(lattice_z, prime_z));
+}
+
+//0.5 rather than Gustavson's 0.6: at 0.6 a corner's kernel is still non zero where the point leaves its cell, so the field jumps there
+#define tfxSIMPLEX_KERNEL_RADIUS_SQUARED 0.5f
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_simplex_falloff(tfxWideFloat x, tfxWideFloat y, tfxWideFloat z) {
+	tfxWideFloat falloff = tfxWideSub(tfxWideSub(tfxWideSub(tfxWideSetSingle(tfxSIMPLEX_KERNEL_RADIUS_SQUARED), tfxWideMul(x, x)), tfxWideMul(y, y)), tfxWideMul(z, z));
+	return tfxWideMax(falloff, tfxWideSetZero);
+}
+
+//Perlin's 12 edge gradient dotted with the corner offset. The low 4 hash bits pick the two axes and their signs.
+tfxINTERNAL inline tfxWideFloat tfx__wide_simplex_corner_dot(tfxWideInt hash, tfxWideFloat x, tfxWideFloat y, tfxWideFloat z) {
+	const tfxWideInt zero = tfxWideSetZeroi;
+	const tfxWideFloat u_is_x = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(8)), zero));
+	const tfxWideFloat v_is_y = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(12)), zero));
+	const tfxWideFloat v_is_x = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(13)), tfxWideSetSinglei(12)));
+	const tfxWideFloat u = tfxWideBlendv(y, x, u_is_x);
+	const tfxWideFloat v = tfxWideBlendv(tfxWideBlendv(z, x, v_is_x), y, v_is_y);
+	const tfxWideFloat u_sign = tfxWideCast(tfxWideShiftLeft(hash, 31));
+	const tfxWideFloat v_sign = tfxWideCast(tfxWideShiftLeft(tfxWideAndi(hash, tfxWideSetSinglei(2)), 30));
+	return tfxWideAdd(tfxWideXOr(u, u_sign), tfxWideXOr(v, v_sign));
+}
+
+//The same edge as tfx__wide_simplex_corner_dot, as a vector
+tfxINTERNAL inline void tfx__wide_simplex_corner_edge(tfxWideInt hash, tfxWideFloat &edge_x, tfxWideFloat &edge_y, tfxWideFloat &edge_z) {
+	const tfxWideInt zero = tfxWideSetZeroi;
+	const tfxWideFloat all_bits = tfxWideCast(tfxWideSetSinglei(-1));
+	const tfxWideFloat one = tfxWideSetSingle(1.f);
+	const tfxWideFloat u_is_x = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(8)), zero));
+	const tfxWideFloat v_is_y = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(12)), zero));
+	const tfxWideFloat v_is_x = tfxWideCast(tfxWideEqualsi(tfxWideAndi(hash, tfxWideSetSinglei(13)), tfxWideSetSinglei(12)));
+	const tfxWideFloat u_is_y = tfxWideXOr(u_is_x, all_bits);
+	const tfxWideFloat v_is_z = tfxWideXOr(tfxWideOr(v_is_y, v_is_x), all_bits);
+	const tfxWideFloat u_signed_one = tfxWideXOr(one, tfxWideCast(tfxWideShiftLeft(hash, 31)));
+	const tfxWideFloat v_signed_one = tfxWideXOr(one, tfxWideCast(tfxWideShiftLeft(tfxWideAndi(hash, tfxWideSetSinglei(2)), 30)));
+	edge_x = tfxWideOr(tfxWideAnd(u_is_x, u_signed_one), tfxWideAnd(v_is_x, v_signed_one));
+	edge_y = tfxWideOr(tfxWideAnd(u_is_y, u_signed_one), tfxWideAnd(v_is_y, v_signed_one));
+	edge_z = tfxWideAnd(v_is_z, v_signed_one);
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_simplex_corner(tfxWideInt hash, tfxWideFloat x, tfxWideFloat y, tfxWideFloat z) {
+	tfxWideFloat falloff = tfx__wide_simplex_falloff(x, y, z);
+	falloff = tfxWideMul(falloff, falloff);
+	falloff = tfxWideMul(falloff, falloff);
+	return tfxWideMul(falloff, tfx__wide_simplex_corner_dot(hash, x, y, z));
+}
+
+//Accumulates d/dp of falloff^4 * dot(edge, offset), which is falloff^4 * edge - 8 * falloff^3 * dot * offset
+tfxINTERNAL inline void tfx__wide_simplex_corner_gradient(tfxWideInt hash, tfxWideFloat x, tfxWideFloat y, tfxWideFloat z, tfxWideFloat &gradient_x, tfxWideFloat &gradient_y, tfxWideFloat &gradient_z) {
+	tfxWideFloat edge_x, edge_y, edge_z;
+	tfx__wide_simplex_corner_edge(hash, edge_x, edge_y, edge_z);
+	const tfxWideFloat falloff = tfx__wide_simplex_falloff(x, y, z);
+	const tfxWideFloat falloff_squared = tfxWideMul(falloff, falloff);
+	const tfxWideFloat falloff_fourth = tfxWideMul(falloff_squared, falloff_squared);
+	const tfxWideFloat dot = tfxWideMulAdd(edge_x, x, tfxWideMulAdd(edge_y, y, tfxWideMul(edge_z, z)));
+	const tfxWideFloat offset_scale = tfxWideMul(tfxWideMul(tfxWideSetSingle(-8.f), tfxWideMul(falloff_squared, falloff)), dot);
+	gradient_x = tfxWideAdd(gradient_x, tfxWideMulAdd(falloff_fourth, edge_x, tfxWideMul(offset_scale, x)));
+	gradient_y = tfxWideAdd(gradient_y, tfxWideMulAdd(falloff_fourth, edge_y, tfxWideMul(offset_scale, y)));
+	gradient_z = tfxWideAdd(gradient_z, tfxWideMulAdd(falloff_fourth, edge_z, tfxWideMul(offset_scale, z)));
+}
+
+tfxINTERNAL inline tfxWideFloat tfx__wide_simplex_noise_3d(tfxWideFloat x, tfxWideFloat y, tfxWideFloat z) {
+	tfx_wide_simplex_cell_t cell;
+	tfx__wide_simplex_cell(x, y, z, cell);
+	tfxWideFloat sum = tfx__wide_simplex_corner(cell.hash[0], cell.x[0], cell.y[0], cell.z[0]);
+	sum = tfxWideAdd(sum, tfx__wide_simplex_corner(cell.hash[1], cell.x[1], cell.y[1], cell.z[1]));
+	sum = tfxWideAdd(sum, tfx__wide_simplex_corner(cell.hash[2], cell.x[2], cell.y[2], cell.z[2]));
+	sum = tfxWideAdd(sum, tfx__wide_simplex_corner(cell.hash[3], cell.x[3], cell.y[3], cell.z[3]));
+	return tfxWideMul(sum, tfxWideSetSingle(32.f));
+}
+
+//Gradient of tfx__wide_simplex_noise_3d without its final scale of 32, which callers fold into their own
+tfxINTERNAL inline void tfx__wide_simplex_noise_3d_gradient(tfxWideFloat x, tfxWideFloat y, tfxWideFloat z, tfxWideFloat &gradient_x, tfxWideFloat &gradient_y, tfxWideFloat &gradient_z) {
+	tfx_wide_simplex_cell_t cell;
+	tfx__wide_simplex_cell(x, y, z, cell);
+	gradient_x = tfxWideSetZero;
+	gradient_y = tfxWideSetZero;
+	gradient_z = tfxWideSetZero;
+	tfx__wide_simplex_corner_gradient(cell.hash[0], cell.x[0], cell.y[0], cell.z[0], gradient_x, gradient_y, gradient_z);
+	tfx__wide_simplex_corner_gradient(cell.hash[1], cell.x[1], cell.y[1], cell.z[1], gradient_x, gradient_y, gradient_z);
+	tfx__wide_simplex_corner_gradient(cell.hash[2], cell.x[2], cell.y[2], cell.z[2], gradient_x, gradient_y, gradient_z);
+	tfx__wide_simplex_corner_gradient(cell.hash[3], cell.x[3], cell.y[3], cell.z[3], gradient_x, gradient_y, gradient_z);
+}
+
 tfxINTERNAL inline void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
 	const tfxWideInt mask_ffff = tfxWideSetSinglei(0xFFFF);
 	const tfxWideInt sign_bit = tfxWideSetSinglei(0x8000);
@@ -8901,9 +8926,9 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 	tfxWideFloat y_offset = tfxWideAdd(y, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
 	tfxWideFloat z_offset = tfxWideAdd(z, tfxWideAdd(tfxWIDENOISEOFFSET.m, ctx.life));
 
-	tfxWideFloat noise_x = tfx__simd_noise_3d(x, y, z);
-	tfxWideFloat noise_y = tfx__simd_noise_3d(x, y_offset, z);
-	tfxWideFloat noise_z = tfx__simd_noise_3d(x, y, z_offset);
+	tfxWideFloat noise_x = tfx__wide_simplex_noise_3d(x, y, z);
+	tfxWideFloat noise_y = tfx__wide_simplex_noise_3d(x, y_offset, z);
+	tfxWideFloat noise_z = tfx__wide_simplex_noise_3d(x, y, z_offset);
 
 	tfxWideFloat l = tfxWideMul(noise_x, noise_x);
 	l = tfxWideAdd(l, tfxWideMul(noise_y, noise_y));
@@ -8977,12 +9002,9 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 	tfxWideFloat y = tfxWideAdd(tfxWideDiv(ctx.position_y.m, ctx.lookup_noise_resolution), noise_offset_y);
 	tfxWideFloat z = tfxWideAdd(tfxWideDiv(ctx.position_z.m, ctx.lookup_noise_resolution), noise_offset_z);
 
-	// Bridson curl noise
-	const tfxWideFloat dt = tfxWideSetSingle(0.05f);
-	// inv_dt folds in a 1/sqrt(6) (~0.408) magnitude scale so the output vector RMS
-	// matches tfx_apply_simplex_noise's unit-normalized output - swapping between
-	// the two noise modes shouldn't require re-tuning velocity_turbulance.
-	const tfxWideFloat inv_dt = tfxWideSetSingle(0.408f / 0.05f);
+	// Bridson curl noise from the analytic gradients of three potentials
+	//Folds in the gradient's skipped x32 and matches the RMS of the finite difference curl this replaced, so velocity_turbulance tuning carries over
+	const tfxWideFloat curl_scale = tfxWideSetSingle(30.857f);
 
 	// Push psi2 and psi3 into decorrelated regions. Life drift gives the field a gentle
 	// time evolution per particle in addition to the noise_offset advection already in x/y/z.
@@ -8997,32 +9019,18 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 	const tfxWideFloat y3 = tfxWideAdd(y, psi3_shift);
 	const tfxWideFloat z3 = tfxWideAdd(z, psi3_shift);
 
-	// psi1: need d/dy (for v_z) and d/dz (for v_y)
-	tfxWideFloat psi1_0  = tfx__simd_noise_3d(x, y, z);
-	tfxWideFloat psi1_py = tfx__simd_noise_3d(x, tfxWideAdd(y, dt), z);
-	tfxWideFloat psi1_pz = tfx__simd_noise_3d(x, y, tfxWideAdd(z, dt));
-
-	// psi2: need d/dx (for v_z) and d/dz (for v_x)
-	tfxWideFloat psi2_0  = tfx__simd_noise_3d(x2, y2, z2);
-	tfxWideFloat psi2_px = tfx__simd_noise_3d(tfxWideAdd(x2, dt), y2, z2);
-	tfxWideFloat psi2_pz = tfx__simd_noise_3d(x2, y2, tfxWideAdd(z2, dt));
-
-	// psi3: need d/dx (for v_y) and d/dy (for v_x)
-	tfxWideFloat psi3_0  = tfx__simd_noise_3d(x3, y3, z3);
-	tfxWideFloat psi3_px = tfx__simd_noise_3d(tfxWideAdd(x3, dt), y3, z3);
-	tfxWideFloat psi3_py = tfx__simd_noise_3d(x3, tfxWideAdd(y3, dt), z3);
-
-	tfxWideFloat dpsi1_dy = tfxWideMul(tfxWideSub(psi1_py, psi1_0), inv_dt);
-	tfxWideFloat dpsi1_dz = tfxWideMul(tfxWideSub(psi1_pz, psi1_0), inv_dt);
-	tfxWideFloat dpsi2_dx = tfxWideMul(tfxWideSub(psi2_px, psi2_0), inv_dt);
-	tfxWideFloat dpsi2_dz = tfxWideMul(tfxWideSub(psi2_pz, psi2_0), inv_dt);
-	tfxWideFloat dpsi3_dx = tfxWideMul(tfxWideSub(psi3_px, psi3_0), inv_dt);
-	tfxWideFloat dpsi3_dy = tfxWideMul(tfxWideSub(psi3_py, psi3_0), inv_dt);
+	//Each potential only needs two of its three partials; the unused one is dead code once inlined
+	tfxWideFloat dpsi1_dx, dpsi1_dy, dpsi1_dz;
+	tfxWideFloat dpsi2_dx, dpsi2_dy, dpsi2_dz;
+	tfxWideFloat dpsi3_dx, dpsi3_dy, dpsi3_dz;
+	tfx__wide_simplex_noise_3d_gradient(x, y, z, dpsi1_dx, dpsi1_dy, dpsi1_dz);
+	tfx__wide_simplex_noise_3d_gradient(x2, y2, z2, dpsi2_dx, dpsi2_dy, dpsi2_dz);
+	tfx__wide_simplex_noise_3d_gradient(x3, y3, z3, dpsi3_dx, dpsi3_dy, dpsi3_dz);
 
 	// v = curl(psi)
-	tfxWideFloat noise_x = tfxWideSub(dpsi3_dy, dpsi2_dz);
-	tfxWideFloat noise_y = tfxWideSub(dpsi1_dz, dpsi3_dx);
-	tfxWideFloat noise_z = tfxWideSub(dpsi2_dx, dpsi1_dy);
+	tfxWideFloat noise_x = tfxWideMul(tfxWideSub(dpsi3_dy, dpsi2_dz), curl_scale);
+	tfxWideFloat noise_y = tfxWideMul(tfxWideSub(dpsi1_dz, dpsi3_dx), curl_scale);
+	tfxWideFloat noise_z = tfxWideMul(tfxWideSub(dpsi2_dx, dpsi1_dy), curl_scale);
 
 	//strength already carries the effect's global noise scalar, folded in at setup.
 	tfxWideFloat amplitude = tfxWideMul(force->strength, ctx.lookup_velocity_turbulance);
