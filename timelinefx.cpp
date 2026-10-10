@@ -14050,7 +14050,8 @@ void tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter) {
 	}
 	emitter->state_properties.property_flags &= ~(tfxEmitterPropertyFlags_edge_traversal | tfxEmitterPropertyFlags_use_path_as_trajectory | tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling | tfxEmitterPropertyFlags_alt_color_lifetime_sampling | tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-	if (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit == 0) {
+	//The kernel never loops a single, so its particles live once like any other
+	if (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit != 1) {
 		shared_properties->single_shot_limit = 1;
 	}
 	//One instance serving many locations keeps the number of rings and dispatches down, and leaves the kernel one transform model
@@ -22603,9 +22604,18 @@ void tfx__init_gpu_pool(tfx_stage pm) {
 	tfx_AddRemotePool(pm->gpu_pool_allocator, pm->gpu_pool_blocks, block_memory_size, pm->info.gpu_particle_capacity);
 }
 
-//An emitter other emitters spawn from stays on the CPU, which is the only place its particle positions exist
-tfxINTERNAL bool tfx__gpu_kernel_supports(tfx_particle_emitter_state_t &emitter) {
-	return !(emitter.state_properties.shared_flags & (tfxSharedEmitterPropertyFlags_relative_position | tfxSharedEmitterPropertyFlags_spawn_location_source)) && !(emitter.state_properties.control_profile & tfxEmitterControlProfile_forces);
+//An emitter other emitters spawn from stays on the CPU, which is the only place its particle positions exist. Relative particles
+//follow their spawn location, or are only scaled for an Other Emitter, so a relative emitter needs one or the other
+tfxINTERNAL bool tfx__gpu_kernel_supports(tfx_stage pm, tfx_particle_emitter_state_t &emitter) {
+	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
+	if (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source || emitter.state_properties.control_profile & tfxEmitterControlProfile_forces) {
+		return false;
+	}
+	if (!(shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+		return true;
+	}
+	const tfx_emission_type emission_type = emitter.library->shared_properties[emitter.state_properties.shared_index].emission_type;
+	return emission_type == tfxOtherEmitter || (pm->effects[emitter.parent_index].state_flags & tfxEffectStateFlags_user_spawn_locations) != 0;
 }
 
 tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter) {
@@ -22626,7 +22636,7 @@ void tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_ef
 		return;
 	}
 	tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-	if (!tfx__gpu_kernel_supports(emitter)) {
+	if (!tfx__gpu_kernel_supports(pm, emitter)) {
 		return;
 	}
 	tfxU32 group_index;
@@ -22940,7 +22950,35 @@ tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emi
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_play_once ? tfxGPUParticleDispatchFlags_play_once : 0;
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation ? tfxGPUParticleDispatchFlags_reverse_animation : 0;
 	flags |= properties->drag_variation > 0.f ? tfxGPUParticleDispatchFlags_drag_variation : 0;
+	flags |= properties->vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position ? tfxGPUParticleDispatchFlags_align_rotated_emission : 0;
 	return flags;
+}
+
+//Each effect's table goes in once per fetch however many of its rings follow it
+tfxINTERNAL void tfx__pack_gpu_spawn_locations(tfx_stage pm, tfx_user_spawn_locations_t *location_list) {
+	if (location_list->gpu_frame_fetch == pm->gpu_fetch_count) {
+		return;
+	}
+	location_list->gpu_frame_fetch = pm->gpu_fetch_count;
+	location_list->gpu_frame_offset = pm->gpu_frame_locations.current_size;
+	const tfxU32 location_count = location_list->locations.current_size;
+	if (location_count == 0) {
+		return;
+	}
+	pm->gpu_frame_locations.resize(location_list->gpu_frame_offset + location_count);
+	tfx_gpu_spawn_location_t *table = &pm->gpu_frame_locations[location_list->gpu_frame_offset];
+	for (tfxU32 slot = 0; slot != location_count; ++slot) {
+		const tfx_user_spawn_location_t &location = location_list->locations[slot];
+		tfx_gpu_spawn_location_t &row = table[slot];
+		row.position[0] = location.position.x;
+		row.position[1] = location.position.y;
+		row.position[2] = location.position.z;
+		row.local_id = location.flags & tfxUserSpawnLocationFlags_active ? tfx__spawn_location_local_id(slot, location.generation) : tfxINVALID;
+		row.packed_rotation[0] = (tfxU32)(location.packed_rotation & 0xFFFFFFFF);
+		row.packed_rotation[1] = (tfxU32)(location.packed_rotation >> 32);
+		row.padding[0] = 0;
+		row.padding[1] = 0;
+	}
 }
 
 tfx_gpu_particle_buffer_sizes_t tfx_GetGPUParticleBufferSizes(tfx_stage pm) {
@@ -22962,6 +23000,8 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 	pm->flags |= tfxStageFlags_gpu_frame_fetched;
 	pm->gpu_frame_dispatches.clear();
 	pm->gpu_frame_ticks.clear();
+	pm->gpu_frame_locations.clear();
+	pm->gpu_fetch_count++;
 	const bool can_capture = (pm->flags & tfxStageFlags_double_buffer_sprites) != 0;
 	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
 		if (group.emitter_index == tfxINVALID) {
@@ -23006,6 +23046,23 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		dispatch.emitter_rotation[1] = emitter.rotation.y;
 		dispatch.emitter_rotation[2] = emitter.rotation.z;
 		dispatch.emitter_rotation[3] = emitter.rotation.w;
+		const tfx_emission_type emission_type = emitter.library->shared_properties[emitter.state_properties.shared_index].emission_type;
+		tfx_user_spawn_locations_t *location_list = tfx__relative_user_spawn_locations(pm, emitter, emission_type);
+		if (location_list) {
+			tfx__pack_gpu_spawn_locations(pm, location_list);
+			dispatch.flags |= tfxGPUParticleDispatchFlags_relative_location;
+			dispatch.flags |= location_list->flags & tfxUserSpawnLocationListFlags_has_rotation ? tfxGPUParticleDispatchFlags_location_rotation : 0;
+			dispatch.location_offset = location_list->gpu_frame_offset;
+			dispatch.location_count = location_list->locations.current_size;
+			//Relative paths never add the handle, as on the CPU
+			if (emission_type != tfxPath) {
+				dispatch.handle[0] = emitter.handle.x;
+				dispatch.handle[1] = emitter.handle.y;
+				dispatch.handle[2] = emitter.handle.z;
+			}
+		} else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
+			dispatch.flags |= tfxGPUParticleDispatchFlags_relative_scale_only;
+		}
 		pm->gpu_frame_dispatches.push_back(dispatch);
 		group.written_instance_start = group.instance_start;
 		group.written_bumped_total = group.bumped_total;
@@ -23016,9 +23073,11 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 	frame->ticks = pm->gpu_frame_ticks.data;
 	frame->spawn_hot = pm->gpu_spawn_hot.data;
 	frame->spawn_cold = pm->gpu_spawn_cold.data;
+	frame->spawn_locations = pm->gpu_frame_locations.data;
 	frame->dispatch_count = pm->gpu_frame_dispatches.current_size;
 	frame->tick_count = pm->gpu_frame_ticks.current_size;
 	frame->spawn_count = pm->gpu_spawn_hot.current_size;
+	frame->spawn_location_count = pm->gpu_frame_locations.current_size;
 	frame->gpu_instance_start = pm->gpu_instance_start;
 	frame->gpu_instance_count = pm->gpu_instance_count;
 	for (tfxEachLayer) {
@@ -23079,6 +23138,7 @@ void tfx__clear_gpu_groups(tfx_stage pm) {
 	pm->gpu_spawn_cold.clear();
 	pm->gpu_frame_dispatches.clear();
 	pm->gpu_frame_ticks.clear();
+	pm->gpu_frame_locations.clear();
 	pm->gpu_instance_count = 0;
 	memset(pm->gpu_layer_count, 0, sizeof(tfxU32) * tfxLAYERS);
 }
@@ -23092,6 +23152,7 @@ void tfx__free_gpu_groups(tfx_stage pm) {
 	pm->gpu_spawn_cold.free();
 	pm->gpu_frame_dispatches.free();
 	pm->gpu_frame_ticks.free();
+	pm->gpu_frame_locations.free();
 	if (pm->gpu_pool_allocator) {
 		tfxFREE(pm->gpu_pool_blocks);
 		tfxFREE(pm->gpu_pool_allocator);

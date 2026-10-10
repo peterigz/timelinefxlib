@@ -687,6 +687,10 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_play_once = 1 << 11,
 	tfxGPUParticleDispatchFlags_reverse_animation = 1 << 12,
 	tfxGPUParticleDispatchFlags_drag_variation = 1 << 13,
+	tfxGPUParticleDispatchFlags_relative_location = 1 << 14,			//Positions are local to the spawn location in the particle's cold spawn_location
+	tfxGPUParticleDispatchFlags_relative_scale_only = 1 << 15,			//A relative Other Emitter: positions are only scaled
+	tfxGPUParticleDispatchFlags_location_rotation = 1 << 16,			//A spawn location has a rotation, applied after the emitter's
+	tfxGPUParticleDispatchFlags_align_rotated_emission = 1 << 17,		//Emission alignment of a relative emitter, rotated by the emitter
 } tfx_gpu_particle_dispatch_flag_bits;
 
 typedef tfxU32 tfxGPUParticleDispatchFlags;      //tfx_gpu_particle_dispatch_flag_bits
@@ -699,7 +703,7 @@ typedef enum {
 typedef tfxU32 tfxGPUParticleFlags;              //tfx_gpu_particle_flag_bits
 
 //One emitter instance's ring for one tfx_GetGPUParticleFrame. Upload them verbatim and dispatch once per record
-typedef struct tfx_gpu_particle_dispatch_s {	//96 bytes
+typedef struct tfx_gpu_particle_dispatch_s {	//112 bytes
 	tfxU32 base;							//First pool slot of the ring
 	tfxU32 capacity;						//Ring slots
 	tfxU32 first_tick;						//Into tfx_gpu_particle_frame_t ticks
@@ -718,9 +722,20 @@ typedef struct tfx_gpu_particle_dispatch_s {	//96 bytes
 	float image_frame_rate;					//Frames per second
 	float end_frame;
 	float emitter_roll;
-	tfxU32 padding[2];
+	tfxU32 location_offset;					//Into tfx_gpu_particle_frame_t spawn_locations, the effect's table indexed by location slot
+	tfxU32 location_count;
 	float emitter_rotation[4];				//Quaternion xyzw
+	float handle[3];						//Added to a relative position before the emitter rotation
+	tfxU32 padding;
 } tfx_gpu_particle_dispatch_t;
+
+//A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
+typedef struct tfx_gpu_spawn_location_s {	//32 bytes
+	float position[3];
+	tfxU32 local_id;						//slot | generation, matched against the cold spawn_location. tfxINVALID when the slot is empty
+	tfxU32 packed_rotation[2];				//16 bit snorm quaternion: [0] = x|y, [1] = z|w
+	tfxU32 padding[2];
+} tfx_gpu_spawn_location_t;
 
 //Everything the stage simulated on the GPU since the last tfx_GetGPUParticleFrame
 typedef struct tfx_gpu_particle_frame_s {
@@ -728,9 +743,11 @@ typedef struct tfx_gpu_particle_frame_s {
 	const tfx_gpu_particle_tick_t *ticks;
 	const tfx_gpu_particle_hot_t *spawn_hot;
 	const tfx_gpu_particle_cold_t *spawn_cold;
+	const tfx_gpu_spawn_location_t *spawn_locations;
 	tfxU32 dispatch_count;
 	tfxU32 tick_count;
 	tfxU32 spawn_count;
+	tfxU32 spawn_location_count;
 	tfxU32 gpu_instance_start;				//The GPU instances follow the CPU ones, so this is the CPU instance count
 	tfxU32 gpu_instance_count;
 	tfxU32 gpu_layer_start[tfxLAYERS];
@@ -747,6 +764,7 @@ typedef struct tfx_gpu_particle_push_s {
 	tfxU32 dispatch_buffer_index;			//tfx_gpu_particle_frame_t dispatches
 	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks
 	tfxU32 graph_buffer_index;				//tfx_GetGPUGraphLookupsBuffer
+	tfxU32 location_buffer_index;			//tfx_gpu_particle_frame_t spawn_locations
 	tfxU32 dispatch_index;
 } tfx_gpu_particle_push_t;
 
@@ -1875,9 +1893,10 @@ GPU particle simulation
 Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
 instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
-tfx_SetStageGPUSimulation has it off, and when they use relative position, forces, or are the source another emitter
-spawns from. An effect with a Run on GPU emitter spawns at its spawn locations (tfx_AddSpawnLocation), never at its own
-position, so one instance of it serves every place it plays.
+tfx_SetStageGPUSimulation has it off, and when they use forces or are the source another emitter spawns from. An effect
+with a Run on GPU emitter spawns at its spawn locations (tfx_AddSpawnLocation), never at its own position, so one instance
+of it serves every place it plays. Particles of a relative emitter follow the location they spawned at, through the
+spawn_locations table in each frame.
 
 The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
 its push constants. Customise it for things like collision; the records it reads are below.
@@ -1894,7 +1913,7 @@ Setup, once:
 Per frame, after tfx_UpdateStage:
   1. tfx_GetGPUParticleFrame. It returns false when no update ran since the last call: draw last frame's instance
      buffer again, as you would for the CPU instances.
-  2. Upload the dispatches, ticks, spawn_hot and spawn_cold arrays verbatim.
+  2. Upload the dispatches, ticks, spawn_hot, spawn_cold and spawn_locations arrays verbatim.
   3. Size the instance buffer for gpu_instance_start + gpu_instance_count instances and upload the CPU instances
      from tfx_GetInstanceBuffer as normal. The GPU instances go after them.
   4. One compute dispatch per tfx_gpu_particle_dispatch_t, (slot_count + 255) / 256 groups of 256. Each loops over

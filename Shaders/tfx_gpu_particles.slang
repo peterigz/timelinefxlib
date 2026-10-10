@@ -36,6 +36,10 @@ static const uint tfx_dispatch_relative_angle = 1 << 10;
 static const uint tfx_dispatch_play_once = 1 << 11;
 static const uint tfx_dispatch_reverse_animation = 1 << 12;
 static const uint tfx_dispatch_drag_variation = 1 << 13;
+static const uint tfx_dispatch_relative_location = 1 << 14;
+static const uint tfx_dispatch_relative_scale_only = 1 << 15;
+static const uint tfx_dispatch_location_rotation = 1 << 16;
+static const uint tfx_dispatch_align_rotated_emission = 1 << 17;
 
 //tfx_gpu_particle_flag_bits
 static const uint tfx_particle_remove = 1 << 0;
@@ -45,6 +49,8 @@ static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
 static const float tfx_size_packed_scale = 32767.0 / 64.0;
 static const float tfx_color_packed_scale = 32767.0 / 128.0;
 static const uint tfx_capture_bit = 1 << 15;
+//tfxSPAWN_LOCATION_SLOT_MASK
+static const uint tfx_spawn_location_slot_mask = (1u << 20) - 1;
 
 //Mirrors tfx_gpu_particle_hot_t
 struct tfx_gpu_particle_hot {
@@ -110,8 +116,19 @@ struct tfx_gpu_particle_dispatch {
 	float image_frame_rate;
 	float end_frame;
 	float emitter_roll;
-	uint padding[2];
+	uint location_offset;
+	uint location_count;
 	float4 emitter_rotation;			//Quaternion xyzw
+	float3 handle;
+	uint padding;
+};
+
+//Mirrors tfx_gpu_spawn_location_t
+struct tfx_gpu_spawn_location {
+	float3 position;
+	uint local_id;						//slot | generation, tfxINVALID when the slot is empty
+	uint2 packed_rotation;				//16 bit snorm: .x = X|Y, .y = Z|W
+	uint2 padding;
 };
 
 //Mirrors tfx_instance_t
@@ -136,6 +153,7 @@ struct tfx_gpu_particle_push {
 	uint dispatch_buffer_index;
 	uint tick_buffer_index;
 	uint graph_buffer_index;
+	uint location_buffer_index;
 	uint dispatch_index;
 };
 
@@ -147,6 +165,7 @@ struct tfx_gpu_particle_push {
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[];
 [[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> push;
 
 //tfx__wide_unpack10bit: x in the top 10 bits, z in the bottom
@@ -174,6 +193,12 @@ uint2 tfx_pack16bit_quaternion(float4 q) {
 	const uint z = uint(int(q.z * 32767.0)) & 0xFFFFu;
 	const uint w = uint(int(q.w * 32767.0)) & 0xFFFFu;
 	return uint2(x | (y << 16), z | (w << 16));
+}
+
+//tfx__wide_unpack16bit: each lane sign extended, x and y from .x, z and w from .y
+float4 tfx_unpack16bit_quaternion(uint2 packed) {
+	const int4 values = int4(int(packed.x << 16) >> 16, int(packed.x) >> 16, int(packed.y << 16) >> 16, int(packed.y) >> 16);
+	return float4(values) * (1.0 / 32767.0);
 }
 
 //Port of tfx__white_unit: the signed reinterpret is what centres it on 0
@@ -234,6 +259,37 @@ void tfx_control_particle(inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold 
 	hot.velocity = (1.0 - drag_alpha) * hot.velocity + acceleration_scale * acceleration;
 
 	hot.position += hot.velocity * tick.update_time * tick.velocity_adjuster * age_fraction * tick.overall_scale;
+}
+
+//tfx__block_particle_transform. A relative particle whose location has gone is removed here, before the write, so it's drawn with no
+//size and isn't captured, which is what the CPU's location_alive mask does in the instance pass ahead of its age pass kill
+float3 tfx_particle_world_position(tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold) {
+	const uint flags = dispatch.flags;
+	if ((flags & tfx_dispatch_relative_location) != 0) {
+		const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
+		float3 location_position = float3(0.0, 0.0, 0.0);
+		uint2 location_rotation = uint2(0u, 0x7FFF0000u);
+		uint location_id = 0xFFFFFFFFu;
+		if (slot < dispatch.location_count) {
+			const tfx_gpu_spawn_location location = location_buffers[push.location_buffer_index][dispatch.location_offset + slot];
+			location_position = location.position;
+			location_rotation = location.packed_rotation;
+			location_id = location.local_id;
+		}
+		if (location_id != cold.spawn_location) {
+			hot.flags |= tfx_particle_remove;
+		}
+		float3 position = tfx_rotate_vector(hot.position + dispatch.handle, dispatch.emitter_rotation);
+		//After the emitter rotation, so the emitter keeps its own angle and the location turns the whole thing into its frame
+		if ((flags & tfx_dispatch_location_rotation) != 0) {
+			position = tfx_rotate_vector(position, tfx_unpack16bit_quaternion(location_rotation));
+		}
+		return position * tick.overall_scale + location_position;
+	}
+	if ((flags & tfx_dispatch_relative_scale_only) != 0) {
+		return hot.position * tick.overall_scale;
+	}
+	return hot.position;
 }
 
 //tfx__control_particle_age for a particle that isn't single
@@ -304,18 +360,22 @@ uint tfx_particle_image_frame(tfx_gpu_particle_dispatch dispatch, tfx_gpu_partic
 }
 
 //tfx__control_particle_instances for one particle, at ring position ring_position of the last tick
-void tfx_write_particle_instance(tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float life, uint ring_position) {
+void tfx_write_particle_instance(tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float3 position, float life, uint ring_position) {
 	const uint flags = dispatch.flags;
 	const uint graph_offset = dispatch.graph_offset;
 	const bool alive = (hot.flags & tfx_particle_remove) == 0;
 	tfx_instance instance;
 
-	//----Transform, world space particles are already where they're drawn
+	//----Transform
 	const float stretch = tfx_sample_graph(tfx_graph(graph_offset, tfx_graph_stretch), life) * dispatch.global_stretch;
-	instance.position = float4(hot.position, stretch);
+	instance.position = float4(position, stretch);
 	instance.alignment = 0;
 	if ((flags & tfx_dispatch_align_emission) != 0) {
-		instance.alignment = tfx_pack8bit_xyz(tfx_unpack10bit(cold.velocity_normal));
+		float3 alignment = tfx_unpack10bit(cold.velocity_normal);
+		if ((flags & tfx_dispatch_align_rotated_emission) != 0) {
+			alignment = tfx_rotate_vector(alignment, dispatch.emitter_rotation);
+		}
+		instance.alignment = tfx_pack8bit_xyz(alignment);
 	} else if ((flags & tfx_dispatch_align_emitter) != 0) {
 		instance.alignment = tfx_pack8bit_xyz(tfx_rotate_vector(float3(0.0, 1.0, 0.0), dispatch.emitter_rotation));
 	}
@@ -400,7 +460,8 @@ void simulate_particles(uint3 thread_id : SV_DispatchThreadID) {
 		const float life = hot.age * cold.inv_max_age;
 		tfx_control_particle(hot, cold, tick, life, velocity_graph, weight_graph, drag_variation);
 		if (tick_index + 1 == end_tick) {
-			tfx_write_particle_instance(dispatch, tick, hot, cold, life, ring_position);
+			const float3 position = tfx_particle_world_position(dispatch, tick, hot, cold);
+			tfx_write_particle_instance(dispatch, tick, hot, cold, position, life, ring_position);
 		}
 		tfx_age_particle(hot, cold, tick);
 	}

@@ -4378,7 +4378,8 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 		for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
 			size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
-			if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
+			//Wrapped when the last row is past the end, including the case where it sits exactly at index 0
+			if (buffer->start_index + buffer->current_size > buffer->capacity) {
 				memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 				memcpy((char *)new_data + (capacity - start_index) + running_offset, (char *)buffer->array_ptrs[i].ptr, (size_t)(start_index));
 			} else {
@@ -6536,7 +6537,8 @@ typedef struct tfx_gpu_pack_work_entry_s {
 tfx__static_assert(sizeof(tfx_gpu_particle_hot_t) == 32);
 tfx__static_assert(sizeof(tfx_gpu_particle_cold_t) == 64);
 tfx__static_assert(sizeof(tfx_gpu_particle_tick_t) == 48);
-tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 96);
+tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 112);
+tfx__static_assert(sizeof(tfx_gpu_spawn_location_t) == 32);
 //---- end GPU compute particle buffer management ----
 
 typedef struct tfx_ribbon_lag_history_s {
@@ -7334,6 +7336,9 @@ typedef struct tfx_user_spawn_locations_s {
 	//emitter's spawn window and a host can add locations every frame
 	float auto_remove_time;
 	tfxUserSpawnLocationListFlags flags;
+	//Where this list's table went in the GPU frame, valid while gpu_frame_fetch matches the stage's gpu_fetch_count
+	tfxU32 gpu_frame_offset;
+	tfxU32 gpu_frame_fetch;
 } tfx_user_spawn_locations_t;
 #endif
 
@@ -7360,6 +7365,8 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfx_gpu_particle_cold_t> gpu_spawn_cold;
 	tfx_vector_t<tfx_gpu_particle_dispatch_t> gpu_frame_dispatches;
 	tfx_vector_t<tfx_gpu_particle_tick_t> gpu_frame_ticks;
+	tfx_vector_t<tfx_gpu_spawn_location_t> gpu_frame_locations;
+	tfxU32 gpu_fetch_count;
 	tfxU32 gpu_instance_start;
 	tfxU32 gpu_instance_count;
 	tfxU32 gpu_layer_start[tfxLAYERS];
