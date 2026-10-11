@@ -17,7 +17,7 @@ So far some of the features of the Library:
 * Fast. Utilises multithreading and SIMD intrinsics to simulate particles as fast as possible. Work is always on going to make things faster.
 * Can pre-bake effects so that they can be animated entirely in a compute shader for ultimate speed. The baked data can also be compressed to save up to 90% memory depending on the effect. The compute shader does the job of interpolating the sprite data to keep things smooth between frames.
 * Render both 2d or 3d particles.
-* Simulate particles on the GPU. Emitters set to Run on GPU still spawn on the CPU, but a compute shader simulates them and writes their instances after the CPU ones. The reference kernel is Shaders/tfx_gpu_particles.slang, and you can add your own forces or collision to it from your own Slang module without changing it. See the GPU particle simulation section in timelinefx.h.
+* Simulate particles on the GPU. Emitters set to Run on GPU still spawn on the CPU, but a compute shader simulates them, every emitter force included, and writes their instances after the CPU ones. The reference kernel is Shaders/tfx_gpu_particles.slang, and you can add your own forces or collision to it from your own Slang module without changing it. See the GPU particle simulation section in timelinefx.h.
 * Render agnostic, just a few simple integrations to get it drawing in your own renderer. (See shaders folder for example shaders)
 * Runs on Intel/ARM CPUs, currently tested on Windows and Mac. Should build on Linux but I don't actively test for that yet.
 * Many different types of effects are possible with more coming as features are added.

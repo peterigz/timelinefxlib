@@ -24,7 +24,6 @@ static const uint tfx_graph_stretch = 11;
 static const uint tfx_graph_velocity_turbulance = 12;
 static const uint tfx_graph_noise_resolution = 15;
 static const uint tfx_graph_motion_randomness = 16;
-static const uint tfx_graph_noise_profile = 21;			//tfxGPU_LOOKUP_NOISE_PROFILE
 
 //tfx_gpu_particle_dispatch_flag_bits
 static const uint tfx_dispatch_capture = 1 << 0;
@@ -47,7 +46,6 @@ static const uint tfx_dispatch_location_rotation = 1 << 16;
 static const uint tfx_dispatch_align_rotated_emission = 1 << 17;
 static const uint tfx_dispatch_noise = 1 << 18;
 static const uint tfx_dispatch_noise_algorithm_shift = 19;
-static const uint tfx_dispatch_noise_bounded = 1 << 21;
 static const uint tfx_dispatch_noise_anisotropic = 1 << 22;
 
 //The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
@@ -58,6 +56,17 @@ static const uint tfx_noise_value = 3;
 
 //tfx_gpu_particle_flag_bits
 static const uint tfx_particle_remove = 1 << 0;
+
+//tfx_gpu_particle_force_type in type_flags & tfx_force_type_mask, tfx_gpu_particle_force_flag_bits above it
+static const uint tfx_force_type_mask = 0xFF;
+static const uint tfx_force_wind = 0;
+static const uint tfx_force_attract = 1;
+static const uint tfx_force_vortex = 2;
+static const uint tfx_force_shockwave = 3;
+static const uint tfx_force_noise = 4;
+static const uint tfx_force_profile_bezier = 1 << 8;
+static const uint tfx_force_bounded = 1 << 9;
+static const uint tfx_force_fluctuating = 1 << 10;
 
 //Must match tfxDRAG_VARIATION_HASH_AXIS or the drag drawn here won't be the one the CPU draws for the same uid
 static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
@@ -113,10 +122,10 @@ struct tfx_gpu_particle_tick {
 	float acceleration_scale;
 	float drag_alpha_variation;
 	float acceleration_scale_variation;
-	float noise_amplitude;				//0 before the force's delay
-	float noise_origin_x;
-	float noise_origin_y;
-	float noise_origin_z;
+	uint force_offset;					//Row of the first force row in the same buffer
+	uint force_count;
+	uint padding_0;
+	uint padding_1;
 };
 
 //Mirrors tfx_gpu_particle_dispatch_t
@@ -143,10 +152,11 @@ struct tfx_gpu_particle_dispatch {
 	uint location_count;
 	float4 emitter_rotation;			//Quaternion xyzw
 	float3 handle;
-	float noise_radius;
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
-	uint2 padding;
+	uint padding_0;
+	uint padding_1;
+	uint padding_2;
 };
 
 //Mirrors tfx_gpu_spawn_location_t
@@ -155,6 +165,31 @@ struct tfx_gpu_spawn_location {
 	uint local_id;						//slot | generation, tfxINVALID when the slot is empty
 	uint2 packed_rotation;				//16 bit snorm: .x = X|Y, .y = Z|W
 	uint2 padding;
+};
+
+//Mirrors tfx_gpu_particle_force_t. Every float3 starts on a 16 byte offset, so std430 matches the C layout
+struct tfx_gpu_particle_force {
+	uint type_flags;
+	float strength;
+	float falloff_scale;
+	float front;
+	float3 origin;
+	float radial_ratio;
+	float3 axis;						//Vortex axis, or the summed wind flow
+	float axial_ratio;
+	float4 profile;						//from, curve1, curve2, to
+};
+
+//Mirrors tfx_gpu_particle_vortex_fluctuation_t, the row after a fluctuating vortex
+struct tfx_gpu_particle_vortex_fluctuation {
+	float3 reference;
+	uint lobes;
+	float3 reference_turn;
+	float padding_turn;
+	float3 harmonic_cos;
+	float padding_cos;
+	float3 harmonic_sin;
+	float padding_sin;
 };
 
 //Mirrors tfx_instance_t
@@ -190,6 +225,9 @@ struct tfx_gpu_particle_push {
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_cold> spawn_cold_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[];
+//The force rows after the tick records, the same buffer as tick_buffers
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[];
 
@@ -262,19 +300,121 @@ tfx_gpu_graph_data tfx_graph(tfx_gpu_particle_push push, uint graph_offset, uint
 	return graph_buffers[push.graph_buffer_index][graph_offset + graph];
 }
 
-//tfx_apply_forces for the noise force, the only one a GPU emitter keeps. Like the CPU it samples the field at the start of tick
-//position and splits against the previous velocity
-float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float life) {
+//tfx__wide_sample_force_profile: one segment, no easing or oscillator, and the far edge is killed rather than clamped
+float tfx_sample_force_profile(tfx_gpu_particle_force force, float profile_time) {
+	const bool inside = profile_time < 1.0;
+	const float time = min(profile_time, 1.0);
+	float sample;
+	if ((force.type_flags & tfx_force_profile_bezier) != 0) {
+		const float inverse = 1.0 - time;
+		const float weight1 = (inverse * inverse) * inverse;
+		const float weight2 = ((3.0 * inverse) * inverse) * time;
+		const float weight3 = ((3.0 * inverse) * time) * time;
+		const float weight4 = (time * time) * time;
+		sample = ((weight1 * force.profile.x + weight2 * force.profile.y) + weight3 * force.profile.z) + weight4 * force.profile.w;
+	} else {
+		sample = force.profile.x + (force.profile.w - force.profile.x) * time;
+	}
+	return inside ? sample : 0.0;
+}
+
+//The distance the profiles are sampled at. Floored rather than branched on, so a particle on the origin reads 0 rather than a NaN
+float tfx_force_inverse_length(float length_squared) {
+	return rsqrt(max(length_squared, tfx_noise_epsilon));
+}
+
+//tfx__wide_apply_vortex_force, with tfx__wide_vortex_fluctuation from the row after it when the force fluctuates
+void tfx_apply_vortex_force(tfx_gpu_particle_force force, tfx_gpu_particle_vortex_fluctuation fluctuation, float3 position, inout float3 medium) {
+	const float3 axis = force.axis;
+	const float3 offset = position - force.origin;
+	const float axial_distance = dot(offset, axis);
+	float3 radial = offset - axial_distance * axis;
+	const float radial_length_squared = dot(radial, radial);
+	const float inverse_radial_length = tfx_force_inverse_length(radial_length_squared);
+	radial *= inverse_radial_length;
+	const float radial_distance = radial_length_squared * inverse_radial_length;
+
+	float scale = force.strength * tfx_sample_force_profile(force, radial_distance * force.falloff_scale);
+	if ((force.type_flags & tfx_force_fluctuating) != 0) {
+		const float arm_real = dot(radial, fluctuation.reference);
+		const float arm_imaginary = dot(radial, fluctuation.reference_turn);
+		//The arm raised to the lobe count by squaring, the first factor taken as it is
+		float power_real = arm_real;
+		float power_imaginary = arm_imaginary;
+		bool have_power = false;
+		float base_real = arm_real;
+		float base_imaginary = arm_imaginary;
+		for (uint exponent = fluctuation.lobes; exponent != 0; exponent >>= 1) {
+			if ((exponent & 1) != 0) {
+				if (have_power) {
+					const float next_real = power_real * base_real - power_imaginary * base_imaginary;
+					power_imaginary = power_real * base_imaginary + power_imaginary * base_real;
+					power_real = next_real;
+				} else {
+					power_real = base_real;
+					power_imaginary = base_imaginary;
+					have_power = true;
+				}
+			}
+			if (exponent > 1) {
+				const float next_real = base_real * base_real - base_imaginary * base_imaginary;
+				base_imaginary = (base_real + base_real) * base_imaginary;
+				base_real = next_real;
+			}
+		}
+		//Each further harmonic has one more lobe than the last, so it is one more multiply by the arm
+		float variation = 1.0;
+		for (uint harmonic_index = 0; harmonic_index != 3; ++harmonic_index) {
+			if (harmonic_index > 0) {
+				const float next_real = power_real * arm_real - power_imaginary * arm_imaginary;
+				power_imaginary = power_real * arm_imaginary + power_imaginary * arm_real;
+				power_real = next_real;
+			}
+			variation = power_real * fluctuation.harmonic_cos[harmonic_index] + variation;
+			variation = power_imaginary * fluctuation.harmonic_sin[harmonic_index] + variation;
+		}
+		scale *= variation;
+	}
+
+	const float3 tangential = cross(axis, radial);
+	const float3 flow = axis * force.axial_ratio + (radial * force.radial_ratio + tangential);
+	medium = flow * scale + medium;
+}
+
+//tfx__wide_apply_attract_force: the pull grows with distance towards the edge of the field
+void tfx_apply_attract_force(tfx_gpu_particle_force force, float3 position, inout float3 medium) {
+	const float3 offset = position - force.origin;
+	const float length_squared = dot(offset, offset);
+	const float inverse_length = tfx_force_inverse_length(length_squared);
+	const float distance = length_squared * inverse_length;
+	float scale = force.strength * tfx_sample_force_profile(force, distance * force.falloff_scale);
+	scale *= distance;
+	medium = (offset * inverse_length) * scale + medium;
+}
+
+//tfx__wide_apply_shockwave_force: the profile runs back from the leading edge, so only particles it hasn't reached need masking
+void tfx_apply_shockwave_force(tfx_gpu_particle_force force, float3 position, inout float3 medium) {
+	const float3 offset = position - force.origin;
+	const float length_squared = dot(offset, offset);
+	const float inverse_length = tfx_force_inverse_length(length_squared);
+	const float distance = length_squared * inverse_length;
+	const float profile_time = (force.front - distance) * force.falloff_scale;
+	const float scale = profile_time >= 0.0 ? force.strength * tfx_sample_force_profile(force, profile_time) : 0.0;
+	medium = (offset * inverse_length) * scale + medium;
+}
+
+//The noise force from its row. Like the CPU it samples the field at the start of tick position and splits against the previous velocity
+float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_force force, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float life) {
 	const uint flags = dispatch.flags;
 	const uint algorithm = (flags >> tfx_dispatch_noise_algorithm_shift) & 3u;
-	float3 medium;
+	float3 direction;
+	float amplitude;
 	if (algorithm == tfx_noise_white) {
-		const float motion_randomness = tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_motion_randomness), life);
-		medium = tfx_white_noise_direction(cold.uid, hot.age, cold.noise_resolution) * (tick.noise_amplitude * motion_randomness);
+		direction = tfx_white_noise_direction(cold.uid, hot.age, cold.noise_resolution);
+		amplitude = force.strength * tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_motion_randomness), life);
 	} else {
 		const float noise_resolution = (tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_noise_resolution), life) * cold.noise_resolution) * tick.overall_scale;
 		const float3 sample_position = hot.position / noise_resolution + float3(cold.noise_offset_x, cold.noise_offset_y, cold.noise_offset_z) * tick.overall_scale;
-		float3 direction;
 		if (algorithm == tfx_noise_simplex) {
 			direction = tfx_simplex_noise_direction(sample_position, life);
 		} else if (algorithm == tfx_noise_curl) {
@@ -282,21 +422,16 @@ float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch di
 		} else {
 			direction = tfx_value_noise_direction(sample_position);
 		}
-		medium = direction * (tick.noise_amplitude * tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_velocity_turbulance), life));
+		amplitude = force.strength * tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_velocity_turbulance), life);
 	}
 
-	//tfx__resolve_noise_force: a relative bank is in authored units, a world one already carries the overall scale
-	if ((flags & tfx_dispatch_noise_bounded) != 0) {
-		const float bank_units_scale = (flags & (tfx_dispatch_relative_location | tfx_dispatch_relative_scale_only)) != 0 ? 1.0 : tick.overall_scale;
-		const float falloff_distance = dispatch.noise_radius * bank_units_scale;
-		if (falloff_distance > 0.0) {
-			const float3 offset = hot.position - float3(tick.noise_origin_x, tick.noise_origin_y, tick.noise_origin_z);
-			const float length_squared = dot(offset, offset);
-			const float profile_time = (length_squared * rsqrt(max(length_squared, tfx_noise_epsilon))) * (1.0 / falloff_distance);
-			//tfx__wide_sample_force_profile kills the far edge rather than clamping to the graph's end value
-			medium *= profile_time < 1.0 ? tfx_sample_graph(tfx_graph(push, dispatch.graph_offset, tfx_graph_noise_profile), profile_time) : 0.0;
-		}
+	if ((force.type_flags & tfx_force_bounded) != 0) {
+		const float3 offset = hot.position - force.origin;
+		const float length_squared = dot(offset, offset);
+		const float distance = length_squared * tfx_force_inverse_length(length_squared);
+		amplitude *= tfx_sample_force_profile(force, distance * force.falloff_scale);
 	}
+	float3 medium = direction * amplitude;
 
 	if ((flags & tfx_dispatch_noise_anisotropic) != 0) {
 		medium = tfx_split_medium_velocity(hot.velocity, medium, dispatch.noise_swerve_gain_minus_one, dispatch.noise_speed_gain_minus_swerve_gain);
@@ -417,6 +552,34 @@ struct tfx_particle_context {
 	}
 };
 
+//tfx_apply_forces over the tick's force rows, which the CPU packed in its order: wind, vortices, attracts, shockwaves, noise
+float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold) {
+	const uint buffer_index = context.push.tick_buffer_index;
+	const uint end_row = context.tick.force_offset + context.tick.force_count;
+	float3 medium = float3(0.0, 0.0, 0.0);
+	for (uint row = context.tick.force_offset; row < end_row; ++row) {
+		const tfx_gpu_particle_force force = force_buffers[buffer_index][row];
+		const uint type = force.type_flags & tfx_force_type_mask;
+		if (type == tfx_force_wind) {
+			//The CPU seeds the medium with the summed wind rather than adding it
+			medium = force.axis;
+		} else if (type == tfx_force_vortex) {
+			tfx_gpu_particle_vortex_fluctuation fluctuation = {};
+			if ((force.type_flags & tfx_force_fluctuating) != 0) {
+				fluctuation = fluctuation_buffers[buffer_index][++row];
+			}
+			tfx_apply_vortex_force(force, fluctuation, hot.position, medium);
+		} else if (type == tfx_force_attract) {
+			tfx_apply_attract_force(force, hot.position, medium);
+		} else if (type == tfx_force_shockwave) {
+			tfx_apply_shockwave_force(force, hot.position, medium);
+		} else if (type == tfx_force_noise) {
+			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.life);
+		}
+	}
+	return medium;
+}
+
 //Per particle behaviour a host adds with its own entry point over tfx_simulate, such as custom forces or collision. Both run every
 //tick in ring space, and neither runs for a removed particle
 interface ITfxParticleUpdate {
@@ -443,9 +606,9 @@ void tfx_control_particle<TUpdate : ITfxParticleUpdate>(tfx_particle_context con
 	const float velocity = tfx_sample_graph(velocity_graph, life) * cold.base_velocity;
 	const float weight = tfx_sample_graph(weight_graph, life) * cold.base_weight;
 	float3 acceleration = tfx_unpack10bit(cold.velocity_normal) * velocity;
-	//Before the noise force's delay the CPU doesn't resolve it at all, which an amplitude of 0 stands for
-	if ((dispatch.flags & tfx_dispatch_noise) != 0 && tick.noise_amplitude != 0.0) {
-		acceleration += tfx_noise_medium(push, dispatch, tick, hot, cold, life);
+	//A force before its delay, or with nothing to describe this tick, has no row
+	if (tick.force_count != 0) {
+		acceleration += tfx_force_medium(context, hot, cold);
 	}
 	acceleration += update.acceleration(hot, cold, context);
 	acceleration.y -= weight;

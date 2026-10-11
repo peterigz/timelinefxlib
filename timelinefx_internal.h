@@ -2867,9 +2867,6 @@ typedef enum {
 	tfxGPU_lookup_end = tfxFactor_intensity,
 } tfx_graph_ranges;
 
-//The slot in a particle emitter's block of the GPU graph lookups that holds its noise force's profile, after its 21 overtime and factor graphs
-#define tfxGPU_LOOKUP_NOISE_PROFILE 21
-
 typedef enum {
 	tfxOscillator_sine,
 	tfxOscillator_square,
@@ -6034,7 +6031,23 @@ typedef struct tfx_force_resolved_s {
 	tfxU32 flags;
 } tfx_force_resolved_t;
 
-//A noise force resolved once per emitter per tick, shared by the CPU control setup and the GPU tick record
+//An attract, vortex or shockwave force resolved once per emitter per tick, before the CPU widens it or the GPU packs it
+typedef struct tfx_resolved_position_force_s {
+	tfx_vec3_t origin;
+	tfx_vec3_t axis;
+	float strength;
+	float falloff_scale;
+	float front;
+	float radial_ratio;
+	float axial_ratio;
+	float reference[3];
+	float reference_turn[3];
+	tfx_vortex_fluctuation_t fluctuation;
+	tfx_graph_t *profile_graph;
+	tfxU32 flags;						//tfx_force_resolved_flag_bits
+} tfx_resolved_position_force_t;
+
+//A noise force resolved once per emitter per tick, shared by the CPU control setup and the GPU force rows
 typedef struct tfx_resolved_noise_force_s {
 	tfx_vec3_t origin;
 	float strength;
@@ -6428,6 +6441,11 @@ typedef struct tfx_gpu_pack_work_entry_s {
 tfx__static_assert(sizeof(tfx_gpu_particle_hot_t) == 32);
 tfx__static_assert(sizeof(tfx_gpu_particle_cold_t) == 80);
 tfx__static_assert(sizeof(tfx_gpu_particle_tick_t) == 64);
+//Force rows follow the tick records in one array, read through a second view of the same buffer
+tfx__static_assert(sizeof(tfx_gpu_particle_force_t) == sizeof(tfx_gpu_particle_tick_t));
+tfx__static_assert(sizeof(tfx_gpu_particle_vortex_fluctuation_t) == sizeof(tfx_gpu_particle_force_t));
+tfx__static_assert((int)tfxGPUForceType_wind == (int)tfxForceWind && (int)tfxGPUForceType_attract == (int)tfxForceAttract && (int)tfxGPUForceType_vortex == (int)tfxForceVortex && (int)tfxGPUForceType_shockwave == (int)tfxForceShockwave && (int)tfxGPUForceType_noise == (int)tfxForceNoise);
+tfx__static_assert(tfxVORTEX_FLUCTUATION_HARMONICS == 3);
 tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 128);
 tfx__static_assert(sizeof(tfx_gpu_spawn_location_t) == 32);
 //---- end GPU compute particle buffer management ----
@@ -7254,6 +7272,7 @@ typedef struct tfx_stage_s {
 	//Everything since the last tfx_GetGPUParticleFrame, cleared by the first tick after it
 	tfx_vector_t<tfx_gpu_particle_hot_t> gpu_spawn_hot;
 	tfx_vector_t<tfx_gpu_particle_cold_t> gpu_spawn_cold;
+	tfx_vector_t<tfx_gpu_particle_force_t> gpu_force_rows;	//Every recorded tick's forces, a tick's force_offset indexes it until the fetch rebases it
 	tfx_vector_t<tfx_gpu_particle_dispatch_t> gpu_frame_dispatches;
 	tfx_vector_t<tfx_gpu_particle_tick_t> gpu_frame_ticks;
 	tfx_vector_t<tfx_gpu_spawn_location_t> gpu_frame_locations;
@@ -7835,8 +7854,22 @@ tfxINTERNAL void   tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_sta
 tfxINTERNAL tfxU32 tfx__advance_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter);
 tfxINTERNAL void   tfx__begin_gpu_frame(tfx_stage pm);
 tfxINTERNAL void   tfx__record_gpu_groups(tfx_stage pm);
+//The frame an emitter's forces are resolved in for one tick, shared by the CPU control setup and the GPU force rows
+typedef struct tfx_force_space_s {
+	tfx_particle_emitter_state_t *emitter;
+	tfx_effect_state_t *parent_effect;
+	tfx_quaternion_t inverse_emitter_rotation;
+	float overall_scale;
+	float bank_units_scale;				//Authored distances into the bank's units: 1 for a relative bank, overall_scale for a world one
+	float frame_seconds;
+	bool to_local_space;
+} tfx_force_space_t;
+
 tfxINTERNAL void   tfx__resolve_noise_force(const tfx_force_t *force, tfx_particle_emitter_state_t *emitter, tfx_effect_state_t *parent_effect, tfx_quaternion_t *inverse_emitter_rotation, bool to_local_space, float overall_scale, tfx_resolved_noise_force_t *resolved_noise);
 tfxINTERNAL bool   tfx__noise_gains(float noise_speed_bias, float *swerve_gain_minus_one, float *speed_gain_minus_swerve_gain);
+tfxINTERNAL void   tfx__get_force_space(tfx_stage pm, tfx_particle_emitter_state_t *emitter, float overall_scale, tfx_force_space_t *space);
+tfxINTERNAL bool   tfx__resolve_wind_force(const tfx_force_t *force, tfx_force_space_t *space, float strength, tfx_vec3_t *summed_medium);
+tfxINTERNAL bool   tfx__resolve_position_force(const tfx_force_t *force, tfx_force_space_t *space, float strength, tfx_resolved_position_force_t *resolved);
 tfxINTERNAL float  tfx__sample_motion_randomness_base(tfx_particle_emitter_state_t *emitter);
 tfxINTERNAL const tfx_force_t *tfx__get_enabled_noise_force(const tfx_particle_emitter_properties_t *properties);
 tfxINTERNAL void   tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data);

@@ -629,9 +629,9 @@ typedef struct tfx_ribbon_dispatch_s {
 
 //The state of one GPU simulated particle that changes every update, one per pool slot
 typedef struct tfx_gpu_particle_hot_s {		//32 bytes
-	float position_x, position_y, position_z;
+	tfx_float32x3_t position;
 	tfxU32 flags;							//tfxGPUParticleFlags
-	float velocity_x, velocity_y, velocity_z;
+	tfx_float32x3_t velocity;
 	float age;								//Milliseconds
 } tfx_gpu_particle_hot_t;
 
@@ -642,8 +642,7 @@ typedef struct tfx_gpu_particle_cold_s {	//80 bytes
 	tfxU32 velocity_normal;					//Packed 10 bit xyz
 	float base_velocity;
 	float base_weight;
-	float base_size_x;
-	float base_size_y;
+	tfx_float32x2_t base_size;
 	float intensity_factor;
 	float random_color;
 	tfxU32 rotation_offsets;				//Packed 10 bit pitch, yaw, roll, or the roll angle's float bits when the emitter can't spin pitch and yaw
@@ -652,9 +651,7 @@ typedef struct tfx_gpu_particle_cold_s {	//80 bytes
 	float base_yaw_spin;
 	float image_start_frame;				//The frame at age 0, so the current frame is image_start_frame + image_frame_rate * age
 	tfxU32 spawn_location;
-	float noise_offset_x;					//Noise field sample offset in authored units, zero for white noise
-	float noise_offset_y;
-	float noise_offset_z;
+	tfx_float32x3_t noise_offset;			//Noise field sample offset in authored units, zero for white noise
 	float noise_resolution;
 	tfxU32 padding;
 } tfx_gpu_particle_cold_t;
@@ -673,9 +670,54 @@ typedef struct tfx_gpu_particle_tick_s {	//64 bytes
 	float acceleration_scale;				//Seconds of acceleration that survive the drag
 	float drag_alpha_variation;
 	float acceleration_scale_variation;
-	float noise_amplitude;					//Noise strength times the effect's noise multiplier, times the motion randomness base for white noise. 0 before the force's delay
-	float noise_origin[3];					//Centre of a bounded noise field, in the particles' space
+	tfxU32 force_offset;					//Row of this tick's first force in the same array as the ticks, see tfx_gpu_particle_frame_t force_rows
+	tfxU32 force_count;						//Rows, so a fluctuating vortex counts twice
+	tfxU32 padding[2];
 } tfx_gpu_particle_tick_t;
+
+//tfx_gpu_particle_force_t type_flags & tfxGPU_FORCE_TYPE_MASK
+typedef enum {
+	tfxGPUForceType_wind,					//Every wind force of the emitter summed into one flow in axis
+	tfxGPUForceType_attract,
+	tfxGPUForceType_vortex,
+	tfxGPUForceType_shockwave,
+	tfxGPUForceType_noise,
+} tfx_gpu_particle_force_type;
+
+typedef enum {
+	tfxGPUForceFlags_none = 0,
+	tfxGPUForceFlags_profile_bezier = 1 << 8,							//profile is a bezier segment, otherwise points on the straight line
+	tfxGPUForceFlags_bounded = 1 << 9,									//Noise only: faded by the profile out to the falloff distance from origin
+	tfxGPUForceFlags_fluctuating = 1 << 10,								//Vortex only: the next row is its tfx_gpu_particle_vortex_fluctuation_t
+} tfx_gpu_particle_force_flag_bits;
+
+#define tfxGPU_FORCE_TYPE_MASK 0xFF
+
+//One emitter force resolved for one ring at one tick, in the particles' space. The rows follow the tick records in the same
+//array, so a force row and a tick record must stay the same size
+typedef struct tfx_gpu_particle_force_s {	//64 bytes
+	tfxU32 type_flags;						//tfx_gpu_particle_force_type | tfx_gpu_particle_force_flag_bits
+	float strength;							//Times the effect's noise multiplier, and the motion randomness base for white noise
+	float falloff_scale;					//Reciprocal of the distance the profile spans, in the particles' units
+	float front;							//Shockwave: how far its leading edge has travelled
+	tfx_float32x3_t origin;
+	float radial_ratio;						//Vortex
+	tfx_float32x3_t axis;					//Vortex: the unit axis. Wind: the summed flow
+	float axial_ratio;						//Vortex
+	tfx_float32x4_t profile;				//The profile graph's segment: from, curve1, curve2, to
+} tfx_gpu_particle_force_t;
+
+//The row after a fluctuating vortex's force row
+typedef struct tfx_gpu_particle_vortex_fluctuation_s {	//64 bytes
+	tfx_float32x3_t reference;				//Angle zero about the axis
+	tfxU32 lobes;
+	tfx_float32x3_t reference_turn;			//axis x reference
+	float padding_turn;
+	float harmonic_cos[3];					//Each harmonic's weight, current turn and frame average folded together
+	float padding_cos;
+	float harmonic_sin[3];
+	float padding_sin;
+} tfx_gpu_particle_vortex_fluctuation_t;
 
 typedef enum {
 	tfxGPUParticleDispatchFlags_none = 0,
@@ -699,7 +741,6 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_align_rotated_emission = 1 << 17,		//Emission alignment of a relative emitter, rotated by the emitter
 	tfxGPUParticleDispatchFlags_noise = 1 << 18,						//The emitter has a noise force, its algorithm is in the noise_algorithm bits
 	tfxGPUParticleDispatchFlags_noise_algorithm = 3 << 19,				//(flags >> tfxGPU_NOISE_ALGORITHM_SHIFT) & 3: white 0, simplex 1, curl 2, value 3
-	tfxGPUParticleDispatchFlags_noise_bounded = 1 << 21,				//The noise fades out by its profile at noise_radius from the tick's noise_origin
 	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
 } tfx_gpu_particle_dispatch_flag_bits;
 
@@ -736,31 +777,32 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	float emitter_roll;
 	tfxU32 location_offset;					//Into tfx_gpu_particle_frame_t spawn_locations, the effect's table indexed by location slot
 	tfxU32 location_count;
-	float emitter_rotation[4];				//Quaternion xyzw
-	float handle[3];						//Added to a relative position before the emitter rotation
-	float noise_radius;						//Authored units. A relative ring divides by it as it is, a world ring by noise_radius * the tick's overall_scale
+	tfx_float32x4_t emitter_rotation;		//Quaternion xyzw
+	tfx_float32x3_t handle;					//Added to a relative position before the emitter rotation
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
-	tfxU32 padding[2];
+	tfxU32 padding[3];
 } tfx_gpu_particle_dispatch_t;
 
 //A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
 typedef struct tfx_gpu_spawn_location_s {	//32 bytes
-	float position[3];
+	tfx_float32x3_t position;
 	tfxU32 local_id;						//slot | generation, matched against the cold spawn_location. tfxINVALID when the slot is empty
-	tfxU32 packed_rotation[2];				//16 bit snorm quaternion: [0] = x|y, [1] = z|w
+	tfxU64 packed_rotation;					//16 bit snorm quaternion, x|y in the low word and z|w in the high one
 	tfxU32 padding[2];
 } tfx_gpu_spawn_location_t;
 
 //Everything the stage simulated on the GPU since the last tfx_GetGPUParticleFrame
 typedef struct tfx_gpu_particle_frame_s {
 	const tfx_gpu_particle_dispatch_t *dispatches;
-	const tfx_gpu_particle_tick_t *ticks;
+	const tfx_gpu_particle_tick_t *ticks;	//tick_count tick records then force_row_count force rows: upload all of them as one array
+	const tfx_gpu_particle_force_t *force_rows;		//ticks + tick_count, for a host that uploads the rows separately
 	const tfx_gpu_particle_hot_t *spawn_hot;
 	const tfx_gpu_particle_cold_t *spawn_cold;
 	const tfx_gpu_spawn_location_t *spawn_locations;
 	tfxU32 dispatch_count;
 	tfxU32 tick_count;
+	tfxU32 force_row_count;
 	tfxU32 spawn_count;
 	tfxU32 spawn_location_count;
 	tfxU32 gpu_instance_start;				//The GPU instances follow the CPU ones, so this is the CPU instance count
@@ -777,7 +819,7 @@ typedef struct tfx_gpu_particle_push_s {
 	tfxU32 spawn_hot_buffer_index;			//tfx_gpu_particle_frame_t spawn_hot
 	tfxU32 spawn_cold_buffer_index;			//tfx_gpu_particle_frame_t spawn_cold
 	tfxU32 dispatch_buffer_index;			//tfx_gpu_particle_frame_t dispatches
-	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks
+	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks, with the force rows after them
 	tfxU32 graph_buffer_index;				//tfx_GetGPUGraphLookupsBuffer
 	tfxU32 location_buffer_index;			//tfx_gpu_particle_frame_t spawn_locations
 	tfxU32 dispatch_index;
@@ -1908,7 +1950,9 @@ GPU particle simulation
 Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
 instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
-tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. 
+tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. Every emitter force
+runs in the kernel: the library resolves each emitter's forces every tick into force rows that follow the tick records,
+so they need nothing more from you.
 
 The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
 its push constants. To add custom forces, collision or anything else per particle without forking it, write your own
@@ -1942,7 +1986,10 @@ Setup, once:
 Per frame, after tfx_UpdateStage:
   1. tfx_GetGPUParticleFrame. It returns false when no update ran since the last call: draw last frame's instance
      buffer again, as you would for the CPU instances.
-  2. Upload the dispatches, ticks, spawn_hot, spawn_cold and spawn_locations arrays verbatim.
+  2. Upload the dispatches, ticks, spawn_hot, spawn_cold and spawn_locations arrays verbatim. ticks is
+     tick_count + force_row_count rows of 64 bytes: the tick records, then the resolved forces their force_offset
+     points at. The kernel reads both from the one buffer. To upload the force rows separately, read them at
+     force_offset - tick_count instead.
   3. Size the instance buffer for gpu_instance_start + gpu_instance_count instances and upload the CPU instances
      from tfx_GetInstanceBuffer as normal. The GPU instances go after them.
   4. One compute dispatch per tfx_gpu_particle_dispatch_t, (slot_count + 255) / 256 groups of 256. Each loops over
