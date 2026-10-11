@@ -1508,8 +1508,8 @@ tfxAPI tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library);
 
 /*
 Get a pointer to the global gpu graph lookup data. This is a single shared buffer maintained across all
-libraries in tfxStore, so it takes no library argument. Shaders use this lookup data to update attributes of
-particles and ribbons (currently ribbons only). Use with tfx_GetGPUGraphLookupsBufferSizeInBytes to upload it
+libraries in tfxStore, so it takes no library argument. The ribbon shaders and the GPU particle kernel use this
+lookup data to update attributes over time. Use with tfx_GetGPUGraphLookupsBufferSizeInBytes to upload it
 to your GPU buffer.
 * @returns tfx_gpu_graph_data_t *   A pointer to the shared gpu graph lookup data.
 */
@@ -1908,18 +1908,31 @@ GPU particle simulation
 Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
 instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
-tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. Noise is the only force
-they keep: Run on GPU mutes the others, and turning it off again doesn't re-enable them. An effect
-with a Run on GPU emitter spawns at its spawn locations (tfx_AddSpawnLocation), never at its own position, so one instance
-of it serves every place it plays. Particles of a relative emitter follow the location they spawned at, through the
-spawn_locations table in each frame.
+tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. 
 
 The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
-its push constants. Customise it for things like collision; the records it reads are below.
+its push constants. To add custom forces, collision or anything else per particle without forking it, write your own
+entry point in your own Slang module:
+  1. import tfx_gpu_particles and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
+     added to the particle's acceleration before drag and integration, like the built-in forces, and after_move runs
+     once the particle has moved, before its instance is written. hot.position is in the ring's space: build the
+     transform with context.ring_transform(cold) and use to_world/to_ring, and direction_to_world/direction_to_ring
+     for velocities, forces and normals. Set tfx_particle_remove in hot.flags to kill a particle. It keeps its slot,
+     drawn with no size, until its batch expires, and neither method runs for it again.
+  2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
+     It takes 40 bytes of the 128 Vulkan guarantees, but std430 places a float4 straight after it at offset 48.
+  3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
+     tfx_simulate<YourUpdate>(thread_id.x, your_push.tfx, update).
+  4. Dispatch it exactly like simulate_particles. Send your whole push block once, then only the first 40 bytes per
+     dispatch with the new dispatch_index.
+Your update only runs on the GPU: Run on GPU emitters that fall back to the CPU, for any of the reasons above,
+simulate without it.
 
 Every emitter instance gets a ring of fixed size in a pool of gpu_particle_capacity slots: the authored capacity from
 tfx_GetEmitterGPUCapacity, or whatever tfx_SetTemplateEmitterGPUCapacity set. A full ring drops spawns and a full pool
 leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats.
+
+The current setup (subject to change, this is all WIP)
 
 Setup, once:
   1. Create two storage buffers sized by tfx_GetGPUParticleBufferSizes, hot and cold. They hold the particles between
