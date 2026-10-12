@@ -6437,9 +6437,15 @@ typedef struct tfx_gpu_pack_work_entry_s {
 	tfxU32 group_index;
 } tfx_gpu_pack_work_entry_t;
 
+//WebGPU's default storage binding offset alignment, and the worst case on OpenGL and Vulkan
+#define tfxGPU_SECTION_ALIGNMENT 256
+
 //These are std430 layouts the shader mirrors
 tfx__static_assert(sizeof(tfx_gpu_particle_hot_t) == 32);
-tfx__static_assert(sizeof(tfx_gpu_particle_cold_t) == 80);
+tfx__static_assert(sizeof(tfx_gpu_particle_cold_t) == 64);
+tfx__static_assert(sizeof(tfx_gpu_particle_noise_t) == 16);
+tfx__static_assert(sizeof(tfx_gpu_particle_spawn_t) == 112);
+tfx__static_assert(sizeof(tfx_gpu_particle_push_t) == 64);
 tfx__static_assert(sizeof(tfx_gpu_particle_tick_t) == 64);
 //Force rows follow the tick records in one array, read through a second view of the same buffer
 tfx__static_assert(sizeof(tfx_gpu_particle_force_t) == sizeof(tfx_gpu_particle_tick_t));
@@ -7270,8 +7276,7 @@ typedef struct tfx_stage_s {
 	void *gpu_pool_blocks;									//Proxy block headers for gpu_pool_allocator
 	tfx_vector_t<tfx_gpu_pack_work_entry_t> gpu_pack_work;
 	//Everything since the last tfx_GetGPUParticleFrame, cleared by the first tick after it
-	tfx_vector_t<tfx_gpu_particle_hot_t> gpu_spawn_hot;
-	tfx_vector_t<tfx_gpu_particle_cold_t> gpu_spawn_cold;
+	tfx_vector_t<tfx_gpu_particle_spawn_t> gpu_spawns;
 	tfx_vector_t<tfx_gpu_particle_force_t> gpu_force_rows;	//Every recorded tick's forces, a tick's force_offset indexes it until the fetch rebases it
 	tfx_vector_t<tfx_gpu_particle_dispatch_t> gpu_frame_dispatches;
 	tfx_vector_t<tfx_gpu_particle_tick_t> gpu_frame_ticks;

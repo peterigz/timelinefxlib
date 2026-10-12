@@ -636,7 +636,7 @@ typedef struct tfx_gpu_particle_hot_s {		//32 bytes
 } tfx_gpu_particle_hot_t;
 
 //The state of one GPU simulated particle that is fixed when it spawns, one per pool slot
-typedef struct tfx_gpu_particle_cold_s {	//80 bytes
+typedef struct tfx_gpu_particle_cold_s {	//64 bytes
 	tfxU32 uid;
 	float inv_max_age;
 	tfxU32 velocity_normal;					//Packed 10 bit xyz
@@ -651,17 +651,28 @@ typedef struct tfx_gpu_particle_cold_s {	//80 bytes
 	float base_yaw_spin;
 	float image_start_frame;				//The frame at age 0, so the current frame is image_start_frame + image_frame_rate * age
 	tfxU32 spawn_location;
-	tfx_float32x3_t noise_offset;			//Noise field sample offset in authored units, zero for white noise
-	float noise_resolution;
 	tfxU32 padding;
 } tfx_gpu_particle_cold_t;
+
+//A GPU simulated particle's noise state, fixed when it spawns, one per pool slot. Only rings with a noise force read it
+typedef struct tfx_gpu_particle_noise_s {	//16 bytes
+	tfx_float32x3_t offset;					//Noise field sample offset in authored units, zero for white noise
+	float resolution;
+} tfx_gpu_particle_noise_t;
+
+//One particle spawned since the last fetch, which the kernel copies into its pool slot on the tick it arrives
+typedef struct tfx_gpu_particle_spawn_s {	//112 bytes
+	tfx_gpu_particle_hot_t hot;
+	tfx_gpu_particle_cold_t cold;
+	tfx_gpu_particle_noise_t noise;			//Zero for an emitter without noise
+} tfx_gpu_particle_spawn_t;
 
 //One emitter instance's ring at one update tick. A dispatch runs every tick record it points to in order
 typedef struct tfx_gpu_particle_tick_s {	//64 bytes
 	tfxU32 head;							//Ring slot of the oldest particle after this tick's bump
 	tfxU32 count;							//Particles in the ring after this tick's spawns
 	tfxU32 spawn_count;						//The last spawn_count of those were spawned this tick
-	tfxU32 upload_offset;					//Into tfx_gpu_particle_frame_t spawn_hot and spawn_cold for this tick's spawns
+	tfxU32 upload_offset;					//Into tfx_gpu_particle_frame_t spawns for this tick's spawns
 	float frame_length;						//Milliseconds
 	float update_time;						//Seconds
 	float overall_scale;
@@ -797,8 +808,7 @@ typedef struct tfx_gpu_particle_frame_s {
 	const tfx_gpu_particle_dispatch_t *dispatches;
 	const tfx_gpu_particle_tick_t *ticks;	//tick_count tick records then force_row_count force rows: upload all of them as one array
 	const tfx_gpu_particle_force_t *force_rows;		//ticks + tick_count, for a host that uploads the rows separately
-	const tfx_gpu_particle_hot_t *spawn_hot;
-	const tfx_gpu_particle_cold_t *spawn_cold;
+	const tfx_gpu_particle_spawn_t *spawns;
 	const tfx_gpu_spawn_location_t *spawn_locations;
 	tfxU32 dispatch_count;
 	tfxU32 tick_count;
@@ -809,20 +819,36 @@ typedef struct tfx_gpu_particle_frame_s {
 	tfxU32 gpu_instance_count;
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	//A layout for every array in one upload buffer, which tfx_CopyGPUParticleUpload fills. The dispatches start at 0, and every
+	//section starts on a multiple of 256 bytes and of its row size, so it can also be bound as a view or range of its own
+	size_t upload_bytes;
+	size_t tick_upload_offset;				//The ticks with their force rows
+	size_t location_upload_offset;
+	size_t spawn_upload_offset;
+	tfxU32 tick_base;						//The section offsets in rows, for tfx_gpu_particle_push_t
+	tfxU32 location_base;
+	tfxU32 spawn_base;
 } tfx_gpu_particle_frame_t;
 
-//Push constants for the reference kernel, Shaders/tfx_gpu_particles.slang. Buffers are bindless indexes, dispatch_index picks the record
-typedef struct tfx_gpu_particle_push_s {
-	tfxU32 hot_buffer_index;				//tfx_gpu_particle_hot_t per pool slot, read and written
+//Push constants for the reference kernel, Shaders/tfx_gpu_particles.slang. Buffers are bindless indexes, and each *_base is
+//the row its section starts at in that buffer: 0 for a buffer or view of its own, the section's row when sections share one
+typedef struct tfx_gpu_particle_push_s {	//64 bytes
+	tfxU32 dispatch_index;					//First, so only these 4 bytes change from one dispatch to the next
+	tfxU32 hot_buffer_index;				//tfx_gpu_particle_hot_t per pool slot from row 0, read and written
 	tfxU32 cold_buffer_index;				//tfx_gpu_particle_cold_t per pool slot, written when a particle is ingested
+	tfxU32 noise_buffer_index;				//tfx_gpu_particle_noise_t per pool slot, only touched by rings with noise
 	tfxU32 instance_buffer_index;			//The instance buffer the CPU instances were uploaded to
-	tfxU32 spawn_hot_buffer_index;			//tfx_gpu_particle_frame_t spawn_hot
-	tfxU32 spawn_cold_buffer_index;			//tfx_gpu_particle_frame_t spawn_cold
-	tfxU32 dispatch_buffer_index;			//tfx_gpu_particle_frame_t dispatches
-	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks, with the force rows after them
 	tfxU32 graph_buffer_index;				//tfx_GetGPUGraphLookupsBuffer
+	tfxU32 dispatch_buffer_index;			//tfx_gpu_particle_frame_t dispatches from row 0
+	tfxU32 tick_buffer_index;				//tfx_gpu_particle_frame_t ticks, with the force rows after them
+	tfxU32 spawn_buffer_index;				//tfx_gpu_particle_frame_t spawns
 	tfxU32 location_buffer_index;			//tfx_gpu_particle_frame_t spawn_locations
-	tfxU32 dispatch_index;
+	tfxU32 cold_base;
+	tfxU32 noise_base;
+	tfxU32 tick_base;
+	tfxU32 spawn_base;
+	tfxU32 location_base;
+	tfxU32 padding;							//Keeps a host's own push constants after these on a 16 byte offset
 } tfx_gpu_particle_push_t;
 
 typedef struct tfx_gpu_particle_stats_s {
@@ -834,9 +860,17 @@ typedef struct tfx_gpu_particle_stats_s {
 	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, raise the capacity with tfx_SetTemplateEmitterGPUCapacity
 } tfx_gpu_particle_stats_t;
 
+//The particle pool's hot, cold and noise sections. Each offset is a multiple of 256 bytes, so a host can put all three in one
+//buffer and bind each as its own view or range, or give each a buffer of its own
 typedef struct tfx_gpu_particle_buffer_sizes_s {
-	size_t hot_bytes;
+	size_t pool_bytes;						//All three sections in one buffer
+	size_t hot_bytes;						//Hot starts at offset 0
+	size_t cold_offset;
 	size_t cold_bytes;
+	size_t noise_offset;
+	size_t noise_bytes;
+	tfxU32 cold_base;						//cold_offset in cold rows, for tfx_gpu_particle_push_t when cold shares the pool buffer
+	tfxU32 noise_base;						//noise_offset in noise rows
 } tfx_gpu_particle_buffer_sizes_t;
 
 typedef struct tfx_ribbon_buffer_requirements_s {
@@ -1964,11 +1998,11 @@ entry point in your own Slang module:
      for velocities, forces and normals. Set tfx_particle_remove in hot.flags to kill a particle. It keeps its slot,
      drawn with no size, until its batch expires, and neither method runs for it again.
   2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
-     It takes 40 bytes of the 128 Vulkan guarantees, but std430 places a float4 straight after it at offset 48.
+     It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64.
   3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
      tfx_simulate<YourUpdate>(thread_id.x, your_push.tfx, update).
-  4. Dispatch it exactly like simulate_particles. Send your whole push block once, then only the first 40 bytes per
-     dispatch with the new dispatch_index.
+  4. Dispatch it exactly like simulate_particles. Send your whole push block once, then only the first 4 bytes,
+     dispatch_index, per dispatch.
 Your update only runs on the GPU: Run on GPU emitters that fall back to the CPU, for any of the reasons above,
 simulate without it.
 
@@ -1979,17 +2013,24 @@ leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats.
 The current setup (subject to change, this is all WIP)
 
 Setup, once:
-  1. Create two storage buffers sized by tfx_GetGPUParticleBufferSizes, hot and cold. They hold the particles between
-     frames and never need resizing or clearing.
+  1. Create the particle pool from tfx_GetGPUParticleBufferSizes. It holds the particles between frames and never
+     needs resizing or clearing. Its hot, cold and noise sections can share one buffer (pool_bytes) or have one each.
+     Where storage buffers are untyped (Vulkan, Metal, OpenGL) one bindless index with cold_base and noise_base does
+     for all three. D3D12 structured views carry their row size, so make one view per section, either over the
+     section with a base of 0 or over the whole buffer with the base. D3D11 fixes the row size on the buffer itself,
+     so there each section needs its own buffer and a base of 0.
   2. Upload the graph lookups from tfx_GetGPUGraphLookupsBuffer, as ribbons do.
 
 Per frame, after tfx_UpdateStage:
   1. tfx_GetGPUParticleFrame. It returns false when no update ran since the last call: draw last frame's instance
      buffer again, as you would for the CPU instances.
-  2. Upload the dispatches, ticks, spawn_hot, spawn_cold and spawn_locations arrays verbatim. ticks is
-     tick_count + force_row_count rows of 64 bytes: the tick records, then the resolved forces their force_offset
-     points at. The kernel reads both from the one buffer. To upload the force rows separately, read them at
-     force_offset - tick_count instead.
+  2. Upload the arrays. The simplest way is one buffer of upload_bytes, filled with tfx_CopyGPUParticleUpload straight
+     into mapped memory, with that one buffer for the dispatch, tick, location and spawn indexes and the frame's
+     tick_base, location_base and spawn_base in the push constants. The same rules as the pool apply on D3D12 and
+     D3D11. To upload them yourself, every array goes verbatim: ticks is tick_count + force_row_count rows of 64 bytes,
+     the tick records then the resolved forces their force_offset points at, and the kernel reads both from one
+     buffer. Every offset in the records is relative to its own array, so an array in a buffer of its own has a base
+     of 0.
   3. Size the instance buffer for gpu_instance_start + gpu_instance_count instances and upload the CPU instances
      from tfx_GetInstanceBuffer as normal. The GPU instances go after them.
   4. One compute dispatch per tfx_gpu_particle_dispatch_t, (slot_count + 255) / 256 groups of 256. Each loops over
@@ -1999,12 +2040,13 @@ Per frame, after tfx_UpdateStage:
 
 The frame stays valid until the next tfx_UpdateStage. Updates that run without a fetch in between are all returned
 by the next fetch, so the GPU never misses a tick. The flip side is that every fetch must be dispatched: the next one's
-ticks carry on from the particle state this one leaves in the hot and cold buffers. If you won't dispatch this frame,
-don't fetch.
+ticks carry on from the particle state this one leaves in the pool. If you won't dispatch this frame,
+don't fetch. But don't keep updating without fetching either: unfetched ticks and their spawn rows build up in memory,
+and the next dispatch runs every one of them. A stage you stop drawing should stop updating too.
 */
 
 /*
-Byte sizes of the two persistent buffers a stage's GPU particles live in. Fixed for the life of the stage.
+Byte sizes and offsets of the particle pool a stage's GPU particles live in. Fixed for the life of the stage.
 * @param pm                        A handle to an initialised tfx_stage_t.
 * @returns tfx_gpu_particle_buffer_sizes_t   Zero sizes when the stage has no gpu_particle_capacity.
 */
@@ -2018,6 +2060,14 @@ in-flight stage update.
 * @returns bool                    false when there's nothing to dispatch: no update since the last call, or no GPU emitters.
 */
 tfxAPI bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame);
+
+/*
+Copies every array of a frame into one upload buffer at the frame's upload offsets, typically straight into mapped
+staging memory. The gaps between sections are left as they are.
+* @param frame                     A frame from tfx_GetGPUParticleFrame.
+* @param destination               At least frame->upload_bytes of writable memory.
+*/
+tfxAPI void tfx_CopyGPUParticleUpload(const tfx_gpu_particle_frame_t *frame, void *destination);
 
 /*
 Pool use, live particle count and the counters that say a capacity needs raising. Implicitly completes any in-flight

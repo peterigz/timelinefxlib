@@ -9214,7 +9214,8 @@ float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	float life_variation_last_frame = tfx__get_graph_last_frame(&life_variation, 60.f);
 	float global_adjust = 1.f;
 	float max_life_factor = 1.f;
-	if (tfx__get_shared_emitter_properties(emitter)->emission_type == tfxOtherEmitter) {
+	const tfx_emission_type emission_type = tfx__get_shared_emitter_properties(emitter)->emission_type;
+	if (emitter->type == tfxEmitterType && (emission_type == tfxOtherEmitter || emission_type == tfxSpawnOnRibbon)) {
 		max_life_factor = tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_factor_life_index]);;
 	}
 	if (life_last_frame + life_variation_last_frame > 0) {
@@ -18330,10 +18331,6 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	}
 	ribbon_emitter.qty_step_size = step_size;
 
-	if (tween >= 1) {
-		tween -= ribbon_emitter.spawn_quantity;
-	}
-
 	ribbon_work_entry->tween = tween;
 	ribbon_work_entry->qty_step_size = step_size;
 	ribbon_work_entry->amount_to_spawn = 0;
@@ -18347,8 +18344,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 			ribbon_work_entry->amount_to_spawn = ribbon_work_entry->new_ribbons;
 			ribbon_emitter.amount_remainder = 0.0;
 		} else {
-			ribbon_emitter.amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-			ribbon_emitter.amount_remainder = (1.0 - ribbon_emitter.amount_remainder) * step_size;
+			ribbon_emitter.amount_remainder = step_size > 0 ? tween + ribbon_work_entry->amount_to_spawn * step_size - 1.0 : 0.0;
 		}
 	} else {
 		ribbon_work_entry->amount_to_spawn = (tfxU32)ribbon_emitter.spawn_quantity;
@@ -18992,8 +18988,9 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
 
+	//Below one per update the first spawn waits for the next update
 	if (emitter.age == 0.f && emitter.spawn_quantity < 1.0) {
-		emitter.amount_remainder = 1.0 + emitter.spawn_quantity;
+		emitter.amount_remainder = 1.0;
 		emitter.qty_step_size = step_size;
 	}
 
@@ -19052,7 +19049,7 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	}
 
 	if (ribbon_emitter.age == 0.f && ribbon_emitter.spawn_quantity < 1.0) {
-		ribbon_emitter.amount_remainder = 1.0 + ribbon_emitter.spawn_quantity;
+		ribbon_emitter.amount_remainder = 1.0;
 		ribbon_emitter.qty_step_size = step_size;
 	}
 	TFX_ASSERT(!(ribbon_emitter.amount_remainder != ribbon_emitter.amount_remainder));
@@ -19083,10 +19080,6 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	}
 	emitter.qty_step_size = step_size;
 
-	if (tween >= 1) {
-		tween -= emitter.spawn_quantity;
-	}
-
 	work_entry->emission_type = shared_properties.emission_type;
 	work_entry->user_spawn_rotation = emitter.rotation;
 	work_entry->user_spawn_shape_scale = tfx_vec3_t(1.f, 1.f, 1.f);
@@ -19106,8 +19099,8 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 			emitter.amount_remainder = 0.0;
 		}
 		else {
-			emitter.amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-			emitter.amount_remainder = (1.0 - emitter.amount_remainder) * step_size;
+			//Where the step after the last spawn lands, which is where the next update's first spawn goes
+			emitter.amount_remainder = tween + work_entry->amount_to_spawn * step_size - 1.0;
 		}
 	}
 	else {
@@ -22183,7 +22176,7 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 //Compute the maximum number of simultaneously live particles an emitter can produce.
 //The spawn ratio multiplier tfx__new_sprites_needed applies, at the largest emitter size the graphs allow
 tfxINTERNAL float tfx__max_spawn_ratio_scale(tfx_effect_descriptor emitter, tfx_emission_type emission_type) {
-	if (!(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio)) {
+	if (emitter->type != tfxEmitterType || !(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio)) {
 		return 1.f;
 	}
 	tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
@@ -22210,26 +22203,97 @@ tfxINTERNAL float tfx__max_spawn_ratio_scale(tfx_effect_descriptor emitter, tfx_
 	return 1.f;
 }
 
-//The emitter an other emitter spawns from, which multiplies its amount by however many particles that has alive
-tfxINTERNAL tfx_effect_descriptor tfx__other_emitter_source(tfx_effect_descriptor emitter) {
+//The particle emitter an other emitter spawns from, or the ribbon emitter a spawn on ribbon emitter spawns along. Ribbons never
+//multiply their amount by a source, so only a particle emitter has one here
+tfxINTERNAL tfx_effect_descriptor tfx__paired_emitter_source(tfx_effect_descriptor emitter) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-	if (shared_properties->emission_type != tfxOtherEmitter || !shared_properties->paired_emitter_hash || !emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
+	const tfx_emission_type emission_type = shared_properties->emission_type;
+	if (emitter->type != tfxEmitterType || (emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || !shared_properties->paired_emitter_hash || !emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
 		return nullptr;
 	}
 	tfx_effect_descriptor source = emitter->library->effect_paths.At(shared_properties->paired_emitter_hash);
-	return source != emitter && source->type == tfxEmitterType ? source : nullptr;
+	const tfx_effect_descriptor_type source_type = emission_type == tfxOtherEmitter ? tfxEmitterType : tfxRibbonType;
+	return source != emitter && source->type == source_type ? source : nullptr;
+}
+
+//Samples per span between neighbouring graph nodes. A span shorter than this many milliseconds takes one per millisecond
+#define tfxESTIMATE_SAMPLES_PER_SPAN 64
+
+tfxINTERNAL float tfx__graph_next_node_frame(tfx_graph_t *graph, float age, float limit) {
+	for (tfxU32 node_index = 0; node_index != graph->nodes.current_size; ++node_index) {
+		const float frame = graph->nodes[node_index].frame;
+		if (frame > age) {
+			return tfx__Min(frame, limit);
+		}
+	}
+	return limit;
+}
+
+tfxINTERNAL float tfx__sample_graph_sum(tfx_graph_t *base, tfx_graph_t *variation, tfx_graph_t *global, float age) {
+	const float value = tfx__get_graph_value_by_age(base, age) + tfx__get_graph_value_by_age(variation, age);
+	return global ? value * tfx__get_graph_value_by_age(global, age) : value;
+}
+
+//The peak of (base + variation) * global over [0, last_frame]. Each graph is one cubic between nodes, so spans get a fixed sample count, not one per ms
+tfxINTERNAL float tfx__peak_graph_sum(tfx_graph_t *base, tfx_graph_t *variation, tfx_graph_t *global, float last_frame) {
+	float peak = 0.f;
+	float span_start = 0.f;
+	while (span_start < last_frame) {
+		float span_end = tfx__graph_next_node_frame(base, span_start, last_frame);
+		span_end = tfx__graph_next_node_frame(variation, span_start, span_end);
+		if (global) {
+			span_end = tfx__graph_next_node_frame(global, span_start, span_end);
+		}
+		const float span_length = span_end - span_start;
+		const tfxU32 sample_count = tfx__Min((tfxU32)ceilf(span_length), (tfxU32)tfxESTIMATE_SAMPLES_PER_SPAN);
+		const float step = span_length / (float)sample_count;
+		for (tfxU32 sample_index = 0; sample_index != sample_count; ++sample_index) {
+			peak = tfx__Max(peak, tfx__sample_graph_sum(base, variation, global, span_start + step * (float)sample_index));
+		}
+		span_start = span_end;
+	}
+	return tfx__Max(peak, tfx__sample_graph_sum(base, variation, global, last_frame));
+}
+
+//tfx__get_max_life for a particle or ribbon emitter, sampled by tfx__peak_graph_sum
+tfxINTERNAL float tfx__estimate_max_life(tfx_effect_descriptor emitter) {
+	tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
+	const bool is_ribbon = emitter->type == tfxRibbonType;
+	tfx_graph_t *life = &graph_list.graphs[is_ribbon ? (tfxU32)tfxRibbon_base_life_index : (tfxU32)tfxEmitter_base_life_index];
+	tfx_graph_t *life_variation = &graph_list.graphs[is_ribbon ? (tfxU32)tfxRibbon_variation_life_index : (tfxU32)tfxEmitter_variation_life_index];
+	tfx_graph_t *global_life = emitter->parent ? &emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index].graphs[tfxEffect_global_life_index] : nullptr;
+	const float last_frame = tfx__Max(tfx__get_graph_last_frame(life, 60.f), tfx__get_graph_last_frame(life_variation, 60.f));
+	float max_life;
+	if (last_frame > 0.f) {
+		max_life = tfx__peak_graph_sum(life, life_variation, global_life, last_frame);
+	} else {
+		max_life = tfx__get_graph_first_value(life) + tfx__get_graph_first_value(life_variation);
+		if (global_life) {
+			max_life *= tfx__get_graph_max_value(global_life);
+		}
+	}
+	//Both scale each particle's life by the factor graph, sampled at its source particle's or ribbon's age
+	const tfx_emission_type emission_type = tfx__get_shared_emitter_properties(emitter)->emission_type;
+	if (!is_ribbon && (emission_type == tfxOtherEmitter || emission_type == tfxSpawnOnRibbon)) {
+		max_life *= tfx__get_graph_max_value(&graph_list.graphs[tfxEmitter_factor_life_index]);
+	}
+	return max_life;
 }
 
 //The depth only guards against two other emitters sourcing from each other
 tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child, tfxU32 depth) {
-	float max_life_ms = tfx__get_max_life(child);
+	float max_life_ms = tfx__estimate_max_life(child);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
-	tfx_effect_descriptor source = depth < 4 ? tfx__other_emitter_source(child) : nullptr;
+	tfx_effect_descriptor source = depth < 4 ? tfx__paired_emitter_source(child) : nullptr;
 	const bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
-	//A single other emitter bursts at every source particle. A looping one only spawns per source particle with the spawn ratio, otherwise its amount is shared between them
-	const bool per_source_particle = source && (is_single || (child->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio));
+	const bool is_ribbon = child->type == tfxRibbonType;
+	const bool spawns_on_ribbon = shared_properties->emission_type == tfxSpawnOnRibbon;
+	const bool uses_spawn_ratio = !is_ribbon && (child->state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio);
+	//A single other emitter bursts at every source particle, and with the spawn ratio a looping one spawns its amount per source
+	//particle, otherwise it's shared between them. Spawn on ribbon multiplies by the live ribbon count only with the spawn ratio
+	const bool per_source_particle = source && (spawns_on_ribbon ? uses_spawn_ratio : (is_single || uses_spawn_ratio));
 	float source_particles = per_source_particle ? (float)tfx__estimate_particles_in_flight(source, depth + 1) : 1.f;
-	tfx_graph_t *amount_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index];
+	tfx_graph_t *amount_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[is_ribbon ? (tfxU32)tfxRibbon_base_amount_index : (tfxU32)tfxEmitter_base_amount_index];
 	if (is_single) {
 		//The burst is spawn_amount, or the grid point count when the amount matches the grid, never the amount graph
 		const float global_amount = child->parent ? tfx__get_graph_max_value(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index]) : 1.f;
@@ -22238,32 +22302,24 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 			total = tfx__grid_points_spawn_amount(child->state_properties, shared_properties, total);
 		}
 		total += tfx__has_single_decay(shared_properties) ? (float)shared_properties->single_decay_amount * global_amount : 0.f;
-		if (per_source_particle) {
+		if (per_source_particle && !spawns_on_ribbon) {
 			//Every source particle spawns the burst once, and the sources turn over every source life while the burst outlives them
-			float source_life_ms = tfx__Max(tfx__get_max_life(source), 1.f);
+			float source_life_ms = tfx__Max(tfx__estimate_max_life(source), 1.f);
 			return tfx__Max((tfxU32)ceilf(total * source_particles * (max_life_ms / source_life_ms + 1.f)), (tfxU32)1);
 		}
-		return tfx__Max((tfxU32)ceilf(total), (tfxU32)1);
+		//A single spawn on ribbon bursts once, times the ribbons alive at that moment with the spawn ratio
+		return tfx__Max((tfxU32)ceilf(total * source_particles), (tfxU32)1);
 	}
 	//Scan across the emitter's age to find the peak spawn rate, accounting for
 	//amount variation and the parent effect's global amount multiplier.
-	tfx_graph_t *amount_variation_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index];
+	tfx_graph_t *amount_variation_graph = &child->library->graphs[child->state_properties.graph_list_index].graphs[is_ribbon ? (tfxU32)tfxRibbon_variation_amount_index : (tfxU32)tfxEmitter_variation_amount_index];
 	float amount_last_frame = tfx__get_graph_last_frame(amount_graph, 60.f);
 	float variation_last_frame = tfx__get_graph_last_frame(amount_variation_graph, 60.f);
 	float max_amount_per_sec = 0.f;
 	float last_frame = fmaxf(amount_last_frame, variation_last_frame);
 	if (last_frame > 0) {
-		for (float f = 0; f < last_frame; ++f) {
-			float global_adjust = 1.f;
-			if (child->parent) {
-				global_adjust = tfx__get_graph_value_by_age(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index], f);
-			}
-			float amount = tfx__get_graph_value_by_age(amount_graph, f) + tfx__get_graph_value_by_age(amount_variation_graph, f);
-			amount *= global_adjust;
-			if (amount > max_amount_per_sec) {
-				max_amount_per_sec = amount;
-			}
-		}
+		tfx_graph_t *global_amount_graph = child->parent ? &child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index] : nullptr;
+		max_amount_per_sec = tfx__peak_graph_sum(amount_graph, amount_variation_graph, global_amount_graph, last_frame);
 	} else {
 		max_amount_per_sec = tfx__get_graph_first_value(amount_graph) + tfx__get_graph_first_value(amount_variation_graph);
 	}
@@ -22437,8 +22493,7 @@ void tfx__begin_gpu_frame(tfx_stage pm) {
 		return;
 	}
 	pm->flags &= ~tfxStageFlags_gpu_frame_fetched;
-	pm->gpu_spawn_hot.clear();
-	pm->gpu_spawn_cold.clear();
+	pm->gpu_spawns.clear();
 	pm->gpu_force_rows.clear();
 	pm->gpu_frame_dispatches.clear();
 	pm->gpu_frame_ticks.clear();
@@ -22638,11 +22693,10 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 		if (group.ticks.current_size == 0) {
 			group.window_bumped_total = group.bumped_total;
 		}
-		group.upload_offset = pm->gpu_spawn_hot.current_size;
+		group.upload_offset = pm->gpu_spawns.current_size;
 		group.upload_count = live;
 		if (live) {
-			pm->gpu_spawn_hot.resize(pm->gpu_spawn_hot.current_size + live);
-			pm->gpu_spawn_cold.resize(pm->gpu_spawn_cold.current_size + live);
+			pm->gpu_spawns.resize(pm->gpu_spawns.current_size + live);
 			group.tail = (group.tail + live) % group.capacity;
 			group.current_size += live;
 			group.spawned_total += live;
@@ -22682,6 +22736,7 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 		}
 		group.ticks.push_back(tick);
 	}
+	//Queued once every row is reserved, since reserving can reallocate them. They join with the ribbon phase, which never touches banks or rows
 	for (tfx_gpu_pack_work_entry_t &work_entry : pm->gpu_pack_work) {
 		if (!(pm->flags & tfxStageFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__pack_gpu_group);
@@ -22689,7 +22744,6 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 			tfx__pack_gpu_group(&pm->work_queue, &work_entry);
 		}
 	}
-	tfx__complete_all_work(&pm->work_queue);
 }
 
 //The emitter's CPU bank only ever holds this tick's spawns, or the whole warmed bank on the first tick after a warmup
@@ -22701,8 +22755,7 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[group.emitter_index];
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
-	tfx_gpu_particle_hot_t *hot = &pm->gpu_spawn_hot[group.upload_offset];
-	tfx_gpu_particle_cold_t *cold = &pm->gpu_spawn_cold[group.upload_offset];
+	tfx_gpu_particle_spawn_t *spawns = &pm->gpu_spawns[group.upload_offset];
 	const float image_frame_rate_per_millisecond = emitter.state_properties.image_frame_rate * 0.001f;
 	//Only the noise spawners write the bank's noise fields, so an emitter without noise uploads zeros rather than stale rows
 	const bool has_noise = (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) != 0;
@@ -22714,7 +22767,8 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		}
 		const float age = bank.age[index];
 		const float inv_max_age = bank.inv_max_age[index];
-		tfx_gpu_particle_hot_t &hot_row = hot[row];
+		tfx_gpu_particle_spawn_t &spawn = spawns[row];
+		tfx_gpu_particle_hot_t &hot_row = spawn.hot;
 		hot_row.position.x = bank.position_x[index];
 		hot_row.position.y = bank.position_y[index];
 		hot_row.position.z = bank.position_z[index];
@@ -22723,7 +22777,7 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		hot_row.velocity.y = bank.velocity_y[index];
 		hot_row.velocity.z = bank.velocity_z[index];
 		hot_row.age = age;
-		tfx_gpu_particle_cold_t &cold_row = cold[row];
+		tfx_gpu_particle_cold_t &cold_row = spawn.cold;
 		cold_row.uid = bank.uid[index];
 		cold_row.inv_max_age = inv_max_age;
 		cold_row.velocity_normal = bank.velocity_normal[index];
@@ -22739,11 +22793,11 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		cold_row.base_yaw_spin = bank.base_yaw_spin[index];
 		cold_row.image_start_frame = bank.image_frame[index] - image_frame_rate_per_millisecond * age;
 		cold_row.spawn_location = bank.spawn_location[index];
-		cold_row.noise_offset.x = has_noise ? bank.noise_offset_x[index] : 0.f;
-		cold_row.noise_offset.y = has_noise ? bank.noise_offset_y[index] : 0.f;
-		cold_row.noise_offset.z = has_noise ? bank.noise_offset_z[index] : 0.f;
-		cold_row.noise_resolution = has_noise ? bank.noise_resolution[index] : 0.f;
 		cold_row.padding = 0;
+		spawn.noise.offset.x = has_noise ? bank.noise_offset_x[index] : 0.f;
+		spawn.noise.offset.y = has_noise ? bank.noise_offset_y[index] : 0.f;
+		spawn.noise.offset.z = has_noise ? bank.noise_offset_z[index] : 0.f;
+		spawn.noise.resolution = has_noise ? bank.noise_resolution[index] : 0.f;
 		row++;
 	}
 	TFX_ASSERT(row == group.upload_count);
@@ -22828,11 +22882,30 @@ tfxINTERNAL void tfx__pack_gpu_spawn_locations(tfx_stage pm, tfx_user_spawn_loca
 	}
 }
 
+//Places a section after *end on a multiple of both tfxGPU_SECTION_ALIGNMENT and its row size, so a D3D12 view's first row is whole
+tfxINTERNAL size_t tfx__gpu_buffer_section(size_t *end, size_t bytes, size_t row_size) {
+	size_t alignment = tfxGPU_SECTION_ALIGNMENT;
+	while (alignment % row_size) {
+		alignment += tfxGPU_SECTION_ALIGNMENT;
+	}
+	const size_t start = (*end + alignment - 1) / alignment * alignment;
+	*end = start + bytes;
+	return start;
+}
+
 tfx_gpu_particle_buffer_sizes_t tfx_GetGPUParticleBufferSizes(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);
+	const size_t capacity = pm->info.gpu_particle_capacity;
 	tfx_gpu_particle_buffer_sizes_t sizes;
-	sizes.hot_bytes = (size_t)pm->info.gpu_particle_capacity * sizeof(tfx_gpu_particle_hot_t);
-	sizes.cold_bytes = (size_t)pm->info.gpu_particle_capacity * sizeof(tfx_gpu_particle_cold_t);
+	sizes.hot_bytes = capacity * sizeof(tfx_gpu_particle_hot_t);
+	sizes.cold_bytes = capacity * sizeof(tfx_gpu_particle_cold_t);
+	sizes.noise_bytes = capacity * sizeof(tfx_gpu_particle_noise_t);
+	size_t pool_end = sizes.hot_bytes;
+	sizes.cold_offset = tfx__gpu_buffer_section(&pool_end, sizes.cold_bytes, sizeof(tfx_gpu_particle_cold_t));
+	sizes.noise_offset = tfx__gpu_buffer_section(&pool_end, sizes.noise_bytes, sizeof(tfx_gpu_particle_noise_t));
+	sizes.pool_bytes = capacity ? pool_end : 0;
+	sizes.cold_base = (tfxU32)(sizes.cold_offset / sizeof(tfx_gpu_particle_cold_t));
+	sizes.noise_base = (tfxU32)(sizes.noise_offset / sizeof(tfx_gpu_particle_noise_t));
 	return sizes;
 }
 
@@ -22932,13 +23005,12 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 	frame->dispatches = pm->gpu_frame_dispatches.data;
 	frame->ticks = pm->gpu_frame_ticks.data;
 	frame->force_rows = reinterpret_cast<const tfx_gpu_particle_force_t *>(pm->gpu_frame_ticks.data + tick_count);
-	frame->spawn_hot = pm->gpu_spawn_hot.data;
-	frame->spawn_cold = pm->gpu_spawn_cold.data;
+	frame->spawns = pm->gpu_spawns.data;
 	frame->spawn_locations = pm->gpu_frame_locations.data;
 	frame->dispatch_count = pm->gpu_frame_dispatches.current_size;
 	frame->tick_count = tick_count;
 	frame->force_row_count = force_row_count;
-	frame->spawn_count = pm->gpu_spawn_hot.current_size;
+	frame->spawn_count = pm->gpu_spawns.current_size;
 	frame->spawn_location_count = pm->gpu_frame_locations.current_size;
 	frame->gpu_instance_start = pm->gpu_instance_start;
 	frame->gpu_instance_count = pm->gpu_instance_count;
@@ -22946,7 +23018,34 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		frame->gpu_layer_start[layer] = pm->gpu_layer_start[layer];
 		frame->gpu_layer_count[layer] = pm->gpu_layer_count[layer];
 	}
+	//Spawns go last because their 112 byte rows need the coarsest alignment
+	size_t upload_end = (size_t)frame->dispatch_count * sizeof(tfx_gpu_particle_dispatch_t);
+	frame->tick_upload_offset = tfx__gpu_buffer_section(&upload_end, (size_t)(tick_count + force_row_count) * sizeof(tfx_gpu_particle_tick_t), sizeof(tfx_gpu_particle_tick_t));
+	frame->location_upload_offset = tfx__gpu_buffer_section(&upload_end, (size_t)frame->spawn_location_count * sizeof(tfx_gpu_spawn_location_t), sizeof(tfx_gpu_spawn_location_t));
+	frame->spawn_upload_offset = tfx__gpu_buffer_section(&upload_end, (size_t)frame->spawn_count * sizeof(tfx_gpu_particle_spawn_t), sizeof(tfx_gpu_particle_spawn_t));
+	frame->upload_bytes = upload_end;
+	frame->tick_base = (tfxU32)(frame->tick_upload_offset / sizeof(tfx_gpu_particle_tick_t));
+	frame->location_base = (tfxU32)(frame->location_upload_offset / sizeof(tfx_gpu_spawn_location_t));
+	frame->spawn_base = (tfxU32)(frame->spawn_upload_offset / sizeof(tfx_gpu_particle_spawn_t));
 	return frame->dispatch_count > 0;
+}
+
+void tfx_CopyGPUParticleUpload(const tfx_gpu_particle_frame_t *frame, void *destination) {
+	TFX_ASSERT(frame && destination);
+	char *upload = static_cast<char *>(destination);
+	if (frame->dispatch_count) {
+		memcpy(upload, frame->dispatches, (size_t)frame->dispatch_count * sizeof(tfx_gpu_particle_dispatch_t));
+	}
+	const tfxU32 tick_row_count = frame->tick_count + frame->force_row_count;
+	if (tick_row_count) {
+		memcpy(upload + frame->tick_upload_offset, frame->ticks, (size_t)tick_row_count * sizeof(tfx_gpu_particle_tick_t));
+	}
+	if (frame->spawn_location_count) {
+		memcpy(upload + frame->location_upload_offset, frame->spawn_locations, (size_t)frame->spawn_location_count * sizeof(tfx_gpu_spawn_location_t));
+	}
+	if (frame->spawn_count) {
+		memcpy(upload + frame->spawn_upload_offset, frame->spawns, (size_t)frame->spawn_count * sizeof(tfx_gpu_particle_spawn_t));
+	}
 }
 
 void tfx_SetStageGPUSimulation(tfx_stage pm, bool enabled) {
@@ -22996,8 +23095,7 @@ void tfx__clear_gpu_groups(tfx_stage pm) {
 	}
 	pm->gpu_groups.clear();
 	pm->free_gpu_groups.clear();
-	pm->gpu_spawn_hot.clear();
-	pm->gpu_spawn_cold.clear();
+	pm->gpu_spawns.clear();
 	pm->gpu_force_rows.clear();
 	pm->gpu_frame_dispatches.clear();
 	pm->gpu_frame_ticks.clear();
@@ -23011,8 +23109,7 @@ void tfx__free_gpu_groups(tfx_stage pm) {
 	pm->gpu_groups.free();
 	pm->free_gpu_groups.free();
 	pm->gpu_pack_work.free();
-	pm->gpu_spawn_hot.free();
-	pm->gpu_spawn_cold.free();
+	pm->gpu_spawns.free();
 	pm->gpu_force_rows.free();
 	pm->gpu_frame_dispatches.free();
 	pm->gpu_frame_ticks.free();
