@@ -5784,7 +5784,7 @@ typedef struct tfx_path_set_s {
 	tfxU32 seed;
 	tfxU32 cursor;				//Round robin over the live slots
 	tfxU32 live_slots;
-	float time;					//Drives stagger and rotation cycles
+	double time;				//Drives stagger and rotation cycles
 } tfx_path_set_t;
 
 //Samples taken per catmull-rom span when building the arc length lookup table
@@ -6202,7 +6202,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_common_state_properties_t state_properties;
 
 	//State data
-	float age;		
+	double age;
+	double oscillator_time;
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
@@ -6216,8 +6217,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_quaternion_t rotation;
 	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
 	tfx_vec3_t creation_rotations;
-
-	float oscillator_time;
 
 	//Indexes
 	tfxIndex parent_index;
@@ -6261,15 +6260,15 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	//State data that can change every frame
 	tfx_quaternion_t rotation;
-	float age;			//Tracks the age with the effect loop
-	float total_age;	//Tracks the overal age of the effect
+	double age;			//Tracks the age with the effect loop
+	double total_age;	//Tracks the overal age of the effect
+	double oscillator_time;
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
 	tfxEffectPropertyFlags effect_flags;
 	tfxEmitterStateFlags state_flags;
 	float loop_length;
-	float oscillator_time;
 	//Position, scale and rotation values
 	tfx_vec3_t translation;
 	tfx_vec3_t local_position;
@@ -6464,12 +6463,12 @@ typedef struct tfx_ribbon_lag_history_s {
 
 typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//State data
-	float frame;
-	float age;
+	double age;
+	double oscillator_time;
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
-	float oscillator_time;
+	float frame;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
 	//Position, scale and rotation values
@@ -7193,8 +7192,8 @@ typedef struct tfx_user_spawn_location_s {
 	tfxUserSpawnLocationFlags flags;
 	tfxU32 generation;								//The slot generation when it was added, stale once the user removes it
 	tfxU64 packed_rotation;							//16 bit snorm quaternion, identity until the user sets one
-	float age;
-	float previous_age;								//Before the last tick, -1 until the location has been through one
+	double age;
+	double previous_age;							//Before the last tick, -1 until the location has been through one
 } tfx_user_spawn_location_t;
 
 typedef struct tfx_user_spawn_multipliers_s {
@@ -7848,7 +7847,7 @@ tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *r
 tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
-tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, float osc_t);
+tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, double osc_t);
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);
@@ -9619,7 +9618,7 @@ tfxINTERNAL void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue,
 tfxINTERNAL void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_user_location_shape_scale(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter);
-tfxINTERNAL void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls);
+tfxINTERNAL void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, double oscillator_time, tfx_parent_spawn_controls_t *spawn_controls);
 tfxINTERNAL void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *data);

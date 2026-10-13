@@ -9175,7 +9175,14 @@ void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager anim
 	}
 }
 
-float tfx__sample_multi_node_graph(tfx_graph_t *graph, float age, float osc_t) {
+//Wraps to the fraction of a cycle in double first, so the phase stays exact however long the emitter has been running
+tfxINTERNAL float tfx__oscillator_sin(tfx_oscillator_t *oscillator, double time) {
+	const double cycles = (time + oscillator->offset_x) * oscillator->frequency;
+	const float phase = (float)(cycles - floor(cycles));
+	return tfxOSCILLATOR_SIN(phase, 1.f, oscillator->amplitude) + oscillator->offset_y;
+}
+
+float tfx__sample_multi_node_graph(tfx_graph_t *graph, float age, double osc_t) {
 	if (graph->nodes.empty()) return 0.f;
 
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
@@ -9192,7 +9199,7 @@ float tfx__sample_multi_node_graph(tfx_graph_t *graph, float age, float osc_t) {
 			float t2_ti = t2 * ti;
 			if (osc_t && tfx__graph_can_oscillate(graph)) {
 				float value = ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
-				return value * (tfxOSCILLATOR_SIN(osc_t + graph->oscillator.offset_x, graph->oscillator.frequency, graph->oscillator.amplitude) + graph->oscillator.offset_y);
+				return value * tfx__oscillator_sin(&graph->oscillator, osc_t);
 			}
 			return ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
 		}
@@ -9200,7 +9207,7 @@ float tfx__sample_multi_node_graph(tfx_graph_t *graph, float age, float osc_t) {
 		prev_frame = curr->frame;
 	}
 	if (osc_t && tfx__graph_can_oscillate(graph)) {
-		return prev->value * (tfxOSCILLATOR_SIN(osc_t + graph->oscillator.offset_x, graph->oscillator.frequency, graph->oscillator.amplitude) + graph->oscillator.offset_y);
+		return prev->value * tfx__oscillator_sin(&graph->oscillator, osc_t);
 	}
 	return prev->value;
 }
@@ -13095,8 +13102,7 @@ void tfx_SetWarmUpDeltaTime(tfx_stage pm, double delta_time) {
 void tfx_AdvanceEffectTime(tfx_stage pm, tfxEffectID effect_id, float time) {
 	TFX_VALIDATE_EFFECT(pm, effect_id, );
 	tfxU32 slot = tfx__effect_slot(effect_id);
-	time += pm->effects[slot].age;
-	tfx__add_warmup_effect(pm, slot, time);
+	tfx__add_warmup_effect(pm, slot, (float)(pm->effects[slot].age + time));
 }
 
 void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
@@ -13978,7 +13984,7 @@ void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer
 	}
 }
 
-tfxINTERNAL void tfx__age_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, float frame_length) {
+tfxINTERNAL void tfx__age_user_spawn_locations(tfx_user_spawn_locations_t *user_location_list, double frame_length) {
 	for (tfxU32 slot : user_location_list->active_slots) {
 		tfx_user_spawn_location_t &location = user_location_list->locations[slot];
 		if (location.flags & tfxUserSpawnLocationFlags_fresh) {
@@ -13998,7 +14004,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
 	if (effect.state_flags & tfxEffectStateFlags_user_spawn_locations && effect.user_spawn_locations) {
-		tfx__age_user_spawn_locations(effect.user_spawn_locations, (float)pm->frame_length);
+		tfx__age_user_spawn_locations(effect.user_spawn_locations, pm->frame_length);
 	}
 	float &timeout_counter = effect.timeout_counter;
 	//During warmup the ebuff is held constant so we mustn't clear or push to next_buffer's lists. If
@@ -15386,12 +15392,12 @@ bool tfx__resolve_position_force(const tfx_force_t *force, tfx_force_space_t *sp
 			resolved->reference_turn[0] = reference_turn.x;
 			resolved->reference_turn[1] = reference_turn.y;
 			resolved->reference_turn[2] = reference_turn.z;
-			tfx__get_vortex_fluctuation(force, (emitter->age - force->delay) * 0.001f, space->frame_seconds, &resolved->fluctuation);
+			tfx__get_vortex_fluctuation(force, (float)(emitter->age - force->delay) * 0.001f, space->frame_seconds, &resolved->fluctuation);
 			resolved->flags |= tfx_force_resolved_flag_fluctuating;
 		}
 	} else if (force->type == tfxForceShockwave) {
 		//Emitter age equals the effect age because they're always created in the effect manager at the same time
-		float front = force->shockwave.speed * (emitter->age - force->delay) * 0.001f * space->bank_units_scale;
+		float front = force->shockwave.speed * (float)(emitter->age - force->delay) * 0.001f * space->bank_units_scale;
 		if (front > force->radius * space->bank_units_scale) {
 			return false;
 		}
@@ -15401,7 +15407,7 @@ bool tfx__resolve_position_force(const tfx_force_t *force, tfx_force_space_t *sp
 }
 
 float tfx__sample_motion_randomness_base(tfx_particle_emitter_state_t *emitter) {
-	return tfx__sample_multi_node_graph(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], emitter->age, emitter->oscillator_time);
+	return tfx__sample_multi_node_graph(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_motion_randomness_index], (float)emitter->age, emitter->oscillator_time);
 }
 
 const tfx_force_t *tfx__get_enabled_noise_force(const tfx_particle_emitter_properties_t *properties) {
@@ -15626,7 +15632,7 @@ void tfx_setup_path_policy::apply(tfx_control_work_entry_t *work_entry, tfx_posi
 	ctx.emitter_offset_x = tfxWideSetSingle(ctx.emitter->handle.x);
 	ctx.emitter_offset_y = tfxWideSetSingle(ctx.emitter->handle.y);
 	ctx.emitter_offset_z = tfxWideSetSingle(ctx.emitter->handle.z);
-	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], ctx.emitter->age, ctx.emitter->oscillator_time));
+	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&ctx.emitter->library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], (float)ctx.emitter->age, ctx.emitter->oscillator_time));
 	ctx.overall_scale_wide = tfxWideSetSingle(work_entry->overall_scale);
 	ctx.capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 }
@@ -15676,7 +15682,7 @@ void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_po
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[ctx.emitter->particles_index];
 	tfx_library library = ctx.emitter->library;
 	ctx.overall_scale_wide = tfxWideSetSingle(work_entry->overall_scale);
-	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], ctx.emitter->age, ctx.emitter->oscillator_time));
+	ctx.velocity_adjuster = tfxWideSetSingle(tfx__sample_multi_node_graph(&library->graphs[ctx.emitter->state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], (float)ctx.emitter->age, ctx.emitter->oscillator_time));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[ctx.emitter->particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -17875,7 +17881,7 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 
 	effect.captured_position = effect.world_position;
 
-	effect.oscillator_time = effect.age / 1000.f;
+	effect.oscillator_time = effect.age / 1000.0;
 
 	tfx__update_effect_state(pm, index);
 
@@ -17902,8 +17908,8 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 		effect.world_position = effect.captured_position + (effect.world_position - effect.captured_position) * (1.f / (float)pm->steps_remaining);
 	}
 
-	effect.total_age += (float)pm->frame_length;
-	effect.age += (float)pm->frame_length;
+	effect.total_age += pm->frame_length;
+	effect.age += pm->frame_length;
 
 	float loop_length = effect.source_effect->state_properties.loop_length;
 	bool looped = false;
@@ -17919,7 +17925,7 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 		if (looped) {
 			effect.bookmarks_crossed = 0;
 		}
-		float bookmark_age = loop_length ? effect.age : effect.total_age - effect.source_effect->warmup_time;
+		double bookmark_age = loop_length ? effect.age : effect.total_age - effect.source_effect->warmup_time;
 		for (tfxU32 bookmark_index = 0; bookmark_index != tfxMAX_BOOKMARKS; ++bookmark_index) {
 			if (effect.bookmarks[bookmark_index] == 0.f) {
 				break;	//Bookmarks are packed to the front, so the first empty slot ends the list
@@ -18014,21 +18020,22 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 		}
 		//Single shots fire once, in the update the location's age reaches the delay, then any decay tail runs on from there. The rest spawn from then on
 		bool single_burst = location.previous_age < source->delay;
-		float time_since_burst = location.age - source->delay;
+		double time_since_burst = location.age - source->delay;
 		if (source->single && !single_burst && time_since_burst >= source->single_decay_time) {
 			continue;
 		}
 		//The emitter's age doesn't advance while it waits out its delay, so neither does the location's
-		float age = tfx__Max(time_since_burst, 0.f);
-		age = source->loop_length > 0.f ? fmodf(age, source->loop_length) : age;
-		float oscillator_time = age / 1000.f;
+		const double running_time = tfx__Max(time_since_burst, 0.0);
+		const double location_age = source->loop_length > 0.f ? fmod(running_time, (double)source->loop_length) : running_time;
+		const float age = (float)location_age;
+		const double oscillator_time = location_age / 1000.0;
 		float global_amount = tfx__sample_multi_node_graph(source->global_amount, age, oscillator_time);
 		float weight;
 		if (source->single) {
 			weight = single_burst ? (source->single_amount + tfx_RandomRangeZeroToMax(random, source->single_amount_variation)) * global_amount : 0.f;
 			if (source->single_decay_time > 0.f) {
 				//The burst update's window starts at 0 so that consecutive windows join up exactly
-				weight += (float)tfx__single_decay_spawn_amount(source->single_decay_amount * global_amount, single_burst ? 0.f : time_since_burst, time_since_burst + source->frame_length, source->single_decay_time, source->single_decay_shape);
+				weight += (float)tfx__single_decay_spawn_amount(source->single_decay_amount * global_amount, single_burst ? 0.f : (float)time_since_burst, (float)time_since_burst + source->frame_length, source->single_decay_time, source->single_decay_shape);
 			}
 		} else {
 			weight = tfx__sample_multi_node_graph(source->base_amount, age, oscillator_time);
@@ -18240,17 +18247,17 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	tfx_vec3_t local_rotations;
 	tfx_library library = ribbon_emitter.library;
 	tfx_vec3_t translation;
-	translation.x = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_x_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-	translation.y = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_y_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-	translation.z = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_z_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	translation.x = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_x_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	translation.y = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_y_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	translation.z = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_translate_z_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 
 	ribbon_emitter.captured_position = ribbon_emitter.world_position;
 
-	ribbon_emitter.oscillator_time = ribbon_emitter.age / 1000.f;
+	ribbon_emitter.oscillator_time = ribbon_emitter.age / 1000.0;
 
-	local_rotations.roll = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_roll_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-	local_rotations.pitch = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_pitch_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-	local_rotations.yaw = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_yaw_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	local_rotations.roll = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_roll_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	local_rotations.pitch = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_pitch_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	local_rotations.yaw = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.transform_index].graphs[tfxTransform_yaw_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 
 	TFX_ASSERT(ribbon_emitter.parent_index != tfxINVALID);    //Emitter must have a valid parent (an effect)
 
@@ -18359,13 +18366,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		tfx__spawn_static_ribbons(ribbon_emitter_index, &pm->work_queue, data);
 	}
 
-	ribbon_emitter.age += (float)pm->frame_length;
+	ribbon_emitter.age += pm->frame_length;
 
 	if (ribbon_emitter.source_ribbon->state_properties.loop_length && ribbon_emitter.age > ribbon_emitter.source_ribbon->state_properties.loop_length) {
 		ribbon_emitter.age -= ribbon_emitter.source_ribbon->state_properties.loop_length;
 	}
 
-	gpu_emitter.age = ribbon_emitter.age;
+	gpu_emitter.age = (float)ribbon_emitter.age;
 	//Written after the spawn above because that is what allocates the block, and written every frame because
 	//tfx__grab_gpu_ribbon_emitter hands back recycled slots without clearing them and 0 is a valid segment index
 	gpu_emitter.morph_segment_start_index = ribbon_emitter.morph_segment_start_index;
@@ -18414,18 +18421,18 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_graph_t &pitch_graph = library->graphs[emitter.state_properties.transform_index].graphs[tfxTransform_pitch_index];
 	tfx_graph_t &yaw_graph = library->graphs[emitter.state_properties.transform_index].graphs[tfxTransform_yaw_index];
 
-	translation.x = tfx__sample_multi_node_graph(&translation_x_graph, emitter.age, emitter.oscillator_time);
-	translation.y = tfx__sample_multi_node_graph(&translation_y_graph, emitter.age, emitter.oscillator_time);
-	translation.z = tfx__sample_multi_node_graph(&translation_z_graph, emitter.age, emitter.oscillator_time);
+	translation.x = tfx__sample_multi_node_graph(&translation_x_graph, (float)emitter.age, emitter.oscillator_time);
+	translation.y = tfx__sample_multi_node_graph(&translation_y_graph, (float)emitter.age, emitter.oscillator_time);
+	translation.z = tfx__sample_multi_node_graph(&translation_z_graph, (float)emitter.age, emitter.oscillator_time);
 
 	emitter.captured_position = emitter.world_position;
 	emitter.captured_rotation = emitter.rotation;
 
-	emitter.oscillator_time = emitter.age / 1000.f;
+	emitter.oscillator_time = emitter.age / 1000.0;
 
-	local_rotations.roll = tfx__sample_multi_node_graph(&roll_graph, emitter.age, emitter.oscillator_time);
-	local_rotations.pitch = tfx__sample_multi_node_graph(&pitch_graph, emitter.age, emitter.oscillator_time);
-	local_rotations.yaw = tfx__sample_multi_node_graph(&yaw_graph, emitter.age, emitter.oscillator_time);
+	local_rotations.roll = tfx__sample_multi_node_graph(&roll_graph, (float)emitter.age, emitter.oscillator_time);
+	local_rotations.pitch = tfx__sample_multi_node_graph(&pitch_graph, (float)emitter.age, emitter.oscillator_time);
+	local_rotations.yaw = tfx__sample_multi_node_graph(&yaw_graph, (float)emitter.age, emitter.oscillator_time);
 
 	tfx_shared_properties_t &shared_properties = *spawn_work_entry->shared_properties;
 
@@ -18555,7 +18562,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 	emitter.sprites_count -= spawn_difference;
 
-	emitter.age += (float)pm->frame_length;
+	emitter.age += pm->frame_length;
 
 	if (emitter.source_emitter->state_properties.loop_length && emitter.age > emitter.source_emitter->state_properties.loop_length)
 		emitter.age -= emitter.source_emitter->state_properties.loop_length;
@@ -18818,7 +18825,7 @@ tfxINTERNAL double tfx__update_path_sets(tfx_stage pm, tfx_spawn_work_entry_t *e
 		return total_weight;
 	}
 	tfx_path_set_t *set = tfx__get_path_set(emitter, settings, 0, 0, &entry->random);
-	set->time += (float)pm->frame_length;
+	set->time += pm->frame_length;
 	tfx__refresh_path_set(set, emitter.path_slots.data, emitter.path_slot_count, settings, rotated, in_order, grid_start);
 	return rotated ? spawn_quantity * (double)set->live_slots / (double)emitter.path_slot_count : spawn_quantity;
 }
@@ -18871,8 +18878,8 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	tfx_AlterRandomSeedU32(random, 25 + emitter.seed_index);
 	const bool is_single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	if (!is_single) {
-		emitter.spawn_quantity = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index], emitter.age, emitter.oscillator_time);
-		float amount_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index], emitter.age, emitter.oscillator_time);
+		emitter.spawn_quantity = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_base_amount_index], (float)emitter.age, emitter.oscillator_time);
+		float amount_variation = tfx__sample_multi_node_graph(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_variation_amount_index], (float)emitter.age, emitter.oscillator_time);
 		emitter.spawn_quantity += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
 	}
 	else if (shared_properties->emission_type == tfxOtherEmitter) {
@@ -18887,7 +18894,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	} else {
 		emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
-	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], emitter.age, emitter.oscillator_time);
+	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], (float)emitter.age, emitter.oscillator_time);
 	emitter.spawn_quantity *= global_amount;
 
 	//An amount for this update rather than per second. User spawn locations add theirs to each location's weight instead
@@ -19004,13 +19011,13 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	tfx_library library = ribbon_emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + ribbon_emitter.seed_index);
 	if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
-		ribbon_emitter.spawn_quantity = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_base_amount_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-		float amount_variation = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_variation_amount_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+		ribbon_emitter.spawn_quantity = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_base_amount_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+		float amount_variation = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_variation_amount_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 		ribbon_emitter.spawn_quantity += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
 	} else {
 		ribbon_emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
-	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 	ribbon_emitter.spawn_quantity *= global_amount;
 
 	if (ribbon_emitter.state_flags & tfxEmitterStateFlags_single_shot_done || ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
@@ -19179,7 +19186,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	//effect. Set here rather than at the call site because this is where amount_to_spawn is final.
 	work_entry->particle_uid = emitter.spawn_counter + work_entry->emitter_index * 0x9E3779B9;
 	work_entry->spawn_ordinal = emitter.spawn_counter;
-	work_entry->emitter_age = emitter.age;
+	work_entry->emitter_age = (float)emitter.age;
 	emitter.spawn_counter += work_entry->amount_to_spawn;
 
 	if (work_entry->amount_to_spawn > 0) {
@@ -21231,8 +21238,8 @@ tfxINTERNAL tfx_ribbon_spawn_shape_t tfx__setup_ribbon_spawn_shape(const tfx_rib
 	shape.fill_area = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area) != 0;
 	if (emission_type == tfxEllipse || emission_type == tfxCylinder) {
 		tfx_graph_list_t &graph_list = ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
-		shape.arc_size = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_size_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
-		shape.arc_offset = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_offset_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+		shape.arc_size = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_size_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+		shape.arc_offset = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_property_arc_offset_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 	}
 	if (emission_type == tfxEllipse) {
 		//Same polar band as the particle ellipsoid: arc offset starts the sweep down from +y and arc size is its span
@@ -21309,10 +21316,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	tfx_emitter_path_t *path = &library->paths[ribbon_emitter.state_properties.path_attributes];
 	tfx_graph_list_t &graph_list = library->graphs[ribbon_emitter.state_properties.graph_list_index];
 
-	const float life = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
-	const float life_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_life_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
-	float base_width = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->size_x;
-	const float width_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	const float life = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_life_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
+	const float life_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_life_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->life;
+	float base_width = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_base_width_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->size_x;
+	const float width_variation = tfx__sample_multi_node_graph(&graph_list.graphs[tfxRibbon_variation_width_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
 
 	tfx_emitter_path_t *morph_path = nullptr;
 	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_morph) && ribbon_emitter.state_properties.morph_path_attributes != tfxINVALID) {
@@ -21371,7 +21378,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 	if (ribbon_emitter.static_segment_start_index != tfxINVALID) {
 		tfx_ribbon_bucket_t *ribbon_bucket = entry->ribbon_bucket;
 		tfxU32 actual_new_ribbons = 0;
-		const float splatter = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_property_splatter_index], ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->splatter;
+		const float splatter = tfx__sample_multi_node_graph(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_property_splatter_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time) * entry->parent_spawn_controls->splatter;
 		//A run per location that spawns this update, each holding its share of amount_to_spawn
 		const tfx_user_spawn_run_t *runs = entry->user_spawn_run_count ? &ribbon_bucket->user_spawn_runs[entry->user_spawn_run_start] : nullptr;
 		tfxU32 run_index = 0;
@@ -22049,9 +22056,9 @@ void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &
 	if (entry->shared_properties->emission_type == tfxPoint) {
 		ribbon.emitter_size = tfx_vec3_t();
 	} else {
-		ribbon.emitter_size.x = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_width_index], ribbon.age, ribbon.oscillator_time);
-		ribbon.emitter_size.y = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_height_index], ribbon.age, ribbon.oscillator_time);
-		ribbon.emitter_size.z = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_depth_index], ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size.x = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_width_index], (float)ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size.y = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_height_index], (float)ribbon.age, ribbon.oscillator_time);
+		ribbon.emitter_size.z = tfx__sample_multi_node_graph(&library->graphs[ribbon.state_properties.graph_list_index].graphs[tfxRibbon_property_depth_index], (float)ribbon.age, ribbon.oscillator_time);
 		ribbon.emitter_size *= pm->effects[parent_index].emitter_size;
 	}
 
@@ -22082,14 +22089,14 @@ void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitt
 
 	emitter.emitter_size = { 0 };
 	if (is_area) {
-		emitter.emitter_size.y = tfx__sample_multi_node_graph(&emitter_height, emitter.age, emitter.oscillator_time);
-		emitter.emitter_size.x = tfx__sample_multi_node_graph(&emitter_width, emitter.age, emitter.oscillator_time);
+		emitter.emitter_size.y = tfx__sample_multi_node_graph(&emitter_height, (float)emitter.age, emitter.oscillator_time);
+		emitter.emitter_size.x = tfx__sample_multi_node_graph(&emitter_width, (float)emitter.age, emitter.oscillator_time);
 	}
 	else if (shared_properties.emission_type == tfxLine) {
-		emitter.emitter_size.y = tfx__sample_multi_node_graph(&emitter_height, emitter.age, emitter.oscillator_time);
+		emitter.emitter_size.y = tfx__sample_multi_node_graph(&emitter_height, (float)emitter.age, emitter.oscillator_time);
 	}
 
-	emitter.emitter_size.z = tfx__sample_multi_node_graph(&emitter_depth, emitter.age, emitter.oscillator_time);
+	emitter.emitter_size.z = tfx__sample_multi_node_graph(&emitter_depth, (float)emitter.age, emitter.oscillator_time);
 
 	emitter.emitter_size *= pm->effects[parent_index].emitter_size;
 
@@ -22099,7 +22106,7 @@ void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitt
 	}
 }
 
-void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, float oscillator_time, tfx_parent_spawn_controls_t *spawn_controls) {
+void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPropertyFlags effect_flags, float age, double oscillator_time, tfx_parent_spawn_controls_t *spawn_controls) {
 	spawn_controls->life = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_life_index], age, oscillator_time);
 	spawn_controls->size_x = tfx__sample_multi_node_graph(&graph_list->graphs[tfxEffect_global_width_index], age, oscillator_time);
 	if (!(effect_flags & tfxEffectPropertyFlags_global_uniform_size)) {
@@ -22119,8 +22126,8 @@ void tfx__sample_effect_spawn_controls(tfx_graph_list_t *graph_list, tfxEffectPr
 void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	tfxPROFILE;
 
-	const float age = pm->effects[index].age;
-	const float oscillator_time = pm->effects[index].oscillator_time;
+	const float age = (float)pm->effects[index].age;
+	const double oscillator_time = pm->effects[index].oscillator_time;
 	const tfxU32 graph_list_index = pm->effects[index].graph_list_index;
 	const tfxU32 transform_index = pm->effects[index].transform_index;
 	tfx_library library = pm->effects[index].library;
@@ -22716,7 +22723,7 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 		tick.frame_length = (float)pm->frame_length;
 		tick.update_time = (float)pm->update_time;
 		tick.overall_scale = pm->effects[emitter.parent_index].overall_scale;
-		tick.velocity_adjuster = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.age, emitter.oscillator_time);
+		tick.velocity_adjuster = tfx__sample_multi_node_graph(&emitter.library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], (float)emitter.age, emitter.oscillator_time);
 		tfx__drag_frame_coefficients(properties->drag_half_life, delta_time_seconds, &tick.drag_alpha, &tick.acceleration_scale);
 		tick.drag_alpha_variation = 0.f;
 		tick.acceleration_scale_variation = 0.f;
