@@ -385,12 +385,8 @@ float3 tfx_ellipse_surface_normal(float3 position, float3 half_size) {
 }
 
 //tfx__generate_shape_direction
-float3 tfx_generate_shape_direction(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, float3 spawn_offset, float3 shape_position, float3 shape_size, uint spawn_index, float3 face_normal, inout bool apply_cone) {
+float3 tfx_generate_shape_direction(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, float3 spawn_offset, float3 shape_position, float3 shape_size, uint spawn_index, float3 face_normal) {
 	const uint mode = block_d.emission_direction_mode;
-	if (mode == tfx_direction_surface && block_d.shape == tfx_emission_area && (block_a.flags & tfx_spawn_fill_area) == 0) {
-		apply_cone = false;
-		return face_normal;
-	}
 	const float3 radial = spawn_offset.x == 0.0 && spawn_offset.y == 0.0 && spawn_offset.z == 0.0 ? shape_size : spawn_offset;
 	float3 to_handle = float3(0.0, 1.0, 0.0);
 	if (mode == tfx_direction_outwards) {
@@ -405,6 +401,8 @@ float3 tfx_generate_shape_direction(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn
 		} else if (block_d.shape == tfx_emission_cylinder) {
 			const float3 normal = tfx_ellipse_surface_normal(float3(shape_position.x, 0.0, shape_position.z), float3(shape_size.x * 0.5, 1.0, shape_size.z * 0.5));
 			to_handle = float3(normal.x, 0.0, normal.z);
+		} else if (block_d.shape == tfx_emission_area && (block_a.flags & tfx_spawn_fill_area) == 0) {
+			to_handle = face_normal;
 		}
 	}
 	return tfx_rotate_vector(to_handle, block_d.emission_rotation);
@@ -449,7 +447,6 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 	}
 
 	float3 direction;
-	bool apply_cone = (flags & tfx_spawn_emission_cone) != 0;
 	if ((flags & tfx_spawn_shape) == 0) {
 		spawn.position = relative ? float3(0.0, 0.0, 0.0) : anchor + block_a.handle;
 		if (block_a.splatter != 0.0) {
@@ -476,9 +473,9 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 			}
 			spawn.position = anchor + tfx_rotate_vector(spawn_offset, shape_rotation) * block_b.overall_scale;
 		}
-		direction = tfx_generate_shape_direction(block_a, block_c, block_d, spawn_offset, shape_position, shape_size, spawn_index, face_normal, apply_cone);
+		direction = tfx_generate_shape_direction(block_a, block_c, block_d, spawn_offset, shape_position, shape_size, spawn_index, face_normal);
 	}
-	if (apply_cone) {
+	if ((flags & tfx_spawn_emission_cone) != 0) {
 		const float z = 1.0 - (1.0 - block_a.emission_cone_cosine) * tfx_hash_unit(uid, tfx_spawn_axis_cone_z);
 		const float phi = tfx_spawn_pi2 * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
 		direction = tfx_vector_in_cone(direction, z, phi);

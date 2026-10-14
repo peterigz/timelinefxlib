@@ -20374,14 +20374,10 @@ tfxINTERNAL tfx_vec3_t tfx__generate_shape_offset(const tfx_gpu_spawn_block_t *b
 	}
 }
 
-//tfx__get_emission_direction_3d for a shape, before the cone. A hollow area's Surface normal is the spawner's face normal as is, with no cone
-tfxINTERNAL tfx_vec3_t tfx__generate_shape_direction(const tfx_gpu_spawn_block_t *block, tfx_vec3_t spawn_offset, tfx_vec3_t shape_position, tfx_vec3_t shape_size, tfxU32 spawn_index, tfx_vec3_t face_normal, bool *apply_cone) {
+//tfx__get_emission_direction_3d for a shape, before the cone. A hollow area's Surface normal is its face normal
+tfxINTERNAL tfx_vec3_t tfx__generate_shape_direction(const tfx_gpu_spawn_block_t *block, tfx_vec3_t spawn_offset, tfx_vec3_t shape_position, tfx_vec3_t shape_size, tfxU32 spawn_index, tfx_vec3_t face_normal) {
 	const tfx_emission_type shape = (tfx_emission_type)block->shape;
 	const tfx_emission_direction emission_direction = (tfx_emission_direction)block->emission_direction_mode;
-	if (emission_direction == tfxSurface && shape == tfxArea && !(block->flags & tfxGPUSpawnBlockFlags_fill_area)) {
-		*apply_cone = false;
-		return face_normal;
-	}
 	const tfx_vec3_t radial = spawn_offset.x == 0 && spawn_offset.y == 0 && spawn_offset.z == 0 ? shape_size : spawn_offset;
 	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
 	if (emission_direction == tfxOutwards) {
@@ -20398,6 +20394,8 @@ tfxINTERNAL tfx_vec3_t tfx__generate_shape_direction(const tfx_gpu_spawn_block_t
 			to_handle = tfx__ellipse_surface_normal(shape_position.x, shape_position.y, shape_position.z, shape_size.x * .5f, shape_size.y * .5f, shape_size.z * .5f);
 		} else if (shape == tfxCylinder) {
 			to_handle = tfx__cylinder_surface_normal(shape_position.x, shape_position.z, shape_size.x * .5f, shape_size.z * .5f);
+		} else if (shape == tfxArea && !(block->flags & tfxGPUSpawnBlockFlags_fill_area)) {
+			to_handle = face_normal;
 		}
 	}
 	tfx_quaternion_t emission_rotation(block->emission_rotation.w, block->emission_rotation.x, block->emission_rotation.y, block->emission_rotation.z);
@@ -20445,7 +20443,6 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 
 	tfx_vec3_t position;
 	tfx_vec3_t direction;
-	bool apply_cone = (flags & tfxGPUSpawnBlockFlags_emission_cone) != 0;
 	if (!(flags & tfxGPUSpawnBlockFlags_shape)) {
 		position = relative ? tfx_vec3_t(0.f, 0.f, 0.f) : anchor + tfx_vec3_t(block->handle.x, block->handle.y, block->handle.z);
 		if (block->splatter) {
@@ -20474,10 +20471,10 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 			}
 			position = anchor + tfx__rotate_vector_quaternion(&shape_rotation, spawn_offset) * block->overall_scale;
 		}
-		direction = tfx__generate_shape_direction(block, spawn_offset, shape_position, shape_size, spawn_index, face_normal, &apply_cone);
+		direction = tfx__generate_shape_direction(block, spawn_offset, shape_position, shape_size, spawn_index, face_normal);
 	}
 
-	if (apply_cone) {
+	if (flags & tfxGPUSpawnBlockFlags_emission_cone) {
 		const float z = 1.f - (1.f - block->emission_cone_cosine) * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_z);
 		const float phi = tfxPI2 * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_phi);
 		direction = tfx__vector_in_cone(direction, z, phi);
@@ -22776,6 +22773,14 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 			}
 		} else if (emission_direction == tfxPathGradient) {
 			velocity_normal = tfx__unpack10bit_unsigned(velocity_normal_packed);
+		} else {
+			//A hollow area's face normal from the spawner, turned and spread as tfx__get_emission_direction_3d does every other direction
+			velocity_normal = tfx__orient_emission_direction(emitter, emission_type, tfx__unpack10bit_unsigned(velocity_normal_packed), emission_pitch, emission_yaw, nullptr);
+			if (emission_range != 0.f) {
+				velocity_normal = tfx__random_vector_in_cone(&random, velocity_normal, emission_range * .5f);
+			}
+			velocity_normal = tfx__normalize_vec3_fast(&velocity_normal);
+			velocity_normal_packed = tfx__pack10bit_unsigned(&velocity_normal);
 		}
 
 		//base_velocity is an acceleration along the emission normal, so the particle starts at rest
