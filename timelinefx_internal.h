@@ -2885,8 +2885,24 @@ typedef enum {
 	tfxOtherEmitter,
 	tfxSpawnOnRibbon,
 	tfxDisc,
+	tfxUser,									//Spawns as a Point, then the host places the particles with its spawn hooks
 	tfxEmissionTypeMax,
 } tfx_emission_type;
+
+//User spawns exactly like Point, only the host's spawn hooks tell them apart
+inline bool tfx__is_point_emission(tfx_emission_type emission_type) {
+	return emission_type == tfxPoint || emission_type == tfxUser;
+}
+
+//Whether the kernel generates a Run on GPU emitter's spawns, or why the CPU spawns them and uploads rows instead
+typedef enum {
+	tfxGPUSpawnPath_generated,
+	tfxGPUSpawnPath_shape,							//Icosphere, path, other emitter and spawn on ribbon
+	tfxGPUSpawnPath_grid,
+	tfxGPUSpawnPath_spawn_source,
+	tfxGPUSpawnPath_stepped_emission,
+	tfxGPUSpawnPath_stepped_roll,
+} tfx_gpu_spawn_path;
 
 typedef enum {
 	tfxExtrusionArc,
@@ -6170,6 +6186,7 @@ typedef struct tfx_common_state_properties_s {
 	float loop_length;
 	float max_life;
 	tfxU32 gpu_capacity_override;		//Set by tfx_SetTemplateEmitterGPUCapacity, 0 uses the estimate
+	tfxU32 gpu_key;						//Set by tfx_SetTemplateEmitterGPUKey, copied into the emitter's dispatches
 	float end_frame;
 	float delay_spawning;
 	float image_frame_rate;
@@ -6296,6 +6313,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
 	tfxU32 sort_key;
+	tfxU32 gpu_key;						//tfx_SetEffectGPUKey, tfxINVALID uses each emitter's template key
 
 	//Any bookmarks that exist in the effect
 	float bookmarks[tfxMAX_BOOKMARKS];
@@ -6418,6 +6436,7 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  instance_start;				//Where ring position 0 goes in the instance buffer, from the last tick's layout
 	tfxU32  upload_offset;				//This tick's rows in the stage's spawn upload arrays
 	tfxU32  upload_count;
+	struct tfx_spawn_work_entry_s *generated_spawn;	//Set for a tick whose spawns the kernel generates, until tfx__record_gpu_groups writes their block
 	tfxGPUGroupFlags flags;
 	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
 #ifdef __cplusplus
@@ -6452,6 +6471,11 @@ tfx__static_assert(sizeof(tfx_gpu_particle_vortex_fluctuation_t) == sizeof(tfx_g
 tfx__static_assert((int)tfxGPUForceType_wind == (int)tfxForceWind && (int)tfxGPUForceType_attract == (int)tfxForceAttract && (int)tfxGPUForceType_vortex == (int)tfxForceVortex && (int)tfxGPUForceType_shockwave == (int)tfxForceShockwave && (int)tfxGPUForceType_noise == (int)tfxForceNoise);
 tfx__static_assert(tfxVORTEX_FLUCTUATION_HARMONICS == 3);
 tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 128);
+//Spawn blocks, runs and multipliers are rows of the tick array too
+#define tfxGPU_SPAWN_BLOCK_ROWS 4
+tfx__static_assert(sizeof(tfx_gpu_spawn_block_t) == tfxGPU_SPAWN_BLOCK_ROWS * sizeof(tfx_gpu_particle_tick_t));
+tfx__static_assert(sizeof(tfx_gpu_spawn_run_t) == sizeof(tfx_gpu_particle_tick_t));
+tfx__static_assert(sizeof(tfx_gpu_spawn_multipliers_t) == sizeof(tfx_gpu_particle_tick_t));
 tfx__static_assert(sizeof(tfx_gpu_spawn_location_t) == 32);
 //---- end GPU compute particle buffer management ----
 
@@ -6851,6 +6875,40 @@ typedef struct tfx_gpu_shapes_s {
 typedef struct tfx_gpu_shapes_s tfx_gpu_shapes_t;
 #endif
 
+//An emitter's spawn values sampled once per batch, shared by the CPU spawn stages and the GPU spawn generator
+typedef struct tfx_spawn_range_s {
+	float base;
+	float variation;
+} tfx_spawn_range_t;
+
+typedef struct tfx_spawn_size_s {
+	tfx_vec2_t base;
+	tfx_vec2_t variation;
+} tfx_spawn_size_t;
+
+typedef struct tfx_spawn_spin_s {
+	float roll;
+	float pitch;
+	float yaw;
+	float roll_variation;
+	float pitch_variation;
+	float yaw_variation;
+} tfx_spawn_spin_t;
+
+typedef struct tfx_spawn_noise_s {
+	tfx_vec3_t step_offset;					//Derived from the emitter age so looped emitters repeat the same offsets
+	float shared_offset;					//The effect's noise base offset, kept apart from step_offset so the sum is added in the same order
+	float offset_variation;
+	float resolution;
+} tfx_spawn_noise_t;
+
+typedef struct tfx_spawn_emission_s {
+	float splatter;
+	float pitch;
+	float yaw;
+	float range;
+} tfx_spawn_emission_t;
+
 typedef struct tfx_spawn_work_entry_s {
 	tfx_random_t random;
 	tfx_stage pm;
@@ -7217,6 +7275,7 @@ typedef struct tfx_user_spawn_tweaks_s {
 	tfx_user_spawn_multipliers_t multipliers;
 	float largest_life_multiplier;					//At least 1, the longest anything spawned here can live relative to the effect, which countdowns must cover
 	float expire_countdown;							//Milliseconds left before a soft expiring location frees its slot
+	tfxU32 user_data;								//tfx_SetSpawnLocationUserData
 } tfx_user_spawn_tweaks_t;
 
 //What the host last asked for at a slot, written straight by the tfx_*SpawnLocation api and copied into the live location by the
@@ -7232,6 +7291,7 @@ typedef struct tfx_user_spawn_requested_tweaks_s {
 	tfxU64 packed_rotation;
 	tfx_user_spawn_multipliers_t multipliers;
 	float expire_time;								//0 means work it out from the effect's longest lived emitter when it's applied
+	tfxU32 user_data;
 } tfx_user_spawn_requested_tweaks_t;
 
 #ifdef __cplusplus
@@ -7276,7 +7336,7 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfx_gpu_pack_work_entry_t> gpu_pack_work;
 	//Everything since the last tfx_GetGPUParticleFrame, cleared by the first tick after it
 	tfx_vector_t<tfx_gpu_particle_spawn_t> gpu_spawns;
-	tfx_vector_t<tfx_gpu_particle_force_t> gpu_force_rows;	//Every recorded tick's forces, a tick's force_offset indexes it until the fetch rebases it
+	tfx_vector_t<tfx_gpu_particle_force_t> gpu_force_rows;	//Every recorded tick's forces and generated spawn blocks, a tick's force_offset and generated upload_offset index it until the fetch rebases them
 	tfx_vector_t<tfx_gpu_particle_dispatch_t> gpu_frame_dispatches;
 	tfx_vector_t<tfx_gpu_particle_tick_t> gpu_frame_ticks;
 	tfx_vector_t<tfx_gpu_spawn_location_t> gpu_frame_locations;
@@ -7317,6 +7377,8 @@ typedef struct tfx_stage_s {
 	//Filled while emitters update one at a time and only read by the deferred spawn work after, so it can grow freely
 	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
+	tfx_spawn_callback spawn_callback;				//tfx_SetStageSpawnCallback, places the particles of User emitters the CPU spawns
+	void *spawn_callback_user_data;
 
 	tfx_work_queue_t work_queue;
 	//The info config that was used to initialise the effect manager. This can be used to alter and the reconfigure the effect manager
@@ -7498,6 +7560,7 @@ typedef enum {
 	tfx_template_override_global_graph_scale,
 	tfx_template_override_emitter_graph_scale,
 	tfx_template_override_gpu_capacity,
+	tfx_template_override_gpu_key,
 } tfx_template_override_type;
 
 //A template setter call, kept so it can be replayed when a refresh rebuilds the template's clone
@@ -7683,6 +7746,7 @@ tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxW
 tfxINTERNAL void tfx__wide_unpack16bit(tfxWideInt xy, tfxWideInt zw, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack16bit_quaternion(tfxU64 in);
 tfxINTERNAL tfx_vec3_t tfx__get_emission_direction_3d(tfx_stage pm, tfx_library library, tfx_random_t *random, tfx_particle_emitter_state_t &emitter, float emission_pitch, float emission_yaw, float emission_range, tfx_vec3_t spawn_offset, tfx_vec3_t shape_scale, const tfx_emission_step_t *emission_step);
+tfxINTERNAL tfx_vec3_t tfx__orient_emission_direction(const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type, tfx_vec3_t to_handle, float emission_pitch, float emission_yaw, const tfx_emission_step_t *emission_step);
 tfxINTERNAL tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL tfxU32 tfx__permute_index(tfxU32 index, tfxU32 length, tfxU32 seed);
 tfxINTERNAL void tfx__begin_angle_steps(tfx_angle_step_iterator_t *iterator, const tfx_angle_steps_t *steps, float range, float centre, tfxU32 ordinal, tfxU32 seed);
@@ -8160,6 +8224,42 @@ tfxINTERNAL inline float tfx__white_unit(tfxU32 seed, tfxU32 axis) {
 #define tfxDRAG_VARIATION_HASH_AXIS 0x9e3779b9
 //Hash axis a vortex's fluctuation harmonics draw their speeds and phases on
 #define tfxVORTEX_FLUCTUATION_HASH_AXIS 0x68e31da4
+
+//A [0, 1) draw, identical on the GPU because 24 bits convert to a float exactly
+tfxINTERNAL inline float tfx__hash_unit(tfxU32 seed, tfxU32 axis) {
+	return (float)(tfx__seedgen_u32(seed ^ axis) >> 8) * (1.f / 16777216.f);
+}
+
+//The axes tfx__generate_gpu_spawn draws each value on, distinct from each other and from the control loop's axes
+typedef enum {
+	tfxSpawnHashAxis_life = 0x51a70001,
+	tfxSpawnHashAxis_random_color,
+	tfxSpawnHashAxis_start_frame,
+	tfxSpawnHashAxis_width,
+	tfxSpawnHashAxis_height,
+	tfxSpawnHashAxis_weight,
+	tfxSpawnHashAxis_roll_spin,
+	tfxSpawnHashAxis_pitch_spin,
+	tfxSpawnHashAxis_yaw_spin,
+	tfxSpawnHashAxis_pitch_offset,
+	tfxSpawnHashAxis_yaw_offset,
+	tfxSpawnHashAxis_roll_offset,
+	tfxSpawnHashAxis_splatter_z,
+	tfxSpawnHashAxis_splatter_phi,
+	tfxSpawnHashAxis_splatter_radius,
+	tfxSpawnHashAxis_cone_z,
+	tfxSpawnHashAxis_cone_phi,
+	tfxSpawnHashAxis_noise_x,
+	tfxSpawnHashAxis_noise_y,
+	tfxSpawnHashAxis_noise_z,
+	tfxSpawnHashAxis_shape_side,
+	tfxSpawnHashAxis_shape_u,
+	tfxSpawnHashAxis_shape_v,
+	tfxSpawnHashAxis_shape_w,
+	tfxSpawnHashAxis_sequence_theta,		//Drawn from the tick's uid base rather than a particle's uid, so a whole tick's sequence shifts together
+	tfxSpawnHashAxis_sequence_phi,
+	tfxSpawnHashAxis_sequence_radius,
+} tfx_spawn_hash_axis;
 
 //--------------------------------
 //Control particle inline functions and policies
@@ -9587,6 +9687,7 @@ tfxINTERNAL inline void tfx__invalidate_offsetted_sprite_captured_index(T* insta
 }
 
 tfxINTERNAL tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
+tfxINTERNAL tfx_vec3_t tfx__vector_in_cone(tfx_vec3_t cone_direction, float z, float phi);
 tfxINTERNAL void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
@@ -9602,6 +9703,21 @@ tfxINTERNAL void tfx__update_effect_state(tfx_stage pm, tfxU32 index);
 tfxINTERNAL tfx_stage tfx__next_global_stage();
 
 tfxINTERNAL void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry);
+tfxINTERNAL tfx_spawn_range_t tfx__resolve_spawn_life(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_spawn_range_t tfx__resolve_spawn_weight(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_spawn_size_t tfx__resolve_spawn_size(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_spawn_spin_t tfx__resolve_spawn_spin(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_spawn_noise_t tfx__resolve_spawn_noise(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_spawn_emission_t tfx__resolve_spawn_emission(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfx_gpu_spawn_path tfx__gpu_spawn_path(const tfx_particle_emitter_properties_t *properties, tfx_emission_type emission_type, tfxSharedEmitterFlags shared_flags, bool can_spin_pitch_and_yaw);
+tfxAPI_EDITOR tfx_gpu_spawn_path tfx__get_emitter_gpu_spawn_path(tfx_effect_descriptor emitter);
+tfxINTERNAL bool tfx__gpu_spawn_supports(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL bool tfx__gpu_generates_spawns(tfx_stage pm, const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL void tfx__build_gpu_spawn_block(tfx_stage pm, const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter, tfx_gpu_spawn_block_t *block);
+tfxINTERNAL bool tfx__build_gpu_spawn_run(const tfx_spawn_work_entry_t *entry, const tfx_user_spawn_run_t &spawn_run, tfxU32 first_spawn, tfx_gpu_spawn_run_t *run, tfx_gpu_spawn_multipliers_t *multipliers);
+tfxAPI_EDITOR void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_spawn_run_t *run, const tfx_gpu_spawn_multipliers_t *multipliers, tfxU32 spawn_index, tfx_gpu_particle_spawn_t *spawn, float *image_frame);
+tfxINTERNAL void tfx__spawn_particle_generated(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__call_spawn_callback(tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_motion_randomness(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data);

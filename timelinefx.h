@@ -683,8 +683,16 @@ typedef struct tfx_gpu_particle_tick_s {	//64 bytes
 	float acceleration_scale_variation;
 	tfxU32 force_offset;					//Row of this tick's first force in the same array as the ticks, see tfx_gpu_particle_frame_t force_rows
 	tfxU32 force_count;						//Rows, so a fluctuating vortex counts twice
-	tfxU32 padding[2];
+	tfxU32 flags;							//tfxGPUParticleTickFlags
+	tfxU32 padding;
 } tfx_gpu_particle_tick_t;
+
+typedef enum {
+	tfxGPUParticleTickFlags_none = 0,
+	tfxGPUParticleTickFlags_generated = 1 << 0,							//upload_offset is the row of this tick's tfx_gpu_spawn_block_t in the same array as the ticks, not spawn rows
+} tfx_gpu_particle_tick_flag_bits;
+
+typedef tfxU32 tfxGPUParticleTickFlags;			//tfx_gpu_particle_tick_flag_bits
 
 //tfx_gpu_particle_force_t type_flags & tfxGPU_FORCE_TYPE_MASK
 typedef enum {
@@ -792,7 +800,8 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	tfx_float32x3_t handle;					//Added to a relative position before the emitter rotation
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
-	tfxU32 padding[3];
+	tfxU32 key;								//The host's key for choosing a kernel, see tfx_SetTemplateEmitterGPUKey and tfx_SetEffectGPUKey
+	tfxU32 padding[2];
 } tfx_gpu_particle_dispatch_t;
 
 //A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
@@ -803,10 +812,122 @@ typedef struct tfx_gpu_spawn_location_s {	//32 bytes
 	tfxU32 padding[2];
 } tfx_gpu_spawn_location_t;
 
+typedef enum {
+	tfxGPUSpawnBlockFlags_none = 0,
+	tfxGPUSpawnBlockFlags_relative = 1 << 0,							//Positions stay local to the spawn location, which the particle follows
+	tfxGPUSpawnBlockFlags_random_color = 1 << 1,
+	tfxGPUSpawnBlockFlags_random_start_frame = 1 << 2,
+	tfxGPUSpawnBlockFlags_base_uniform_size = 1 << 3,					//One size draw for both width and height
+	tfxGPUSpawnBlockFlags_spin_pitch_and_yaw = 1 << 4,					//rotation_offsets holds packed pitch, yaw and roll, otherwise the roll as a float
+	tfxGPUSpawnBlockFlags_specify_pitch = 1 << 5,						//The angle offset is used as is rather than as the top of a random range
+	tfxGPUSpawnBlockFlags_specify_yaw = 1 << 6,
+	tfxGPUSpawnBlockFlags_specify_roll = 1 << 7,
+	tfxGPUSpawnBlockFlags_relative_angle = 1 << 8,						//A rotated location's rotation is baked into the angle offsets of non relative particles
+	tfxGPUSpawnBlockFlags_emission_cone = 1 << 9,
+	tfxGPUSpawnBlockFlags_noise_offsets = 1 << 10,						//A field noise algorithm reads a random offset per particle
+	tfxGPUSpawnBlockFlags_noise_resolution = 1 << 11,					//Any noise, motion randomness included
+	tfxGPUSpawnBlockFlags_user = 1 << 12,								//A User emitter, whose spawns go through the host's ITfxParticleSpawn
+	tfxGPUSpawnBlockFlags_fill_area = 1 << 13,
+	tfxGPUSpawnBlockFlags_open_ends = 1 << 14,							//A hollow area without its two end faces
+	tfxGPUSpawnBlockFlags_uniform_distribution = 1 << 15,				//Ellipse and disc spawns follow a low discrepancy sequence
+	tfxGPUSpawnBlockFlags_shape = 1 << 16,								//Spawns in a shape rather than at a point, so the block's last row is read
+} tfx_gpu_spawn_block_flag_bits;
+
+typedef tfxU32 tfxGPUSpawnBlockFlags;          //tfx_gpu_spawn_block_flag_bits
+
+//The values a ring's generated spawns share on one tick, sampled once from the emitter's graphs. Spawn index i of the tick has uid
+//tfx__seedgen_u32(uid_base + i) and draws every random value from that uid
+typedef struct tfx_gpu_spawn_block_s {		//256 bytes
+	tfxU32 uid_base;
+	tfxU32 flags;							//tfxGPUSpawnBlockFlags
+	tfxU32 run_row;							//The first tfx_gpu_spawn_run_t, in rows after this block's first row
+	tfxU32 run_count;
+	tfx_float32x3_t emission_direction;		//Before the cone, with the emitter rotation baked in for non relative particles
+	float emission_cone_cosine;				//Cosine of half the emission range
+	tfx_float32x3_t handle;					//The handle turned by the emitter, added to non relative positions
+	float splatter;
+	tfx_float32x3_t noise_step_offset;
+	float noise_resolution;
+	tfx_float32x3_t angle_offsets;			//Pitch, yaw, roll
+	float animation_frames;
+	tfx_float32x2_t size;
+	tfx_float32x2_t size_variation;
+	float frame_length;						//Milliseconds
+	float inverse_frame_length;
+	float overall_scale;
+	float velocity;
+	float life;
+	float life_variation;
+	float weight;
+	float weight_variation;
+	float roll_spin;
+	float pitch_spin;
+	float yaw_spin;
+	float roll_spin_variation;
+	float pitch_spin_variation;
+	float yaw_spin_variation;
+	float spawn_impulse;
+	float spawn_impulse_variation;
+	float noise_offset_variation;
+	float noise_shared_offset;
+	float start_frame;
+	float arc_size;							//Disc and cylinder: the sweep around the y axis. Ellipse: the cosine of the bottom of its polar band
+	float arc_offset;						//Where the sweep starts. Ellipse: the cosine of the top of its polar band
+	tfxU32 spawn_ordinal;					//Particles the emitter spawned before this tick, which Both Ways alternates on
+	tfxU32 padding[2];
+	//Shapes, unused by Point and User
+	tfx_float32x3_t emitter_size;
+	tfxU32 shape;							//tfx_emission_type
+	tfx_float32x4_t shape_rotation;			//x, y, z, w: the emitter's rotation, which turns non relative shape offsets
+	tfx_float32x4_t emission_rotation;		//x, y, z, w: turns a shape's local emission direction by the pitch and yaw, then the emitter for non relative particles
+	tfx_float32x3_t local_handle;			//The emitter's handle before its rotation
+	tfxU32 emission_direction_mode;			//tfx_emission_direction
+} tfx_gpu_spawn_block_t;
+
+typedef enum {
+	tfxGPUSpawnRunFlags_none = 0,
+	tfxGPUSpawnRunFlags_rotated = 1 << 0,								//The location has a rotation
+	tfxGPUSpawnRunFlags_scale_life = 1 << 1,							//Its life multiplier isn't 1
+} tfx_gpu_spawn_run_flag_bits;
+
+typedef tfxU32 tfxGPUSpawnRunFlags;            //tfx_gpu_spawn_run_flag_bits
+
+//One spawn location's share of a ring's generated spawns on one tick: spawn indexes [first_spawn, first_spawn + count)
+typedef struct tfx_gpu_spawn_run_s {		//64 bytes
+	tfxU32 local_id;						//slot | generation, which relative particles follow
+	tfxU32 first_spawn;
+	tfxU32 count;
+	tfxU32 multipliers_row;					//The location's tfx_gpu_spawn_multipliers_t in rows after the block's first row, tfxINVALID when it has none
+	tfx_float32x3_t position;
+	tfxU32 flags;							//tfxGPUSpawnRunFlags
+	tfx_float32x3_t captured_position;		//Where the location was at the start of the tick, spawns tween from it to position
+	float location_roll;					//The location's turn about the roll axis, for relative angle particles that only roll
+	tfxU64 packed_rotation;					//16 bit snorm quaternion, as tfx_gpu_spawn_location_t packs it
+	tfxU32 user_data;						//tfx_SetSpawnLocationUserData
+	tfxU32 padding;
+} tfx_gpu_spawn_run_t;
+
+//A spawn location's multipliers as its generated spawns apply them
+typedef struct tfx_gpu_spawn_multipliers_s {	//64 bytes
+	float particle_width;
+	float particle_height;					//The width again when the effect has a uniform particle size
+	float velocity;
+	float inverse_life;
+	float spin;
+	float intensity;
+	float splatter;
+	float weight;
+	float noise_offset;						//Added rather than multiplied
+	float emitter_width;
+	float emitter_height;
+	float emitter_depth;
+	tfxU32 padding[4];
+} tfx_gpu_spawn_multipliers_t;
+
 //Everything the stage simulated on the GPU since the last tfx_GetGPUParticleFrame
 typedef struct tfx_gpu_particle_frame_s {
 	const tfx_gpu_particle_dispatch_t *dispatches;
-	const tfx_gpu_particle_tick_t *ticks;	//tick_count tick records then force_row_count force rows: upload all of them as one array
+	const tfx_gpu_particle_tick_t *ticks;	//tick_count tick records then force_row_count rows of forces and generated spawn blocks: upload all of them as one array
 	const tfx_gpu_particle_force_t *force_rows;		//ticks + tick_count, for a host that uploads the rows separately
 	const tfx_gpu_particle_spawn_t *spawns;
 	const tfx_gpu_spawn_location_t *spawn_locations;
@@ -979,6 +1100,21 @@ typedef void(*tfx_shape_loader)(const char *filename, tfx_image_data_t *image_da
 typedef void(*tfx_shape_remover)(tfx_image_data_t *image_data, void *user_data);
 typedef void(*tfx_uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_float32x3_t position, float radius, void *user_data);
+
+//One location's share, or part of it, of the particles a User emitter spawned this tick, see tfx_SetStageSpawnCallback
+typedef struct tfx_spawn_callback_info_s {
+	tfxEffectID effect;
+	tfx_effect_descriptor emitter;
+	tfxSpawnLocationID location;			//tfxINVALID_SPAWN_LOCATION when the effect doesn't spawn at user locations
+	const tfxU32 *uids;						//One per particle, a stable seed for deterministic draws
+	tfxU32 user_data;						//tfx_SetSpawnLocationUserData, 0 without a location
+	tfxU32 index_in_run;					//Where the first of these particles is among the location's spawns this tick
+	tfxU32 run_count;						//Particles the location spawned this tick
+	tfxU32 count;
+	bool relative;							//Positions are local to the location rather than world space
+} tfx_spawn_callback_info_t;
+
+typedef void(*tfx_spawn_callback)(const tfx_spawn_callback_info_t *info, float *position_x, float *position_y, float *position_z, void *user_data);
 
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
@@ -1707,6 +1843,23 @@ Get the sort key of an effect, see tfx_SetEffectSortKey.
 tfxAPI tfxU32 tfx_GetEffectSortKey(tfx_stage pm, tfxEffectID effect_index);
 
 /*
+Give every Run on GPU emitter of one effect the same dispatch key, overriding the keys from tfx_SetTemplateEmitterGPUKey. It takes effect on the
+next tfx_GetGPUParticleFrame and can be changed at any time.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @param key                      The key every dispatch of the effect carries, or tfxINVALID to go back to each emitter's template key
+*/
+tfxAPI void tfx_SetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 key);
+
+/*
+Get the dispatch key set with tfx_SetEffectGPUKey, tfxINVALID when the effect uses its emitters' template keys.
+* @param pm                       A pointer to an intialised tfx_stage_t.
+* @param effect_index             The id of the effect, returned when you added it to the stage
+* @returns tfxU32                 The effect's GPU key
+*/
+tfxAPI tfxU32 tfx_GetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index);
+
+/*
 Get the billboard buffer in the effect manager containing all the sprite instances that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
@@ -1981,8 +2134,11 @@ tfxAPI size_t tfx_GetTotalEmitterBufferMaxSizeInBytes(void);
 --------------------------------
 GPU particle simulation
 --------------------------------
-Emitters with Run on GPU set spawn on the CPU and are simulated by a compute shader you dispatch, which writes their
-instances into the same instance buffer as the CPU particles. Set tfx_stage_info_t gpu_particle_capacity to turn it on
+Emitters with Run on GPU set are simulated by a compute shader you dispatch, which writes their instances into the
+same instance buffer as the CPU particles. Point, User, Area, Ellipse, Disc, Cylinder and Line emitters have their
+spawns built in the kernel too, from a few rows per tick and location, so a burst of any size costs the CPU next to
+nothing. Icosphere, Path, Other Emitter and Spawn on Ribbon emitters, grid spawning and stepped angles spawn on the CPU
+and upload a row per particle. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
 tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. Every emitter force
 runs in the kernel: the library resolves each emitter's forces every tick into force rows that follow the tick records,
@@ -1997,10 +2153,16 @@ entry point in your own Slang module:
      transform with context.ring_transform(cold) and use to_world/to_ring, and direction_to_world/direction_to_ring
      for velocities, forces and normals. Set tfx_particle_remove in hot.flags to kill a particle. It keeps its slot,
      drawn with no size, until its batch expires, and neither method runs for it again.
+     To place the particles of User emitters yourself, also declare a struct that implements ITfxParticleSpawn.
+     after_spawn gets each particle the kernel builds as a Point at its location, to change as you like, usually its
+     position. context.user_data is the location's tfx_SetSpawnLocationUserData. Positions are world space, or local to
+     the location when context.relative. Spawns the CPU makes (warmup, no pool, the fallbacks below) go through
+     tfx_SetStageSpawnCallback instead, so register one too for the same look everywhere.
   2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
      It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64.
   3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
-     tfx_simulate<YourUpdate>(thread_id.x, your_push.tfx, update).
+     tfx_simulate(thread_id.x, your_push.tfx, update), or tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook)
+     with a spawn hook. tfx_no_particle_update stands in when you only have a spawn hook.
   4. Dispatch it exactly like simulate_particles. Send your whole push block once, then only the first 4 bytes,
      dispatch_index, per dispatch.
 Your update only runs on the GPU: Run on GPU emitters that fall back to the CPU, for any of the reasons above,
@@ -2436,6 +2598,17 @@ Set the effect manager camera. This is used to calculate particle depth if you'r
 tfxAPI void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]);
 
 /*
+Set the function that places the particles of User emitters, which spawn like a Point and leave the positions to you, whenever the CPU spawns
+them: CPU emitters, and GPU emitters during warmup, on a stage without a GPU pool or when the GPU can't generate their spawns. Change the
+positions in place. Called from worker threads during tfx_UpdateStage, once per location share of a tick's spawns, or twice when the share wraps
+the particle buffer. Only read data that stays put until the update completes, and never call the stage api.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param callback          The function to call, or NULL to stop calling one
+* @param user_data         Passed to every call
+*/
+tfxAPI void tfx_SetStageSpawnCallback(tfx_stage pm, tfx_spawn_callback callback, void *user_data);
+
+/*
 Each effect in the effect manager can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
 extra overhead to keep the bounding boxes updated but that can be made back if you have a number of effect particles offscreen that don't need to be drawn.
 * @param pm					A pointer to a tfx_stage_t where the effect is being managed
@@ -2665,6 +2838,14 @@ otherwise share the effect's noise offset, so giving each its own stops them all
 * @param noise_offset      The offset to add for particles spawned from now on
 */
 tfxAPI void tfx_SetSpawnLocationNoiseOffset(tfx_stage pm, tfxSpawnLocationID location_id, float noise_offset);
+
+/*
+Give a spawn location a value of your own for the spawn hooks of User emitters, such as an index into your mesh, bone or trail data. 0 by default.
+* @param pm                A pointer to a tfx_stage_t where the effect is being managed
+* @param location_id       The id returned by tfx_AddSpawnLocation
+* @param user_data         The value to pass
+*/
+tfxAPI void tfx_SetSpawnLocationUserData(tfx_stage pm, tfxSpawnLocationID location_id, tfxU32 user_data);
 
 /*
 Stop a spawn location spawning without removing it. The location still exists and can still be moved, and relative particles already
@@ -3503,6 +3684,16 @@ make room for many spawn locations or a large spawn multiplier. Only affects eff
 * @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity.
 */
 tfxAPI void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char *emitter_path, tfxU32 capacity);
+
+/*
+Give a Run on GPU emitter a key that its dispatches carry in tfx_gpu_particle_dispatch_t key, so a host can choose which kernel runs them,
+for example to give one emitter a custom update or spawn hook and leave the rest on the reference kernel. The library never reads it.
+Two templates made from the same effect can key the same emitter differently. tfx_SetEffectGPUKey overrides it for one effect.
+Only affects effects added after the call.
+* @param emitter_path			 const *char of the emitter path
+* @param key					 Any value the host chooses, 0 by default.
+*/
+tfxAPI void tfx_SetTemplateEmitterGPUKey(tfx_effect_template t, const char *emitter_path, tfxU32 key);
 
 /*
 Scale all nodes on an emitter graph

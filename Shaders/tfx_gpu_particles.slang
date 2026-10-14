@@ -1,10 +1,13 @@
 //The reference GPU particle kernel. One dispatch per tfx_gpu_particle_dispatch_t from tfx_GetGPUParticleFrame, one thread per ring
 //slot. Each thread runs every tick record of the fetch in registers, mirroring the CPU's control, instance and age passes in their
 //order, and writes its instance on the last tick. Ring positions count from the tick's head, so a slot that is bumped and reused
-//within one fetch just ingests its new occupant at the tick it was spawned.
+//within one fetch just ingests its new occupant at the tick it was spawned: from a spawn row, or generated from the tick's spawn block
+//when the tick is flagged generated (tfx_gpu_spawn.slang).
 
 import tfx_graphs;
 import tfx_noise;
+//Exported so a host's ITfxParticleSpawn sees tfx_generated_spawn and the hash draws
+__exported import tfx_gpu_spawn;
 
 static const uint tfx_group_size = 256;
 
@@ -56,6 +59,9 @@ static const uint tfx_noise_value = 3;
 
 //tfx_gpu_particle_flag_bits
 static const uint tfx_particle_remove = 1 << 0;
+
+//tfx_gpu_particle_tick_flag_bits
+static const uint tfx_tick_generated = 1 << 0;
 
 //tfx_gpu_particle_force_type in type_flags & tfx_force_type_mask, tfx_gpu_particle_force_flag_bits above it
 static const uint tfx_force_type_mask = 0xFF;
@@ -133,8 +139,8 @@ struct tfx_gpu_particle_tick {
 	float acceleration_scale_variation;
 	uint force_offset;					//Row of the first force row in the same buffer
 	uint force_count;
-	uint padding_0;
-	uint padding_1;
+	uint flags;							//tfxGPUParticleTickFlags
+	uint padding;
 };
 
 //Mirrors tfx_gpu_particle_dispatch_t
@@ -163,7 +169,7 @@ struct tfx_gpu_particle_dispatch {
 	float3 handle;
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
-	uint padding_0;
+	uint key;							//The host's tfx_SetTemplateEmitterGPUKey / tfx_SetEffectGPUKey, which the library never reads
 	uint padding_1;
 	uint padding_2;
 };
@@ -246,12 +252,13 @@ struct tfx_gpu_particle_push {
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[];
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[];
-
-//tfx__wide_unpack10bit: x in the top 10 bits, z in the bottom
-float3 tfx_unpack10bit(uint packed) {
-	const float one_div_511 = 1.0 / 511.0;
-	return float3(float((packed >> 20) & 0x3FFu), float((packed >> 10) & 0x3FFu), float(packed & 0x3FFu)) * one_div_511 - 1.0;
-}
+//A generated tick's spawn block, runs and multipliers, 64 byte rows of the same buffer as tick_buffers
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[];
 
 //The pack helpers truncate like _mm_cvttps_epi32, and mask the two's complement bits as the CPU does
 uint tfx_pack16bit_2sscaled(float x, float y, float max_value) {
@@ -272,28 +279,6 @@ uint2 tfx_pack16bit_quaternion(float4 q) {
 	const uint z = uint(int(q.z * 32767.0)) & 0xFFFFu;
 	const uint w = uint(int(q.w * 32767.0)) & 0xFFFFu;
 	return uint2(x | (y << 16), z | (w << 16));
-}
-
-//tfx__wide_unpack16bit: each lane sign extended, x and y from .x, z and w from .y
-float4 tfx_unpack16bit_quaternion(uint2 packed) {
-	const int4 values = int4(int(packed.x << 16) >> 16, int(packed.x) >> 16, int(packed.y << 16) >> 16, int(packed.y) >> 16);
-	return float4(values) * (1.0 / 32767.0);
-}
-
-//Port of tfx__white_unit: the signed reinterpret is what centres it on 0
-float tfx_white_unit(uint seed, uint axis) {
-	uint hash = seed ^ axis;
-	hash ^= hash >> 15;
-	hash *= 0x85ebca6bu;
-	hash ^= hash >> 13;
-	hash *= 0xc2b2ae35u;
-	hash ^= hash >> 16;
-	return (float(int(hash)) / 4294967295.0) * 2.0;
-}
-
-//The CPU's rotate by quaternion, tfx__wide_transform_quaternion_vec3
-float3 tfx_rotate_vector(float3 v, float4 q) {
-	return v + 2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
 }
 
 //The euler order of tfx__block_particle_spin, xyzw
@@ -615,6 +600,31 @@ struct tfx_no_particle_update : ITfxParticleUpdate {
 	}
 };
 
+//What a spawn hook sees of the particle's ring, tick and spawn location
+struct tfx_spawn_context {
+	tfx_gpu_particle_push push;
+	tfx_gpu_particle_dispatch dispatch;	//key and property_index tell a host's User emitters apart
+	tfx_gpu_particle_tick tick;
+	uint location_id;					//slot | generation, the low 32 bits of the tfxSpawnLocationID
+	uint user_data;						//tfx_SetSpawnLocationUserData
+	uint index_in_run;					//Where the particle is among the location's spawns this tick
+	uint run_count;
+	bool relative;						//Positions are local to the location rather than world space
+};
+
+//Places the particles of User emitters the kernel generates, the GPU side of tfx_SetStageSpawnCallback. Spawns the CPU made arrive as
+//rows already placed by the callback, so this never sees them
+interface ITfxParticleSpawn {
+	//After the library has generated the particle as a Point at the location. tfx_hash_unit(spawn.uid, axis) gives deterministic draws on
+	//the host's own axes. A spawn impulse has already launched velocity along velocity_normal, so change the two together
+	void after_spawn(inout tfx_generated_spawn spawn, tfx_spawn_context context);
+}
+
+struct tfx_no_particle_spawn : ITfxParticleSpawn {
+	void after_spawn(inout tfx_generated_spawn spawn, tfx_spawn_context context) {
+	}
+};
+
 //tfx_apply_lookup_velocity, tfx_apply_lookup_weight, tfx_apply_forces, tfx_apply_velocity and tfx_apply_position
 void tfx_control_particle<TUpdate : ITfxParticleUpdate>(tfx_particle_context context, inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_graph_data velocity_graph, tfx_gpu_graph_data weight_graph, bool drag_variation, TUpdate update) {
 	const tfx_gpu_particle_push push = context.push;
@@ -793,13 +803,81 @@ void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_di
 	instance_buffers[push.instance_buffer_index][instance_index] = instance;
 }
 
+//A spawn the kernel builds from its tick's block rather than loading a row, see tfx__record_gpu_groups
+void tfx_generate_particle<TSpawn : ITfxParticleSpawn>(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, uint spawn_index, TSpawn spawn_hook, out tfx_gpu_particle_hot hot, out tfx_gpu_particle_cold cold, out tfx_gpu_particle_noise noise) {
+	const uint buffer_index = push.tick_buffer_index;
+	const uint block_row = push.tick_base + tick.upload_offset;
+	const tfx_gpu_spawn_block_a block_a = spawn_block_a_buffers[buffer_index][block_row];
+	const tfx_gpu_spawn_block_b block_b = spawn_block_b_buffers[buffer_index][block_row + 1];
+	const tfx_gpu_spawn_block_c block_c = spawn_block_c_buffers[buffer_index][block_row + 2];
+	tfx_gpu_spawn_block_d block_d = {};
+	if ((block_a.flags & tfx_spawn_shape) != 0) {
+		block_d = spawn_block_d_buffers[buffer_index][block_row + 3];
+	}
+	//The last run starting at or before the spawn. Neighbouring threads are in the same run, so the search stays coherent
+	const uint first_run = block_row + block_a.run_row;
+	uint low = 0;
+	uint high = block_a.run_count - 1;
+	while (low < high) {
+		const uint middle = (low + high + 1) >> 1;
+		if (spawn_run_buffers[buffer_index][first_run + middle].first_spawn <= spawn_index) {
+			low = middle;
+		} else {
+			high = middle - 1;
+		}
+	}
+	const tfx_gpu_spawn_run run = spawn_run_buffers[buffer_index][first_run + low];
+	const bool has_multipliers = run.multipliers_row != 0xFFFFFFFFu;
+	tfx_gpu_spawn_multipliers multipliers = {};
+	if (has_multipliers) {
+		multipliers = spawn_multipliers_buffers[buffer_index][block_row + run.multipliers_row];
+	}
+	tfx_generated_spawn spawn = tfx_generate_spawn(block_a, block_b, block_c, block_d, run, multipliers, has_multipliers, spawn_index);
+	if ((block_a.flags & tfx_spawn_user) != 0) {
+		tfx_spawn_context context;
+		context.push = push;
+		context.dispatch = dispatch;
+		context.tick = tick;
+		context.location_id = run.local_id;
+		context.user_data = run.user_data;
+		context.index_in_run = spawn_index - run.first_spawn;
+		context.run_count = run.count;
+		context.relative = (block_a.flags & tfx_spawn_relative) != 0;
+		spawn_hook.after_spawn(spawn, context);
+	}
+	hot.position = spawn.position;
+	hot.flags = 0;
+	hot.velocity = spawn.velocity;
+	hot.age = spawn.age;
+	cold.uid = spawn.uid;
+	cold.inv_max_age = spawn.inv_max_age;
+	cold.velocity_normal = spawn.velocity_normal;
+	cold.base_velocity = spawn.base_velocity;
+	cold.base_weight = spawn.base_weight;
+	cold.base_size_x = spawn.base_size.x;
+	cold.base_size_y = spawn.base_size.y;
+	cold.intensity_factor = spawn.intensity_factor;
+	cold.random_color = spawn.random_color;
+	cold.rotation_offsets = spawn.rotation_offsets;
+	cold.base_roll_spin = spawn.base_roll_spin;
+	cold.base_pitch_spin = spawn.base_pitch_spin;
+	cold.base_yaw_spin = spawn.base_yaw_spin;
+	//The frame at age 0, as tfx__pack_gpu_group sets it from the bank
+	const float image_frame_rate_per_millisecond = dispatch.image_frame_rate * 0.001;
+	cold.image_start_frame = spawn.image_frame - image_frame_rate_per_millisecond * spawn.age;
+	cold.spawn_location = spawn.spawn_location;
+	cold.padding = 0;
+	noise.offset = spawn.noise_offset;
+	noise.resolution = spawn.noise_resolution;
+}
+
 //position % capacity for a position below 2 * capacity, which every ring index sum here is, without an integer divide
 uint tfx_wrap_ring(uint position, uint capacity) {
 	return position >= capacity ? position - capacity : position;
 }
 
 //The kernel for one ring, push.dispatch_index, with a thread per slot. Dispatch in groups of tfx_group_size
-void tfx_simulate<TUpdate : ITfxParticleUpdate>(uint thread_index, tfx_gpu_particle_push push, TUpdate update) {
+void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint thread_index, tfx_gpu_particle_push push, TUpdate update, TSpawn spawn_hook) {
 	const tfx_gpu_particle_dispatch dispatch = dispatch_buffers[push.dispatch_buffer_index][push.dispatch_index];
 	if (thread_index >= dispatch.slot_count) {
 		return;
@@ -829,11 +907,15 @@ void tfx_simulate<TUpdate : ITfxParticleUpdate>(uint thread_index, tfx_gpu_parti
 		//Older particles only ever move towards the head, so the slots past count - spawn_count can only hold this tick's spawns
 		const uint first_spawn = tick.count - tick.spawn_count;
 		if (ring_position >= first_spawn) {
-			const uint row = push.spawn_base + tick.upload_offset + ring_position - first_spawn;
-			hot = spawn_buffers[push.spawn_buffer_index][row].hot;
-			cold = spawn_buffers[push.spawn_buffer_index][row].cold;
-			if (has_noise) {
-				noise = spawn_buffers[push.spawn_buffer_index][row].noise;
+			if ((tick.flags & tfx_tick_generated) != 0) {
+				tfx_generate_particle(push, dispatch, tick, ring_position - first_spawn, spawn_hook, hot, cold, noise);
+			} else {
+				const uint row = push.spawn_base + tick.upload_offset + ring_position - first_spawn;
+				hot = spawn_buffers[push.spawn_buffer_index][row].hot;
+				cold = spawn_buffers[push.spawn_buffer_index][row].cold;
+				if (has_noise) {
+					noise = spawn_buffers[push.spawn_buffer_index][row].noise;
+				}
 			}
 			ingested = true;
 			dead = false;
@@ -886,6 +968,11 @@ void tfx_simulate<TUpdate : ITfxParticleUpdate>(uint thread_index, tfx_gpu_parti
 			}
 		}
 	}
+}
+
+//For a host with an update but no spawn hook
+void tfx_simulate<TUpdate : ITfxParticleUpdate>(uint thread_index, tfx_gpu_particle_push push, TUpdate update) {
+	tfx_simulate(thread_index, push, update, tfx_no_particle_spawn());
 }
 
 //Only the library's entry point reads these, so a host's entry point can declare its own push constants
