@@ -5515,6 +5515,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("spawn_impulse", tfxFloat);
 	names_and_types.Insert("spawn_impulse_variation", tfxFloat);
 	names_and_types.Insert("spawn_rate_over_distance", tfxFloat);
+	names_and_types.Insert("spawn_distance_spacing", tfxFloat);
+	names_and_types.Insert("spawn_distance_max_rate", tfxFloat);
 	names_and_types.Insert("emission_distribution", tfxSInt);
 	names_and_types.Insert("emission_divisions", tfxUInt);
 	names_and_types.Insert("emission_jitter", tfxFloat);
@@ -6671,7 +6673,8 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 		if (tfx__property_is(property_name, "noise_speed_bias")) return tfx__property_float(out_value, emitter_properties->noise_speed_bias);
 		if (tfx__property_is(property_name, "spawn_impulse")) return tfx__property_float(out_value, emitter_properties->spawn_impulse);
 		if (tfx__property_is(property_name, "spawn_impulse_variation")) return tfx__property_float(out_value, emitter_properties->spawn_impulse_variation);
-		if (tfx__property_is(property_name, "spawn_rate_over_distance")) return tfx__property_float(out_value, emitter_properties->spawn_rate_over_distance);
+		if (tfx__property_is(property_name, "spawn_distance_spacing")) return tfx__property_float(out_value, emitter_properties->spawn_distance_spacing);
+		if (tfx__property_is(property_name, "spawn_distance_max_rate")) return tfx__property_float(out_value, emitter_properties->spawn_distance_max_rate);
 		if (tfx__property_is(property_name, "drag_variation")) return tfx__property_float(out_value, emitter_properties->drag_variation);
 		if (tfx__property_is(property_name, "emission_jitter")) return tfx__property_float(out_value, emitter_properties->emission_steps.jitter);
 		if (tfx__property_is(property_name, "roll_jitter")) return tfx__property_float(out_value, emitter_properties->roll_steps.jitter);
@@ -7087,7 +7090,13 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "noise_speed_bias") emitter_properties->noise_speed_bias = value < -1.f ? -1.f : (value > 1.f ? 1.f : value);
 		else if (*field == "spawn_impulse") emitter_properties->spawn_impulse = value;
 		else if (*field == "spawn_impulse_variation") emitter_properties->spawn_impulse_variation = value;
-		else if (*field == "spawn_rate_over_distance") emitter_properties->spawn_rate_over_distance = value < 0.f ? 0.f : value;
+		else if (*field == "spawn_rate_over_distance") {
+			//Older files: a rate per unit of distance with no limit
+			emitter_properties->spawn_distance_spacing = value > 0.f ? 1.f / value : 0.f;
+			emitter_properties->spawn_distance_max_rate = 0.f;
+		}
+		else if (*field == "spawn_distance_spacing") emitter_properties->spawn_distance_spacing = value < 0.f ? 0.f : value;
+		else if (*field == "spawn_distance_max_rate") emitter_properties->spawn_distance_max_rate = value < 0.f ? 0.f : value;
 		else if (*field == "drag_variation") emitter_properties->drag_variation = value;
 		else if (*field == "emission_jitter") emitter_properties->emission_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
 		else if (*field == "roll_jitter") emitter_properties->roll_steps.jitter = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
@@ -7257,7 +7266,8 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("noise_offset_variation=%f", shared_properties->noise_offset_variation);
 	file->AddLine("spawn_impulse=%f", emitter_properties->spawn_impulse);
 	file->AddLine("spawn_impulse_variation=%f", emitter_properties->spawn_impulse_variation);
-	file->AddLine("spawn_rate_over_distance=%f", emitter_properties->spawn_rate_over_distance);
+	file->AddLine("spawn_distance_spacing=%f", emitter_properties->spawn_distance_spacing);
+	file->AddLine("spawn_distance_max_rate=%f", emitter_properties->spawn_distance_max_rate);
 	file->AddLine("drag_variation=%f", emitter_properties->drag_variation);
 	file->AddLine("emission_distribution=%i", emitter_properties->emission_steps.distribution);
 	file->AddLine("emission_divisions=%u", emitter_properties->emission_steps.divisions);
@@ -13733,6 +13743,11 @@ void tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit != 1) {
 		shared_properties->single_shot_limit = 1;
 	}
+	//The ring is sized from the limit, so distance spawns can't go without one
+	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
+	if (emitter_properties->spawn_distance_max_rate <= 0.f) {
+		emitter_properties->spawn_distance_max_rate = tfxDEFAULT_SPAWN_DISTANCE_MAX_RATE;
+	}
 	//One instance serving many locations keeps the number of rings and dispatches down, and leaves the kernel one transform model
 	if (emitter->parent && emitter->parent->type == tfxEffectType) {
 		emitter->parent->effect_flags |= tfxEffectPropertyFlags_user_spawn_locations;
@@ -18018,7 +18033,9 @@ typedef struct tfx_user_spawn_amount_source_s {
 	float frame_length;
 	float delay;
 	float loop_length;
-	float distance_rate;							//Spawn rate over distance divided by the update time, so it adds to the per second weight
+	float distance_rate;							//Particles per unit of distance over the update time, so it adds to the per second weight
+	float distance_max_rate;						//Per second, 0 for no limit
+	float inverse_spawn_ratio_scale;				//Undoes the spawn ratio tfx__new_sprites_needed applies to the whole amount, so distance spawns keep their spacing
 	tfx_vec3_t spawn_ratio_axes;					//1 on each axis the emitter sizes its amount by, else 0, so a resized location keeps the same density
 	bool single;
 } tfx_user_spawn_amount_source_t;
@@ -18027,11 +18044,32 @@ tfxINTERNAL bool tfx__has_single_decay(const tfx_shared_properties_t *shared_pro
 	return shared_properties->single_decay_amount > 0 && shared_properties->single_decay_time > 0.f;
 }
 
-tfxINTERNAL float tfx__spawn_rate_over_distance(const tfx_particle_emitter_state_t &emitter, const tfx_particle_emitter_properties_t *properties, const tfx_shared_properties_t *shared_properties) {
-	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single || shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) {
+//Particles per unit of distance, 0 when the emitter doesn't spawn over distance
+tfxINTERNAL float tfx__spawn_distance_density(const tfx_particle_emitter_state_t &emitter, const tfx_particle_emitter_properties_t *properties, const tfx_shared_properties_t *shared_properties) {
+	if (properties->spawn_distance_spacing <= 0.f || emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single || shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) {
 		return 0.f;
 	}
-	return properties->spawn_rate_over_distance;
+	return 1.f / properties->spawn_distance_spacing;
+}
+
+//The amount multiplier the spawn ratio gives an emitter of this size. Distance spawns never take it, so their spacing holds
+tfxINTERNAL float tfx__spawn_ratio_scale(const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
+	if (!(emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio)) {
+		return 1.f;
+	}
+	switch (emission_type) {
+	case tfxArea:
+	case tfxEllipse:
+		return tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.y) * tfxMax(0.1f, emitter.emitter_size.z) / 50.f;
+	case tfxDisc:
+		//Height is not part of a disc, so only the two axes it spans scale the amount
+		return tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.z) / 50.f;
+	case tfxLine:
+		return emitter.emitter_size.y / 100.f;
+	default:
+		break;
+	}
+	return 1.f;
 }
 
 //Differencing the floored running totals keeps the tail's total exact at any update rate without carrying a remainder
@@ -18090,16 +18128,18 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 			weight = tfx__sample_multi_node_graph(source->base_amount, age, oscillator_time);
 			float amount_variation = tfx__sample_multi_node_graph(source->variation_amount, age, oscillator_time);
 			weight += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
-			if (source->distance_rate > 0.f) {
-				tfx_vec3_t travelled = location.position - location.captured_position;
-				weight += tfx__length_vec3(&travelled) * source->distance_rate;
-			}
 			if (location.flags & tfxUserSpawnLocationFlags_has_shape_scale) {
 				//Axes the amount doesn't scale by are lifted to 1 so they drop out of the product
 				tfx_vec3_t shape_scale = tfx__user_spawn_shape_scale(&user_location_list->tweaks[slot].multipliers);
 				tfx_vec3_t unscaled_axes = tfx_vec3_t(1.f, 1.f, 1.f) - source->spawn_ratio_axes;
 				tfx_vec3_t ratio = shape_scale * source->spawn_ratio_axes + unscaled_axes;
 				weight *= ratio.x * ratio.y * ratio.z;
+			}
+			if (source->distance_rate > 0.f) {
+				tfx_vec3_t travelled = location.position - location.captured_position;
+				float distance_weight = tfx__length_vec3(&travelled) * source->distance_rate;
+				distance_weight = source->distance_max_rate > 0.f ? tfx__Min(distance_weight, source->distance_max_rate) : distance_weight;
+				weight += distance_weight * source->inverse_spawn_ratio_scale;
 			}
 			weight *= global_amount;
 		}
@@ -18516,7 +18556,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		pm->emitters_check_capture.push_back(emitter_index);
 	}
 
-	//Transformed before the spawn count so spawn rate over distance can measure this update's travel
+	//Transformed before the spawn count so spawn distance spacing can measure this update's travel
 	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
 		if (tfx__solve_camera_facing_rotations(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotations)) {
 			emitter.state_flags &= ~tfxEmitterStateFlags_orient_to_camera_pending;
@@ -18642,8 +18682,13 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	source.loop_length = emitter.source_emitter->state_properties.loop_length;
 	//captured_position only moves once per tfx_UpdateStage, so each sub step takes its share of the move and warmup ticks none of it
 	const bool counts_distance = pm->update_time > 0.0 && !(pm->flags & tfxStageFlags_warming_up);
-	source.distance_rate = counts_distance ? tfx__spawn_rate_over_distance(emitter, entry->properties, entry->shared_properties) / ((float)pm->update_time * (float)tfx__Max(pm->manager_work.step_count, (tfxU32)1)) : 0.f;
+	source.distance_rate = counts_distance ? tfx__spawn_distance_density(emitter, entry->properties, entry->shared_properties) / ((float)pm->update_time * (float)tfx__Max(pm->manager_work.step_count, (tfxU32)1)) : 0.f;
+	source.distance_max_rate = entry->properties->spawn_distance_max_rate;
 	source.single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	if (source.distance_rate > 0.f) {
+		const float spawn_ratio_scale = tfx__spawn_ratio_scale(emitter, entry->shared_properties->emission_type);
+		source.inverse_spawn_ratio_scale = spawn_ratio_scale > 0.f ? 1.f / spawn_ratio_scale : 0.f;
+	}
 	//Matches the area scaling tfx__new_sprites_needed applies to the whole amount
 	if (!source.single && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
 		tfx_emission_type emission_type = entry->shared_properties->emission_type;
@@ -18950,10 +18995,13 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 
 	//An amount for this update rather than per second. User spawn locations add theirs to each location's weight instead
 	double distance_amount = 0.0;
-	const float rate_over_distance = tfx__spawn_rate_over_distance(emitter, entry->properties, shared_properties);
-	if (rate_over_distance > 0.f && !entry->user_spawn_locations) {
+	const float distance_density = tfx__spawn_distance_density(emitter, entry->properties, shared_properties);
+	if (distance_density > 0.f && !entry->user_spawn_locations) {
 		tfx_vec3_t travelled = emitter.world_position - emitter.captured_position;
-		distance_amount = (double)(tfx__length_vec3(&travelled) * rate_over_distance * global_amount);
+		float distance_spawns = tfx__length_vec3(&travelled) * distance_density;
+		const float max_rate = entry->properties->spawn_distance_max_rate;
+		distance_spawns = max_rate > 0.f ? tfx__Min(distance_spawns, max_rate * (float)pm->update_time) : distance_spawns;
+		distance_amount = (double)(distance_spawns * global_amount);
 	}
 
 	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
@@ -23114,6 +23162,14 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 		max_amount_per_sec = tfx__get_graph_first_value(amount_graph) + tfx__get_graph_first_value(amount_variation_graph);
 	}
 	max_amount_per_sec *= tfx__max_spawn_ratio_scale(child, shared_properties->emission_type) * source_particles;
+	if (!is_ribbon && shared_properties->emission_type != tfxOtherEmitter && !spawns_on_ribbon) {
+		//Distance spawns skip the spawn ratio, and with no limit there's nothing to count, which sanitize stops a GPU emitter having
+		const tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(child);
+		if (emitter_properties->spawn_distance_spacing > 0.f) {
+			const float global_amount = child->parent ? tfx__get_graph_max_value(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index]) : 1.f;
+			max_amount_per_sec += emitter_properties->spawn_distance_max_rate * global_amount;
+		}
+	}
 	//max particles in flight = max_spawn_per_sec * max_life_sec
 	//The amount graph value is already in particles per second (it gets
 	//multiplied by update_time during spawning to produce per-frame counts).
@@ -24959,6 +25015,7 @@ void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties)
 	properties->roll_steps = { tfxAngleStepDistribution_random, 12, 0.f, tfxAngleStepFlags_none };
 	properties->end_behaviour = tfx_line_traversal_end_behaviour::tfxLoop;
 	properties->angle_settings = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
+	properties->spawn_distance_max_rate = tfxDEFAULT_SPAWN_DISTANCE_MAX_RATE;
 	for (int i = 0; i != tfxMAX_FORCES; ++i) {
 		tfx__init_emitter_force(&properties->forces[i]);
 	}

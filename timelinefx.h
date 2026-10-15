@@ -2701,7 +2701,7 @@ tfxAPI void tfx_SetEffectPositionVec3(tfx_stage pm, tfxEffectID effect_index, fl
 
 /*
 Move an effect to a new position without tweening, so nothing is spawned along the line between the old and new position and
-no extra particles are added by spawn rate over distance. Use this rather than tfx_SetEffectPosition when the effect jumps somewhere
+no extra particles are added by spawn distance spacing. Use this rather than tfx_SetEffectPosition when the effect jumps somewhere
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param x                The x value of the position
@@ -2712,7 +2712,7 @@ tfxAPI void tfx_TeleportEffect(tfx_stage pm, tfxEffectID effect_index, float x, 
 
 /*
 Move an effect to a new position without tweening, so nothing is spawned along the line between the old and new position and
-no extra particles are added by spawn rate over distance. Use this rather than tfx_SetEffectPositionVec3 when the effect jumps somewhere
+no extra particles are added by spawn distance spacing. Use this rather than tfx_SetEffectPositionVec3 when the effect jumps somewhere
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param position        A float[3] array containing the x, y and z coordinates
@@ -2769,7 +2769,7 @@ tfxAPI void tfx_UpdateSpawnLocation(tfx_stage pm, tfxSpawnLocationID location_id
 
 /*
 Move a spawn location without tweening, so nothing is spawned along the line between the old and new position and no extra
-particles are added by spawn rate over distance. The last position given before the next update wins, and if any of the calls since the last
+particles are added by spawn distance spacing. The last position given before the next update wins, and if any of the calls since the last
 update was a teleport, none of the move is tweened.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
 * @param location_id       The id returned by tfx_AddSpawnLocation

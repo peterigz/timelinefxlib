@@ -25,6 +25,9 @@
 //Kept out of tfx_force_type itself so a sentinel does not have to be answered by every switch over the type
 #define tfxFORCE_TYPE_COUNT 5
 
+//Extra particles per second spacing can add at most, for new emitters and GPU emitters that had no limit
+#define tfxDEFAULT_SPAWN_DISTANCE_MAX_RATE 200.f
+
 //---------------------------------------
 /*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -6098,9 +6101,10 @@ typedef struct tfx_particle_emitter_properties_s {
 	//Added to spawn_impulse per particle, drawn from [0, variation] by hashing the particle uid rather
 	//than by storing a per particle magnitude - see tfxSPAWN_IMPULSE_HASH_AXIS.
 	float spawn_impulse_variation;
-	//For things like trails you can increase the amount of particles spawned based on the distance 
-	//travelled overtime
-	float spawn_rate_over_distance;
+	//World units travelled per extra particle, for trails. 0 spawns nothing extra
+	float spawn_distance_spacing;
+	//Caps the extra particles per second the spacing can add, 0 for no limit. GPU emitters always have one so their ring can be sized
+	float spawn_distance_max_rate;
 	//Steps the emission direction across (fan) or around (ring) the emission range instead of spreading it randomly.
 	//Only used by Point emitters and the Specified emission direction.
 	tfx_angle_steps_t emission_steps;
