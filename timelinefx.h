@@ -3262,7 +3262,7 @@ Add an animation instance to the animation manager.
 * @param path                    tfxKey path hash of the effect name and path: effect.path_hash
 * @param start_frame            Starting frame of the animation
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
-								Return tfxINVALID if there is no room in the animation manager
+								Return tfxINVALID if there is no room in the animation manager or the effect recorded nothing
 */
 tfxAPI tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_manager, tfxKey path, tfxU32 start_frame);
 
@@ -3272,7 +3272,7 @@ Add an animation instance to the animation manager.
 * @param path                    const char * name of the effect. If the effect was in a folder then specify the whole path
 * @param start_frame            Starting frame of the animation
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
-								Return tfxINVALID if there is no room in the animation manager
+								Return tfxINVALID if there is no room in the animation manager or the effect recorded nothing
 */
 tfxAPI tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager animation_manager, const char *path, tfxU32 start_frame);
 

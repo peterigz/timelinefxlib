@@ -11231,6 +11231,15 @@ void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
+//There's no host to add locations while recording, so an effect that spawns at them gets one at its origin or it records nothing
+tfxINTERNAL void tfx__add_recording_spawn_location(tfx_stage pm, tfx_effect_descriptor effect, tfxEffectID effect_id) {
+	if (effect_id == tfxINVALID || !(effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations)) {
+		return;
+	}
+	float origin[3] = { 0.f, 0.f, 0.f };
+	tfx_AddSpawnLocation(pm, effect_id, origin, tfxSpawnLocationAdd_none);
+}
+
 void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress) {
 	//Claim ownership of pm before any other thread can issue a tfx_UpdateStage on it.
 	//The flag is checked under update_thread_mutex by tfx_UpdateStage so callers will see this and bail.
@@ -11292,6 +11301,7 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	float saved_warmup = effect->warmup_time;
 	effect->warmup_time = 0;
 	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
+	tfx__add_recording_spawn_location(pm, effect, preview_effect_index);
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
@@ -11317,6 +11327,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	pm->manager_work.pm = pm;
 
 	while (frame < frames && offset < 99999) {
+		tfx__apply_user_spawn_locations(pm, frame_length);
 		tfx__update_stage(pm);
 
 		if (offset >= start_frame) {
@@ -11451,6 +11462,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 	tfx_SetStageSeed(pm, settings->seed);
 	preview_effect_index = tfx__add_effect_to_stage(pm, effect);
+	tfx__add_recording_spawn_location(pm, effect, preview_effect_index);
 	tfx_SetEffectPosition(pm, preview_effect_index, 0.f, 0.f, 0.f);
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	tfx__transform_3d(&pm->effects[tfx__effect_slot(preview_effect_index)].local_rotations,
@@ -11534,6 +11546,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	pm->unique_particle_id = 0;
 
 	while (frame < frames && offset < 99999) {
+		tfx__apply_user_spawn_locations(pm, frame_length);
 		tfx__update_stage(pm);
 		for (tfxEachLayer) {
 			tfx__invalidate_new_captured_index(tfxCastBufferRef(tfx_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
@@ -12395,6 +12408,10 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_man
 	}
 	tfxU32 info_index = animation_manager->effect_animation_info.GetIndex(path);
 	tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[info_index];
+	//The recording had no sprites or ribbons in it
+	if (metrics.frame_meta.empty()) {
+		return tfxINVALID;
+	}
 	TFX_ASSERT(start_frame < metrics.frames_after_compression);
 	tfxAnimationID index = tfx__allocate_animation_instance(animation_manager);
 	tfx_animation_instance_t &instance = animation_manager->instances[index];
