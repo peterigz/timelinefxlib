@@ -13291,6 +13291,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(src_emitter);
 	emitter.grid_coords = tfx_vec3_t();
 	emitter.user_spawn_amount_phase = 0.f;
+	emitter.user_spawn_offset = tfx_vec3_t();
 	emitter.emission_alternator = 0.f;
 
 	emitter.state_properties = src_emitter->state_properties;
@@ -13775,6 +13776,10 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	tfx__sanitize_gpu_emitter(emitter);
 	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
+	//Other emitters spawn at their source's world positions, so there is no frame for them to be relative to
+	if (shared_properties->emission_type == tfxOtherEmitter) {
+		emitter->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position;
+	}
 	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 	emitter->state_properties.control_profile = 0;
 	//Keyed on an enabled entry rather than force_count, which is what makes the enabled flag worth having: a list
@@ -15205,6 +15210,13 @@ tfxINTERNAL inline bool tfx__user_spawn_location_is_live(tfx_user_spawn_location
 	return (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
 }
 
+//user_spawn_offset in the emitter's frame before its rotation and scale, so a relative particle at a location takes it with its handle
+tfxINTERNAL tfx_vec3_t tfx__user_spawn_handle_offset(const tfx_particle_emitter_state_t &emitter, tfx_quaternion_t rotation, float overall_scale) {
+	tfx_quaternion_t inverse_rotation(rotation.w, -rotation.x, -rotation.y, -rotation.z);
+	const float inverse_scale = overall_scale > 0.f ? 1.f / overall_scale : 0.f;
+	return tfx__rotate_vector_quaternion(&inverse_rotation, emitter.user_spawn_offset) * inverse_scale;
+}
+
 //Only called when one of the effect's locations has an orientation, so the common case never touches this
 tfxINTERNAL inline void tfx__gather_user_spawn_rotations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, tfxWideInt *rotation_xy, tfxWideInt *rotation_zw) {
 	tfxWideArrayi gathered_xy;
@@ -15268,6 +15280,28 @@ tfxINTERNAL inline void tfx__gather_user_spawn_locations(tfx_user_spawn_location
 	}
 }
 
+//A relative particle at a user spawn location: handle, the emitter's rotation, the location's on top, overall scale, then the location.
+//rotation_xy and rotation_zw only get the location's rotation when one of the list's locations has one
+tfxINTERNAL inline void tfx__wide_user_spawn_location_transform(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, bool captured, const tfx_quaternion_t *emitter_rotation,
+	tfxWideFloat handle_x, tfxWideFloat handle_y, tfxWideFloat handle_z, tfxWideFloat overall_scale, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideInt *alive, tfxWideInt *rotation_xy, tfxWideInt *rotation_zw) {
+	tfxWideFloat location_x;
+	tfxWideFloat location_y;
+	tfxWideFloat location_z;
+	tfx__gather_user_spawn_locations(user_location_list, particle_locations, index, captured, &location_x, &location_y, &location_z, alive);
+	*x = tfxWideAdd(*x, handle_x);
+	*y = tfxWideAdd(*y, handle_y);
+	*z = tfxWideAdd(*z, handle_z);
+	tfx__wide_transform_quaternion_vec3(emitter_rotation, x, y, z);
+	if (user_location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) {
+		//After the emitter rotation, so the emitter keeps its own angle and the location turns the whole thing into its frame
+		tfx__gather_user_spawn_rotations(user_location_list, particle_locations, index, rotation_xy, rotation_zw);
+		tfx__wide_transform_packed_quaternion_vec3(rotation_xy, rotation_zw, x, y, z);
+	}
+	*x = tfxWideAdd(tfxWideMul(*x, overall_scale), location_x);
+	*y = tfxWideAdd(tfxWideMul(*y, overall_scale), location_y);
+	*z = tfxWideAdd(tfxWideMul(*z, overall_scale), location_z);
+}
+
 void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
@@ -15280,16 +15314,19 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.captured_position.x);
 	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.captured_position.y);
 	const tfxWideFloat e_world_position_z = tfxWideSetSingle(emitter.captured_position.z);
-	const tfx_vec3_t handle = work_entry->shared_properties->emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
-	const tfxWideFloat e_handle_x = tfxWideSetSingle(handle.x);
-	const tfxWideFloat e_handle_y = tfxWideSetSingle(handle.y);
-	const tfxWideFloat e_handle_z = tfxWideSetSingle(handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
-
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
+	tfx_vec3_t handle = emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
+	tfx_vec3_t location_handle = user_location_list ? handle + tfx__user_spawn_handle_offset(emitter, emitter.captured_rotation, work_entry->overall_scale) : handle;
+	const tfxWideFloat e_handle_x = tfxWideSetSingle(handle.x);
+	const tfxWideFloat e_handle_y = tfxWideSetSingle(handle.y);
+	const tfxWideFloat e_handle_z = tfxWideSetSingle(handle.z);
+	const tfxWideFloat e_location_handle_x = tfxWideSetSingle(location_handle.x);
+	const tfxWideFloat e_location_handle_y = tfxWideSetSingle(location_handle.y);
+	const tfxWideFloat e_location_handle_z = tfxWideSetSingle(location_handle.z);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 	
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -15298,17 +15335,9 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 		tfxWideFloat position_z = tfxWideLoad(&bank.position_z[index]);
 
 		if (user_location_list) {
-			tfxWideFloat location_x;
-			tfxWideFloat location_y;
-			tfxWideFloat location_z;
-			tfx__gather_user_spawn_locations(user_location_list, bank.spawn_location, index, true, &location_x, &location_y, &location_z);
-			position_x = tfxWideAdd(position_x, e_handle_x);
-			position_y = tfxWideAdd(position_y, e_handle_y);
-			position_z = tfxWideAdd(position_z, e_handle_z);
-			tfx__wide_transform_quaternion_vec3(&emitter.captured_rotation, &position_x, &position_y, &position_z);
-			position_x = tfxWideAdd(tfxWideMul(position_x, e_scale), location_x);
-			position_y = tfxWideAdd(tfxWideMul(position_y, e_scale), location_y);
-			position_z = tfxWideAdd(tfxWideMul(position_z, e_scale), location_z);
+			tfxWideInt rotation_xy;
+			tfxWideInt rotation_zw;
+			tfx__wide_user_spawn_location_transform(user_location_list, bank.spawn_location, index, true, &emitter.captured_rotation, e_location_handle_x, e_location_handle_y, e_location_handle_z, e_scale, &position_x, &position_y, &position_z, nullptr, &rotation_xy, &rotation_zw);
 		} else if (transform_relative) {
 			position_x = tfxWideAdd(position_x, e_handle_x);
 			position_y = tfxWideAdd(position_y, e_handle_y);
@@ -15323,10 +15352,6 @@ void tfx__control_particle_capture_spawn_locations(tfx_work_queue_t *queue, void
 			position_x = tfxWideAdd(tfxWideMul(position_x, e_scale), e_world_position_x);
 			position_y = tfxWideAdd(tfxWideMul(position_y, e_scale), e_world_position_y);
 			position_z = tfxWideAdd(tfxWideMul(position_z, e_scale), e_world_position_z);
-		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
-			position_x = tfxWideMul(position_x, e_scale);
-			position_y = tfxWideMul(position_y, e_scale);
-			position_z = tfxWideMul(position_z, e_scale);
 		}
 
 		tfx_spawn_points_soa_t &locations = work_entry->pm->particle_location_arrays[emitter.spawn_locations_index];
@@ -15886,7 +15911,6 @@ typedef struct tfx_instance_pass_s {
 	tfx_vector_align_type vector_align_type;
 	bool transform_relative;
 	bool transform_relative_path;
-	bool transform_relative_other_emitter;
 	tfx_user_spawn_locations_t *user_spawn_locations;
 	bool user_spawn_rotation;			//Any of the effect's locations has an orientation, so the particles take it live
 	bool align_to_rotated_emission;
@@ -15970,8 +15994,12 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->world_position_x = tfxWideSetSingle(emitter.world_position.x);
 	pass->world_position_y = tfxWideSetSingle(emitter.world_position.y);
 	pass->world_position_z = tfxWideSetSingle(emitter.world_position.z);
+	pass->user_spawn_locations = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
 	//Relative paths never add the handle, so path particles at a location don't either
-	const tfx_vec3_t handle = emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
+	tfx_vec3_t handle = emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
+	if (pass->user_spawn_locations) {
+		handle += tfx__user_spawn_handle_offset(emitter, emitter.rotation, work_entry->overall_scale);
+	}
 	pass->handle_x = tfxWideSetSingle(handle.x);
 	pass->handle_y = tfxWideSetSingle(handle.y);
 	pass->handle_z = tfxWideSetSingle(handle.z);
@@ -15981,8 +16009,6 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->vector_align_type = work_entry->properties->vector_align_type;
 	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
 	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
-	pass->transform_relative_other_emitter = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxOtherEmitter;
-	pass->user_spawn_locations = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
 	pass->user_spawn_rotation = pass->user_spawn_locations && pass->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
 	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
@@ -16067,26 +16093,12 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 	tfx__readbarrier;
 
 	if (pass->user_spawn_locations) {
-		tfxWideFloat location_x;
-		tfxWideFloat location_y;
-		tfxWideFloat location_z;
 		//The age pass that removes particles of a removed location runs after this, and a slot freed this update can
 		//already hold a new location, so hide them now or they're drawn and interpolated to the new location for a frame
-		tfx__gather_user_spawn_locations(pass->user_spawn_locations, bank.spawn_location, index, false, &location_x, &location_y, &location_z, &block->location_alive.m);
-		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
-		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
-		block->position_z.m = tfxWideAdd(block->position_z.m, pass->handle_z);
-		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &block->position_x.m, &block->position_y.m, &block->position_z.m);
-		if (pass->user_spawn_rotation) {
-			//After the emitter rotation, so the emitter keeps its own angle and the location turns the whole thing into its frame
-			tfxWideArrayi rotation_xy;
-			tfxWideArrayi rotation_zw;
-			tfx__gather_user_spawn_rotations(pass->user_spawn_locations, bank.spawn_location, index, &rotation_xy.m, &rotation_zw.m);
-			tfx__wide_transform_packed_quaternion_vec3(&rotation_xy.m, &rotation_zw.m, &block->position_x.m, &block->position_y.m, &block->position_z.m);
-		}
-		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), location_x);
-		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), location_y);
-		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), location_z);
+		tfxWideInt rotation_xy;
+		tfxWideInt rotation_zw;
+		tfx__wide_user_spawn_location_transform(pass->user_spawn_locations, bank.spawn_location, index, false, &emitter.rotation, pass->handle_x, pass->handle_y, pass->handle_z, pass->overall_scale,
+			&block->position_x.m, &block->position_y.m, &block->position_z.m, &block->location_alive.m, &rotation_xy, &rotation_zw);
 	} else if (pass->transform_relative) {
 		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
 		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
@@ -16100,10 +16112,6 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 		block->position_x.m = tfxWideAdd(tfxWideMul(block->position_x.m, pass->overall_scale), pass->world_position_x);
 		block->position_y.m = tfxWideAdd(tfxWideMul(block->position_y.m, pass->overall_scale), pass->world_position_y);
 		block->position_z.m = tfxWideAdd(tfxWideMul(block->position_z.m, pass->overall_scale), pass->world_position_z);
-	} else if (pass->transform_relative_other_emitter) {
-		block->position_x.m = tfxWideMul(block->position_x.m, pass->overall_scale);
-		block->position_y.m = tfxWideMul(block->position_y.m, pass->overall_scale);
-		block->position_z.m = tfxWideMul(block->position_z.m, pass->overall_scale);
 	}
 
 	block->packed_alignment.m = tfxWideSetZeroi;
@@ -16478,17 +16486,20 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.world_position.x);
 	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.world_position.y);
 	const tfxWideFloat e_world_position_z = tfxWideSetSingle(emitter.world_position.z);
-	const tfx_vec3_t handle = work_entry->shared_properties->emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
-	const tfxWideFloat e_handle_x = tfxWideSetSingle(handle.x);
-	const tfxWideFloat e_handle_y = tfxWideSetSingle(handle.y);
-	const tfxWideFloat e_handle_z = tfxWideSetSingle(handle.z);
-	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	const bool transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position
 		&& emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon)
 		|| emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative;
 	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, emission_type);
+	tfx_vec3_t handle = emission_type == tfxPath ? tfx_vec3_t(0.f, 0.f, 0.f) : emitter.handle;
+	if (user_location_list) {
+		handle += tfx__user_spawn_handle_offset(emitter, emitter.rotation, work_entry->overall_scale);
+	}
+	const tfxWideFloat e_handle_x = tfxWideSetSingle(handle.x);
+	const tfxWideFloat e_handle_y = tfxWideSetSingle(handle.y);
+	const tfxWideFloat e_handle_z = tfxWideSetSingle(handle.z);
+	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overall_scale);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -16503,17 +16514,9 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 		tfx__readbarrier;
 
 		if (user_location_list) {
-			tfxWideFloat location_x;
-			tfxWideFloat location_y;
-			tfxWideFloat location_z;
-			tfx__gather_user_spawn_locations(user_location_list, bank.spawn_location, index, false, &location_x, &location_y, &location_z);
-			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
-			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
-			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
-			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &position_x.m, &position_y.m, &position_z.m);
-			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), location_x);
-			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), location_y);
-			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), location_z);
+			tfxWideInt rotation_xy;
+			tfxWideInt rotation_zw;
+			tfx__wide_user_spawn_location_transform(user_location_list, bank.spawn_location, index, false, &emitter.rotation, e_handle_x, e_handle_y, e_handle_z, e_scale, &position_x.m, &position_y.m, &position_z.m, nullptr, &rotation_xy, &rotation_zw);
 		} else if (transform_relative) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
@@ -16527,10 +16530,6 @@ void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data)
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
-		} else if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
-			position_x.m = tfxWideMul(position_x.m, e_scale);
-			position_y.m = tfxWideMul(position_y.m, e_scale);
-			position_z.m = tfxWideMul(position_z.m, e_scale);
 		}
 
 		tfxWideStore(&locations.position_x[index], position_x.m);
@@ -18593,6 +18592,14 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		emitter.rotation = pm->ribbon_emitters[emitter.other_emitter_index].rotation;
 	}
 
+	if (spawn_work_entry->user_spawn_locations) {
+		//Everything that places the emitter except the host's effect position, which the locations stand in for
+		emitter.user_spawn_offset = emitter.world_position - parent_effect.world_position;
+		if (!(parent_effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
+			emitter.user_spawn_offset += parent_effect.translation + parent_effect.source_effect->emitter_handle * parent_effect.overall_scale;
+		}
+	}
+
 	if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
 		emitter.captured_position = emitter.world_position;
 		//A new emitter's rotation is whatever its slot last held until the transform above, so its first capture would read garbage
@@ -18743,6 +18750,26 @@ tfxINTERNAL void tfx__assign_location_spawn_ordinals(tfx_stage pm, tfx_spawn_wor
 		tfxU32 *ordinal = tfx__get_location_spawn_ordinal(&emitter.location_spawn_ordinals, run.slot, work_entry->user_spawn_locations->locations[run.slot].generation, false);
 		run.spawn_ordinal = *ordinal;
 		*ordinal += run.count;
+	}
+}
+
+//Once per run rather than per particle, so a non relative spawn pays three adds for its emitter's offset
+tfxINTERNAL void tfx__set_user_spawn_run_offsets(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, tfx_particle_emitter_state_t &emitter) {
+	const tfx_vec3_t offset = emitter.user_spawn_offset;
+	if (offset.x == 0.f && offset.y == 0.f && offset.z == 0.f) {
+		return;
+	}
+	const tfx_user_spawn_locations_t &location_list = *work_entry->user_spawn_locations;
+	const bool rotated = (location_list.flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
+	tfx_user_spawn_run_t *runs = &pm->user_spawn_runs[work_entry->user_spawn_run_start];
+	for (tfxU32 run_index = 0; run_index != work_entry->user_spawn_run_count; ++run_index) {
+		const tfxU64 packed_rotation = location_list.locations[runs[run_index].slot].packed_rotation;
+		if (rotated && packed_rotation != tfxPACKED_W_QUATERNION) {
+			tfx_quaternion_t rotation = tfx__unpack16bit_quaternion(packed_rotation);
+			runs[run_index].offset = tfx__rotate_vector_quaternion(&rotation, offset);
+		} else {
+			runs[run_index].offset = offset;
+		}
 	}
 }
 
@@ -19257,6 +19284,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	if (work_entry->user_spawn_locations) {
 		tfx__share_user_spawn_amount(pm, work_entry, emitter);
+		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
+			tfx__set_user_spawn_run_offsets(pm, work_entry, emitter);
+		}
 		if (work_entry->user_spawn_run_count && (tfx__emission_is_stepped(work_entry->properties, work_entry->emission_type) || tfx__roll_is_stepped(work_entry->properties, emitter) || tfx__path_start_rotation_is_stepped(emitter))) {
 			tfx__assign_location_spawn_ordinals(pm, work_entry, emitter);
 		}
@@ -19930,7 +19960,7 @@ tfxINTERNAL tfx_vec3_t tfx__user_spawn_run_anchor(const tfx_spawn_work_entry_t *
 	const tfx_user_spawn_location_t &location = entry->user_spawn_locations->locations[run.slot];
 	//Each location's particles spread over the whole update, matching the ages tfx__spawn_particle_user_location_ages gave them
 	float location_tween = 1.f - (float)(particle_index - (run_end - run.count)) / (float)run.count;
-	return tfx__interpolate_vec3(location_tween, location.captured_position, location.position);
+	return tfx__interpolate_vec3(location_tween, location.captured_position, location.position) + run.offset;
 }
 
 //The world space position a particle spawns around: the emitter's, or the location of the run the particle belongs to when the effect
@@ -20327,12 +20357,12 @@ bool tfx__build_gpu_spawn_run(const tfx_spawn_work_entry_t *entry, const tfx_use
 	run->first_spawn = first_spawn;
 	run->count = spawn_run.count;
 	run->multipliers_row = tfxINVALID;
-	run->position.x = location.position.x;
-	run->position.y = location.position.y;
-	run->position.z = location.position.z;
-	run->captured_position.x = location.captured_position.x;
-	run->captured_position.y = location.captured_position.y;
-	run->captured_position.z = location.captured_position.z;
+	run->position.x = location.position.x + spawn_run.offset.x;
+	run->position.y = location.position.y + spawn_run.offset.y;
+	run->position.z = location.position.z + spawn_run.offset.z;
+	run->captured_position.x = location.captured_position.x + spawn_run.offset.x;
+	run->captured_position.y = location.captured_position.y + spawn_run.offset.y;
+	run->captured_position.z = location.captured_position.z + spawn_run.offset.z;
 	run->packed_rotation = location.packed_rotation;
 	run->user_data = location_list.tweaks[spawn_run.slot].user_data;
 	if (location_list.flags & tfxUserSpawnLocationListFlags_has_rotation && location.packed_rotation != tfxPACKED_W_QUATERNION) {
@@ -20829,7 +20859,7 @@ void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data) {
 			}
 
 			float tween = pm.frame_length > 0 ? 1.f - age / (float)pm.frame_length : 1.f;
-			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, location.captured_position, location.position);
+			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, location.captured_position, location.position) + run.offset;
 			entry->particle_data->position_x[index] = lerp_position.x + handle_offset.x;
 			entry->particle_data->position_y[index] = lerp_position.y + handle_offset.y;
 			entry->particle_data->position_z[index] = lerp_position.z + handle_offset.z;
@@ -21033,22 +21063,20 @@ void tfx__spawn_particle_other_emitter(tfx_work_queue_t *queue, void *data) {
 			emitter.grid_coords.x = 0.f;
 		}
 
-		if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-			tween = 1.f - entry->particle_data->age[index] / (float)pm.frame_length;
-			float lerp_position_x = tfx__interpolate_float((float)tween, spawn_points.captured_position_x[spawn_index], spawn_points.position_x[spawn_index]);
-			float lerp_position_y = tfx__interpolate_float((float)tween, spawn_points.captured_position_y[spawn_index], spawn_points.position_y[spawn_index]);
-			float lerp_position_z = tfx__interpolate_float((float)tween, spawn_points.captured_position_z[spawn_index], spawn_points.position_z[spawn_index]);
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center) {
-				local_position_x = lerp_position_x;
-				local_position_y = lerp_position_y;
-				local_position_z = lerp_position_z;
-			}
-			else {
-				tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
-				local_position_x = rotvec.x + lerp_position_x;
-				local_position_y = rotvec.y + lerp_position_y;
-				local_position_z = rotvec.z + lerp_position_z;
-			}
+		tween = 1.f - entry->particle_data->age[index] / (float)pm.frame_length;
+		float lerp_position_x = tfx__interpolate_float((float)tween, spawn_points.captured_position_x[spawn_index], spawn_points.position_x[spawn_index]);
+		float lerp_position_y = tfx__interpolate_float((float)tween, spawn_points.captured_position_y[spawn_index], spawn_points.position_y[spawn_index]);
+		float lerp_position_z = tfx__interpolate_float((float)tween, spawn_points.captured_position_z[spawn_index], spawn_points.position_z[spawn_index]);
+		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center) {
+			local_position_x = lerp_position_x;
+			local_position_y = lerp_position_y;
+			local_position_z = lerp_position_z;
+		}
+		else {
+			tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
+			local_position_x = rotvec.x + lerp_position_x;
+			local_position_y = rotvec.y + lerp_position_y;
+			local_position_z = rotvec.z + lerp_position_z;
 		}
 
 	}
@@ -21123,7 +21151,7 @@ void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queue, void *dat
 			local_position_y = y;
 			local_position_z = z;
 
-			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
+			if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center)) {
 				tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
 				local_position_x = rotvec.x + local_position_x;
 				local_position_y = rotvec.y + local_position_y;
@@ -23251,8 +23279,7 @@ tfxINTERNAL bool tfx__gpu_kernel_supports(tfx_stage pm, tfx_particle_emitter_sta
 	if (!(shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
 		return true;
 	}
-	const tfx_emission_type emission_type = emitter.library->shared_properties[emitter.state_properties.shared_index].emission_type;
-	return emission_type == tfxOtherEmitter || (pm->effects[emitter.parent_index].state_flags & tfxEffectStateFlags_user_spawn_locations) != 0;
+	return (pm->effects[emitter.parent_index].state_flags & tfxEffectStateFlags_user_spawn_locations) != 0;
 }
 
 tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter) {
@@ -23853,14 +23880,14 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 			dispatch.flags |= location_list->flags & tfxUserSpawnLocationListFlags_has_rotation ? tfxGPUParticleDispatchFlags_location_rotation : 0;
 			dispatch.location_offset = location_list->gpu_frame_offset;
 			dispatch.location_count = location_list->locations.current_size;
-			//Relative paths never add the handle, as on the CPU
+			//Relative paths never add the handle, as on the CPU, but still carry the emitter's offset from its effect
+			tfx_vec3_t handle = tfx__user_spawn_handle_offset(emitter, emitter.rotation, effect.overall_scale);
 			if (emission_type != tfxPath) {
-				dispatch.handle.x = emitter.handle.x;
-				dispatch.handle.y = emitter.handle.y;
-				dispatch.handle.z = emitter.handle.z;
+				handle += emitter.handle;
 			}
-		} else if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
-			dispatch.flags |= tfxGPUParticleDispatchFlags_relative_scale_only;
+			dispatch.handle.x = handle.x;
+			dispatch.handle.y = handle.y;
+			dispatch.handle.z = handle.z;
 		}
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) {
 			tfx__gpu_dispatch_noise(properties, &dispatch);

@@ -6238,6 +6238,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_quaternion_t rotation;
 	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
 	tfx_vec3_t creation_rotations;
+	tfx_vec3_t user_spawn_offset;					//Where the emitter sits relative to its effect's own position, which every user spawn location carries
 
 	//Indexes
 	tfxIndex parent_index;
@@ -6837,6 +6838,7 @@ typedef struct tfx_user_spawn_run_s {
 	tfxU32 count;
 	float weight;							//The location's spawn amount, what the emitter's amount is shared out by
 	tfxU32 spawn_ordinal;					//Spawns the location made for this emitter before this run, only set when the emitter steps its angles
+	tfx_vec3_t offset;						//The emitter's user_spawn_offset turned by the location, added to the anchor of non relative spawns
 } tfx_user_spawn_run_t;
 
 typedef struct tfx_ribbon_bucket_s {

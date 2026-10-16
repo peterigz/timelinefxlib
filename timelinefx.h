@@ -755,7 +755,6 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_reverse_animation = 1 << 12,
 	tfxGPUParticleDispatchFlags_drag_variation = 1 << 13,
 	tfxGPUParticleDispatchFlags_relative_location = 1 << 14,			//Positions are local to the spawn location in the particle's cold spawn_location
-	tfxGPUParticleDispatchFlags_relative_scale_only = 1 << 15,			//A relative Other Emitter: positions are only scaled
 	tfxGPUParticleDispatchFlags_location_rotation = 1 << 16,			//A spawn location has a rotation, applied after the emitter's
 	tfxGPUParticleDispatchFlags_align_rotated_emission = 1 << 17,		//Emission alignment of a relative emitter, rotated by the emitter
 	tfxGPUParticleDispatchFlags_noise = 1 << 18,						//The emitter has a noise force, its algorithm is in the noise_algorithm bits

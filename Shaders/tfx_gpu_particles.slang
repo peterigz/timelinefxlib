@@ -44,7 +44,6 @@ static const uint tfx_dispatch_play_once = 1 << 11;
 static const uint tfx_dispatch_reverse_animation = 1 << 12;
 static const uint tfx_dispatch_drag_variation = 1 << 13;
 static const uint tfx_dispatch_relative_location = 1 << 14;
-static const uint tfx_dispatch_relative_scale_only = 1 << 15;
 static const uint tfx_dispatch_location_rotation = 1 << 16;
 static const uint tfx_dispatch_align_rotated_emission = 1 << 17;
 static const uint tfx_dispatch_noise = 1 << 18;
@@ -444,7 +443,7 @@ float4 tfx_conjugate(float4 q) {
 	return float4(-q.xyz, q.w);
 }
 
-//tfx__block_particle_transform's three spaces: local at a spawn location, relative with scale only, and world
+//tfx__block_particle_transform's two spaces: local at a spawn location, and world
 struct tfx_ring_transform {
 	uint flags;
 	float3 handle;
@@ -463,9 +462,6 @@ struct tfx_ring_transform {
 			}
 			return world * overall_scale + location_position;
 		}
-		if ((flags & tfx_dispatch_relative_scale_only) != 0) {
-			return position * overall_scale;
-		}
 		return position;
 	}
 
@@ -476,9 +472,6 @@ struct tfx_ring_transform {
 				position = tfx_rotate_vector(position, tfx_conjugate(tfx_unpack16bit_quaternion(location_rotation)));
 			}
 			return tfx_rotate_vector(position, tfx_conjugate(emitter_rotation)) - handle;
-		}
-		if ((flags & tfx_dispatch_relative_scale_only) != 0) {
-			return world / overall_scale;
 		}
 		return world;
 	}
