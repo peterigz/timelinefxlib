@@ -20,6 +20,18 @@ static const uint tfx_spawn_fill_area = 1 << 13;
 static const uint tfx_spawn_open_ends = 1 << 14;
 static const uint tfx_spawn_uniform_distribution = 1 << 15;
 static const uint tfx_spawn_shape = 1 << 16;
+static const uint tfx_spawn_grid = 1 << 17;
+static const uint tfx_spawn_grid_random = 1 << 18;
+static const uint tfx_spawn_grid_backwards = 1 << 19;
+static const uint tfx_spawn_stepped_emission = 1 << 20;
+static const uint tfx_spawn_stepped_roll = 1 << 21;
+
+//tfx_angle_step_distribution and tfx_angle_step_flag_bits
+static const uint tfx_step_ping_pong = 2;
+static const uint tfx_step_shuffled = 3;
+static const uint tfx_step_restart_each_spawn = 1 << 0;
+static const uint tfx_step_ring = 1 << 1;
+static const uint tfx_step_cap = 1 << 2;
 
 //tfx_emission_type and tfx_emission_direction values the shapes use
 static const uint tfx_emission_area = 1;
@@ -64,12 +76,16 @@ static const uint tfx_spawn_axis_shape_w = 0x51a70018u;
 static const uint tfx_spawn_axis_sequence_theta = 0x51a70019u;
 static const uint tfx_spawn_axis_sequence_phi = 0x51a7001au;
 static const uint tfx_spawn_axis_sequence_radius = 0x51a7001bu;
+static const uint tfx_spawn_axis_emission_jitter = 0x51a7001cu;
+static const uint tfx_spawn_axis_roll_jitter = 0x51a7001du;
 //Must match tfxSPAWN_IMPULSE_HASH_AXIS, which tfx_apply_velocity relaunches looping singles on
 static const uint tfx_spawn_impulse_hash_axis = 0x2545f491u;
 //tfxPI2
 static const float tfx_spawn_pi2 = 6.283185307;
+//tfxGOLDEN_ANGLE
+static const float tfx_spawn_golden_angle = 2.39996323;
 
-//tfx_gpu_spawn_block_t is four 64 byte rows of the tick array, read through four views of it
+//tfx_gpu_spawn_block_t is five 64 byte rows of the tick array, read through a view per row
 struct tfx_gpu_spawn_block_a {
 	uint uid_base;
 	uint flags;
@@ -126,6 +142,22 @@ struct tfx_gpu_spawn_block_d {
 	uint emission_direction_mode;
 };
 
+//Only read when the block has tfx_spawn_grid or a stepped flag. Scalars, so the layout matches the C struct under std430
+struct tfx_gpu_spawn_block_e {
+	uint grid_start;
+	uint grid_point_x;
+	uint grid_point_y;
+	uint grid_point_z;
+	float3 emission_fan_axis;
+	float emission_range;
+	float emission_step_jitter;
+	float roll_step_jitter;
+	uint step_divisions;				//Emission in the low 16 bits, roll in the high 16
+	uint step_settings;					//Emission distribution | roll distribution << 2 | emission step flags << 4 | roll step flags << 8
+	uint step_seed;
+	uint step_padding[3];
+};
+
 //Mirrors tfx_gpu_spawn_run_t
 struct tfx_gpu_spawn_run {
 	uint local_id;
@@ -138,7 +170,7 @@ struct tfx_gpu_spawn_run {
 	float location_roll;
 	uint2 packed_rotation;
 	uint user_data;
-	uint padding;
+	uint spawn_ordinal;
 };
 
 //Mirrors tfx_gpu_spawn_multipliers_t
@@ -309,15 +341,235 @@ float tfx_shifted_sequence(uint sequence_index, uint base, uint uid_base, uint a
 	return unit >= 1.0 ? unit - 1.0 : unit;
 }
 
+//tfx__grid_march_length
+uint tfx_grid_march_length(uint shape, uint flags, uint3 grid_points) {
+	const uint x = grid_points.x, y = grid_points.y, z = grid_points.z;
+	if (shape == tfx_emission_area) {
+		if ((flags & tfx_spawn_fill_area) != 0) return x * y * z;
+		const uint ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+		if ((flags & tfx_spawn_open_ends) != 0) return z * ring;
+		return z == 1 ? x * y : 2 * x * y + (z - 2) * ring;
+	}
+	if (shape == tfx_emission_line) return y;
+	if (shape == tfx_emission_cylinder) return x * y;
+	return x;
+}
+
+//tfx__hollow_area_ring_point
+uint3 tfx_hollow_area_ring_point(uint ring_index, uint x, uint y) {
+	const uint ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+	if (y == 1 || ring_index < x) {
+		return uint3(ring_index, 0, 0);
+	}
+	if (ring_index >= ring - x) {
+		return uint3(ring_index - (ring - x), y - 1, 0);
+	}
+	const uint side_index = ring_index - x;
+	return uint3((side_index & 1) != 0 ? x - 1 : 0, 1 + side_index / 2, 0);
+}
+
+//tfx__grid_march_point
+uint3 tfx_grid_march_point(uint shape, uint flags, uint3 grid_points, uint position) {
+	const uint x = grid_points.x, y = grid_points.y, z = grid_points.z;
+	if (shape == tfx_emission_area) {
+		if ((flags & tfx_spawn_fill_area) != 0) {
+			return uint3(position % x, (position / x) % y, position / (x * y));
+		}
+		const uint ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+		if ((flags & tfx_spawn_open_ends) != 0) {
+			uint3 coordinates = tfx_hollow_area_ring_point(position % ring, x, y);
+			coordinates.z = position / ring;
+			return coordinates;
+		}
+		if (z == 1 || position < x * y) {
+			return uint3(position % x, position / x, 0);
+		}
+		const uint side_position = position - x * y;
+		if (side_position < (z - 2) * ring) {
+			uint3 coordinates = tfx_hollow_area_ring_point(side_position % ring, x, y);
+			coordinates.z = 1 + side_position / ring;
+			return coordinates;
+		}
+		const uint end_position = side_position - (z - 2) * ring;
+		return uint3(end_position % x, end_position / x, z - 1);
+	}
+	if (shape == tfx_emission_line) return uint3(0, position, 0);
+	if (shape == tfx_emission_cylinder) return uint3(position % x, position / x, 0);
+	return uint3(position, 0, 0);
+}
+
+//tfx__generate_grid_offset
+float3 tfx_generate_grid_offset(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, tfx_gpu_spawn_block_e block_e, uint uid, uint spawn_index, inout float3 face_normal) {
+	const uint shape = block_d.shape;
+	const uint3 grid_points = uint3(block_e.grid_point_x, block_e.grid_point_y, block_e.grid_point_z);
+	const float3 emitter_size = block_d.emitter_size;
+	const float3 half_size = emitter_size * 0.5;
+	const bool hollow_area = shape == tfx_emission_area && (block_a.flags & tfx_spawn_fill_area) == 0;
+	uint3 coordinates = uint3(0, 0, 0);
+	if ((block_a.flags & tfx_spawn_grid_random) != 0) {
+		coordinates.x = uint(tfx_hash_unit(uid, tfx_spawn_axis_shape_u) * float(grid_points.x));
+		coordinates.y = uint(tfx_hash_unit(uid, tfx_spawn_axis_shape_v) * float(grid_points.y));
+		coordinates.z = uint(tfx_hash_unit(uid, tfx_spawn_axis_shape_w) * float(grid_points.z));
+		if (hollow_area) {
+			const uint sides = (block_a.flags & tfx_spawn_open_ends) != 0 ? 4u : 6u;
+			const uint side = uint(tfx_hash_unit(uid, tfx_spawn_axis_shape_side) * float(sides));
+			face_normal = float3(0.0, 0.0, 0.0);
+			if (side == 0) { coordinates.x = 0; face_normal.x = -1.0; }
+			else if (side == 1) { coordinates.x = grid_points.x - 1; face_normal.x = 1.0; }
+			else if (side == 2) { coordinates.y = 0; face_normal.y = -1.0; }
+			else if (side == 3) { coordinates.y = grid_points.y - 1; face_normal.y = 1.0; }
+			else if (side == 4) { coordinates.z = grid_points.z - 1; face_normal.z = 1.0; }
+			else { coordinates.z = 0; face_normal.z = -1.0; }
+		}
+	} else {
+		const uint length = tfx_grid_march_length(shape, block_a.flags, grid_points);
+		const uint travel = spawn_index % length;
+		const uint position = (block_a.flags & tfx_spawn_grid_backwards) != 0 ? (block_e.grid_start + length - 1 - travel) % length : (block_e.grid_start + travel) % length;
+		coordinates = tfx_grid_march_point(shape, block_a.flags, grid_points, position);
+		if (hollow_area) {
+			face_normal.x = coordinates.x == 0 ? -1.0 : (coordinates.x == grid_points.x - 1 ? 1.0 : 0.0);
+			face_normal.y = coordinates.y == 0 ? -1.0 : (coordinates.y == grid_points.y - 1 ? 1.0 : 0.0);
+			face_normal.z = coordinates.z == 0 ? -1.0 : (coordinates.z == grid_points.z - 1 ? 1.0 : 0.0);
+		}
+	}
+	if (shape == tfx_emission_area) {
+		const float3 segment = emitter_size / max(float3(grid_points) - 1.0, float3(1.0, 1.0, 1.0));
+		return float3(coordinates) * segment - half_size;
+	}
+	if (shape == tfx_emission_line) {
+		return float3(0.0, float(coordinates.y) * emitter_size.y / max(float(grid_points.y) - 1.0, 1.0), 0.0);
+	}
+	if (shape == tfx_emission_cylinder) {
+		const float theta = float(coordinates.x) * block_c.arc_size / float(grid_points.x) + block_c.arc_offset;
+		return float3(cos(theta) * half_size.x, float(coordinates.y) * emitter_size.y / max(float(grid_points.y) - 1.0, 1.0), -sin(theta) * half_size.z);
+	}
+	const float theta = block_c.arc_offset + float(coordinates.x) * block_c.arc_size / float(grid_points.x);
+	return float3(half_size.x * cos(theta), 0.0, half_size.z * -sin(theta));
+}
+
+//tfx__permute_index
+uint tfx_permute_index(uint index, uint length, uint seed) {
+	uint mask = length - 1;
+	mask |= mask >> 1;
+	mask |= mask >> 2;
+	mask |= mask >> 4;
+	mask |= mask >> 8;
+	mask |= mask >> 16;
+	do {
+		index ^= seed;
+		index *= 0xe170893du;
+		index ^= seed >> 16;
+		index ^= (index & mask) >> 4;
+		index ^= seed >> 8;
+		index *= 0x0929eb3fu;
+		index ^= seed >> 23;
+		index ^= (index & mask) >> 1;
+		index *= 1u | seed >> 27;
+		index *= 0x6935fa69u;
+		index ^= (index & mask) >> 11;
+		index *= 0x74dcb303u;
+		index ^= (index & mask) >> 2;
+		index *= 0x9e501cc3u;
+		index ^= (index & mask) >> 2;
+		index *= 0xc860a3dfu;
+		index &= mask;
+		index ^= index >> 5;
+	} while (index >= length);
+	return (index + seed) % length;
+}
+
+//tfx__angle_step_span, start in x and step in y
+float2 tfx_angle_step_span(float range, float centre, uint divisions) {
+	divisions = max(divisions, 1u);
+	const bool full_circle = range >= tfx_spawn_pi2 - 0.001;
+	const float step = full_circle ? range / float(divisions) : (divisions > 1 ? range / float(divisions - 1) : 0.0);
+	const float start = full_circle || divisions == 1 ? centre : centre - range * 0.5;
+	return float2(start, step);
+}
+
+//tfx__angle_step_division
+uint tfx_angle_step_division(uint distribution, uint divisions, uint ordinal, uint seed) {
+	divisions = max(divisions, 1u);
+	if (divisions == 1) {
+		return 0;
+	}
+	const uint period = distribution == tfx_step_ping_pong ? (divisions - 1) * 2 : divisions;
+	const uint position = ordinal % period;
+	if (distribution == tfx_step_ping_pong) {
+		return position < divisions ? position : period - position;
+	}
+	if (distribution == tfx_step_shuffled) {
+		return tfx_permute_index(position, divisions, seed ^ ((ordinal / period) * 0x9E3779B9u));
+	}
+	return position;
+}
+
+//tfx__generate_stepped_direction
+float3 tfx_generate_stepped_direction(tfx_gpu_spawn_block_e block_e, tfx_gpu_spawn_run run, uint uid, uint spawn_index, float3 direction) {
+	const uint step_flags = (block_e.step_settings >> 4) & 0xFu;
+	const uint divisions = max(block_e.step_divisions & 0xFFFFu, 1u);
+	const uint ordinal = ((step_flags & tfx_step_restart_each_spawn) != 0 ? 0 : run.spawn_ordinal) + (spawn_index - run.first_spawn);
+	const uint division = tfx_angle_step_division(block_e.step_settings & 3u, divisions, ordinal, block_e.step_seed);
+	const float3 axis = block_e.emission_fan_axis;
+	const float half_range = block_e.emission_range * 0.5;
+	if ((step_flags & tfx_step_cap) != 0) {
+		const float cap_height_step = (divisions > 1 ? 1.0 - cos(half_range) : 0.0) / float(divisions);
+		const float cos_tilt = 1.0 - cap_height_step * (float(division) + 0.5);
+		const float sin_tilt = sqrt(max(1.0 - cos_tilt * cos_tilt, 0.0));
+		const float angle = float(division) * tfx_spawn_golden_angle;
+		const float3 radial = axis * cos(angle) + cross(direction, axis) * sin(angle);
+		float3 stepped = direction * cos_tilt + radial * sin_tilt;
+		const float jitter_cone = block_e.emission_step_jitter * 0.5 * sqrt(tfx_spawn_pi2 * cap_height_step);
+		if (jitter_cone != 0.0) {
+			const float z = 1.0 - (1.0 - cos(jitter_cone)) * tfx_hash_unit(uid, tfx_spawn_axis_cone_z);
+			const float phi = tfx_spawn_pi2 * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
+			stepped = tfx_vector_in_cone(tfx_normalize_fast(stepped), z, phi);
+		}
+		return stepped;
+	}
+	const bool ring = (step_flags & tfx_step_ring) != 0;
+	const float2 span = tfx_angle_step_span(ring ? tfx_spawn_pi2 : block_e.emission_range, 0.0, divisions);
+	float angle = span.x + span.y * float(division);
+	const float half_jitter = span.y * block_e.emission_step_jitter * 0.5;
+	if (half_jitter > 0.0) {
+		angle += (2.0 * tfx_hash_unit(uid, tfx_spawn_axis_emission_jitter) - 1.0) * half_jitter;
+	}
+	if (ring) {
+		const float3 radial = axis * cos(angle) + cross(direction, axis) * sin(angle);
+		return direction * cos(half_range) + radial * sin(half_range);
+	}
+	return direction * cos(angle) + cross(axis, direction) * sin(angle);
+}
+
+//tfx__generate_stepped_roll
+float tfx_generate_stepped_roll(tfx_gpu_spawn_block_b block_b, tfx_gpu_spawn_block_e block_e, tfx_gpu_spawn_run run, uint uid, uint spawn_index) {
+	const uint step_flags = (block_e.step_settings >> 8) & 0xFu;
+	const uint divisions = max(block_e.step_divisions >> 16, 1u);
+	const uint ordinal = ((step_flags & tfx_step_restart_each_spawn) != 0 ? 0 : run.spawn_ordinal) + (spawn_index - run.first_spawn);
+	const uint division = tfx_angle_step_division((block_e.step_settings >> 2) & 3u, divisions, ordinal, block_e.step_seed);
+	const float range = block_b.angle_offsets.z;
+	const float centre = range >= tfx_spawn_pi2 - 0.001 ? 0.0 : range * 0.5;
+	const float2 span = tfx_angle_step_span(range, centre, divisions);
+	float angle = span.x + span.y * float(division);
+	const float half_jitter = span.y * block_e.roll_step_jitter * 0.5;
+	if (half_jitter > 0.0) {
+		angle += (2.0 * tfx_hash_unit(uid, tfx_spawn_axis_roll_jitter) - 1.0) * half_jitter;
+	}
+	return angle;
+}
+
 //tfx__generate_shape_offset
-float3 tfx_generate_shape_offset(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, uint uid, uint spawn_index, out float3 face_normal) {
+float3 tfx_generate_shape_offset(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, tfx_gpu_spawn_block_e block_e, uint uid, uint spawn_index, out float3 face_normal) {
 	const float3 emitter_size = block_d.emitter_size;
 	const float3 half_size = emitter_size * 0.5;
 	const bool fill_area = (block_a.flags & tfx_spawn_fill_area) != 0;
+	face_normal = float3(0.0, 0.0, 0.0);
+	if ((block_a.flags & tfx_spawn_grid) != 0) {
+		return tfx_generate_grid_offset(block_a, block_c, block_d, block_e, uid, spawn_index, face_normal);
+	}
 	float unit_u = tfx_hash_unit(uid, tfx_spawn_axis_shape_u);
 	float unit_v = tfx_hash_unit(uid, tfx_spawn_axis_shape_v);
 	float unit_w = tfx_hash_unit(uid, tfx_spawn_axis_shape_w);
-	face_normal = float3(0.0, 0.0, 0.0);
 	if (block_d.shape == tfx_emission_line) {
 		return float3(0.0, unit_u * emitter_size.y, 0.0);
 	}
@@ -409,7 +661,7 @@ float3 tfx_generate_shape_direction(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn
 }
 
 //tfx__generate_gpu_spawn
-tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_b block_b, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, tfx_gpu_spawn_run run, tfx_gpu_spawn_multipliers multipliers, bool has_multipliers, uint spawn_index) {
+tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_block_b block_b, tfx_gpu_spawn_block_c block_c, tfx_gpu_spawn_block_d block_d, tfx_gpu_spawn_block_e block_e, tfx_gpu_spawn_run run, tfx_gpu_spawn_multipliers multipliers, bool has_multipliers, uint spawn_index) {
 	const uint flags = block_a.flags;
 	const bool relative = (flags & tfx_spawn_relative) != 0;
 	const bool rotate_from_location = !relative && (run.flags & tfx_spawn_run_rotated) != 0;
@@ -455,7 +707,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 		direction = block_a.emission_direction;
 	} else {
 		float3 face_normal;
-		float3 local_offset = tfx_generate_shape_offset(block_a, block_c, block_d, uid, spawn_index, face_normal);
+		float3 local_offset = tfx_generate_shape_offset(block_a, block_c, block_d, block_e, uid, spawn_index, face_normal);
 		float3 shape_size = block_d.emitter_size;
 		if (has_multipliers) {
 			const float3 shape_scale = float3(multipliers.emitter_width, multipliers.emitter_height, multipliers.emitter_depth);
@@ -474,6 +726,9 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 			spawn.position = anchor + tfx_rotate_vector(spawn_offset, shape_rotation) * block_b.overall_scale;
 		}
 		direction = tfx_generate_shape_direction(block_a, block_c, block_d, spawn_offset, shape_position, shape_size, spawn_index, face_normal);
+	}
+	if ((flags & tfx_spawn_stepped_emission) != 0) {
+		direction = tfx_generate_stepped_direction(block_e, run, uid, spawn_index, direction);
 	}
 	if ((flags & tfx_spawn_emission_cone) != 0) {
 		const float z = 1.0 - (1.0 - block_a.emission_cone_cosine) * tfx_hash_unit(uid, tfx_spawn_axis_cone_z);
@@ -522,6 +777,9 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 		spawn.rotation_offsets = tfx_pack10bit_unsigned(offsets * (1.0 / tfx_spawn_pi2));
 	} else {
 		float roll = (flags & tfx_spawn_specify_roll) != 0 ? block_b.angle_offsets.z : tfx_hash_unit(uid, tfx_spawn_axis_roll_offset) * block_b.angle_offsets.z;
+		if ((flags & tfx_spawn_stepped_roll) != 0) {
+			roll = tfx_generate_stepped_roll(block_b, block_e, run, uid, spawn_index);
+		}
 		if (rotate_from_location && (flags & tfx_spawn_relative_angle) != 0) {
 			roll += run.location_roll;
 		}

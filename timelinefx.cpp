@@ -15887,6 +15887,8 @@ typedef struct tfx_instance_block_s {
 	tfxWideArrayi image_indexes;
 	tfxWideArrayi capture_flags;
 	tfxWideArrayi location_alive;		//Only set for relative particles following user spawn locations
+	tfxWideArrayi location_rotation_xy;	//Only set for relative particles at user spawn locations when any of them has a rotation
+	tfxWideArrayi location_rotation_zw;
 } tfx_instance_block_t;
 
 //Everything the fused pass hoists out of the block loop: the emitter constants broadcast to wide, the
@@ -16095,10 +16097,8 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 	if (pass->user_spawn_locations) {
 		//The age pass that removes particles of a removed location runs after this, and a slot freed this update can
 		//already hold a new location, so hide them now or they're drawn and interpolated to the new location for a frame
-		tfxWideInt rotation_xy;
-		tfxWideInt rotation_zw;
 		tfx__wide_user_spawn_location_transform(pass->user_spawn_locations, bank.spawn_location, index, false, &emitter.rotation, pass->handle_x, pass->handle_y, pass->handle_z, pass->overall_scale,
-			&block->position_x.m, &block->position_y.m, &block->position_z.m, &block->location_alive.m, &rotation_xy, &rotation_zw);
+			&block->position_x.m, &block->position_y.m, &block->position_z.m, &block->location_alive.m, &block->location_rotation_xy.m, &block->location_rotation_zw.m);
 	} else if (pass->transform_relative) {
 		block->position_x.m = tfxWideAdd(block->position_x.m, pass->handle_x);
 		block->position_y.m = tfxWideAdd(block->position_y.m, pass->handle_y);
@@ -16124,12 +16124,18 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 		if (pass->align_to_rotated_emission) {
 			tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
+		if (pass->user_spawn_rotation) {
+			tfx__wide_transform_packed_quaternion_vec3(&block->location_rotation_xy.m, &block->location_rotation_zw.m, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+		}
 		block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 	} else if (pass->vector_align_type == tfxVectorAlignType_emitter) {
 		tfxWideFloat alignment_vector_x = tfxWideSetZero;
 		tfxWideFloat alignment_vector_y = tfxWideSetSingle(1.f);
 		tfxWideFloat alignment_vector_z = tfxWideSetZero;
 		tfx__wide_transform_quaternion_vec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+		if (pass->user_spawn_rotation) {
+			tfx__wide_transform_packed_quaternion_vec3(&block->location_rotation_xy.m, &block->location_rotation_zw.m, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+		}
 		block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 	}
 
@@ -16141,6 +16147,41 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 		tfxWideStore(&locations.age[index], tfxWideMin(life, tfxWIDEONE.m));
 		TFX_ASSERT(index + tfxDataWidth <= pass->pm->particle_location_buffers[emitter.spawn_locations_index].capacity);
 	}
+}
+
+//q = conj(a) * q
+tfxINTERNAL inline void tfx__wide_conjugate_multiply_quaternion(tfxWideFloat a_w, tfxWideFloat a_x, tfxWideFloat a_y, tfxWideFloat a_z, tfxWideFloat *q_w, tfxWideFloat *q_x, tfxWideFloat *q_y, tfxWideFloat *q_z) {
+	const tfxWideFloat w = *q_w;
+	const tfxWideFloat x = *q_x;
+	const tfxWideFloat y = *q_y;
+	const tfxWideFloat z = *q_z;
+	*q_w = tfxWideAdd(tfxWideAdd(tfxWideMul(a_w, w), tfxWideMul(a_x, x)), tfxWideAdd(tfxWideMul(a_y, y), tfxWideMul(a_z, z)));
+	*q_x = tfxWideAdd(tfxWideSub(tfxWideMul(a_w, x), tfxWideMul(a_x, w)), tfxWideSub(tfxWideMul(a_z, y), tfxWideMul(a_y, z)));
+	*q_y = tfxWideAdd(tfxWideSub(tfxWideMul(a_w, y), tfxWideMul(a_y, w)), tfxWideSub(tfxWideMul(a_x, z), tfxWideMul(a_z, x)));
+	*q_z = tfxWideAdd(tfxWideSub(tfxWideMul(a_w, z), tfxWideMul(a_z, w)), tfxWideSub(tfxWideMul(a_y, x), tfxWideMul(a_x, y)));
+}
+
+//The roll plus the location's twist about the roll axis, 2 * atan2(x, w) as tfx__spawn_particle_user_location_tweaks bakes it for non
+//relative particles. Both turn about the same axis, so the twist goes in as its normalised (w, x) pair without an atan2
+tfxINTERNAL inline void tfx__wide_location_roll_to_packed_quaternion(const tfx_instance_pass_t *pass, tfxWideFloat roll, tfx_instance_block_t *block) {
+	tfxWideFloat sin_roll, cos_roll;
+	tfxWideSinCos(tfxWideMul(roll, pass->half), &sin_roll, &cos_roll);
+	tfxWideFloat location_qx, location_qy, location_qz, location_qw;
+	tfx__wide_unpack16bit(block->location_rotation_xy.m, block->location_rotation_zw.m, location_qx, location_qy, location_qz, location_qw);
+	const tfxWideFloat length_squared = tfxWideAdd(tfxWideMul(location_qx, location_qx), tfxWideMul(location_qw, location_qw));
+	const tfxWideFloat has_twist = tfxWideGreater(length_squared, tfxWideSetZero);
+	//The vertex shader normalises the quaternion, so the margin only keeps the approximate rsqrt from overflowing the snorm pack
+	const tfxWideFloat inverse_length = tfxWideMul(tfxWideRSqrt(tfxWideMax(length_squared, tfxWideSetSingle(1e-30f))), tfxWideSetSingle(.999f));
+	//A half turn about another axis has no twist, so it adds nothing rather than packing a zero quaternion
+	const tfxWideFloat twist_w = tfxWideOr(tfxWideAnd(has_twist, tfxWideMul(location_qw, inverse_length)), tfxWideAndNot(has_twist, tfxWIDEONE.m));
+	const tfxWideFloat twist_x = tfxWideAnd(has_twist, tfxWideMul(location_qx, inverse_length));
+	//tfx__wide_euler_to_packed_quaternion puts a lone roll in w and z
+	const tfxWideFloat qw = tfxWideSub(tfxWideMul(cos_roll, twist_w), tfxWideMul(sin_roll, twist_x));
+	const tfxWideFloat qz = tfxWideAdd(tfxWideMul(sin_roll, twist_w), tfxWideMul(cos_roll, twist_x));
+	block->packed_quaternion_xy.m = tfxWideSetZeroi;
+	const tfxWideInt packed_z = tfxWideAndi(tfxWideConverti(tfxWideMul(qz, pass->snorm_scale)), pass->mask_ffff);
+	const tfxWideInt packed_w = tfxWideShiftLeft(tfxWideAndi(tfxWideConverti(tfxWideMul(qw, pass->snorm_scale)), pass->mask_ffff), 16);
+	block->packed_quaternion_zw.m = tfxWideOri(packed_z, packed_w);
 }
 
 //The particle orientation, packed as a 16 bit snorm quaternion.
@@ -16158,6 +16199,10 @@ tfxINTERNAL inline void tfx__block_particle_spin(const tfx_instance_pass_t *pass
 			rotation_roll = tfxWideAdd(rotation_roll, pass->emitter_roll);
 		}
 		rotation_roll = tfxWideAdd(rotation_roll, roll_offset);
+		if (pass->relative_angle && pass->user_spawn_rotation) {
+			tfx__wide_location_roll_to_packed_quaternion(pass, rotation_roll, block);
+			return;
+		}
 		tfx__wide_euler_to_packed_quaternion(tfxWideSetZero, tfxWideSetZero, rotation_roll, &block->packed_quaternion_xy.m, &block->packed_quaternion_zw.m);
 		return;
 	}
@@ -16204,19 +16249,13 @@ tfxINTERNAL inline void tfx__block_particle_spin(const tfx_instance_pass_t *pass
 		// Multiply conj(q_emitter) * q_particle to properly compose rotations.
 		// Conjugate is needed because the CPU position transform uses a reversed
 		// quaternion rotation convention compared to the shader.
-		const tfxWideFloat e_qw = pass->emitter_qw;
-		const tfxWideFloat e_qx = pass->emitter_qx;
-		const tfxWideFloat e_qy = pass->emitter_qy;
-		const tfxWideFloat e_qz = pass->emitter_qz;
-		tfxWideFloat rw = tfxWideAdd(tfxWideAdd(tfxWideMul(e_qw, qw), tfxWideMul(e_qx, qx)),
-		                             tfxWideAdd(tfxWideMul(e_qy, qy), tfxWideMul(e_qz, qz)));
-		tfxWideFloat rx = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qx), tfxWideMul(e_qx, qw)),
-		                             tfxWideSub(tfxWideMul(e_qz, qy), tfxWideMul(e_qy, qz)));
-		tfxWideFloat ry = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qy), tfxWideMul(e_qy, qw)),
-		                             tfxWideSub(tfxWideMul(e_qx, qz), tfxWideMul(e_qz, qx)));
-		tfxWideFloat rz = tfxWideAdd(tfxWideSub(tfxWideMul(e_qw, qz), tfxWideMul(e_qz, qw)),
-		                             tfxWideSub(tfxWideMul(e_qy, qx), tfxWideMul(e_qx, qy)));
-		qw = rw; qx = rx; qy = ry; qz = rz;
+		if (pass->user_spawn_rotation) {
+			//The location sits in front of the emitter: conj(location * emitter) = conj(emitter) * conj(location)
+			tfxWideFloat location_qx, location_qy, location_qz, location_qw;
+			tfx__wide_unpack16bit(block->location_rotation_xy.m, block->location_rotation_zw.m, location_qx, location_qy, location_qz, location_qw);
+			tfx__wide_conjugate_multiply_quaternion(location_qw, location_qx, location_qy, location_qz, &qw, &qx, &qy, &qz);
+		}
+		tfx__wide_conjugate_multiply_quaternion(pass->emitter_qw, pass->emitter_qx, pass->emitter_qy, pass->emitter_qz, &qw, &qx, &qy, &qz);
 	}
 
 	// Pack quaternion to 16-bit
@@ -19308,6 +19347,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 	work_entry->emitter_age = (float)emitter.age;
 	emitter.spawn_counter += work_entry->amount_to_spawn;
 
+	if (work_entry->amount_to_spawn > 0 && tfx__gpu_spawn_supports(work_entry, emitter)) {
+		tfx__advance_generated_grid(work_entry, emitter);
+	}
 	if (work_entry->amount_to_spawn > 0 && tfx__gpu_generates_spawns(pm, work_entry, emitter)) {
 		pm->gpu_groups[emitter.state_properties.gpu_group_index].generated_spawn = work_entry;
 		return;
@@ -20143,25 +20185,14 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 }
 
 //Run on GPU emitters spawn through tfx__generate_gpu_spawn on every stage, so the kernel and every CPU fallback make the same particles
-tfx_gpu_spawn_path tfx__gpu_spawn_path(const tfx_particle_emitter_properties_t *properties, tfx_emission_type emission_type, tfxSharedEmitterFlags shared_flags, bool can_spin_pitch_and_yaw) {
+tfx_gpu_spawn_path tfx__gpu_spawn_path(const tfx_shared_properties_t *shared_properties, tfxSharedEmitterFlags shared_flags) {
+	const tfx_emission_type emission_type = shared_properties->emission_type;
 	const bool generated_shape = emission_type == tfxArea || emission_type == tfxEllipse || emission_type == tfxDisc || emission_type == tfxCylinder || emission_type == tfxLine;
 	if (!tfx__is_point_emission(emission_type) && !generated_shape) {
 		return tfxGPUSpawnPath_shape;
 	}
-	//The grid march is a cursor carried from particle to particle. Ellipses have no grid, and filled discs and cylinders ignore theirs
-	if (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid && (emission_type == tfxArea || emission_type == tfxLine
-		|| ((emission_type == tfxCylinder || emission_type == tfxDisc) && !(shared_flags & tfxSharedEmitterPropertyFlags_fill_area)))) {
-		return tfxGPUSpawnPath_grid;
-	}
 	if (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) {
 		return tfxGPUSpawnPath_spawn_source;
-	}
-	if (tfx__emission_is_stepped(properties, emission_type)) {
-		return tfxGPUSpawnPath_stepped_emission;
-	}
-	//tfx__roll_is_stepped
-	if (properties->roll_steps.distribution != tfxAngleStepDistribution_random && !can_spin_pitch_and_yaw && !(properties->angle_settings & tfxAngleSettingFlags_specify_roll)) {
-		return tfxGPUSpawnPath_stepped_roll;
 	}
 	return tfxGPUSpawnPath_generated;
 }
@@ -20170,13 +20201,13 @@ tfx_gpu_spawn_path tfx__get_emitter_gpu_spawn_path(tfx_effect_descriptor emitter
 	//The descriptor's version of tfxEmitterStateFlags_can_spin_pitch_and_yaw
 	const tfxU32 billboarding = tfx__get_gpu_particle_properties(emitter)->flags & 0x3;
 	const bool can_spin_pitch_and_yaw = billboarding == tfxBillboarding_free_align || billboarding == tfxBillboarding_align_to_vector;
-	return tfx__gpu_spawn_path(tfx__get_particle_emitter_properties(emitter), tfx__get_shared_emitter_properties(emitter)->emission_type, emitter->state_properties.shared_flags, can_spin_pitch_and_yaw);
+	return tfx__gpu_spawn_path(tfx__get_shared_emitter_properties(emitter), emitter->state_properties.shared_flags);
 }
 
 bool tfx__gpu_spawn_supports(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter) {
 	return (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu)
 		&& entry->user_spawn_locations
-		&& tfx__gpu_spawn_path(entry->properties, entry->emission_type, emitter.state_properties.shared_flags, (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) != 0) == tfxGPUSpawnPath_generated;
+		&& tfx__gpu_spawn_path(entry->shared_properties, emitter.state_properties.shared_flags) == tfxGPUSpawnPath_generated;
 }
 
 //The kernel builds the spawns from the block tfx__record_gpu_groups writes, so the bank stays empty. Warmup and the tick that hands
@@ -20283,8 +20314,9 @@ void tfx__build_gpu_spawn_block(tfx_stage pm, const tfx_spawn_work_entry_t *entr
 	block->emission_direction.x = direction.x;
 	block->emission_direction.y = direction.y;
 	block->emission_direction.z = direction.z;
+	const bool stepped_emission = tfx__emission_is_stepped(entry->properties, entry->emission_type);
 	const float cone = emission.range * .5f;
-	if (cone != 0) {
+	if (cone != 0 && !stepped_emission) {
 		flags |= tfxGPUSpawnBlockFlags_emission_cone;
 		block->emission_cone_cosine = cosf(cone);
 	}
@@ -20345,7 +20377,72 @@ void tfx__build_gpu_spawn_block(tfx_stage pm, const tfx_spawn_work_entry_t *entr
 			block->arc_offset = arc_offset;
 		}
 	}
+	const bool stepped_roll = tfx__roll_is_stepped(entry->properties, emitter);
+	flags |= tfx__generated_grid_setup(entry, emitter, block->grid_points);
+	if (flags & tfxGPUSpawnBlockFlags_grid) {
+		block->grid_start = entry->grid_start;
+	}
+	if (stepped_emission || stepped_roll) {
+		const tfx_angle_steps_t &emission_steps = entry->properties->emission_steps;
+		const tfx_angle_steps_t &roll_steps = entry->properties->roll_steps;
+		flags |= stepped_emission ? tfxGPUSpawnBlockFlags_stepped_emission : 0;
+		flags |= stepped_roll ? tfxGPUSpawnBlockFlags_stepped_roll : 0;
+		//The step turns about the fan axis, which commutes with every rotation the direction already has, so both turn the same way here
+		const tfx_vec3_t fan_axis = tfx__orient_emission_direction(emitter, entry->emission_type, tfx_vec3_t(0.f, 0.f, 1.f), emission.pitch, emission.yaw, nullptr);
+		block->emission_fan_axis.x = fan_axis.x;
+		block->emission_fan_axis.y = fan_axis.y;
+		block->emission_fan_axis.z = fan_axis.z;
+		block->emission_range = emission.range;
+		block->emission_step_jitter = emission_steps.jitter;
+		block->roll_step_jitter = roll_steps.jitter;
+		block->step_divisions = tfx__Min(emission_steps.divisions, (tfxU32)0xFFFF) | (tfx__Min(roll_steps.divisions, (tfxU32)0xFFFF) << 16);
+		block->step_settings = (tfxU32)emission_steps.distribution | ((tfxU32)roll_steps.distribution << 2) | ((tfxU32)emission_steps.flags << 4) | ((tfxU32)roll_steps.flags << 8);
+		block->step_seed = emitter.seed_index;
+	}
 	block->flags = flags;
+}
+
+//Which grid a generated spawn marches over, in grid points. Returns the block flags for it, none when the emitter doesn't spawn on a grid
+tfxGPUSpawnBlockFlags tfx__generated_grid_setup(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter, tfxU32 *grid_points) {
+	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
+	const tfx_emission_type emission_type = entry->emission_type;
+	const tfx_vec3_t &points = entry->shared_properties->grid_points;
+	tfxGPUSpawnBlockFlags flags = tfxGPUSpawnBlockFlags_grid;
+	//Ellipses have no grid, and filled discs and cylinders ignore theirs
+	const bool rim = emission_type == tfxCylinder || emission_type == tfxDisc;
+	if (!(shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) || !(emission_type == tfxArea || emission_type == tfxLine || (rim && !(shared_flags & tfxSharedEmitterPropertyFlags_fill_area)))) {
+		return tfxGPUSpawnBlockFlags_none;
+	}
+	grid_points[0] = (tfxU32)tfx__Max(points.x, 1.f);
+	grid_points[1] = (tfxU32)tfx__Max(points.y, 1.f);
+	grid_points[2] = (tfxU32)tfx__Max(points.z, 1.f);
+	if (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random) {
+		return flags | tfxGPUSpawnBlockFlags_grid_random;
+	}
+	//Clockwise counts up for areas and lines but down for the rims, as the CPU spawners have it
+	const bool clockwise = (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) != 0;
+	flags |= tfxSharedEmitterPropertyFlags_fill_area & shared_flags ? tfxGPUSpawnBlockFlags_fill_area : 0;
+	flags |= emitter.state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends ? tfxGPUSpawnBlockFlags_open_ends : 0;
+	return flags | ((rim ? clockwise : !clockwise) ? tfxGPUSpawnBlockFlags_grid_backwards : 0);
+}
+
+//The march carries on from wherever the emitter's grid coordinates were left, by the CPU spawners or the last generated batch
+void tfx__advance_generated_grid(tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter) {
+	tfxU32 grid_points[3];
+	const tfxGPUSpawnBlockFlags flags = tfx__generated_grid_setup(entry, emitter, grid_points);
+	entry->grid_start = 0;
+	if (!(flags & tfxGPUSpawnBlockFlags_grid) || flags & tfxGPUSpawnBlockFlags_grid_random) {
+		return;
+	}
+	const tfx_emission_type shape = entry->emission_type;
+	const tfxU32 length = tfx__grid_march_length(shape, flags, grid_points);
+	const tfxU32 start = tfx__grid_march_position(shape, flags, grid_points, emitter.grid_coords) % length;
+	const tfxU32 travel = entry->amount_to_spawn % length;
+	const tfxU32 next = flags & tfxGPUSpawnBlockFlags_grid_backwards ? (start + length - travel) % length : (start + travel) % length;
+	entry->grid_start = start;
+	tfxU32 coordinates[3];
+	tfx__grid_march_point(shape, flags, grid_points, next, coordinates);
+	emitter.grid_coords = tfx_vec3_t((float)coordinates[0], (float)coordinates[1], (float)coordinates[2]);
 }
 
 //Returns true when the location has multipliers, which are then written to multipliers
@@ -20365,6 +20462,7 @@ bool tfx__build_gpu_spawn_run(const tfx_spawn_work_entry_t *entry, const tfx_use
 	run->captured_position.z = location.captured_position.z + spawn_run.offset.z;
 	run->packed_rotation = location.packed_rotation;
 	run->user_data = location_list.tweaks[spawn_run.slot].user_data;
+	run->spawn_ordinal = spawn_run.spawn_ordinal;
 	if (location_list.flags & tfxUserSpawnLocationListFlags_has_rotation && location.packed_rotation != tfxPACKED_W_QUATERNION) {
 		run->flags |= tfxGPUSpawnRunFlags_rotated;
 		const tfx_quaternion_t rotation = tfx__unpack16bit_quaternion(location.packed_rotation);
@@ -20399,11 +20497,270 @@ tfxINTERNAL float tfx__shifted_sequence(tfxU32 sequence_index, tfxU32 base, tfxU
 	return unit >= 1.f ? unit - 1.f : unit;
 }
 
+//Grid spawning as one march over the grid's points, so a spawn's point only depends on where the batch's march starts and its index
+tfxU32 tfx__grid_march_length(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points) {
+	const tfxU32 x = grid_points[0], y = grid_points[1], z = grid_points[2];
+	switch (shape) {
+	case tfxArea: {
+		if (flags & tfxGPUSpawnBlockFlags_fill_area) return x * y * z;
+		//A side layer only has the edge of the cuboid: its first and last rows and the two ends of every row between
+		const tfxU32 ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+		if (flags & tfxGPUSpawnBlockFlags_open_ends) return z * ring;
+		return z == 1 ? x * y : 2 * x * y + (z - 2) * ring;
+	}
+	case tfxLine: return y;
+	case tfxCylinder: return x * y;
+	default: return x;
+	}
+}
+
+//The position in a side layer of a hollow area, see tfx__grid_march_length
+tfxINTERNAL void tfx__hollow_area_ring_point(tfxU32 ring_index, tfxU32 x, tfxU32 y, tfxU32 *coordinates) {
+	const tfxU32 ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+	if (y == 1 || ring_index < x) {
+		coordinates[0] = ring_index;
+		coordinates[1] = 0;
+	} else if (ring_index >= ring - x) {
+		coordinates[0] = ring_index - (ring - x);
+		coordinates[1] = y - 1;
+	} else {
+		const tfxU32 side_index = ring_index - x;
+		coordinates[0] = side_index & 1 ? x - 1 : 0;
+		coordinates[1] = 1 + side_index / 2;
+	}
+}
+
+//The grid point at a march position, the order the CPU spawners step through them in
+void tfx__grid_march_point(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points, tfxU32 position, tfxU32 *coordinates) {
+	const tfxU32 x = grid_points[0], y = grid_points[1], z = grid_points[2];
+	coordinates[0] = coordinates[1] = coordinates[2] = 0;
+	switch (shape) {
+	case tfxArea: {
+		if (flags & tfxGPUSpawnBlockFlags_fill_area) {
+			coordinates[0] = position % x;
+			coordinates[1] = (position / x) % y;
+			coordinates[2] = position / (x * y);
+			return;
+		}
+		const tfxU32 ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+		if (flags & tfxGPUSpawnBlockFlags_open_ends) {
+			tfx__hollow_area_ring_point(position % ring, x, y, coordinates);
+			coordinates[2] = position / ring;
+			return;
+		}
+		//Closed ends are whole layers
+		if (z == 1 || position < x * y) {
+			coordinates[0] = position % x;
+			coordinates[1] = position / x;
+			return;
+		}
+		const tfxU32 side_position = position - x * y;
+		if (side_position < (z - 2) * ring) {
+			tfx__hollow_area_ring_point(side_position % ring, x, y, coordinates);
+			coordinates[2] = 1 + side_position / ring;
+			return;
+		}
+		const tfxU32 end_position = side_position - (z - 2) * ring;
+		coordinates[0] = end_position % x;
+		coordinates[1] = end_position / x;
+		coordinates[2] = z - 1;
+		return;
+	}
+	case tfxLine:
+		coordinates[1] = position;
+		return;
+	case tfxCylinder:
+		coordinates[0] = position % x;
+		coordinates[1] = position / x;
+		return;
+	default:
+		coordinates[0] = position;
+		return;
+	}
+}
+
+//The inverse of tfx__grid_march_point for the coordinates the emitter keeps between batches. A hollow area's inner point counts as its row's far end
+tfxU32 tfx__grid_march_position(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points, tfx_vec3_t grid_coords) {
+	const tfxU32 x = grid_points[0], y = grid_points[1], z = grid_points[2];
+	const tfxU32 coordinate_x = tfx__Min((tfxU32)tfx__Max(grid_coords.x, 0.f), x - 1);
+	const tfxU32 coordinate_y = tfx__Min((tfxU32)tfx__Max(grid_coords.y, 0.f), y - 1);
+	const tfxU32 coordinate_z = tfx__Min((tfxU32)tfx__Max(grid_coords.z, 0.f), z - 1);
+	switch (shape) {
+	case tfxArea: {
+		if (flags & tfxGPUSpawnBlockFlags_fill_area) {
+			return coordinate_x + x * (coordinate_y + y * coordinate_z);
+		}
+		const tfxU32 ring = y == 1 ? x : 2 * x + 2 * (y - 2);
+		tfxU32 ring_index = coordinate_x;
+		if (y > 1 && coordinate_y == y - 1) {
+			ring_index = ring - x + coordinate_x;
+		} else if (y > 1 && coordinate_y > 0) {
+			ring_index = x + 2 * (coordinate_y - 1) + (coordinate_x > 0 ? 1 : 0);
+		}
+		if (flags & tfxGPUSpawnBlockFlags_open_ends) {
+			return coordinate_z * ring + ring_index;
+		}
+		if (z == 1 || coordinate_z == 0) {
+			return coordinate_x + x * coordinate_y;
+		}
+		if (coordinate_z == z - 1) {
+			return x * y + (z - 2) * ring + coordinate_x + x * coordinate_y;
+		}
+		return x * y + (coordinate_z - 1) * ring + ring_index;
+	}
+	case tfxLine: return coordinate_y;
+	case tfxCylinder: return coordinate_x + x * coordinate_y;
+	default: return (tfxU32)tfx__Max(grid_coords.x, 0.f);
+	}
+}
+
+//A grid point of an area, line, cylinder or disc, around the shape's own origin. A hollow area's face_normal points out of the faces it's on
+tfx_vec3_t tfx__generate_grid_offset(const tfx_gpu_spawn_block_t *block, tfxU32 uid, tfxU32 spawn_index, tfx_vec3_t *face_normal) {
+	const tfxU32 shape = block->shape;
+	const tfxU32 *grid_points = block->grid_points;
+	const tfx_vec3_t emitter_size(block->emitter_size.x, block->emitter_size.y, block->emitter_size.z);
+	const tfx_vec3_t half_size = emitter_size * .5f;
+	const bool hollow_area = shape == tfxArea && !(block->flags & tfxGPUSpawnBlockFlags_fill_area);
+	tfxU32 coordinates[3] = { 0, 0, 0 };
+	if (block->flags & tfxGPUSpawnBlockFlags_grid_random) {
+		coordinates[0] = (tfxU32)(tfx__hash_unit(uid, tfxSpawnHashAxis_shape_u) * (float)grid_points[0]);
+		coordinates[1] = (tfxU32)(tfx__hash_unit(uid, tfxSpawnHashAxis_shape_v) * (float)grid_points[1]);
+		coordinates[2] = (tfxU32)(tfx__hash_unit(uid, tfxSpawnHashAxis_shape_w) * (float)grid_points[2]);
+		if (hollow_area) {
+			//One of the faces, which pins that face's coordinate
+			const tfxU32 sides = block->flags & tfxGPUSpawnBlockFlags_open_ends ? 4 : 6;
+			const tfxU32 side = (tfxU32)(tfx__hash_unit(uid, tfxSpawnHashAxis_shape_side) * (float)sides);
+			*face_normal = tfx_vec3_t(0.f, 0.f, 0.f);
+			switch (side) {
+			case 0: coordinates[0] = 0; face_normal->x = -1.f; break;
+			case 1: coordinates[0] = grid_points[0] - 1; face_normal->x = 1.f; break;
+			case 2: coordinates[1] = 0; face_normal->y = -1.f; break;
+			case 3: coordinates[1] = grid_points[1] - 1; face_normal->y = 1.f; break;
+			case 4: coordinates[2] = grid_points[2] - 1; face_normal->z = 1.f; break;
+			default: coordinates[2] = 0; face_normal->z = -1.f; break;
+			}
+		}
+	} else {
+		const tfxU32 length = tfx__grid_march_length(shape, block->flags, grid_points);
+		const tfxU32 travel = spawn_index % length;
+		const tfxU32 position = block->flags & tfxGPUSpawnBlockFlags_grid_backwards ? (block->grid_start + length - 1 - travel) % length : (block->grid_start + travel) % length;
+		tfx__grid_march_point(shape, block->flags, grid_points, position, coordinates);
+		if (hollow_area) {
+			//Every face the point is on, so an edge or corner points out between them
+			face_normal->x = coordinates[0] == 0 ? -1.f : (coordinates[0] == grid_points[0] - 1 ? 1.f : 0.f);
+			face_normal->y = coordinates[1] == 0 ? -1.f : (coordinates[1] == grid_points[1] - 1 ? 1.f : 0.f);
+			face_normal->z = coordinates[2] == 0 ? -1.f : (coordinates[2] == grid_points[2] - 1 ? 1.f : 0.f);
+		}
+	}
+	switch (shape) {
+	case tfxArea: {
+		const tfx_vec3_t segment(emitter_size.x / tfx__Max((float)grid_points[0] - 1.f, 1.f), emitter_size.y / tfx__Max((float)grid_points[1] - 1.f, 1.f), emitter_size.z / tfx__Max((float)grid_points[2] - 1.f, 1.f));
+		return tfx_vec3_t((float)coordinates[0] * segment.x - half_size.x, (float)coordinates[1] * segment.y - half_size.y, (float)coordinates[2] * segment.z - half_size.z);
+	}
+	case tfxLine:
+		return tfx_vec3_t(0.f, (float)coordinates[1] * emitter_size.y / tfx__Max((float)grid_points[1] - 1.f, 1.f), 0.f);
+	case tfxCylinder: {
+		const float theta = (float)coordinates[0] * block->arc_size / (float)grid_points[0] + block->arc_offset;
+		return tfx_vec3_t(cosf(theta) * half_size.x, (float)coordinates[1] * emitter_size.y / tfx__Max((float)grid_points[1] - 1.f, 1.f), -sinf(theta) * half_size.z);
+	}
+	default: {
+		const float theta = block->arc_offset + (float)coordinates[0] * block->arc_size / (float)grid_points[0];
+		return tfx_vec3_t(half_size.x * cosf(theta), 0.f, half_size.z * -sinf(theta));
+	}
+	}
+}
+
+//tfx__begin_angle_steps' start and step for an arc
+tfxINTERNAL void tfx__angle_step_span(float range, float centre, tfxU32 divisions, float *start, float *step) {
+	divisions = tfx__Max(divisions, (tfxU32)1);
+	const bool full_circle = range >= 2.f * tfxPI - 0.001f;
+	*step = full_circle ? range / (float)divisions : (divisions > 1 ? range / (float)(divisions - 1) : 0.f);
+	*start = full_circle || divisions == 1 ? centre : centre - range * 0.5f;
+}
+
+//tfx__next_angle_step_division for any ordinal without walking an iterator there
+tfxINTERNAL tfxU32 tfx__angle_step_division(tfxU32 distribution, tfxU32 divisions, tfxU32 ordinal, tfxU32 seed) {
+	divisions = tfx__Max(divisions, (tfxU32)1);
+	if (divisions == 1) {
+		return 0;
+	}
+	const tfxU32 period = distribution == tfxAngleStepDistribution_ping_pong ? (divisions - 1) * 2 : divisions;
+	const tfxU32 position = ordinal % period;
+	if (distribution == tfxAngleStepDistribution_ping_pong) {
+		return position < divisions ? position : period - position;
+	}
+	if (distribution == tfxAngleStepDistribution_shuffled) {
+		return tfx__permute_index(position, divisions, seed ^ ((ordinal / period) * 0x9E3779B9u));
+	}
+	return position;
+}
+
+//tfx__apply_emission_step on a direction that is already turned by the emission and emitter rotations, as the fan axis is
+tfxINTERNAL tfx_vec3_t tfx__generate_stepped_direction(const tfx_gpu_spawn_block_t *block, const tfx_gpu_spawn_run_t *run, tfxU32 uid, tfxU32 spawn_index, tfx_vec3_t direction) {
+	const tfxU32 step_flags = (block->step_settings >> 4) & 0xF;
+	const tfxU32 divisions = tfx__Max(block->step_divisions & 0xFFFF, (tfxU32)1);
+	const tfxU32 ordinal = (step_flags & tfxAngleStepFlags_restart_each_spawn ? 0 : run->spawn_ordinal) + (spawn_index - run->first_spawn);
+	const tfxU32 division = tfx__angle_step_division(block->step_settings & 3, divisions, ordinal, block->step_seed);
+	const tfx_vec3_t axis(block->emission_fan_axis.x, block->emission_fan_axis.y, block->emission_fan_axis.z);
+	const float half_range = block->emission_range * .5f;
+	if (step_flags & tfxAngleStepFlags_cap) {
+		//Equal area bands of the spherical cap, so each division covers the same solid angle
+		const float cap_height_step = (divisions > 1 ? 1.f - cosf(half_range) : 0.f) / (float)divisions;
+		const float cos_tilt = 1.f - cap_height_step * ((float)division + 0.5f);
+		const float sin_tilt = sqrtf(tfx__Max(1.f - cos_tilt * cos_tilt, 0.f));
+		const float angle = (float)division * tfxGOLDEN_ANGLE;
+		const tfx_vec3_t radial = axis * cosf(angle) + tfx__cross_product_vec3(direction, axis) * sinf(angle);
+		tfx_vec3_t stepped = direction * cos_tilt + radial * sin_tilt;
+		const float jitter_cone = block->emission_step_jitter * 0.5f * sqrtf(2.f * tfxPI * cap_height_step);
+		if (jitter_cone != 0.f) {
+			const float z = 1.f - (1.f - cosf(jitter_cone)) * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_z);
+			const float phi = tfxPI2 * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_phi);
+			stepped = tfx__vector_in_cone(tfx__normalize_vec3_fast(&stepped), z, phi);
+		}
+		return stepped;
+	}
+	const bool ring = (step_flags & tfxAngleStepFlags_ring) != 0;
+	float start, step;
+	tfx__angle_step_span(ring ? tfxPI2 : block->emission_range, 0.f, divisions, &start, &step);
+	float angle = start + step * (float)division;
+	const float half_jitter = step * block->emission_step_jitter * 0.5f;
+	if (half_jitter > 0.f) {
+		angle += (2.f * tfx__hash_unit(uid, tfxSpawnHashAxis_emission_jitter) - 1.f) * half_jitter;
+	}
+	if (ring) {
+		const tfx_vec3_t radial = axis * cosf(angle) + tfx__cross_product_vec3(direction, axis) * sinf(angle);
+		return direction * cosf(half_range) + radial * sinf(half_range);
+	}
+	return direction * cosf(angle) + tfx__cross_product_vec3(axis, direction) * sinf(angle);
+}
+
+//tfx__spawn_particle_spin's stepped roll offset
+tfxINTERNAL float tfx__generate_stepped_roll(const tfx_gpu_spawn_block_t *block, const tfx_gpu_spawn_run_t *run, tfxU32 uid, tfxU32 spawn_index) {
+	const tfxU32 step_flags = (block->step_settings >> 8) & 0xF;
+	const tfxU32 divisions = tfx__Max(block->step_divisions >> 16, (tfxU32)1);
+	const tfxU32 ordinal = (step_flags & tfxAngleStepFlags_restart_each_spawn ? 0 : run->spawn_ordinal) + (spawn_index - run->first_spawn);
+	const tfxU32 division = tfx__angle_step_division((block->step_settings >> 2) & 3, divisions, ordinal, block->step_seed);
+	const float range = block->angle_offsets.z;
+	//The random roll covers 0 to the range, so a partial arc is centred on half of it and a full circle starts at 0
+	const float centre = range >= 2.f * tfxPI - 0.001f ? 0.f : range * 0.5f;
+	float start, step;
+	tfx__angle_step_span(range, centre, divisions, &start, &step);
+	float angle = start + step * (float)division;
+	const float half_jitter = step * block->roll_step_jitter * 0.5f;
+	if (half_jitter > 0.f) {
+		angle += (2.f * tfx__hash_unit(uid, tfxSpawnHashAxis_roll_jitter) - 1.f) * half_jitter;
+	}
+	return angle;
+}
+
 //A point in or on the shape around its own origin, before a location scales it. face_normal is set for a hollow area's faces
 tfxINTERNAL tfx_vec3_t tfx__generate_shape_offset(const tfx_gpu_spawn_block_t *block, tfxU32 uid, tfxU32 spawn_index, tfx_vec3_t *face_normal) {
 	const tfx_vec3_t emitter_size(block->emitter_size.x, block->emitter_size.y, block->emitter_size.z);
 	const tfx_vec3_t half_size = emitter_size * .5f;
 	const bool fill_area = (block->flags & tfxGPUSpawnBlockFlags_fill_area) != 0;
+	if (block->flags & tfxGPUSpawnBlockFlags_grid) {
+		return tfx__generate_grid_offset(block, uid, spawn_index, face_normal);
+	}
 	float unit_u = tfx__hash_unit(uid, tfxSpawnHashAxis_shape_u);
 	float unit_v = tfx__hash_unit(uid, tfxSpawnHashAxis_shape_v);
 	float unit_w = tfx__hash_unit(uid, tfxSpawnHashAxis_shape_w);
@@ -20569,6 +20926,9 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 		direction = tfx__generate_shape_direction(block, spawn_offset, shape_position, shape_size, spawn_index, face_normal);
 	}
 
+	if (flags & tfxGPUSpawnBlockFlags_stepped_emission) {
+		direction = tfx__generate_stepped_direction(block, run, uid, spawn_index, direction);
+	}
 	if (flags & tfxGPUSpawnBlockFlags_emission_cone) {
 		const float z = 1.f - (1.f - block->emission_cone_cosine) * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_z);
 		const float phi = tfxPI2 * tfx__hash_unit(uid, tfxSpawnHashAxis_cone_phi);
@@ -20620,6 +20980,9 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 		rotation_offsets = tfx__pack10bit_unsigned(&offsets);
 	} else {
 		float roll = flags & tfxGPUSpawnBlockFlags_specify_roll ? block->angle_offsets.z : tfx__hash_unit(uid, tfxSpawnHashAxis_roll_offset) * block->angle_offsets.z;
+		if (flags & tfxGPUSpawnBlockFlags_stepped_roll) {
+			roll = tfx__generate_stepped_roll(block, run, uid, spawn_index);
+		}
 		if (rotate_from_location && flags & tfxGPUSpawnBlockFlags_relative_angle) {
 			roll += run->location_roll;
 		}

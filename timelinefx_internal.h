@@ -2901,10 +2901,7 @@ inline bool tfx__is_point_emission(tfx_emission_type emission_type) {
 typedef enum {
 	tfxGPUSpawnPath_generated,
 	tfxGPUSpawnPath_shape,							//Icosphere, path, other emitter and spawn on ribbon
-	tfxGPUSpawnPath_grid,
 	tfxGPUSpawnPath_spawn_source,
-	tfxGPUSpawnPath_stepped_emission,
-	tfxGPUSpawnPath_stepped_roll,
 } tfx_gpu_spawn_path;
 
 typedef enum {
@@ -6477,7 +6474,7 @@ tfx__static_assert((int)tfxGPUForceType_wind == (int)tfxForceWind && (int)tfxGPU
 tfx__static_assert(tfxVORTEX_FLUCTUATION_HARMONICS == 3);
 tfx__static_assert(sizeof(tfx_gpu_particle_dispatch_t) == 128);
 //Spawn blocks, runs and multipliers are rows of the tick array too
-#define tfxGPU_SPAWN_BLOCK_ROWS 4
+#define tfxGPU_SPAWN_BLOCK_ROWS 5
 tfx__static_assert(sizeof(tfx_gpu_spawn_block_t) == tfxGPU_SPAWN_BLOCK_ROWS * sizeof(tfx_gpu_particle_tick_t));
 tfx__static_assert(sizeof(tfx_gpu_spawn_run_t) == sizeof(tfx_gpu_particle_tick_t));
 tfx__static_assert(sizeof(tfx_gpu_spawn_multipliers_t) == sizeof(tfx_gpu_particle_tick_t));
@@ -6955,6 +6952,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 particle_uid;
 	tfxU32 spawn_ordinal;				//Particles the emitter spawned before this batch, drives the stepped angle distributions
 	tfxU32 gpu_ring_free;				//Room left in the emitter's GPU ring, tfxINVALID when it doesn't have one
+	tfxU32 grid_start;					//Where a generated grid spawn's march starts this batch
 }tfx_spawn_work_entry_t;
 
 //Sampled once per spawn batch so each ribbon only has to pick a point
@@ -8265,6 +8263,8 @@ typedef enum {
 	tfxSpawnHashAxis_sequence_theta,		//Drawn from the tick's uid base rather than a particle's uid, so a whole tick's sequence shifts together
 	tfxSpawnHashAxis_sequence_phi,
 	tfxSpawnHashAxis_sequence_radius,
+	tfxSpawnHashAxis_emission_jitter,
+	tfxSpawnHashAxis_roll_jitter,
 } tfx_spawn_hash_axis;
 
 //--------------------------------
@@ -9715,7 +9715,13 @@ tfxINTERNAL tfx_spawn_size_t tfx__resolve_spawn_size(const tfx_spawn_work_entry_
 tfxINTERNAL tfx_spawn_spin_t tfx__resolve_spawn_spin(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL tfx_spawn_noise_t tfx__resolve_spawn_noise(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL tfx_spawn_emission_t tfx__resolve_spawn_emission(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
-tfxINTERNAL tfx_gpu_spawn_path tfx__gpu_spawn_path(const tfx_particle_emitter_properties_t *properties, tfx_emission_type emission_type, tfxSharedEmitterFlags shared_flags, bool can_spin_pitch_and_yaw);
+tfxINTERNAL tfx_gpu_spawn_path tfx__gpu_spawn_path(const tfx_shared_properties_t *shared_properties, tfxSharedEmitterFlags shared_flags);
+tfxINTERNAL tfxGPUSpawnBlockFlags tfx__generated_grid_setup(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter, tfxU32 *grid_points);
+tfxINTERNAL void tfx__advance_generated_grid(tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter);
+tfxINTERNAL tfxU32 tfx__grid_march_length(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points);
+tfxINTERNAL void tfx__grid_march_point(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points, tfxU32 position, tfxU32 *coordinates);
+tfxINTERNAL tfxU32 tfx__grid_march_position(tfxU32 shape, tfxGPUSpawnBlockFlags flags, const tfxU32 *grid_points, tfx_vec3_t grid_coords);
+tfxINTERNAL tfx_vec3_t tfx__generate_grid_offset(const tfx_gpu_spawn_block_t *block, tfxU32 uid, tfxU32 spawn_index, tfx_vec3_t *face_normal);
 tfxAPI_EDITOR tfx_gpu_spawn_path tfx__get_emitter_gpu_spawn_path(tfx_effect_descriptor emitter);
 tfxINTERNAL bool tfx__gpu_spawn_supports(const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);
 tfxINTERNAL bool tfx__gpu_generates_spawns(tfx_stage pm, const tfx_spawn_work_entry_t *entry, const tfx_particle_emitter_state_t &emitter);

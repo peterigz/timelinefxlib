@@ -829,7 +829,12 @@ typedef enum {
 	tfxGPUSpawnBlockFlags_fill_area = 1 << 13,
 	tfxGPUSpawnBlockFlags_open_ends = 1 << 14,							//A hollow area without its two end faces
 	tfxGPUSpawnBlockFlags_uniform_distribution = 1 << 15,				//Ellipse and disc spawns follow a low discrepancy sequence
-	tfxGPUSpawnBlockFlags_shape = 1 << 16,								//Spawns in a shape rather than at a point, so the block's last row is read
+	tfxGPUSpawnBlockFlags_shape = 1 << 16,								//Spawns in a shape rather than at a point, so the block's shape row is read
+	tfxGPUSpawnBlockFlags_grid = 1 << 17,								//Spawns on the shape's grid points, so the block's step row is read
+	tfxGPUSpawnBlockFlags_grid_random = 1 << 18,						//A random grid point rather than the next one along the march
+	tfxGPUSpawnBlockFlags_grid_backwards = 1 << 19,						//The march runs down from grid_start instead of up
+	tfxGPUSpawnBlockFlags_stepped_emission = 1 << 20,					//The emission direction steps through divisions, read from the step row
+	tfxGPUSpawnBlockFlags_stepped_roll = 1 << 21,						//The roll steps through divisions, read from the step row
 } tfx_gpu_spawn_block_flag_bits;
 
 typedef tfxU32 tfxGPUSpawnBlockFlags;          //tfx_gpu_spawn_block_flag_bits
@@ -881,6 +886,17 @@ typedef struct tfx_gpu_spawn_block_s {		//256 bytes
 	tfx_float32x4_t emission_rotation;		//x, y, z, w: turns a shape's local emission direction by the pitch and yaw, then the emitter for non relative particles
 	tfx_float32x3_t local_handle;			//The emitter's handle before its rotation
 	tfxU32 emission_direction_mode;			//tfx_emission_direction
+	//Grid points and stepped angles, only read with tfxGPUSpawnBlockFlags_grid or a stepped flag
+	tfxU32 grid_start;						//Where the tick's march starts
+	tfxU32 grid_points[3];					//x, y, z, each at least 1
+	tfx_float32x3_t emission_fan_axis;		//The axis stepped emission turns about, turned like emission_direction
+	float emission_range;					//Stepped emission's arc, and the tilt of a ring or cap
+	float emission_step_jitter;				//0 to 1 of a division
+	float roll_step_jitter;
+	tfxU32 step_divisions;					//Emission divisions in the low 16 bits, roll divisions in the high 16
+	tfxU32 step_settings;					//Emission distribution | roll distribution << 2 | emission tfxAngleStepFlags << 4 | roll tfxAngleStepFlags << 8
+	tfxU32 step_seed;						//The emitter's seed index, which seeds the shuffled distribution
+	tfxU32 step_padding[3];
 } tfx_gpu_spawn_block_t;
 
 typedef enum {
@@ -903,7 +919,7 @@ typedef struct tfx_gpu_spawn_run_s {		//64 bytes
 	float location_roll;					//The location's turn about the roll axis, for relative angle particles that only roll
 	tfxU64 packed_rotation;					//16 bit snorm quaternion, as tfx_gpu_spawn_location_t packs it
 	tfxU32 user_data;						//tfx_SetSpawnLocationUserData
-	tfxU32 padding;
+	tfxU32 spawn_ordinal;					//Spawns the location made for this emitter before the run, which stepped angles count from
 } tfx_gpu_spawn_run_t;
 
 //A spawn location's multipliers as its generated spawns apply them
@@ -2135,9 +2151,9 @@ GPU particle simulation
 --------------------------------
 Emitters with Run on GPU set are simulated by a compute shader you dispatch, which writes their instances into the
 same instance buffer as the CPU particles. Point, User, Area, Ellipse, Disc, Cylinder and Line emitters have their
-spawns built in the kernel too, from a few rows per tick and location, so a burst of any size costs the CPU next to
-nothing. Icosphere, Path, Other Emitter and Spawn on Ribbon emitters, grid spawning and stepped angles spawn on the CPU
-and upload a row per particle. Set tfx_stage_info_t gpu_particle_capacity to turn it on
+spawns built in the kernel too, grid spawning and stepped angles included, from a few rows per tick and location, so a
+burst of any size costs the CPU next to nothing. Icosphere, Path, Other Emitter and Spawn on Ribbon emitters spawn on the
+CPU and upload a row per particle. Set tfx_stage_info_t gpu_particle_capacity to turn it on
 for a stage. Without it those emitters simply run on the CPU, as they also do while a stage records sprite data, while
 tfx_SetStageGPUSimulation has it off, and when they are the source another emitter spawns from. Every emitter force
 runs in the kernel: the library resolves each emitter's forces every tick into force rows that follow the tick records,
