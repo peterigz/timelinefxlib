@@ -1061,6 +1061,46 @@ tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	return ((tfxU32)(uint16_t)x_scaled) | ((tfxU32)(uint16_t)y_scaled << 16);
 }
 
+tfxINTERNAL inline tfxU32 tfx__pack_half_pair(float low, float high) {
+	tfx_rgba16f_t half = tfxFloatToHalf128(tfx128Set(0.f, 0.f, high, low));
+	return (tfxU32)half.r | ((tfxU32)half.g << 16);
+}
+
+tfxINTERNAL inline void tfx__unpack_half_pair(tfxU32 packed, float *low, float *high) {
+	tfx_rgba16f_t half;
+	half.packed = packed;
+	tfx128Array floats;
+	floats.m = tfxHalfToFloat128(half);
+	*low = floats.a[0];
+	*high = floats.a[1];
+}
+
+tfxINTERNAL inline tfxU32 tfx__pack_ribbon_age(float age_lerp) {
+	return (tfxU32)(age_lerp * 65535.f + 0.5f);
+}
+
+tfxINTERNAL inline float tfx__ribbon_age_lerp(const tfx_ribbon_t &ribbon) {
+	return (float)(ribbon.age_width & 0xFFFF) * (1.f / 65535.f);
+}
+
+tfxINTERNAL inline tfxU32 tfx__pack_ribbon_start_index_flags(tfxU32 start_index, tfxU32 flags) {
+	TFX_ASSERT(start_index == tfxINVALID || start_index < tfxRIBBON_START_INDEX_MASK);
+	return (start_index & tfxRIBBON_START_INDEX_MASK) | (flags << tfxRIBBON_FLAGS_SHIFT);
+}
+
+tfxINTERNAL inline tfxU32 tfx__ribbon_start_index(const tfx_ribbon_t &ribbon) {
+	tfxU32 start_index = ribbon.start_index_flags & tfxRIBBON_START_INDEX_MASK;
+	return start_index == tfxRIBBON_START_INDEX_MASK ? tfxINVALID : start_index;
+}
+
+tfxINTERNAL inline tfxU32 tfx__ribbon_flags(const tfx_ribbon_t &ribbon) {
+	return ribbon.start_index_flags >> tfxRIBBON_FLAGS_SHIFT;
+}
+
+tfxINTERNAL inline void tfx__deactivate_ribbon(tfx_ribbon_t &ribbon) {
+	ribbon.start_index_flags &= ~((tfxU32)tfxRibbonFlags_active << tfxRIBBON_FLAGS_SHIFT);
+}
+
 
 tfxU32 tfx__pack8bit_xyz(float const &v_x, float const &v_y, float const &v_z) {
 	int x_scaled = (int)(v_x * 127.0f);
@@ -2347,7 +2387,7 @@ void tfx__sprite_data_offset_captured_indexes(T* instance, tfx_sprite_data_t *sp
 }
 
 void tfx__ribbon_data_set_captured_indexes(tfx_sprite_data_t *sprite_data) {
-	tfx_ribbon_t *instance = sprite_data->compressed_ribbons.ribbon_instance;
+	tfx_ribbon_instance_data_t *instance = sprite_data->compressed_ribbons.ribbon_instance;
 	tfx_ribbon_data_soa_t &c_ribbons = sprite_data->compressed_ribbons;
 	tfxU32 frame_count = sprite_data->compressed.frame_count;
 	for (tfxU32 current_frame = 0; current_frame < frame_count; ++current_frame) {
@@ -11630,7 +11670,7 @@ TFX_ENABLE_COMPILER_WARNING()
 					//Save ALL existing ribbon data for this frame to a temporary buffer
 					tfxU32 existing_count = running_ribbon_count[frame];
 					tfx__resize_soa_buffer(&temp_ribbons_buffer, existing_count);
-					memcpy(temp_ribbons.ribbon_instance, sprite_data->real_time_ribbons.ribbon_instance + ribbon_frame_meta[frame].index_offset, sizeof(tfx_ribbon_t) * existing_count);
+					memcpy(temp_ribbons.ribbon_instance, sprite_data->real_time_ribbons.ribbon_instance + ribbon_frame_meta[frame].index_offset, sizeof(tfx_ribbon_instance_data_t) * existing_count);
 					memcpy(temp_ribbons.uid, sprite_data->real_time_ribbons.uid + ribbon_frame_meta[frame].index_offset, sizeof(tfx_unique_sprite_id_t) * existing_count);
 				}
 
@@ -11647,19 +11687,29 @@ TFX_ENABLE_COMPILER_WARNING()
 						sprite_data->morph_segment_indexes[ribbon_emitter.state_properties.property_index] = ribbon_emitter.morph_segment_start_index;
 						for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
 							tfx_ribbon_t &ribbon = bucket.ribbons.ribbon_instances[ribbon_index];
-							ribbon.captured_index = bucket.ribbons.age[ribbon_index] == 0 ? tfxINVALID : ribbon_write_index;
-							sprite_data->real_time_ribbons.ribbon_instance[ribbon_write_index] = ribbon;
-							if (ribbon.flags & tfxRibbonFlags_relative) {
+							tfx_ribbon_instance_data_t &recorded = sprite_data->real_time_ribbons.ribbon_instance[ribbon_write_index];
+							float unused_high;
+							recorded.position = tfx_vec4_t(ribbon.position, bucket.ribbons.age[ribbon_index] / bucket.ribbons.max_age[ribbon_index]);
+							tfx__unpack_half_pair(ribbon.age_width, &unused_high, &recorded.width);
+							recorded.start_index = tfx__ribbon_start_index(ribbon);
+							recorded.flags = tfx__ribbon_flags(ribbon);
+							recorded.captured_index = bucket.ribbons.age[ribbon_index] == 0 ? tfxINVALID : ribbon_write_index;
+							recorded.quaternion = ribbon.quaternion;
+							tfx__unpack_half_pair(ribbon.scale, &recorded.scale, &unused_high);
+							recorded.texture_indexes = ribbon.texture_indexes;
+							recorded.intensity_gradient_map = ribbon.intensity_gradient_map;
+							recorded.curved_alpha = ribbon.curved_alpha;
+							recorded.additional = 0;
+							recorded.phase_seed = ribbon.emitter_index_phase_seed >> 16;
+							if (recorded.flags & tfxRibbonFlags_relative) {
 								//A relative ribbon leaves its emitter transform to the GPU, applied per frame from the
 								//emitter struct. Baked playback has no per frame emitter struct, so fold this frame's
 								//transform into the record and let it play back as a world space ribbon. Matches the
 								//shader exactly: rotate by the ribbon quaternion, offset, then rotate by the emitter
 								//quaternion and offset - which is one rotation by emitter * ribbon about the moved origin.
-								tfx_ribbon_t &recorded = sprite_data->real_time_ribbons.ribbon_instance[ribbon_write_index];
 								tfx_quaternion_t ribbon_rotation = tfx__unpack16bit_quaternion_from_gpu(ribbon.quaternion);
 								tfx_quaternion_t world_rotation = ribbon_emitter.rotation * ribbon_rotation;
-								tfx_vec3_t local_position = tfx_vec3_t(ribbon.position.x, ribbon.position.y, ribbon.position.z);
-								tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, local_position) + ribbon_emitter.world_position;
+								tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, ribbon.position) + ribbon_emitter.world_position;
 								recorded.position.x = world_position.x;
 								recorded.position.y = world_position.y;
 								recorded.position.z = world_position.z;
@@ -11679,7 +11729,7 @@ TFX_ENABLE_COMPILER_WARNING()
 					//Append old ribbons for this bucket from the temp buffer to keep bucket grouping
 					tfxU32 old_bucket_count = running_ribbon_count_per_bucket[frame * bucket_count + bucket_idx];
 					if (old_bucket_count > 0 && fresh_ribbon_count > 0) {
-						memcpy(sprite_data->real_time_ribbons.ribbon_instance + ribbon_write_index, temp_ribbons.ribbon_instance + old_read_offset, sizeof(tfx_ribbon_t) * old_bucket_count);
+						memcpy(sprite_data->real_time_ribbons.ribbon_instance + ribbon_write_index, temp_ribbons.ribbon_instance + old_read_offset, sizeof(tfx_ribbon_instance_data_t) * old_bucket_count);
 						memcpy(sprite_data->real_time_ribbons.uid + ribbon_write_index, temp_ribbons.uid + old_read_offset, sizeof(tfx_unique_sprite_id_t) * old_bucket_count);
 						ribbon_write_index += old_bucket_count;
 					}
@@ -11751,7 +11801,7 @@ TFX_ENABLE_COMPILER_WARNING()
 		}
 
 		for (tfxU32 ribbon_index = 0; ribbon_index < sprite_data->real_time_ribbons_buffer.current_size; ++ribbon_index) {
-			tfx_ribbon_t &ribbon = sprite_data->real_time_ribbons.ribbon_instance[ribbon_index];
+			tfx_ribbon_instance_data_t &ribbon = sprite_data->real_time_ribbons.ribbon_instance[ribbon_index];
 			if (ribbon.start_index != tfxINVALID) {
 				tfxU32 property_index = sprite_data->real_time_ribbons.uid[ribbon_index].property_index;
 				tfx_ribbon_emitter_properties_t &ribbon_properties = effect->library->ribbon_properties[property_index];
@@ -12312,14 +12362,9 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 			animation_manager->ribbon_properties[animation_property_index].morph_segment_start_index = morph_segment_start_index + metrics.ribbon_segment_start_offset;
 		}
 		for (tfxU32 i = 0; i != metrics.total_ribbons; ++i) {
-			tfx_ribbon_instance_data_t ribbon;
-			memcpy((void *)&ribbon, (const void *)&ribbons.ribbon_instance[i], sizeof(tfx_ribbon_t));
+			tfx_ribbon_instance_data_t ribbon = ribbons.ribbon_instance[i];
 			ribbon.captured_index += ribbon.captured_index == tfxINVALID ? 0 : metrics.ribbon_start_offset;
 			ribbon.start_index += ribbon.start_index == tfxINVALID ? 0 : metrics.ribbon_segment_start_offset;
-			//The memcpy is layout blind and the two structs diverge from the emitter index onwards, so every
-			//field past the quaternion that this struct names differently has to be re-read from the source.
-			ribbon.scale = ribbons.ribbon_instance[i].scale;
-			ribbon.phase_seed = ribbons.ribbon_instance[i].phase_seed;
 			ribbon.additional = tfxU32(ribbons.lerp_offset[i] * 65535.f);
 			tfxU32 animation_property_index = ribbon_property_map[ribbons.uid[i].property_index];
 			TFX_ASSERT(animation_property_index != tfxINVALID);	//A ribbon was recorded for an emitter that never had its properties added
@@ -13443,7 +13488,7 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 					continue;
 				}
 				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
-					bucket.ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+					tfx__deactivate_ribbon(bucket.ribbons.ribbon_instances[ribbon_index]);
 					tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 				}
 				ribbon_emitter.ribbon_indexes[0].clear();
@@ -13655,7 +13700,7 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 				continue;
 			}
 			for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
-				bucket.ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+				tfx__deactivate_ribbon(bucket.ribbons.ribbon_instances[ribbon_index]);
 				tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 			}
 			ribbon_emitter.ribbon_indexes[0].clear();
@@ -16765,6 +16810,9 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	tfx_ribbon_bucket_t *bucket = work_entry->ribbon_bucket;
 
 	tfxU32 next_buffer = pm.current_ebuff ^ 1;
+	//Per frame so a long lived ribbon tracks the effect's overall_scale, and so the value is already
+	//in the instance when the sprite data recorder snapshots it
+	const tfxU32 packed_scale = tfx__pack_half_pair(pm.effects[ribbon_emitter.parent_index].overall_scale, 0.f);
 
 	for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
 		float &age = bucket->ribbons.age[ribbon_index];
@@ -16778,21 +16826,21 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		if(age > max_age) {
-			bucket->ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+			tfx__deactivate_ribbon(bucket->ribbons.ribbon_instances[ribbon_index]);
 			tfx__free_ribbon(&pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 			ribbon_emitter.active_ribbons--;
 		} else {
 			work_entry->ribbon_count++;
-			bucket->ribbons.ribbon_instances[ribbon_index].position.w = age / max_age;
-			//Per frame so a long lived ribbon tracks the effect's overall_scale, and so the value is already
-			//in the instance when the sprite data recorder snapshots it
-			bucket->ribbons.ribbon_instances[ribbon_index].scale = pm.effects[ribbon_emitter.parent_index].overall_scale;
+			tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[ribbon_index];
+			ribbon.age_width = (ribbon.age_width & 0xFFFF0000) | tfx__pack_ribbon_age(age / max_age);
+			ribbon.scale = packed_scale;
 			ribbon_emitter.ribbon_indexes[next_buffer].push_back(ribbon_index);
 		}
 		bucket->highest_ribbon_index = tfx__Max(bucket->highest_ribbon_index, ribbon_index);
 		bucket->lowest_ribbon_index = tfx__Min(bucket->lowest_ribbon_index, ribbon_index);
-		bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index + ribbon_emitter.stored_sample_count);
-		bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, bucket->ribbons.ribbon_instances[ribbon_index].start_index);
+		const tfxU32 start_index = tfx__ribbon_start_index(bucket->ribbons.ribbon_instances[ribbon_index]);
+		bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, start_index + ribbon_emitter.stored_sample_count);
+		bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, start_index);
 		if (ribbon_emitter.morph_segment_start_index != tfxINVALID) {
 			bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, ribbon_emitter.morph_segment_start_index + ribbon_emitter.stored_sample_count);
 			bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, ribbon_emitter.morph_segment_start_index);
@@ -17909,7 +17957,7 @@ tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_em
 	}
 	tfxU32 index = tfx__add_soa_row(&bucket->ribbons_buffer, true);
 	tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[index];
-	ribbon.start_index = ribbon_emitter->static_segment_start_index;
+	ribbon.start_index_flags = tfx__pack_ribbon_start_index_flags(ribbon_emitter->static_segment_start_index, tfxRibbonFlags_none);
 	bucket->active_ribbons++;
 	TFX_ASSERT(index < bucket->ribbons_buffer.current_size);
 	return index;
@@ -18313,7 +18361,7 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 				//Defer freeing during warmup — the entry stays in current_ebuff and the next normal tick frees it.
 				//The ribbons must be freed too: nothing ages them once the emitter leaves the control queue, so they would stay active in the bucket.
 				for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm->current_ebuff]) {
-					ribbon_work_entry->ribbon_bucket->ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
+					tfx__deactivate_ribbon(ribbon_work_entry->ribbon_bucket->ribbons.ribbon_instances[ribbon_index]);
 					tfx__free_ribbon(pm, ribbon_emitter.ribbon_bucket_id, ribbon_index);
 				}
 				ribbon_emitter.ribbon_indexes[0].clear();
@@ -19721,7 +19769,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 				tfx_ribbon_bucket_t &ribbon_bucket = pm.ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
 				int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-				time = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
+				time = tfx__ribbon_age_lerp(ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]]);
 				emitter.grid_coords.x++;
 			}
 
@@ -19859,7 +19907,7 @@ void tfx__spawn_particle_size(tfx_work_queue_t *queue, void *data) {
 			tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 			tfx_ribbon_bucket_t &ribbon_bucket = pm.ribbon_segment_buckets.At(ribbon_emitter.ribbon_bucket_id);
 			int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-			float time = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
+			float time = tfx__ribbon_age_lerp(ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]]);
 
 			float size_time = size_easing(time);
 			float size_factor = size_is_bezier_graph ?
@@ -21315,7 +21363,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		float &path_position = entry->particle_data->path_position[index];
 
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) {
-			float ribbon_lerp = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]].position.w;
+			float ribbon_lerp = tfx__ribbon_age_lerp(ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]]);
 			float &grid_coord = ribbon_bucket.ribbons.grid_index[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
 			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
 				grid_coord = ribbon_lerp * total_grid_points;
@@ -21340,12 +21388,12 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 		}
 
 		tfx_ribbon_t &ribbon_instance = ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
-		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, ribbon_instance.position.w) * entry->overall_scale;
+		float ribbon_scale = tfx__sample_graph(ribbon_scale_graph, tfx__ribbon_age_lerp(ribbon_instance)) * entry->overall_scale;
 
 		tfx_quaternion_t q = tfx__unpack16bit_quaternion_from_gpu(ribbon_instance.quaternion);
 		entry->particle_data->quaternion[index] = ribbon_instance.quaternion;
 		tfx_vec3_t rp = point;
-		rp = tfx__rotate_vector_quaternion(&q, rp) + ribbon_instance.position.xyz();
+		rp = tfx__rotate_vector_quaternion(&q, rp) + ribbon_instance.position;
 		local_position_x = rp.x;
 		local_position_y = rp.y;
 		local_position_z = rp.z;
@@ -21373,7 +21421,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 			//which scales the segment, not the world position - so recompute from the unscaled point rather than scaling the
 			//already world-offset position. Applies whether or not the particle emitter itself is flagged relative.
 			tfx_vec3_t scaled_point = point * ribbon_scale;
-			tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&q, scaled_point) + ribbon_instance.position.xyz();
+			tfx_vec3_t world_position = tfx__rotate_vector_quaternion(&q, scaled_point) + ribbon_instance.position;
 			local_position_x = world_position.x;
 			local_position_y = world_position.y;
 			local_position_z = world_position.z;
@@ -22669,6 +22717,12 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		const bool relative_ribbons = !runs && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position;
 		const bool orient_to_surface_normal = has_spawn_shape && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_orient_to_surface_normal;
 		tfx_quaternion_t spawn_rotation = ribbon_emitter.rotation;
+		//Control sets the scale every frame after this; seed it here so a ribbon spawned after the control pass
+		//is not drawn at scale zero for its first frame
+		const tfxU32 packed_scale = tfx__pack_half_pair(entry->overall_scale, 0.f);
+		const tfxU32 ribbon_flags = relative_ribbons ? tfxRibbonFlags_active | tfxRibbonFlags_relative : tfxRibbonFlags_active;
+		const tfxU32 emitter_index = ribbon_emitter.state_properties.gpu_property_index;
+		TFX_ASSERT(emitter_index <= 0xFFFF);
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 ribbon_index = tfx__grab_ribbon(&pm, ribbon_bucket, &ribbon_emitter);
 			if (ribbon_index == tfxINVALID) {
@@ -22706,7 +22760,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				}
 				run_spawned++;
 			} else if (relative_ribbons) {
-				ribbon.position = tfx_vec4_t();
+				ribbon.position = tfx_vec3_t();
 			} else {
 				ribbon.position = ribbon_emitter.world_position;
 			}
@@ -22750,31 +22804,25 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				}
 			}
 			ribbon.texture_indexes = texture_indexes;
-			ribbon.width = (base_width + tfx_RandomRangeZeroToMax(&random, width_variation)) * location_width;
-			ribbon.position.w = 0.f;
-			ribbon.start_index = ribbon_emitter.static_segment_start_index;
+			//An age of 0 in the low half
+			ribbon.age_width = tfx__pack_half_pair(0.f, (base_width + tfx_RandomRangeZeroToMax(&random, width_variation)) * location_width) & 0xFFFF0000;
 			//Assign (not OR) so a slot recycled from the shared bucket free-list starts clean. Otherwise a stale
 			//tfxRibbonFlags_relative left by a previous relative emitter's ribbon would persist when a non-relative
 			//emitter reuses the slot, making the GPU treat it as relative and rotate/offset its (already world-space)
 			//position by the emitter transform - the ribbon then jumps to a far off location.
-			ribbon.flags = tfxRibbonFlags_active;
-			if (relative_ribbons) {
-				ribbon.flags |= tfxRibbonFlags_relative;
-			} else {
+			ribbon.start_index_flags = tfx__pack_ribbon_start_index_flags(ribbon_emitter.static_segment_start_index, ribbon_flags);
+			if (!relative_ribbons) {
 				q = q * spawn_rotation;
 			}
 			ribbon.quaternion = tfx__pack16bit_quaternion_for_gpu(q);
-			ribbon.emitter_index = ribbon_emitter.state_properties.gpu_property_index;
-			//Control sets this every frame after this; seed it here so a ribbon spawned after the control pass
-			//is not drawn at scale zero for its first frame
-			ribbon.scale = entry->overall_scale;
+			ribbon.scale = packed_scale;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max((life + tfx_RandomRangeZeroToMax(&random, life_variation)) * location_life, 1.f);
 			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
 			ribbon_bucket->ribbons.grid_index[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.uid[ribbon_index] = pm.unique_ribbon_id++;
-			ribbon.phase_seed = ribbon_bucket->ribbons.uid[ribbon_index];
+			ribbon.emitter_index_phase_seed = emitter_index | (ribbon_bucket->ribbons.uid[ribbon_index] << 16);
 			ribbon_emitter.active_ribbons++;
 		}
 		if (spawn_ordinal) {
@@ -23008,7 +23056,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 		} else if (entry->emission_type == tfxSpawnOnRibbon) {
 			tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 			int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-			float time = ribbon_bucket->ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
+			float time = tfx__ribbon_age_lerp(ribbon_bucket->ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]]);
 
 			float velocity_time = velocity_easing(time);
 			float velocity_factor = velocity_is_bezier_graph ?
@@ -23072,7 +23120,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[emitter.other_emitter_index];
 				tfx_easing_function width_overlength_easing = tfx__get_easing_function(width_overlength_graph->easing_type);
 				int spawn_index = (int)emitter.grid_coords.x % ribbon_emitter.ribbon_indexes[pm.current_ebuff].current_size;
-				float ribbon_lerp = ribbon_bucket->ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]].position.w;
+				float ribbon_lerp = tfx__ribbon_age_lerp(ribbon_bucket->ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][spawn_index]]);
 
 				float width_overlength_time = width_overlength_easing(ribbon_lerp);
 				factor = width_overlength_is_bezier_graph ?
@@ -25464,7 +25512,7 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 }
 
 void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_data_soa_t *soa, tfxU32 reserve_amount) {
-	tfx__add_struct_array(buffer, sizeof(tfx_ribbon_t), offsetof(tfx_ribbon_data_soa_t, ribbon_instance));
+	tfx__add_struct_array(buffer, sizeof(tfx_ribbon_instance_data_t), offsetof(tfx_ribbon_data_soa_t, ribbon_instance));
 	tfx__add_struct_array(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_ribbon_data_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_data_soa_t, lerp_offset));
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
@@ -25825,6 +25873,9 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	if (pm->info.max_ribbon_emitters == 0) {
 		pm->info.max_ribbon_emitters = info.max_effects;
 	}
+	//tfx_ribbon_t packs the GPU emitter index into 16 bits and the segment start index into 24
+	TFX_ASSERT(pm->info.max_ribbon_emitters <= 0xFFFF);
+	TFX_ASSERT(pm->info.max_ribbon_segments < tfxRIBBON_START_INDEX_MASK);
 	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.multi_threaded_batch_size);
 

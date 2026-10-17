@@ -29,8 +29,10 @@ const int tfx_morph_bias_offset                 = 20;
 const int tfx_noise_envelope_offset             = 21;
 const int tfx_lag_profile_offset                = 22;
 
-const int tfx_active_mask       = 0x1;
-const int tfx_relative_mask     = 0x2;
+const uint tfx_active_mask       = 0x1u;
+const uint tfx_relative_mask     = 0x2u;
+const uint tfx_ribbon_flags_shift = 24u;
+const uint tfx_ribbon_start_index_mask = 0x00FFFFFFu;
 
 //Hash axes the ribbon noise phase offset is drawn on, one per field axis. They must differ from each
 //other and from every other axis in the system, or the offsets correlate and the decorrelation is lost.
@@ -51,18 +53,15 @@ struct tfx_ribbon_segment {
 };
 
 struct tfx_ribbon {
-    vec4 position;                      //normalised age is in w
-    float width;
-	uint segment_start_index;
-	uint flags;
-	uint captured_index;
+    vec3 position;
+	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
 	uvec2 quaternion;                   //16-bit snorm quaternion: .x = X|Y, .y = Z|W
-    uint emitter_index;
+	uint start_index_flags;				//Segment start index in the low 24 bits, flags in the top 8
+	uint emitter_index_phase_seed;		//Emitter index in the low 16 bits, phase offset seed in the high 16
 	uint texture_indexes;
 	uint intensity_gradient_map;		//Multiplier for the color of the ribbon
 	uint curved_alpha;	    			//Sharpness and dissolve amount value for fading the image
-	uint phase_seed;					//Ribbon uid, hash it to draw per ribbon phase offsets
-	float scale;                        //Per frame overall_scale of the parent effect
+	uint scale;                         //Per frame overall_scale of the parent effect as a half float in the low 16 bits
 };
 
 struct tfx_vertex {
@@ -468,25 +467,30 @@ void main() {
     uint global_offset =  pc.segment_offset;
 
 	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[global_ribbon_index];
-    uint emitter_index = ribbon.emitter_index + pc.emitter_offset;
+	float ribbon_age = float(ribbon.age_width & 0xFFFFu) * (1.0 / 65535.0);
+	float ribbon_width = unpackHalf2x16(ribbon.age_width).y;
+	float effect_scale = unpackHalf2x16(ribbon.scale).x;
+	uint ribbon_flags = ribbon.start_index_flags >> tfx_ribbon_flags_shift;
+	uint phase_seed = ribbon.emitter_index_phase_seed >> 16;
+    uint emitter_index = (ribbon.emitter_index_phase_seed & 0xFFFFu) + pc.emitter_offset;
 	//Be aware here that the shader compiler should optimise so that the lag arrays are not copied here
 	//because when we access them we use the full emitters[index].data[emitter_index]. to access them
 	tfx_emitter emitter = emitters[pc.emitters_index].data[emitter_index];
 	uint local_segment_index = global_index % pc.segment_count;
     float ribbon_lerp = float(local_segment_index) / float(pc.segment_count - 1);
 
-	uint base_segment_index = global_offset + ribbon.segment_start_index;
+	uint base_segment_index = global_offset + (ribbon.start_index_flags & tfx_ribbon_start_index_mask);
 	//Still a unique id per segment for the packed vertex attribute, no longer used to fetch a position
 	uint global_segment_index = base_segment_index + local_segment_index;
 
 	tfx_gpu_graph_data clip_offset_graph = graphs[pc.graphs_index].data[tfx_clip_offset_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data clip_size_graph = graphs[pc.graphs_index].data[tfx_clip_size_offset + emitter.lookup_offset];
-	float clip_offset = tfx_graph_lookup(clip_offset_graph, ribbon.position.w);
-	float clip_size = tfx_graph_lookup(clip_size_graph, ribbon.position.w);
+	float clip_offset = tfx_graph_lookup(clip_offset_graph, ribbon_age);
+	float clip_size = tfx_graph_lookup(clip_size_graph, ribbon_age);
 
 	tfx_gpu_graph_data morph_amount_graph = graphs[pc.graphs_index].data[tfx_morph_amount_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data morph_bias_graph = graphs[pc.graphs_index].data[tfx_morph_bias_offset + emitter.lookup_offset];
-	float morph_amount = tfx_graph_lookup(morph_amount_graph, ribbon.position.w);
+	float morph_amount = tfx_graph_lookup(morph_amount_graph, ribbon_age);
 	//The morph block lives in the same bucket as the static one so it rebases with the same scalar
 	uint morph_base_segment_index = emitter.morph_segment_start_index == tfx_invalid_index
 		? tfx_invalid_index : global_offset + emitter.morph_segment_start_index;
@@ -494,19 +498,19 @@ void main() {
 	tfx_gpu_graph_data noise_amount_graph = graphs[pc.graphs_index].data[tfx_noise_amount_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data noise_scroll_graph = graphs[pc.graphs_index].data[tfx_noise_scroll_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data noise_envelope_graph = graphs[pc.graphs_index].data[tfx_noise_envelope_offset + emitter.lookup_offset];
-	float noise_amplitude = tfx_graph_lookup(noise_amount_graph, ribbon.position.w);
-	float noise_time = ribbon.position.w * emitter.noise_speed;
+	float noise_amplitude = tfx_graph_lookup(noise_amount_graph, ribbon_age);
+	float noise_time = ribbon_age * emitter.noise_speed;
 	if (emitter.noise_lock_rate > 0.0) {
 		noise_time = floor(noise_time * emitter.noise_lock_rate) / emitter.noise_lock_rate;
 	}
-	float noise_scroll = tfx_graph_lookup(noise_scroll_graph, ribbon.position.w);
-	vec3 phase_offset = vec3(tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_x_axis),
-	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_y_axis),
-	                         tfx_white_unit(ribbon.phase_seed, tfx_ribbon_noise_phase_z_axis))
+	float noise_scroll = tfx_graph_lookup(noise_scroll_graph, ribbon_age);
+	vec3 phase_offset = vec3(tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_x_axis),
+	                         tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_y_axis),
+	                         tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_z_axis))
 	                    * emitter.noise_phase_range;
 	vec3 noise_sample_offset = phase_offset + vec3(noise_scroll, noise_time, 0.0);
 
-    bool relative = (ribbon.flags & tfx_relative_mask) > 0;
+    bool relative = (ribbon_flags & tfx_relative_mask) > 0;
 
     vec4 ribbon_quaternion = vec4(unpackSnorm2x16(ribbon.quaternion.x), unpackSnorm2x16(ribbon.quaternion.y));
     vec4 emitter_unpacked_quaternion = vec4(unpackSnorm2x16(emitter.quaternion.x), unpackSnorm2x16(emitter.quaternion.y));
@@ -518,7 +522,7 @@ void main() {
     bool lagging = false;
     if (relative && emitter.lag_time > 0.0) {
         tfx_gpu_graph_data lag_amount_graph = graphs[pc.graphs_index].data[tfx_lag_amount_offset + emitter.lookup_offset];
-        float lag_amount = tfx_graph_lookup(lag_amount_graph, ribbon.position.w);
+        float lag_amount = tfx_graph_lookup(lag_amount_graph, ribbon_age);
         if (lag_amount > 0.0) {
             tfx_gpu_graph_data lag_profile_graph = graphs[pc.graphs_index].data[tfx_lag_profile_offset + emitter.lookup_offset];
             float neighbour_lerp = clamp(float(neighbour_segment_index) / float(pc.segment_count - 1), 0.0, 1.0);
@@ -536,7 +540,7 @@ void main() {
 	vec3 current_segment_pos = sample_ribbon_shape(int(local_segment_index), base_segment_index, morph_base_segment_index, sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph, noise_envelope_graph, noise_amplitude, emitter.noise_frequency, noise_sample_offset, noise_packed);
 
 	tfx_gpu_graph_data scale_graph = graphs[pc.graphs_index].data[tfx_scale_offset + emitter.lookup_offset];
-    float ribbon_scale = tfx_graph_lookup(scale_graph, ribbon.position.w);
+    float ribbon_scale = tfx_graph_lookup(scale_graph, ribbon_age);
 
     //Get the ribbon direction vector. Becuase the ribbon segment data are all ring buffers the next and previous indexes need to be properly
     //calculated. If there is a next ribbon segment then use that to get the forward vector, otherwise if we're at the end of the ribbon_count
@@ -550,18 +554,18 @@ void main() {
 
     if (emitter.angle_type == tfx_angle_type_face_camera) {
         //Always face camera
-        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
         current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
 
 		vec3 to_camera = normalize(pc.camera_position.xyz - current_pos.xyz);
 
 		vec3 forward;
 		if (local_segment_index < pc.segment_count - 1) {
-			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 			next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 			forward = safe_normalize(next_pos - current_pos);
 		} else {
-			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 			prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 			forward = safe_normalize(current_pos - prev_pos);
 		}
@@ -576,18 +580,18 @@ void main() {
 		float c = cos(fixed_angle);
 		float s = sin(fixed_angle);
 
-		current_pos = current_segment_pos * ribbon_scale * ribbon.scale;
+		current_pos = current_segment_pos * ribbon_scale * effect_scale;
 		current_pos = rotate_with_quaternion(current_pos, ribbon_quaternion) + ribbon.position.xyz;
         current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
 
 		if (lagging) {
 			vec3 forward;
 			if (local_segment_index < pc.segment_count - 1) {
-				vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+				vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 				next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 				forward = safe_normalize(next_pos - current_pos);
 			} else {
-				vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+				vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 				prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 				forward = safe_normalize(current_pos - prev_pos);
 			}
@@ -610,16 +614,16 @@ void main() {
 
     } else {
         //Frenet-serret frame
-        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+        current_pos = rotate_with_quaternion(current_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
         current_pos = rotate_with_quaternion(current_pos, emitter_quaternion) + emitter_position;
 
 		vec3 tangent;
 		if (local_segment_index < pc.segment_count - 1) {
-			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			vec3 next_pos = rotate_with_quaternion(next_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 			next_pos = rotate_with_quaternion(next_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 			tangent = safe_normalize(next_pos - current_pos);
 		} else {
-			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * ribbon.scale, ribbon_quaternion) + ribbon.position.xyz;
+			vec3 prev_pos = rotate_with_quaternion(prev_segment_pos * ribbon_scale * effect_scale, ribbon_quaternion) + ribbon.position.xyz;
 			prev_pos = rotate_with_quaternion(prev_pos, neighbour_emitter_quaternion) + neighbour_emitter_position;
 			tangent = safe_normalize(current_pos - prev_pos);
 		}
@@ -634,19 +638,19 @@ void main() {
     
     uint ribbon_lerp_packed = uint(ribbon_lerp * 2047);
     float u_scaled = ribbon_lerp;
-    float ribbon_is_active = float(ribbon.flags & tfx_active_mask);
+    float ribbon_is_active = float(ribbon_flags & tfx_active_mask);
 
 	tfx_gpu_graph_data width_overlength_graph = graphs[pc.graphs_index].data[tfx_width_overlength_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data width_overtime_graph = graphs[pc.graphs_index].data[tfx_width_offset + emitter.lookup_offset];
 	float width_overtime_and_length = tfx_graph_lookup(width_overlength_graph, ribbon_lerp);
-    //ribbon.scale, not emitter.overall_scale: both hold the parent effect's scale for this frame, but only
+    //The ribbon's scale, not emitter.overall_scale: both hold the parent effect's scale for this frame, but only
 	//the ribbon carries it through a bake, and it is what the positions above are already scaled by.
-	width_overtime_and_length = width_overtime_and_length * ribbon.scale * tfx_graph_lookup(width_overtime_graph, ribbon.position.w) * ribbon_is_active;
+	width_overtime_and_length = width_overtime_and_length * effect_scale * tfx_graph_lookup(width_overtime_graph, ribbon_age) * ribbon_is_active;
 
 	tfx_gpu_graph_data uv_offset_graph = graphs[pc.graphs_index].data[tfx_uv_offset_y_offset + emitter.lookup_offset];
 	tfx_gpu_graph_data uv_scale_graph = graphs[pc.graphs_index].data[tfx_uv_scale_y_offset + emitter.lookup_offset];
-    float uv_offset = tfx_graph_lookup(uv_offset_graph, ribbon.position.w);
-    float uv_scale = tfx_graph_lookup(uv_scale_graph, ribbon.position.w);
+    float uv_offset = tfx_graph_lookup(uv_offset_graph, ribbon_age);
+    float uv_scale = tfx_graph_lookup(uv_scale_graph, ribbon_age);
 
    
     //Calculate the number of vertices per segment and ribbon. We could optimise this out and put it in the push constants instead. They will
@@ -666,7 +670,7 @@ void main() {
             float width_factor = mix(.5, 0, t) * width_overtime_and_length;                     // Interpolate from outer to inner
             
             uint vertex_index = vertex_base_index + i;
-			vertexes[pc.vertexes_index].data[vertex_index].position = current_pos + right * ribbon.width * width_factor;
+			vertexes[pc.vertexes_index].data[vertex_index].position = current_pos + right * ribbon_width * width_factor;
 			vertexes[pc.vertexes_index].data[vertex_index].segment_index = pack_segment_data(global_segment_index, ribbon_lerp_packed, pc.tessellation, i, 0);
 			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.x = uv_offset;
 			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.y = uv_scale;
@@ -674,7 +678,7 @@ void main() {
 
             width_factor = mix(0, -0.5, t) * width_overtime_and_length;                         // Interpolate from inner to outer
             vertex_index = vertex_base_index + (pc.tessellation + 1) + i;
-			vertexes[pc.vertexes_index].data[vertex_index].position =  current_pos + right * ribbon.width * width_factor;
+			vertexes[pc.vertexes_index].data[vertex_index].position =  current_pos + right * ribbon_width * width_factor;
 			vertexes[pc.vertexes_index].data[vertex_index].segment_index = pack_segment_data(global_segment_index, ribbon_lerp_packed, pc.tessellation, i, 1);
 			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.x = uv_offset;
 			vertexes[pc.vertexes_index].data[vertex_index].uv_offset_scale.y = uv_scale;
@@ -725,7 +729,7 @@ void main() {
         }
     } else {
         // Non-tessellated version
-        float width_factor = ribbon.width * 0.5;
+        float width_factor = ribbon_width * 0.5;
 		vertexes[pc.vertexes_index].data[vertex_base_index].position = current_pos + right * width_factor;
 		vertexes[pc.vertexes_index].data[vertex_base_index].segment_index = global_segment_index;
 		//vertexes[pc.vertexes_index].data[vertex_base_index].color = current_color;

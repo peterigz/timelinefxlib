@@ -598,9 +598,9 @@ typedef struct tfx_stage_info_s {
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
-											//nearest multiple of 32.
+											//nearest multiple of 32. Must be less than 16777215.
 	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager. Ribbons stop spawning once it is reached.
-	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this effect manager, 0 to match max_effects. Adding an effect whose ribbon emitters won't fit returns tfxINVALID.
+	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this effect manager, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit returns tfxINVALID.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.

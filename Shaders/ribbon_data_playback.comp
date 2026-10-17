@@ -22,20 +22,17 @@ struct RibbonData {
 	uint phase_seed;					//Ribbon uid, hash it to drive per ribbon phase offsets
 };
 
-//Output ribbon struct consumed by ribbons.comp. Mirrors tfx_ribbon_t (64 bytes)
+//Output ribbon struct consumed by ribbons.comp. Mirrors tfx_ribbon_t (48 bytes)
 struct RibbonOutput {
-	vec4 position;						//xyz position, w = normalised age
-	float width;
-	uint segment_start_index;
-	uint flags;
-	uint captured_index;
+	vec3 position;
+	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
 	uvec2 quaternion;					//16-bit snorm packed rotation
-	uint emitter_index;
+	uint start_index_flags;				//Segment start index in the low 24 bits, flags in the top 8
+	uint emitter_index_phase_seed;		//Emitter index in the low 16 bits, phase offset seed in the high 16
 	uint texture_indexes;
 	uint intensity_gradient_map;
 	uint curved_alpha;
-	uint phase_seed;					//Ribbon uid, hash it to drive per ribbon phase offsets
-	float scale;                        //Per frame overall_scale of the parent effect
+	uint scale;                         //Per frame overall_scale of the parent effect as a half float in the low 16 bits
 };
 
 //Contains each animation instance
@@ -184,20 +181,17 @@ void main()
 	lerped_position += animation_instances[pc.animation_instances_index].data[instance_index].position;
 	uint property_index = (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].property_index_lerp_offset & 0xFFFF0000) >> 16;
 	//Write the interpolated ribbon output that ribbons.comp can consume directly
-	ribbons_out[pc.ribbon_output_index].data[index].position = vec4(lerped_position, lerped_age);
-	ribbons_out[pc.ribbon_output_index].data[index].width = lerped_width;
-	ribbons_out[pc.ribbon_output_index].data[index].segment_start_index = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].start_index;
-	ribbons_out[pc.ribbon_output_index].data[index].flags = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].flags;
-	ribbons_out[pc.ribbon_output_index].data[index].captured_index = index;
+	ribbons_out[pc.ribbon_output_index].data[index].position = lerped_position;
+	ribbons_out[pc.ribbon_output_index].data[index].age_width = uint(clamp(lerped_age, 0.0, 1.0) * 65535.0 + 0.5) | (packHalf2x16(vec2(lerped_width, 0.0)) << 16);
+	ribbons_out[pc.ribbon_output_index].data[index].start_index_flags = (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].start_index & 0x00FFFFFFu) | (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].flags << 24);
 	ribbons_out[pc.ribbon_output_index].data[index].quaternion.x = packSnorm2x16(lerped_quaternion.xy);
 	ribbons_out[pc.ribbon_output_index].data[index].quaternion.y = packSnorm2x16(lerped_quaternion.zw);
-	//The baked emitter array is built one entry per animation ribbon property, so the property index is the emitter index
-	ribbons_out[pc.ribbon_output_index].data[index].emitter_index = property_index;
-	//A per ribbon constant, not interpolated - the captured record carries the same seed
-	ribbons_out[pc.ribbon_output_index].data[index].phase_seed = ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].phase_seed;
+	//The baked emitter array is built one entry per animation ribbon property, so the property index is the emitter index.
+	//The seed is a per ribbon constant, not interpolated - the captured record carries the same seed
+	ribbons_out[pc.ribbon_output_index].data[index].emitter_index_phase_seed = (property_index & 0xFFFFu) | (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].phase_seed << 16);
 	float current_scale =	ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].scale;
 	float previous_scale =	ribbon_data[pc.ribbon_data_index].data[captured_index].scale;
-	ribbons_out[pc.ribbon_output_index].data[index].scale = mix(previous_scale, current_scale, lerp);
+	ribbons_out[pc.ribbon_output_index].data[index].scale = packHalf2x16(vec2(mix(previous_scale, current_scale, lerp), 0.0));
 	uint texture_indexes = (ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].texture_indexes & 0xFFFFE000) | ribbon_emitter_properties[pc.ribbon_properties_index].data[property_index].start_frame_index;
 	ribbons_out[pc.ribbon_output_index].data[index].texture_indexes = texture_indexes;
 	ribbons_out[pc.ribbon_output_index].data[index].intensity_gradient_map = (uint(lerped_igm.y * intensity_max_divisor) << 16) + uint(lerped_igm.x * intensity_max_divisor);

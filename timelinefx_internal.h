@@ -6338,20 +6338,22 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 
 } tfx_effect_state_t;
 
-typedef struct tfx_ribbon_s {	//64 bytes (56 bytes data + 8 padding for std430 alignment)
-	tfx_vec4_t position;
-    float width;
-	tfxU32 start_index;
-	tfxU32 flags;
-	tfxU32 captured_index;				
+#define tfxRIBBON_START_INDEX_MASK 0x00FFFFFF
+#define tfxRIBBON_FLAGS_SHIFT 24
+
+typedef struct tfx_ribbon_s {	//48 bytes
+	tfx_vec3_t position;
+	tfxU32 age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
 	tfxU64 quaternion;
-	tfxU32 emitter_index;
+	tfxU32 start_index_flags;				//Segment start index in the low 24 bits (tfxRIBBON_START_INDEX_MASK when invalid), tfx_ribbon_flag_bits in the top 8
+	tfxU32 emitter_index_phase_seed;		//GPU emitter index in the low 16 bits, phase offset seed in the high 16
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
-	tfxU32 phase_seed;						//Seed for phase offset so different ribbons can be animated at different time offsets
-	float scale;							//The parent effect's overall_scale for this frame, applied to the path segments
+	tfxU32 scale;							//The parent effect's overall_scale as a half float in the low 16 bits, applied to the path segments
 } tfx_ribbon_t;
+
+tfx__static_assert(sizeof(tfx_ribbon_t) == 48);
 
 typedef struct tfx_ribbon_soa_s {
 	tfx_ribbon_t *ribbon_instances;
@@ -6727,7 +6729,7 @@ typedef struct tfx_ribbon_frame_meta_s {
 	tfxU32 ribbon_count;
 } tfx_ribbon_frame_meta_t;
 
-typedef struct tfx_ribbon_instance_data_s {	//64 bytes, mirrors tfx_ribbon_t layout
+typedef struct tfx_ribbon_instance_data_s {	//64 bytes, the baked (and recorded) form of an unpacked tfx_ribbon_t
 	tfx_vec4_t position;						//xyz position, w = normalised age
 	float width;
 	tfxU32 start_index;							//Into shared segment data
@@ -6750,7 +6752,7 @@ typedef struct tfx_sprite_data_soa_s {
 }tfx_sprite_data_soa_t;
 
 typedef struct tfx_ribbon_data_soa_s {
-	tfx_ribbon_t *ribbon_instance;
+	tfx_ribbon_instance_data_t *ribbon_instance;
 	tfx_unique_sprite_id_t *uid;
 	float *lerp_offset;
 }tfx_ribbon_data_soa_t;

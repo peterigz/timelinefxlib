@@ -43,18 +43,15 @@ struct ImageData {
 };
 
 struct tfx_ribbon {
-    vec4 position;                      //normalised age is in w
-    float width;
-	uint segment_start_index;
-	uint flags;
-	uint padding_pre_quat;
+    vec3 position;
+	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
 	uvec2 quaternion;                   //16-bit snorm quaternion: .x = X|Y, .y = Z|W
-    uint emitter_index;
+	uint start_index_flags;				//Segment start index in the low 24 bits, flags in the top 8
+	uint emitter_index_phase_seed;		//Emitter index in the low 16 bits, phase offset seed in the high 16
 	uint texture_indexes;
 	uint intensity_gradient_map;		//Multiplier for the color of the ribbon
 	uint curved_alpha;	    			//Sharpness and dissolve amount value for fading the image
-	uint phase_seed;					//Ribbon uid, hash it to draw per ribbon phase offsets
-	float scale;                        //Per frame overall_scale of the parent effect
+	uint scale;                         //Per frame overall_scale of the parent effect as a half float in the low 16 bits
 };
 
 const int tfx_lag_spine_samples = 16;
@@ -215,7 +212,7 @@ void main() {
 	gl_Position.y += pc.ndc_offset_y * gl_Position.w;
 	float ribbon_position = float((segment_index & 0x007FF000) >> 12) / 2047.0;
 	tfx_ribbon ribbon = ribbons[pc.ribbons_index].data[ribbon_index];
-	tfx_emitter emitter = emitters[pc.emitters_index].data[ribbon.emitter_index + pc.emitter_offset];
+	tfx_emitter emitter = emitters[pc.emitters_index].data[(ribbon.emitter_index_phase_seed & 0xFFFFu) + pc.emitter_offset];
 	//The ribbon holds the animation frame; its emitter holds where the image starts
 	uint image_index = emitter.start_frame_index + (ribbon.texture_indexes & 0x00001FFF);
 
