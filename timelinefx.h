@@ -99,8 +99,10 @@ All functions in the library will be marked this way for clarity and naturally t
 #endif    
 #if defined(__GNUC__) || defined(__clang__)
 #define tfxINTERNAL static __attribute__((unused))
+#define tfxFORCE_INLINE inline __attribute__((always_inline))
 #else
 #define tfxINTERNAL static
+#define tfxFORCE_INLINE __forceinline
 #endif
 
 //----------------------------------------------------------
@@ -708,6 +710,7 @@ typedef enum {
 	tfxGPUForceFlags_profile_bezier = 1 << 8,							//profile is a bezier segment, otherwise points on the straight line
 	tfxGPUForceFlags_bounded = 1 << 9,									//Noise only: faded by the profile out to the falloff distance from origin
 	tfxGPUForceFlags_fluctuating = 1 << 10,								//Vortex only: the next row is its tfx_gpu_particle_vortex_fluctuation_t
+	tfxGPUForceFlags_at_location = 1 << 11,								//Evaluated in the particle's spawn location frame, origin already less the anchor
 } tfx_gpu_particle_force_flag_bits;
 
 #define tfxGPU_FORCE_TYPE_MASK 0xFF
@@ -760,6 +763,8 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_noise = 1 << 18,						//The emitter has a noise force, its algorithm is in the noise_algorithm bits
 	tfxGPUParticleDispatchFlags_noise_algorithm = 3 << 19,				//(flags >> tfxGPU_NOISE_ALGORITHM_SHIFT) & 3: white 0, simplex 1, curl 2, value 3
 	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
+	tfxGPUParticleDispatchFlags_location_forces = 1 << 23,				//Some force rows are at_location, read the location table by the cold spawn_location
+	tfxGPUParticleDispatchFlags_location_forces_rotation = 1 << 24,		//Those locations can have a rotation
 } tfx_gpu_particle_dispatch_flag_bits;
 
 #define tfxGPU_NOISE_ALGORITHM_SHIFT 19

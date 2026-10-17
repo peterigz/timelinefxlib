@@ -49,6 +49,8 @@ static const uint tfx_dispatch_align_rotated_emission = 1 << 17;
 static const uint tfx_dispatch_noise = 1 << 18;
 static const uint tfx_dispatch_noise_algorithm_shift = 19;
 static const uint tfx_dispatch_noise_anisotropic = 1 << 22;
+static const uint tfx_dispatch_location_forces = 1 << 23;
+static const uint tfx_dispatch_location_forces_rotation = 1 << 24;
 
 //The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
 static const uint tfx_noise_white = 0;
@@ -72,6 +74,7 @@ static const uint tfx_force_noise = 4;
 static const uint tfx_force_profile_bezier = 1 << 8;
 static const uint tfx_force_bounded = 1 << 9;
 static const uint tfx_force_fluctuating = 1 << 10;
+static const uint tfx_force_at_location = 1 << 11;
 
 //Must match tfxDRAG_VARIATION_HASH_AXIS or the drag drawn here won't be the one the CPU draws for the same uid
 static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
@@ -549,31 +552,84 @@ struct tfx_particle_context {
 	}
 };
 
-//tfx_apply_forces over the tick's force rows, which the CPU packed in its order: wind, vortices, attracts, shockwaves, noise
+//tfx__wide_apply_location_forces' frame: the particle less its live location, turned back by the location's rotation. The rows have the
+//anchor taken off their origin already. A particle whose location has gone feels none of these rows
+struct tfx_location_frame {
+	float3 position;
+	float4 rotation;
+	bool alive;
+};
+
+tfx_location_frame tfx_particle_location_frame(tfx_particle_context context, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold) {
+	tfx_location_frame frame;
+	frame.position = hot.position;
+	frame.rotation = float4(0.0, 0.0, 0.0, 1.0);
+	frame.alive = false;
+	const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
+	if (slot < context.dispatch.location_count) {
+		const tfx_gpu_spawn_location location = location_buffers[context.push.location_buffer_index][context.push.location_base + context.dispatch.location_offset + slot];
+		frame.alive = location.local_id == cold.spawn_location;
+		frame.position = hot.position - location.position;
+		if ((context.dispatch.flags & tfx_dispatch_location_forces_rotation) != 0) {
+			frame.rotation = tfx_unpack16bit_quaternion(location.packed_rotation);
+			frame.position = tfx_rotate_vector(frame.position, tfx_conjugate(frame.rotation));
+		}
+	}
+	return frame;
+}
+
+//tfx_apply_forces over the tick's force rows, which the CPU packed in its order: wind, vortices, attracts, shockwaves, the same at
+//locations, noise
 float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold) {
 	const uint buffer_index = context.push.tick_buffer_index;
 	const uint first_row = context.push.tick_base + context.tick.force_offset;
 	const uint end_row = first_row + context.tick.force_count;
+	bool location_forces = (context.dispatch.flags & tfx_dispatch_location_forces) != 0;
+	tfx_location_frame frame = { hot.position, float4(0.0, 0.0, 0.0, 1.0), false };
+	if (location_forces) {
+		frame = tfx_particle_location_frame(context, hot, cold);
+	}
 	float3 medium = float3(0.0, 0.0, 0.0);
+	float3 location_medium = float3(0.0, 0.0, 0.0);
 	for (uint row = first_row; row < end_row; ++row) {
 		const tfx_gpu_particle_force force = force_buffers[buffer_index][row];
 		const uint type = force.type_flags & tfx_force_type_mask;
 		if (type == tfx_force_wind) {
 			//The CPU seeds the medium with the summed wind rather than adding it
 			medium = force.axis;
-		} else if (type == tfx_force_vortex) {
+			continue;
+		}
+		if (type == tfx_force_noise) {
+			//The location flow joins before the noise, as on the CPU
+			if (location_forces && frame.alive) {
+				medium += tfx_rotate_vector(location_medium, frame.rotation);
+			}
+			location_forces = false;
+			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life);
+			continue;
+		}
+		const bool at_location = location_forces && (force.type_flags & tfx_force_at_location) != 0;
+		const float3 position = at_location ? frame.position : hot.position;
+		float3 target = at_location ? location_medium : medium;
+		if (type == tfx_force_vortex) {
 			tfx_gpu_particle_vortex_fluctuation fluctuation = {};
 			if ((force.type_flags & tfx_force_fluctuating) != 0) {
 				fluctuation = fluctuation_buffers[buffer_index][++row];
 			}
-			tfx_apply_vortex_force(force, fluctuation, hot.position, medium);
+			tfx_apply_vortex_force(force, fluctuation, position, target);
 		} else if (type == tfx_force_attract) {
-			tfx_apply_attract_force(force, hot.position, medium);
+			tfx_apply_attract_force(force, position, target);
 		} else if (type == tfx_force_shockwave) {
-			tfx_apply_shockwave_force(force, hot.position, medium);
-		} else if (type == tfx_force_noise) {
-			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life);
+			tfx_apply_shockwave_force(force, position, target);
 		}
+		if (at_location) {
+			location_medium = target;
+		} else {
+			medium = target;
+		}
+	}
+	if (location_forces && frame.alive) {
+		medium += tfx_rotate_vector(location_medium, frame.rotation);
 	}
 	return medium;
 }

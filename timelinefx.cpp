@@ -15201,6 +15201,26 @@ tfxINTERNAL tfx_user_spawn_locations_t *tfx__relative_user_spawn_locations(tfx_s
 	return nullptr;
 }
 
+//Relative, trajectory and edge traversal banks are already in a local frame, so only a world bank moves its fields per location
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__force_frame_user_spawn_locations(tfx_stage pm, const tfx_particle_emitter_state_t &emitter, tfx_emission_type emission_type) {
+	const tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
+	const bool bank_in_world = !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && !(emitter.state_properties.control_profile & (tfxEmitterControlProfile_trajectory | tfxEmitterControlProfile_edge_traversal));
+	if (bank_in_world && tfx__can_spawn_at_user_locations(emission_type) && effect.state_flags & tfxEffectStateFlags_user_spawn_locations) {
+		return effect.user_spawn_locations;
+	}
+	return nullptr;
+}
+
+tfxINTERNAL bool tfx__has_location_frame_forces(const tfx_particle_emitter_properties_t *properties) {
+	for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
+		const tfx_force_t &force = properties->forces[force_index];
+		if (force.flags & tfxForceFlags_enabled && force.space != tfxForceSpaceWorld && (force.type == tfxForceAttract || force.type == tfxForceVortex || force.type == tfxForceShockwave)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 tfxINTERNAL inline bool tfx__user_spawn_location_is_live(tfx_user_spawn_locations_t *user_location_list, tfxU32 local_id) {
 	tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
 	if (slot >= user_location_list->locations.current_size) {
@@ -15408,7 +15428,10 @@ tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_up_to(const tfx_vec3_t &normal
 void tfx__get_force_space(tfx_stage pm, tfx_particle_emitter_state_t *emitter, float overall_scale, tfx_force_space_t *space) {
 	space->emitter = emitter;
 	space->parent_effect = &pm->effects[emitter->parent_index];
-	space->to_local_space = (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
+	//Spawn on ribbon is only relative while its ribbon is, which a ribbon at user spawn locations never is, so its bank stays in world space
+	const tfx_emission_type emission_type = emitter->library->shared_properties[emitter->state_properties.shared_index].emission_type;
+	space->to_local_space = (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0
+		&& (emission_type != tfxSpawnOnRibbon || emitter->state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative);
 	space->inverse_emitter_rotation = emitter->rotation;
 	space->inverse_emitter_rotation.x = -space->inverse_emitter_rotation.x;
 	space->inverse_emitter_rotation.y = -space->inverse_emitter_rotation.y;
@@ -15606,94 +15629,106 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 	//Wind is position independent, so the whole wind group collapses to one vector and never reaches resolved_forces
 	//at all - which is why its group always comes out empty. The position dependent types cannot collapse, so they
 	//are packed one type at a time, giving each a contiguous run for its own loop to walk.
+	tfx_user_spawn_locations_t *force_locations = tfx__force_frame_user_spawn_locations(&pm, *emitter, work_entry->shared_properties->emission_type);
+	work_entry->force_locations = force_locations;
+	work_entry->force_location_anchor = emitter->world_position - emitter->user_spawn_offset;
+	const tfxU32 location_pass_count = force_locations ? 2 : 1;
+
 	tfx_vec3_t summed_medium = { 0.f, 0.f, 0.f };
 	tfxU32 resolved_count = 0;
 	for (tfxU32 group_type = 0; group_type != tfxFORCE_TYPE_COUNT; ++group_type) {
 		work_entry->force_group_start[group_type] = resolved_count;
-		for (tfxU32 i = 0; i != properties->force_count; ++i) {
-			const tfx_force_t *force = &properties->forces[i];
-			if ((tfxU32)force->type != group_type) continue;
-			if (!(force->flags & tfxForceFlags_enabled)) continue;
-			if (force->delay > emitter->age) continue;
+		for (tfxU32 location_pass = 0; location_pass != location_pass_count; ++location_pass) {
+			for (tfxU32 i = 0; i != properties->force_count; ++i) {
+				const tfx_force_t *force = &properties->forces[i];
+				if ((tfxU32)force->type != group_type) continue;
+				if (!(force->flags & tfxForceFlags_enabled)) continue;
+				if (force->delay > emitter->age) continue;
+				const bool at_locations = force_locations && force->space != tfxForceSpaceWorld && (force->type == tfxForceAttract || force->type == tfxForceVortex || force->type == tfxForceShockwave);
+				if (at_locations != (location_pass == 1)) continue;
 
-			float strength = force->strength * global_force_scalar;
+				float strength = force->strength * global_force_scalar;
 
-			switch (force->type) {
-				case tfxForceWind: {
-					if (!tfx__resolve_wind_force(force, &space, strength, &summed_medium)) continue;		//No direction means no flow, whatever the strength says
-					break;
-				}
-				case tfxForceAttract:
-				case tfxForceVortex:
-				case tfxForceShockwave: {
-					tfx_resolved_position_force_t scalar;
-					if (!tfx__resolve_position_force(force, &space, strength, &scalar)) continue;
-					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
-					*resolved = tfx_force_resolved_t{};
-					resolved->origin_x = tfxWideSetSingle(scalar.origin.x);
-					resolved->origin_y = tfxWideSetSingle(scalar.origin.y);
-					resolved->origin_z = tfxWideSetSingle(scalar.origin.z);
-					resolved->strength = tfxWideSetSingle(scalar.strength);
-					resolved->falloff_scale = tfxWideSetSingle(scalar.falloff_scale);
-					resolved->profile_graph = scalar.profile_graph;
-					resolved->flags = scalar.flags;
-					if (force->type == tfxForceVortex) {
-						resolved->axis_x = tfxWideSetSingle(scalar.axis.x);
-						resolved->axis_y = tfxWideSetSingle(scalar.axis.y);
-						resolved->axis_z = tfxWideSetSingle(scalar.axis.z);
-						resolved->vortex.radial_ratio = tfxWideSetSingle(scalar.radial_ratio);
-						resolved->vortex.axial_ratio = tfxWideSetSingle(scalar.axial_ratio);
-						if (scalar.flags & tfx_force_resolved_flag_fluctuating) {
-							memcpy(resolved->vortex.reference, scalar.reference, sizeof(scalar.reference));
-							memcpy(resolved->vortex.reference_turn, scalar.reference_turn, sizeof(scalar.reference_turn));
-							resolved->vortex.fluctuation = scalar.fluctuation;
+				switch (force->type) {
+					case tfxForceWind: {
+						if (!tfx__resolve_wind_force(force, &space, strength, &summed_medium)) continue;		//No direction means no flow, whatever the strength says
+						break;
+					}
+					case tfxForceAttract:
+					case tfxForceVortex:
+					case tfxForceShockwave: {
+						tfx_resolved_position_force_t scalar;
+						if (!tfx__resolve_position_force(force, &space, strength, &scalar)) continue;
+						tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
+						*resolved = tfx_force_resolved_t{};
+						resolved->origin_x = tfxWideSetSingle(scalar.origin.x);
+						resolved->origin_y = tfxWideSetSingle(scalar.origin.y);
+						resolved->origin_z = tfxWideSetSingle(scalar.origin.z);
+						resolved->strength = tfxWideSetSingle(scalar.strength);
+						resolved->falloff_scale = tfxWideSetSingle(scalar.falloff_scale);
+						resolved->profile_graph = scalar.profile_graph;
+						resolved->flags = scalar.flags;
+						if (force->type == tfxForceVortex) {
+							resolved->axis_x = tfxWideSetSingle(scalar.axis.x);
+							resolved->axis_y = tfxWideSetSingle(scalar.axis.y);
+							resolved->axis_z = tfxWideSetSingle(scalar.axis.z);
+							resolved->vortex.radial_ratio = tfxWideSetSingle(scalar.radial_ratio);
+							resolved->vortex.axial_ratio = tfxWideSetSingle(scalar.axial_ratio);
+							if (scalar.flags & tfx_force_resolved_flag_fluctuating) {
+								memcpy(resolved->vortex.reference, scalar.reference, sizeof(scalar.reference));
+								memcpy(resolved->vortex.reference_turn, scalar.reference_turn, sizeof(scalar.reference_turn));
+								resolved->vortex.fluctuation = scalar.fluctuation;
+							}
+						} else if (force->type == tfxForceShockwave) {
+							resolved->shockwave.front = tfxWideSetSingle(scalar.front);
 						}
-					} else if (force->type == tfxForceShockwave) {
-						resolved->shockwave.front = tfxWideSetSingle(scalar.front);
+						ctx.flags |= at_locations ? tfx_ctx_policy_flag_location_forces : tfx_ctx_policy_flag_has_position_forces;
+						resolved_count++;
+						break;
 					}
-					ctx.flags |= tfx_ctx_policy_flag_has_position_forces;
-					resolved_count++;
-					break;
+					case tfxForceNoise: {
+						tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
+						*resolved = tfx_force_resolved_t{};
+						resolved->noise.algorithm = force->noise.algorithm;
+						tfx_resolved_noise_force_t resolved_noise;
+						tfx__resolve_noise_force(force, emitter, parent_effect, &space.inverse_emitter_rotation, space.to_local_space, space.overall_scale, &resolved_noise);
+						resolved->strength = tfxWideSetSingle(resolved_noise.strength);
+						if (resolved_noise.profile_graph) {
+							resolved->origin_x = tfxWideSetSingle(resolved_noise.origin.x);
+							resolved->origin_y = tfxWideSetSingle(resolved_noise.origin.y);
+							resolved->origin_z = tfxWideSetSingle(resolved_noise.origin.z);
+							resolved->falloff_scale = tfxWideSetSingle(1.f / resolved_noise.falloff_distance);
+							resolved->profile_graph = resolved_noise.profile_graph;
+							resolved->flags |= tfx_force_resolved_flag_bounded;
+							resolved->flags |= tfx__graph_has_bezier_curves(resolved_noise.profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+						}
+						if (force->noise.algorithm != tfxWhiteNoise) {
+							ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
+							ctx.velocity_turbulance_easing = tfx__get_wide_easing_function(ctx.velocity_turbulance_graph->easing_type);
+							ctx.noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
+							ctx.noise_resolution_easing = tfx__get_wide_easing_function(ctx.noise_resolution_graph->easing_type);
+							ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph : 0;
+							ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_has_oscillator : 0;
+							ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
+							ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
+							ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
+							tfx__setup_anisotropic_noise(work_entry, ctx);
+						} else if (force->noise.algorithm == tfxWhiteNoise) {
+							ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_motion_randomness_base(ctx.emitter));
+							ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
+							ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
+							ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
+							ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
+							ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
+							tfx__setup_anisotropic_noise(work_entry, ctx);
+						}
+						resolved_count++;
+						break;
+					}
 				}
-				case tfxForceNoise: {
-					tfx_force_resolved_t *resolved = &work_entry->resolved_forces[resolved_count];
-					*resolved = tfx_force_resolved_t{};
-					resolved->noise.algorithm = force->noise.algorithm;
-					tfx_resolved_noise_force_t resolved_noise;
-					tfx__resolve_noise_force(force, emitter, parent_effect, &space.inverse_emitter_rotation, space.to_local_space, space.overall_scale, &resolved_noise);
-					resolved->strength = tfxWideSetSingle(resolved_noise.strength);
-					if (resolved_noise.profile_graph) {
-						resolved->origin_x = tfxWideSetSingle(resolved_noise.origin.x);
-						resolved->origin_y = tfxWideSetSingle(resolved_noise.origin.y);
-						resolved->origin_z = tfxWideSetSingle(resolved_noise.origin.z);
-						resolved->falloff_scale = tfxWideSetSingle(1.f / resolved_noise.falloff_distance);
-						resolved->profile_graph = resolved_noise.profile_graph;
-						resolved->flags |= tfx_force_resolved_flag_bounded;
-						resolved->flags |= tfx__graph_has_bezier_curves(resolved_noise.profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
-					}
-					if (force->noise.algorithm != tfxWhiteNoise) {
-						ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
-						ctx.velocity_turbulance_easing = tfx__get_wide_easing_function(ctx.velocity_turbulance_graph->easing_type);
-						ctx.noise_resolution_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index];
-						ctx.noise_resolution_easing = tfx__get_wide_easing_function(ctx.noise_resolution_graph->easing_type);
-						ctx.flags |= tfx__graph_has_bezier_curves(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph : 0;
-						ctx.flags |= tfx__graph_can_oscillate(ctx.velocity_turbulance_graph) ? tfx_ctx_policy_flag_velocity_turbulance_has_oscillator : 0;
-						ctx.flags |= tfx__graph_has_bezier_curves(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_is_bezier_graph : 0;
-						ctx.flags |= tfx__graph_can_oscillate(ctx.noise_resolution_graph) ? tfx_ctx_policy_flag_noise_resolution_has_oscillator : 0;
-						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
-						tfx__setup_anisotropic_noise(work_entry, ctx);
-					} else if (force->noise.algorithm == tfxWhiteNoise) {
-						ctx.motion_randomness_base = tfxWideSetSingle(tfx__sample_motion_randomness_base(ctx.emitter));
-						ctx.motion_randomness_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index];
-						ctx.motion_randomness_easing = tfx__get_wide_easing_function(ctx.motion_randomness_graph->easing_type);
-						ctx.flags |= tfx__graph_has_bezier_curves(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_is_bezier_graph : 0;
-						ctx.flags |= tfx__graph_can_oscillate(ctx.motion_randomness_graph) ?  tfx_ctx_policy_flag_motion_randomness_has_oscillator : 0;
-						ctx.global_noise = tfxWideSetSingle(work_entry->global_noise);
-						tfx__setup_anisotropic_noise(work_entry, ctx);
-					}
-					resolved_count++;
-					break;
-				}
+			}
+			if (location_pass == 0) {
+				work_entry->force_location_start[group_type] = resolved_count;
 			}
 		}
 		work_entry->force_group_count[group_type] = resolved_count - work_entry->force_group_start[group_type];
@@ -20029,15 +20064,14 @@ tfxINTERNAL tfx_vec3_t tfx__spawn_anchor(tfx_spawn_work_entry_t *entry, const tf
 }
 
 //Spreads each location's particles over the whole update rather than the slice of it their place in the bank would give them, otherwise a
-//location that moves leaves its particles bunched together. Relative particles also record the location they follow. Point emitters do the
-//same thing inline in tfx__spawn_particle_user_locations, where the position is all they need
+//location that moves leaves its particles bunched together. Every particle also records the location it came from: relative ones follow it,
+//non relative ones feel its forces. Point emitters do the same thing inline in tfx__spawn_particle_user_locations, where the position is all they need
 void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
 	tfx_stage_t &pm = *entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_user_spawn_locations_t &user_location_list = *entry->user_spawn_locations;
-	const bool relative = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) > 0;
 
 	tfxU32 particle = 0;
 	for (tfxU32 run_index = 0; run_index != entry->user_spawn_run_count; ++run_index) {
@@ -20046,9 +20080,7 @@ void tfx__spawn_particle_user_location_ages(tfx_work_queue_t *queue, void *data)
 		for (tfxU32 i = 0; i != run.count; ++i) {
 			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + particle++);
 			entry->particle_data->age[index] = (float)pm.frame_length * (float)i / (float)run.count;
-			if (relative) {
-				entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
-			}
+			entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
 		}
 	}
 	TFX_ASSERT(particle == entry->amount_to_spawn);
@@ -21037,7 +21069,7 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 	cold.base_pitch_spin = pitch_spin;
 	cold.base_yaw_spin = yaw_spin;
 	cold.image_start_frame = 0.f;
-	cold.spawn_location = relative ? run->local_id : tfxINVALID;
+	cold.spawn_location = run->local_id;
 	cold.padding = 0;
 	spawn->noise.offset.x = noise_offset.x;
 	spawn->noise.offset.y = noise_offset.y;
@@ -21212,12 +21244,12 @@ void tfx__spawn_particle_user_locations(tfx_work_queue_t *queue, void *data) {
 			//them, otherwise a location that moves leaves its particles bunched together
 			float age = (float)pm.frame_length * (float)i / (float)run.count;
 			entry->particle_data->age[index] = age;
+			entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
 			if (relative) {
 				//The transform adds the handle and the location's position every frame
 				entry->particle_data->position_x[index] = 0.f;
 				entry->particle_data->position_y[index] = 0.f;
 				entry->particle_data->position_z[index] = 0.f;
-				entry->particle_data->spawn_location[index] = tfx__spawn_location_local_id(run.slot, location.generation);
 				continue;
 			}
 
@@ -23865,40 +23897,52 @@ tfxINTERNAL void tfx__pack_gpu_force_rows(tfx_stage pm, tfx_particle_emitter_sta
 		row->axis.z = summed_medium.z;
 	}
 
+	//The per location rows follow the world ones, as tfx_setup_forces_policy runs them
+	const tfx_emission_type emission_type = emitter.library->shared_properties[emitter.state_properties.shared_index].emission_type;
+	const bool has_force_locations = tfx__force_frame_user_spawn_locations(pm, emitter, emission_type) != nullptr;
+	const tfx_vec3_t anchor = emitter.world_position - emitter.user_spawn_offset;
 	const tfx_force_type position_force_order[] = { tfxForceVortex, tfxForceAttract, tfxForceShockwave };
-	for (tfx_force_type force_type : position_force_order) {
-		for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
-			const tfx_force_t *force = &properties->forces[force_index];
-			if (force->type != force_type || !(force->flags & tfxForceFlags_enabled) || force->delay > emitter.age) continue;
-			tfx_resolved_position_force_t resolved;
-			if (!tfx__resolve_position_force(force, &space, force->strength * global_force_scalar, &resolved)) continue;
-			tfx_gpu_particle_force_t *row = tfx__push_gpu_force_row(pm);
-			row->type_flags = (tfxU32)force_type | tfx__gpu_force_profile(resolved.profile_graph, &row->profile);
-			row->strength = resolved.strength;
-			row->falloff_scale = resolved.falloff_scale;
-			row->front = resolved.front;
-			row->origin.x = resolved.origin.x;
-			row->origin.y = resolved.origin.y;
-			row->origin.z = resolved.origin.z;
-			row->radial_ratio = resolved.radial_ratio;
-			row->axis.x = resolved.axis.x;
-			row->axis.y = resolved.axis.y;
-			row->axis.z = resolved.axis.z;
-			row->axial_ratio = resolved.axial_ratio;
-			if (resolved.flags & tfx_force_resolved_flag_fluctuating) {
-				row->type_flags |= tfxGPUForceFlags_fluctuating;
-				tfx_gpu_particle_vortex_fluctuation_t fluctuation;
-				memset(&fluctuation, 0, sizeof(tfx_gpu_particle_vortex_fluctuation_t));
-				fluctuation.reference.x = resolved.reference[0];
-				fluctuation.reference.y = resolved.reference[1];
-				fluctuation.reference.z = resolved.reference[2];
-				fluctuation.reference_turn.x = resolved.reference_turn[0];
-				fluctuation.reference_turn.y = resolved.reference_turn[1];
-				fluctuation.reference_turn.z = resolved.reference_turn[2];
-				fluctuation.lobes = resolved.fluctuation.lobes;
-				memcpy(fluctuation.harmonic_cos, resolved.fluctuation.harmonic_cos, sizeof(resolved.fluctuation.harmonic_cos));
-				memcpy(fluctuation.harmonic_sin, resolved.fluctuation.harmonic_sin, sizeof(resolved.fluctuation.harmonic_sin));
-				memcpy(tfx__push_gpu_force_row(pm), &fluctuation, sizeof(tfx_gpu_particle_vortex_fluctuation_t));
+	for (tfxU32 location_pass = 0; location_pass != (has_force_locations ? 2u : 1u); ++location_pass) {
+		for (tfx_force_type force_type : position_force_order) {
+			for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
+				const tfx_force_t *force = &properties->forces[force_index];
+				if (force->type != force_type || !(force->flags & tfxForceFlags_enabled) || force->delay > emitter.age) continue;
+				const bool at_locations = has_force_locations && force->space != tfxForceSpaceWorld;
+				if (at_locations != (location_pass == 1)) continue;
+				tfx_resolved_position_force_t resolved;
+				if (!tfx__resolve_position_force(force, &space, force->strength * global_force_scalar, &resolved)) continue;
+				tfx_gpu_particle_force_t *row = tfx__push_gpu_force_row(pm);
+				row->type_flags = (tfxU32)force_type | tfx__gpu_force_profile(resolved.profile_graph, &row->profile);
+				row->strength = resolved.strength;
+				row->falloff_scale = resolved.falloff_scale;
+				row->front = resolved.front;
+				if (at_locations) {
+					row->type_flags |= tfxGPUForceFlags_at_location;
+					resolved.origin = resolved.origin - anchor;
+				}
+				row->origin.x = resolved.origin.x;
+				row->origin.y = resolved.origin.y;
+				row->origin.z = resolved.origin.z;
+				row->radial_ratio = resolved.radial_ratio;
+				row->axis.x = resolved.axis.x;
+				row->axis.y = resolved.axis.y;
+				row->axis.z = resolved.axis.z;
+				row->axial_ratio = resolved.axial_ratio;
+				if (resolved.flags & tfx_force_resolved_flag_fluctuating) {
+					row->type_flags |= tfxGPUForceFlags_fluctuating;
+					tfx_gpu_particle_vortex_fluctuation_t fluctuation;
+					memset(&fluctuation, 0, sizeof(tfx_gpu_particle_vortex_fluctuation_t));
+					fluctuation.reference.x = resolved.reference[0];
+					fluctuation.reference.y = resolved.reference[1];
+					fluctuation.reference.z = resolved.reference[2];
+					fluctuation.reference_turn.x = resolved.reference_turn[0];
+					fluctuation.reference_turn.y = resolved.reference_turn[1];
+					fluctuation.reference_turn.z = resolved.reference_turn[2];
+					fluctuation.lobes = resolved.fluctuation.lobes;
+					memcpy(fluctuation.harmonic_cos, resolved.fluctuation.harmonic_cos, sizeof(resolved.fluctuation.harmonic_cos));
+					memcpy(fluctuation.harmonic_sin, resolved.fluctuation.harmonic_sin, sizeof(resolved.fluctuation.harmonic_sin));
+					memcpy(tfx__push_gpu_force_row(pm), &fluctuation, sizeof(tfx_gpu_particle_vortex_fluctuation_t));
+				}
 			}
 		}
 	}
@@ -24251,6 +24295,15 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 			dispatch.handle.x = handle.x;
 			dispatch.handle.y = handle.y;
 			dispatch.handle.z = handle.z;
+		} else if (tfx__has_location_frame_forces(properties)) {
+			tfx_user_spawn_locations_t *force_locations = tfx__force_frame_user_spawn_locations(pm, emitter, emission_type);
+			if (force_locations) {
+				tfx__pack_gpu_spawn_locations(pm, force_locations);
+				dispatch.flags |= tfxGPUParticleDispatchFlags_location_forces;
+				dispatch.flags |= force_locations->flags & tfxUserSpawnLocationListFlags_has_rotation ? tfxGPUParticleDispatchFlags_location_forces_rotation : 0;
+				dispatch.location_offset = force_locations->gpu_frame_offset;
+				dispatch.location_count = force_locations->locations.current_size;
+			}
 		}
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) {
 			tfx__gpu_dispatch_noise(properties, &dispatch);
@@ -24423,6 +24476,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	bool is_ordered = effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order || effect.effect_flags & tfxEffectPropertyFlags_age_order;
 	bool is_single = (emitter.state_flags & tfxEmitterStateFlags_is_single) != 0;
 	tfx_user_spawn_locations_t *user_location_list = tfx__relative_user_spawn_locations(&pm, emitter, work_entry->shared_properties->emission_type);
+	const bool keeps_spawn_location = effect.state_flags & tfxEffectStateFlags_user_spawn_locations && tfx__can_spawn_at_user_locations(work_entry->shared_properties->emission_type);
 
 	//Ring-buffer head-bump: count consecutive particles at the head that are GUARANTEED expired
 	//(age >= max_life). This is computed inside the SIMD loop to avoid a second pass.
@@ -24559,7 +24613,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 					bank.path_position[next_index] = bank.path_position[index];
 					bank.path_offset[next_index] = bank.path_offset[index];
 				}
-				if (user_location_list) {
+				if (keeps_spawn_location) {
 					bank.spawn_location[next_index] = bank.spawn_location[index];
 				}
 				if (spawn_points) {
@@ -24823,27 +24877,51 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		} else if (work_entry->sample_path_life) {
 			//Spawned on a path but not traversing it, so the velocity graph is sampled from where the particle started.
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy, tfx_setup_path_life_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_life_based_on_path,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_forces,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
+			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_path,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position,
+					tfx_apply_location_forces,
+					tfx_apply_velocity,
+					tfx_apply_position
+				>(work_entry, ctx);
+			} else {
+				tfx__update_particles_position<
+					tfx_apply_life_based_on_path,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position,
+					tfx_apply_forces,
+					tfx_apply_velocity,
+					tfx_apply_position
+				>(work_entry, ctx);
+			}
 		} else {
 			//Basic position control.
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy>(work_entry, ctx);
-			tfx__update_particles_position<
-				tfx_apply_load_life,
-				tfx_apply_lookup_velocity,
-				tfx_apply_lookup_weight,
-				tfx_apply_load_position,
-				tfx_apply_forces,
-				tfx_apply_velocity,
-				tfx_apply_position
-			>(work_entry, ctx);
+			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
+				tfx__update_particles_position<
+					tfx_apply_load_life,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position,
+					tfx_apply_location_forces,
+					tfx_apply_velocity,
+					tfx_apply_position
+				>(work_entry, ctx);
+			} else {
+				tfx__update_particles_position<
+					tfx_apply_load_life,
+					tfx_apply_lookup_velocity,
+					tfx_apply_lookup_weight,
+					tfx_apply_load_position,
+					tfx_apply_forces,
+					tfx_apply_velocity,
+					tfx_apply_position
+				>(work_entry, ctx);
+			}
 		}
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_any_line) {
 			if (emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_kill && emitter.state_properties.control_profile & tfxEmitterControlProfile_edge_traversal) {

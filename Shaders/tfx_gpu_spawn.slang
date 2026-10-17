@@ -810,7 +810,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 
 	spawn.image_frame = (flags & tfx_spawn_random_start_frame) != 0 ? tfx_hash_unit(uid, tfx_spawn_axis_start_frame) * block_b.animation_frames : block_c.start_frame;
 	spawn.random_color = (flags & tfx_spawn_random_color) != 0 ? tfx_hash_unit(uid, tfx_spawn_axis_random_color) : 0.0;
-	spawn.spawn_location = relative ? run.local_id : 0xFFFFFFFFu;
+	spawn.spawn_location = run.local_id;
 	spawn.noise_resolution = (flags & tfx_spawn_noise_resolution) != 0 ? block_a.noise_resolution : 0.0;
 	return spawn;
 }

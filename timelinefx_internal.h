@@ -3145,7 +3145,8 @@ typedef enum {
 	tfx_ctx_policy_flag_forces                               	= 1 << 17,
 	tfx_ctx_policy_flag_spawn_impulse_on_loop                	= 1 << 18,
 	tfx_ctx_policy_flag_drag_variation                       	= 1 << 19,
-	tfx_ctx_policy_flag_has_position_forces                    	= 1 << 20,
+	tfx_ctx_policy_flag_has_position_forces                    	= 1 << 20,		//Position dependent forces evaluated where the particle is
+	tfx_ctx_policy_flag_location_forces                        	= 1 << 21,		//Position dependent forces evaluated in each particle's spawn location frame
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -6668,7 +6669,7 @@ typedef struct tfx_particle_soa_s {
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
-	tfxU32 *spawn_location;				//Relative particles of a user spawn locations effect: the slot and generation of the location they follow
+	tfxU32 *spawn_location;				//Particles of a user spawn locations effect: the slot and generation of the location they spawned at
 	tfxU32 *flags_single_loop_count;	//Packed flags and single loop count
 	union {
 		float *base_velocity;
@@ -7027,6 +7028,11 @@ typedef struct tfx_control_work_entry_s {
 	//empty range.
 	tfxU32 force_group_start[tfxFORCE_TYPE_COUNT];
 	tfxU32 force_group_count[tfxFORCE_TYPE_COUNT];
+	//Where each group's per location run (Effect/Emitter space on a world bank at user spawn locations) starts, after its world run
+	tfxU32 force_location_start[tfxFORCE_TYPE_COUNT];
+	struct tfx_user_spawn_locations_s *force_locations;
+	//The host's effect position that every location stands in for
+	tfx_vec3_t force_location_anchor;
 }tfx_control_work_entry_t;
 
 typedef struct tfx_stage_work_entry_s {
@@ -9370,7 +9376,141 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
-struct tfx_apply_forces {
+tfxINTERNAL inline void tfx__wide_rotate_vec3(tfxWideFloat q_x, tfxWideFloat q_y, tfxWideFloat q_z, tfxWideFloat q_w, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
+	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
+	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
+
+	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
+	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
+	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
+}
+
+//Evaluates the per location runs with each particle moved into its live location's frame, the field a relative particle there feels
+//Forced inline because a call makes the hot loop save and restore every callee saved vector register on each block
+tfxINTERNAL tfxFORCE_INLINE void tfx__wide_apply_location_forces(tfxU32 index, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+	const tfx_control_work_entry_t *work_entry = ctx.work_entry;
+	const tfx_user_spawn_locations_t *location_list = work_entry->force_locations;
+	const tfx_vec3_t anchor = work_entry->force_location_anchor;
+	const bool rotated = (location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
+	const tfxWideFloat world_x = ctx.position_x.m;
+	const tfxWideFloat world_y = ctx.position_y.m;
+	const tfxWideFloat world_z = ctx.position_z.m;
+	tfxWideFloat alive_mask = tfxWideCast(tfxWideSetSinglei(-1));
+	bool all_alive = true;
+	tfxWideInt rotation_xy = tfxWideSetZeroi;
+	tfxWideInt rotation_zw = tfxWideSetZeroi;
+	//A location's particles spawn as one contiguous run, so nearly every block shares one location and needs only one lookup
+	const tfxU32 first_id = bank.spawn_location[index];
+	const tfxWideInt local_ids = tfxWideLoadi((tfxWideIntLoader *)&bank.spawn_location[index]);
+	if (tfxWideMoveMask(tfxWideCast(tfxWideEqualsi(local_ids, tfxWideSetSinglei((int)first_id)))) == (1 << tfxDataWidth) - 1) {
+		const tfxU32 slot = first_id & tfxSPAWN_LOCATION_SLOT_MASK;
+		if (slot >= location_list->locations.current_size) {
+			return;
+		}
+		const tfx_user_spawn_location_t &location = location_list->locations[slot];
+		if (!(location.flags & tfxUserSpawnLocationFlags_active) || tfx__spawn_location_local_id(slot, location.generation) != first_id) {
+			return;
+		}
+		if (rotated) {
+			ctx.position_x.m = tfxWideSub(world_x, tfxWideSetSingle(location.position.x));
+			ctx.position_y.m = tfxWideSub(world_y, tfxWideSetSingle(location.position.y));
+			ctx.position_z.m = tfxWideSub(world_z, tfxWideSetSingle(location.position.z));
+			rotation_xy = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation & 0xFFFFFFFF));
+			rotation_zw = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation >> 32));
+		} else {
+			//The anchor folds into the location, so the common case is one translation
+			ctx.position_x.m = tfxWideSub(world_x, tfxWideSetSingle(location.position.x - anchor.x));
+			ctx.position_y.m = tfxWideSub(world_y, tfxWideSetSingle(location.position.y - anchor.y));
+			ctx.position_z.m = tfxWideSub(world_z, tfxWideSetSingle(location.position.z - anchor.z));
+		}
+	} else {
+		tfxWideArray gathered_x, gathered_y, gathered_z;
+		tfxWideArrayi gathered_alive, gathered_xy, gathered_zw;
+		for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+			const tfxU32 local_id = bank.spawn_location[index + lane];
+			const tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
+			tfx_vec3_t position = {};
+			tfxU64 packed_rotation = tfxPACKED_W_QUATERNION;
+			bool live = false;
+			if (slot < location_list->locations.current_size) {
+				const tfx_user_spawn_location_t &location = location_list->locations[slot];
+				live = (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
+				position = location.position;
+				packed_rotation = location.packed_rotation;
+			}
+			gathered_x.a[lane] = position.x;
+			gathered_y.a[lane] = position.y;
+			gathered_z.a[lane] = position.z;
+			gathered_alive.a[lane] = live ? -1 : 0;
+			gathered_xy.a[lane] = (int)(tfxU32)(packed_rotation & 0xFFFFFFFF);
+			gathered_zw.a[lane] = (int)(tfxU32)(packed_rotation >> 32);
+		}
+		alive_mask = tfxWideCast(gathered_alive.m);
+		all_alive = tfxWideMoveMask(alive_mask) == (1 << tfxDataWidth) - 1;
+		ctx.position_x.m = tfxWideSub(world_x, gathered_x.m);
+		ctx.position_y.m = tfxWideSub(world_y, gathered_y.m);
+		ctx.position_z.m = tfxWideSub(world_z, gathered_z.m);
+		rotation_xy = gathered_xy.m;
+		rotation_zw = gathered_zw.m;
+		if (!rotated) {
+			ctx.position_x.m = tfxWideAdd(ctx.position_x.m, tfxWideSetSingle(anchor.x));
+			ctx.position_y.m = tfxWideAdd(ctx.position_y.m, tfxWideSetSingle(anchor.y));
+			ctx.position_z.m = tfxWideAdd(ctx.position_z.m, tfxWideSetSingle(anchor.z));
+		}
+	}
+
+	tfxWideFloat q_x = tfxWideSetZero;
+	tfxWideFloat q_y = tfxWideSetZero;
+	tfxWideFloat q_z = tfxWideSetZero;
+	tfxWideFloat q_w = tfxWIDEONE.m;
+	if (rotated) {
+		tfx__wide_unpack16bit(rotation_xy, rotation_zw, q_x, q_y, q_z, q_w);
+		const tfxWideFloat sign_flip = tfxWideSetSingle(-0.f);
+		tfx__wide_rotate_vec3(tfxWideXOr(q_x, sign_flip), tfxWideXOr(q_y, sign_flip), tfxWideXOr(q_z, sign_flip), q_w, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
+		ctx.position_x.m = tfxWideAdd(ctx.position_x.m, tfxWideSetSingle(anchor.x));
+		ctx.position_y.m = tfxWideAdd(ctx.position_y.m, tfxWideSetSingle(anchor.y));
+		ctx.position_z.m = tfxWideAdd(ctx.position_z.m, tfxWideSetSingle(anchor.z));
+	}
+
+	//Only a block that turns its flow back or masks out a gone location needs the flow on its own
+	const bool separate = rotated || !all_alive;
+	const tfxWideFloat medium_x = ctx.medium_velocity_x;
+	const tfxWideFloat medium_y = ctx.medium_velocity_y;
+	const tfxWideFloat medium_z = ctx.medium_velocity_z;
+	if (separate) {
+		ctx.medium_velocity_x = tfxWideSetZero;
+		ctx.medium_velocity_y = tfxWideSetZero;
+		ctx.medium_velocity_z = tfxWideSetZero;
+	}
+	const tfxU32 vortex_end = work_entry->force_group_start[tfxForceVortex] + work_entry->force_group_count[tfxForceVortex];
+	for (tfxU32 force_index = work_entry->force_location_start[tfxForceVortex]; force_index != vortex_end; ++force_index) {
+		tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+	}
+	const tfxU32 attract_end = work_entry->force_group_start[tfxForceAttract] + work_entry->force_group_count[tfxForceAttract];
+	for (tfxU32 force_index = work_entry->force_location_start[tfxForceAttract]; force_index != attract_end; ++force_index) {
+		tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+	}
+	const tfxU32 shockwave_end = work_entry->force_group_start[tfxForceShockwave] + work_entry->force_group_count[tfxForceShockwave];
+	for (tfxU32 force_index = work_entry->force_location_start[tfxForceShockwave]; force_index != shockwave_end; ++force_index) {
+		tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
+	}
+	if (separate) {
+		if (rotated) {
+			tfx__wide_rotate_vec3(q_x, q_y, q_z, q_w, &ctx.medium_velocity_x, &ctx.medium_velocity_y, &ctx.medium_velocity_z);
+		}
+		ctx.medium_velocity_x = tfxWideAdd(medium_x, tfxWideAnd(alive_mask, ctx.medium_velocity_x));
+		ctx.medium_velocity_y = tfxWideAdd(medium_y, tfxWideAnd(alive_mask, ctx.medium_velocity_y));
+		ctx.medium_velocity_z = tfxWideAdd(medium_z, tfxWideAnd(alive_mask, ctx.medium_velocity_z));
+	}
+	ctx.position_x.m = world_x;
+	ctx.position_y.m = world_y;
+	ctx.position_z.m = world_z;
+}
+
+//The per location runs get their own chain, because their code in the loop costs every other forces emitter registers even when it never runs
+template <bool at_locations>
+struct tfx_apply_forces_policy {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
 		if (!(ctx.flags & tfx_ctx_policy_flag_forces)) {
 			return;
@@ -9384,20 +9524,23 @@ struct tfx_apply_forces {
 		const tfx_control_work_entry_t *work_entry = ctx.work_entry;
 		if (ctx.flags & tfx_ctx_policy_flag_has_position_forces) {
 			const tfxU32 vortex_start = work_entry->force_group_start[tfxForceVortex];
-			const tfxU32 vortex_end = vortex_start + work_entry->force_group_count[tfxForceVortex];
+			const tfxU32 vortex_end = work_entry->force_location_start[tfxForceVortex];
 			for (tfxU32 force_index = vortex_start; force_index != vortex_end; ++force_index) {
 				tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
 			}
 			const tfxU32 attract_start = work_entry->force_group_start[tfxForceAttract];
-			const tfxU32 attract_end = attract_start + work_entry->force_group_count[tfxForceAttract];
+			const tfxU32 attract_end = work_entry->force_location_start[tfxForceAttract];
 			for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
 				tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
 			}
 			const tfxU32 shockwave_start = work_entry->force_group_start[tfxForceShockwave];
-			const tfxU32 shockwave_end = shockwave_start + work_entry->force_group_count[tfxForceShockwave];
+			const tfxU32 shockwave_end = work_entry->force_location_start[tfxForceShockwave];
 			for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
 				tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
 			}
+		}
+		if (at_locations && ctx.flags & tfx_ctx_policy_flag_location_forces) {
+			tfx__wide_apply_location_forces(index, bank, ctx);
 		}
 
 		//Note:There can only be one noise type in the forces so no need for for loop here
@@ -9422,6 +9565,8 @@ struct tfx_apply_forces {
 		}
 	}
 };
+typedef tfx_apply_forces_policy<false> tfx_apply_forces;
+typedef tfx_apply_forces_policy<true> tfx_apply_location_forces;
 
 
 struct tfx_apply_velocity {
