@@ -15259,7 +15259,12 @@ tfxINTERNAL tfx_user_spawn_locations_t *tfx__force_frame_user_spawn_locations(tf
 tfxINTERNAL bool tfx__has_location_frame_forces(const tfx_particle_emitter_properties_t *properties) {
 	for (tfxU32 force_index = 0; force_index != properties->force_count; ++force_index) {
 		const tfx_force_t &force = properties->forces[force_index];
-		if (force.flags & tfxForceFlags_enabled && force.space != tfxForceSpaceWorld && (force.type == tfxForceAttract || force.type == tfxForceVortex || force.type == tfxForceShockwave)) {
+		if (!(force.flags & tfxForceFlags_enabled) || force.space == tfxForceSpaceWorld) continue;
+		if (force.type == tfxForceAttract || force.type == tfxForceVortex || force.type == tfxForceShockwave) {
+			return true;
+		}
+		//Only a bounded noise field has an origin for its location to move
+		if (force.type == tfxForceNoise && force.radius > 0.f && force.graph_list_index != tfxINVALID) {
 			return true;
 		}
 	}
@@ -15746,6 +15751,7 @@ void tfx_setup_forces_policy::apply(tfx_control_work_entry_t *work_entry, tfx_po
 							resolved->profile_graph = resolved_noise.profile_graph;
 							resolved->flags |= tfx_force_resolved_flag_bounded;
 							resolved->flags |= tfx__graph_has_bezier_curves(resolved_noise.profile_graph) ? tfx_force_resolved_flag_profile_is_bezier : 0;
+							ctx.flags |= force_locations && force->space != tfxForceSpaceWorld ? tfx_ctx_policy_flag_location_noise : 0;
 						}
 						if (force->noise.algorithm != tfxWhiteNoise) {
 							ctx.velocity_turbulance_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index];
@@ -23996,7 +24002,8 @@ tfxINTERNAL void tfx__pack_gpu_force_rows(tfx_stage pm, tfx_particle_emitter_sta
 	}
 
 	const tfx_force_t *noise_force = tfx__get_enabled_noise_force(properties);
-	if (noise_force && !(noise_force->delay > emitter.age)) {
+	//The CPU applies nothing for tfxNoNoise, but the kernel would read the row's algorithm bits as white noise
+	if (noise_force && noise_force->noise.algorithm != tfxNoNoise && !(noise_force->delay > emitter.age)) {
 		tfx_resolved_noise_force_t resolved_noise;
 		tfx__resolve_noise_force(noise_force, &emitter, parent_effect, &space.inverse_emitter_rotation, space.to_local_space, space.overall_scale, &resolved_noise);
 		tfx_gpu_particle_force_t *row = tfx__push_gpu_force_row(pm);
@@ -24005,6 +24012,10 @@ tfxINTERNAL void tfx__pack_gpu_force_rows(tfx_stage pm, tfx_particle_emitter_sta
 		if (resolved_noise.profile_graph) {
 			row->type_flags |= tfxGPUForceFlags_bounded | tfx__gpu_force_profile(resolved_noise.profile_graph, &row->profile);
 			row->falloff_scale = 1.f / resolved_noise.falloff_distance;
+			if (has_force_locations && noise_force->space != tfxForceSpaceWorld) {
+				row->type_flags |= tfxGPUForceFlags_at_location;
+				resolved_noise.origin = resolved_noise.origin - anchor;
+			}
 			row->origin.x = resolved_noise.origin.x;
 			row->origin.y = resolved_noise.origin.y;
 			row->origin.z = resolved_noise.origin.z;
@@ -24925,7 +24936,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		} else if (work_entry->sample_path_life) {
 			//Spawned on a path but not traversing it, so the velocity graph is sampled from where the particle started.
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy, tfx_setup_path_life_policy>(work_entry, ctx);
-			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
+			if (ctx.flags & (tfx_ctx_policy_flag_location_forces | tfx_ctx_policy_flag_location_noise)) {
 				tfx__update_particles_position<
 					tfx_apply_life_based_on_path,
 					tfx_apply_lookup_velocity,
@@ -24949,7 +24960,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 		} else {
 			//Basic position control.
 			tfx__setup_particles_position<tfx_setup_vecolity_lookup_policy, tfx_setup_weight_lookup_policy, tfx_setup_forces_policy>(work_entry, ctx);
-			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
+			if (ctx.flags & (tfx_ctx_policy_flag_location_forces | tfx_ctx_policy_flag_location_noise)) {
 				tfx__update_particles_position<
 					tfx_apply_load_life,
 					tfx_apply_lookup_velocity,

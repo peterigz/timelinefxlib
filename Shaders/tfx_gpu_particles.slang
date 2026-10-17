@@ -407,8 +407,9 @@ void tfx_apply_shockwave_force(tfx_gpu_particle_force force, float3 position, in
 	medium = (offset * inverse_length) * scale + medium;
 }
 
-//The noise force from its row. Like the CPU it samples the field at the start of tick position and splits against the previous velocity
-float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_force force, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_particle_noise noise, float life) {
+//The noise force from its row. Like the CPU it samples the field at the start of tick position and splits against the previous velocity.
+//A bounded field fades by its distance from bounded_position, the location frame position for an at_location row
+float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_force force, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_particle_noise noise, float life, float3 bounded_position, bool bounded_alive) {
 	const uint flags = dispatch.flags;
 	const uint algorithm = (flags >> tfx_dispatch_noise_algorithm_shift) & 3u;
 	float3 direction;
@@ -430,10 +431,10 @@ float3 tfx_noise_medium(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch di
 	}
 
 	if ((force.type_flags & tfx_force_bounded) != 0) {
-		const float3 offset = hot.position - force.origin;
+		const float3 offset = bounded_position - force.origin;
 		const float length_squared = dot(offset, offset);
 		const float distance = length_squared * tfx_force_inverse_length(length_squared);
-		amplitude *= tfx_sample_force_profile(force, distance * force.falloff_scale);
+		amplitude *= bounded_alive ? tfx_sample_force_profile(force, distance * force.falloff_scale) : 0.0;
 	}
 	float3 medium = direction * amplitude;
 
@@ -604,8 +605,9 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 			if (location_forces && frame.alive) {
 				medium += tfx_rotate_vector(location_medium, frame.rotation);
 			}
+			const bool noise_at_location = location_forces && (force.type_flags & tfx_force_at_location) != 0;
 			location_forces = false;
-			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life);
+			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life, noise_at_location ? frame.position : hot.position, !noise_at_location || frame.alive);
 			continue;
 		}
 		const bool at_location = location_forces && (force.type_flags & tfx_force_at_location) != 0;

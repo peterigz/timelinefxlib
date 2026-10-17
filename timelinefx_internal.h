@@ -3147,6 +3147,7 @@ typedef enum {
 	tfx_ctx_policy_flag_drag_variation                       	= 1 << 19,
 	tfx_ctx_policy_flag_has_position_forces                    	= 1 << 20,		//Position dependent forces evaluated where the particle is
 	tfx_ctx_policy_flag_location_forces                        	= 1 << 21,		//Position dependent forces evaluated in each particle's spawn location frame
+	tfx_ctx_policy_flag_location_noise                         	= 1 << 22,		//A bounded noise field whose falloff is measured in each particle's spawn location frame
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -9052,7 +9053,143 @@ tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved
 	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
 }
 
-tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+tfxINTERNAL inline void tfx__wide_rotate_vec3(tfxWideFloat q_x, tfxWideFloat q_y, tfxWideFloat q_z, tfxWideFloat q_w, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
+	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
+	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
+
+	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
+	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
+	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
+}
+
+//A block of world bank particles moved into their live locations' frames: inverse(location rotation) * (position - location) + anchor
+struct tfx_location_frame_t {
+	tfxWideFloat position_x;
+	tfxWideFloat position_y;
+	tfxWideFloat position_z;
+	tfxWideFloat rotation_x;
+	tfxWideFloat rotation_y;
+	tfxWideFloat rotation_z;
+	tfxWideFloat rotation_w;
+	tfxWideFloat alive_mask;
+	int alive_bits;
+	bool rotated;
+};
+
+//Forced inline because a call makes the hot loop save and restore every callee saved vector register on each block
+tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tfx_particle_soa_t &bank, const tfx_position_policy_context &ctx, tfx_location_frame_t &frame) {
+	const tfx_control_work_entry_t *work_entry = ctx.work_entry;
+	const tfx_user_spawn_locations_t *location_list = work_entry->force_locations;
+	const tfx_vec3_t anchor = work_entry->force_location_anchor;
+	const tfxWideFloat world_x = ctx.position_x.m;
+	const tfxWideFloat world_y = ctx.position_y.m;
+	const tfxWideFloat world_z = ctx.position_z.m;
+	frame.rotated = (location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
+	frame.rotation_x = tfxWideSetZero;
+	frame.rotation_y = tfxWideSetZero;
+	frame.rotation_z = tfxWideSetZero;
+	frame.rotation_w = tfxWIDEONE.m;
+	frame.alive_mask = tfxWideCast(tfxWideSetSinglei(-1));
+	frame.alive_bits = (1 << tfxDataWidth) - 1;
+	tfxWideInt rotation_xy = tfxWideSetZeroi;
+	tfxWideInt rotation_zw = tfxWideSetZeroi;
+	//A location's particles spawn as one contiguous run, so nearly every block shares one location and needs only one lookup
+	const tfxU32 first_id = bank.spawn_location[index];
+	const tfxWideInt local_ids = tfxWideLoadi((tfxWideIntLoader *)&bank.spawn_location[index]);
+	if (tfxWideMoveMask(tfxWideCast(tfxWideEqualsi(local_ids, tfxWideSetSinglei((int)first_id)))) == (1 << tfxDataWidth) - 1) {
+		const tfxU32 slot = first_id & tfxSPAWN_LOCATION_SLOT_MASK;
+		const bool live = slot < location_list->locations.current_size
+			&& location_list->locations[slot].flags & tfxUserSpawnLocationFlags_active
+			&& tfx__spawn_location_local_id(slot, location_list->locations[slot].generation) == first_id;
+		if (!live) {
+			frame.position_x = world_x;
+			frame.position_y = world_y;
+			frame.position_z = world_z;
+			frame.alive_mask = tfxWideSetZero;
+			frame.alive_bits = 0;
+			frame.rotated = false;
+			return;
+		}
+		const tfx_user_spawn_location_t &location = location_list->locations[slot];
+		if (frame.rotated) {
+			frame.position_x = tfxWideSub(world_x, tfxWideSetSingle(location.position.x));
+			frame.position_y = tfxWideSub(world_y, tfxWideSetSingle(location.position.y));
+			frame.position_z = tfxWideSub(world_z, tfxWideSetSingle(location.position.z));
+			rotation_xy = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation & 0xFFFFFFFF));
+			rotation_zw = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation >> 32));
+		} else {
+			//The anchor folds into the location, so the common case is one translation
+			frame.position_x = tfxWideSub(world_x, tfxWideSetSingle(location.position.x - anchor.x));
+			frame.position_y = tfxWideSub(world_y, tfxWideSetSingle(location.position.y - anchor.y));
+			frame.position_z = tfxWideSub(world_z, tfxWideSetSingle(location.position.z - anchor.z));
+		}
+	} else {
+		tfxWideArray gathered_x, gathered_y, gathered_z;
+		tfxWideArrayi gathered_alive, gathered_xy, gathered_zw;
+		for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+			const tfxU32 local_id = bank.spawn_location[index + lane];
+			const tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
+			tfx_vec3_t position = {};
+			tfxU64 packed_rotation = tfxPACKED_W_QUATERNION;
+			bool live = false;
+			if (slot < location_list->locations.current_size) {
+				const tfx_user_spawn_location_t &location = location_list->locations[slot];
+				live = (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
+				position = location.position;
+				packed_rotation = location.packed_rotation;
+			}
+			gathered_x.a[lane] = position.x;
+			gathered_y.a[lane] = position.y;
+			gathered_z.a[lane] = position.z;
+			gathered_alive.a[lane] = live ? -1 : 0;
+			gathered_xy.a[lane] = (int)(tfxU32)(packed_rotation & 0xFFFFFFFF);
+			gathered_zw.a[lane] = (int)(tfxU32)(packed_rotation >> 32);
+		}
+		frame.alive_mask = tfxWideCast(gathered_alive.m);
+		frame.alive_bits = tfxWideMoveMask(frame.alive_mask);
+		frame.position_x = tfxWideSub(world_x, gathered_x.m);
+		frame.position_y = tfxWideSub(world_y, gathered_y.m);
+		frame.position_z = tfxWideSub(world_z, gathered_z.m);
+		rotation_xy = gathered_xy.m;
+		rotation_zw = gathered_zw.m;
+		if (!frame.rotated) {
+			frame.position_x = tfxWideAdd(frame.position_x, tfxWideSetSingle(anchor.x));
+			frame.position_y = tfxWideAdd(frame.position_y, tfxWideSetSingle(anchor.y));
+			frame.position_z = tfxWideAdd(frame.position_z, tfxWideSetSingle(anchor.z));
+		}
+	}
+
+	if (frame.rotated) {
+		tfx__wide_unpack16bit(rotation_xy, rotation_zw, frame.rotation_x, frame.rotation_y, frame.rotation_z, frame.rotation_w);
+		const tfxWideFloat sign_flip = tfxWideSetSingle(-0.f);
+		tfx__wide_rotate_vec3(tfxWideXOr(frame.rotation_x, sign_flip), tfxWideXOr(frame.rotation_y, sign_flip), tfxWideXOr(frame.rotation_z, sign_flip), frame.rotation_w, &frame.position_x, &frame.position_y, &frame.position_z);
+		frame.position_x = tfxWideAdd(frame.position_x, tfxWideSetSingle(anchor.x));
+		frame.position_y = tfxWideAdd(frame.position_y, tfxWideSetSingle(anchor.y));
+		frame.position_z = tfxWideAdd(frame.position_z, tfxWideSetSingle(anchor.z));
+	}
+}
+
+//At locations the distance is measured in the location frame (a gone location has no field); distance ignores rotation, so the noise is never turned
+template <bool at_locations>
+tfxINTERNAL inline tfxWideFloat tfx__wide_noise_falloff(const tfx_force_resolved_t *force, const tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
+	const bool in_location_frame = at_locations && ctx.flags & tfx_ctx_policy_flag_location_noise;
+	const tfxWideFloat offset_x = tfxWideSub(in_location_frame ? frame->position_x : ctx.position_x.m, force->origin_x);
+	const tfxWideFloat offset_y = tfxWideSub(in_location_frame ? frame->position_y : ctx.position_y.m, force->origin_y);
+	const tfxWideFloat offset_z = tfxWideSub(in_location_frame ? frame->position_z : ctx.position_z.m, force->origin_z);
+	tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
+	length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
+	length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
+	//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
+	//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
+	const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
+	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
+	const tfxWideFloat falloff = tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale));
+	return in_location_frame ? tfxWideAnd(frame->alive_mask, falloff) : falloff;
+}
+
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
 	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
 	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
 		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
@@ -9109,17 +9246,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
-		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
-		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
-		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
-		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
-		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
-		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
-		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
+		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9135,7 +9262,8 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
-tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
 	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
 	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
 		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
@@ -9203,17 +9331,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
-		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
-		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
-		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
-		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
-		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
-		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
-		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
+		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9229,7 +9347,8 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
-tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
 	tfxWideFloat velocity_turbulance_time = ctx.velocity_turbulance_easing(ctx.life);
 	ctx.lookup_velocity_turbulance = (ctx.flags & tfx_ctx_policy_flag_velocity_turbulance_is_bezier_graph) ?
 		tfx__wide_bezier_sampler(velocity_turbulance_time, ctx.velocity_turbulance_graph->wide_graph.from, ctx.velocity_turbulance_graph->wide_graph.curve1, ctx.velocity_turbulance_graph->wide_graph.curve2, ctx.velocity_turbulance_graph->wide_graph.to) :
@@ -9278,17 +9397,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolv
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
-		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
-		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
-		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
-		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
-		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
-		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
-		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
+		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9304,7 +9413,8 @@ tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolv
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
-tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx) {
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolved_t *force, tfx_particle_soa_t &bank, tfxU32 index, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
 	tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader *)&bank.uid[index]);
 
 	tfxWideFloat motion_randomness_time = ctx.motion_randomness_easing(ctx.life);
@@ -9352,17 +9462,7 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 
 	//If the noise has a bounded radius then calculate the falloff, if radius is 0 then this is skipped.
 	if (force->flags & tfx_force_resolved_flag_bounded) {
-		const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
-		const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
-		const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
-		tfxWideFloat length_squared = tfxWideMul(offset_x, offset_x);
-		length_squared = tfxWideMulAdd(offset_y, offset_y, length_squared);
-		length_squared = tfxWideMulAdd(offset_z, offset_z, length_squared);
-		//Floored rather than branched on, as in the other position dependent types: a particle sitting exactly on
-		//the origin reads a zero distance instead of a NaN, which is the near end of the profile.
-		const tfxWideFloat inverse_length = tfxWideRSqrt(tfxWideMax(length_squared, tfxWIDEEPSILON.m));
-		const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
-		amplitude = tfxWideMul(amplitude, tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale)));
+		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
 
 	noise_x = tfxWideMul(amplitude, noise_x);
@@ -9378,105 +9478,22 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 	ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, noise_z);
 }
 
-tfxINTERNAL inline void tfx__wide_rotate_vec3(tfxWideFloat q_x, tfxWideFloat q_y, tfxWideFloat q_z, tfxWideFloat q_w, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
-	tfxWideFloat c_x = tfxWideAdd(tfxWideSub(tfxWideMul(*y, q_z), tfxWideMul(*z, q_y)), tfxWideMul(*x, q_w));
-	tfxWideFloat c_y = tfxWideAdd(tfxWideSub(tfxWideMul(*z, q_x), tfxWideMul(*x, q_z)), tfxWideMul(*y, q_w));
-	tfxWideFloat c_z = tfxWideAdd(tfxWideSub(tfxWideMul(*x, q_y), tfxWideMul(*y, q_x)), tfxWideMul(*z, q_w));
-
-	*x = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_y, q_z), tfxWideMul(c_z, q_y)), tfxWIDETWO.m), *x);
-	*y = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_z, q_x), tfxWideMul(c_x, q_z)), tfxWIDETWO.m), *y);
-	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
-}
-
-//Evaluates the per location runs with each particle moved into its live location's frame, the field a relative particle there feels
+//Evaluates the per location runs in each particle's location frame, the field a relative particle there feels
 //Forced inline because a call makes the hot loop save and restore every callee saved vector register on each block
-tfxINTERNAL tfxFORCE_INLINE void tfx__wide_apply_location_forces(tfxU32 index, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+tfxINTERNAL tfxFORCE_INLINE void tfx__wide_apply_location_forces(const tfx_location_frame_t &frame, tfx_position_policy_context &ctx) {
+	if (frame.alive_bits == 0) {
+		return;
+	}
 	const tfx_control_work_entry_t *work_entry = ctx.work_entry;
-	const tfx_user_spawn_locations_t *location_list = work_entry->force_locations;
-	const tfx_vec3_t anchor = work_entry->force_location_anchor;
-	const bool rotated = (location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
 	const tfxWideFloat world_x = ctx.position_x.m;
 	const tfxWideFloat world_y = ctx.position_y.m;
 	const tfxWideFloat world_z = ctx.position_z.m;
-	tfxWideFloat alive_mask = tfxWideCast(tfxWideSetSinglei(-1));
-	bool all_alive = true;
-	tfxWideInt rotation_xy = tfxWideSetZeroi;
-	tfxWideInt rotation_zw = tfxWideSetZeroi;
-	//A location's particles spawn as one contiguous run, so nearly every block shares one location and needs only one lookup
-	const tfxU32 first_id = bank.spawn_location[index];
-	const tfxWideInt local_ids = tfxWideLoadi((tfxWideIntLoader *)&bank.spawn_location[index]);
-	if (tfxWideMoveMask(tfxWideCast(tfxWideEqualsi(local_ids, tfxWideSetSinglei((int)first_id)))) == (1 << tfxDataWidth) - 1) {
-		const tfxU32 slot = first_id & tfxSPAWN_LOCATION_SLOT_MASK;
-		if (slot >= location_list->locations.current_size) {
-			return;
-		}
-		const tfx_user_spawn_location_t &location = location_list->locations[slot];
-		if (!(location.flags & tfxUserSpawnLocationFlags_active) || tfx__spawn_location_local_id(slot, location.generation) != first_id) {
-			return;
-		}
-		if (rotated) {
-			ctx.position_x.m = tfxWideSub(world_x, tfxWideSetSingle(location.position.x));
-			ctx.position_y.m = tfxWideSub(world_y, tfxWideSetSingle(location.position.y));
-			ctx.position_z.m = tfxWideSub(world_z, tfxWideSetSingle(location.position.z));
-			rotation_xy = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation & 0xFFFFFFFF));
-			rotation_zw = tfxWideSetSinglei((int)(tfxU32)(location.packed_rotation >> 32));
-		} else {
-			//The anchor folds into the location, so the common case is one translation
-			ctx.position_x.m = tfxWideSub(world_x, tfxWideSetSingle(location.position.x - anchor.x));
-			ctx.position_y.m = tfxWideSub(world_y, tfxWideSetSingle(location.position.y - anchor.y));
-			ctx.position_z.m = tfxWideSub(world_z, tfxWideSetSingle(location.position.z - anchor.z));
-		}
-	} else {
-		tfxWideArray gathered_x, gathered_y, gathered_z;
-		tfxWideArrayi gathered_alive, gathered_xy, gathered_zw;
-		for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
-			const tfxU32 local_id = bank.spawn_location[index + lane];
-			const tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
-			tfx_vec3_t position = {};
-			tfxU64 packed_rotation = tfxPACKED_W_QUATERNION;
-			bool live = false;
-			if (slot < location_list->locations.current_size) {
-				const tfx_user_spawn_location_t &location = location_list->locations[slot];
-				live = (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
-				position = location.position;
-				packed_rotation = location.packed_rotation;
-			}
-			gathered_x.a[lane] = position.x;
-			gathered_y.a[lane] = position.y;
-			gathered_z.a[lane] = position.z;
-			gathered_alive.a[lane] = live ? -1 : 0;
-			gathered_xy.a[lane] = (int)(tfxU32)(packed_rotation & 0xFFFFFFFF);
-			gathered_zw.a[lane] = (int)(tfxU32)(packed_rotation >> 32);
-		}
-		alive_mask = tfxWideCast(gathered_alive.m);
-		all_alive = tfxWideMoveMask(alive_mask) == (1 << tfxDataWidth) - 1;
-		ctx.position_x.m = tfxWideSub(world_x, gathered_x.m);
-		ctx.position_y.m = tfxWideSub(world_y, gathered_y.m);
-		ctx.position_z.m = tfxWideSub(world_z, gathered_z.m);
-		rotation_xy = gathered_xy.m;
-		rotation_zw = gathered_zw.m;
-		if (!rotated) {
-			ctx.position_x.m = tfxWideAdd(ctx.position_x.m, tfxWideSetSingle(anchor.x));
-			ctx.position_y.m = tfxWideAdd(ctx.position_y.m, tfxWideSetSingle(anchor.y));
-			ctx.position_z.m = tfxWideAdd(ctx.position_z.m, tfxWideSetSingle(anchor.z));
-		}
-	}
-
-	tfxWideFloat q_x = tfxWideSetZero;
-	tfxWideFloat q_y = tfxWideSetZero;
-	tfxWideFloat q_z = tfxWideSetZero;
-	tfxWideFloat q_w = tfxWIDEONE.m;
-	if (rotated) {
-		tfx__wide_unpack16bit(rotation_xy, rotation_zw, q_x, q_y, q_z, q_w);
-		const tfxWideFloat sign_flip = tfxWideSetSingle(-0.f);
-		tfx__wide_rotate_vec3(tfxWideXOr(q_x, sign_flip), tfxWideXOr(q_y, sign_flip), tfxWideXOr(q_z, sign_flip), q_w, &ctx.position_x.m, &ctx.position_y.m, &ctx.position_z.m);
-		ctx.position_x.m = tfxWideAdd(ctx.position_x.m, tfxWideSetSingle(anchor.x));
-		ctx.position_y.m = tfxWideAdd(ctx.position_y.m, tfxWideSetSingle(anchor.y));
-		ctx.position_z.m = tfxWideAdd(ctx.position_z.m, tfxWideSetSingle(anchor.z));
-	}
+	ctx.position_x.m = frame.position_x;
+	ctx.position_y.m = frame.position_y;
+	ctx.position_z.m = frame.position_z;
 
 	//Only a block that turns its flow back or masks out a gone location needs the flow on its own
-	const bool separate = rotated || !all_alive;
+	const bool separate = frame.rotated || frame.alive_bits != (1 << tfxDataWidth) - 1;
 	const tfxWideFloat medium_x = ctx.medium_velocity_x;
 	const tfxWideFloat medium_y = ctx.medium_velocity_y;
 	const tfxWideFloat medium_z = ctx.medium_velocity_z;
@@ -9498,12 +9515,12 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_apply_location_forces(tfxU32 index, t
 		tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
 	}
 	if (separate) {
-		if (rotated) {
-			tfx__wide_rotate_vec3(q_x, q_y, q_z, q_w, &ctx.medium_velocity_x, &ctx.medium_velocity_y, &ctx.medium_velocity_z);
+		if (frame.rotated) {
+			tfx__wide_rotate_vec3(frame.rotation_x, frame.rotation_y, frame.rotation_z, frame.rotation_w, &ctx.medium_velocity_x, &ctx.medium_velocity_y, &ctx.medium_velocity_z);
 		}
-		ctx.medium_velocity_x = tfxWideAdd(medium_x, tfxWideAnd(alive_mask, ctx.medium_velocity_x));
-		ctx.medium_velocity_y = tfxWideAdd(medium_y, tfxWideAnd(alive_mask, ctx.medium_velocity_y));
-		ctx.medium_velocity_z = tfxWideAdd(medium_z, tfxWideAnd(alive_mask, ctx.medium_velocity_z));
+		ctx.medium_velocity_x = tfxWideAdd(medium_x, tfxWideAnd(frame.alive_mask, ctx.medium_velocity_x));
+		ctx.medium_velocity_y = tfxWideAdd(medium_y, tfxWideAnd(frame.alive_mask, ctx.medium_velocity_y));
+		ctx.medium_velocity_z = tfxWideAdd(medium_z, tfxWideAnd(frame.alive_mask, ctx.medium_velocity_z));
 	}
 	ctx.position_x.m = world_x;
 	ctx.position_y.m = world_y;
@@ -9541,8 +9558,15 @@ struct tfx_apply_forces_policy {
 				tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
 			}
 		}
-		if (at_locations && ctx.flags & tfx_ctx_policy_flag_location_forces) {
-			tfx__wide_apply_location_forces(index, bank, ctx);
+		//This chain only runs when the setup found location forces or location noise, so the frame is always needed
+		tfx_location_frame_t location_frame;
+		const tfx_location_frame_t *frame = nullptr;
+		if (at_locations) {
+			tfx__wide_location_frame(index, bank, ctx, location_frame);
+			frame = &location_frame;
+			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
+				tfx__wide_apply_location_forces(location_frame, ctx);
+			}
 		}
 
 		//Note:There can only be one noise type in the forces so no need for for loop here
@@ -9550,16 +9574,16 @@ struct tfx_apply_forces_policy {
 			const tfxU32 noise_index = work_entry->force_group_start[tfxForceNoise];
 			switch (work_entry->resolved_forces[noise_index].noise.algorithm) {
 				case tfxSimplexNoise:
-					tfx__wide_apply_noise_simplex_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					tfx__wide_apply_noise_simplex_force<at_locations>(&work_entry->resolved_forces[noise_index], bank, index, ctx, frame);
 					break;
 				case tfxCurlNoise:
-					tfx__wide_apply_noise_curl_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					tfx__wide_apply_noise_curl_force<at_locations>(&work_entry->resolved_forces[noise_index], bank, index, ctx, frame);
 					break;
 				case tfxValueNoise:
-					tfx__wide_apply_noise_value_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					tfx__wide_apply_noise_value_force<at_locations>(&work_entry->resolved_forces[noise_index], bank, index, ctx, frame);
 					break;
 				case tfxWhiteNoise:
-					tfx__wide_apply_white_noise_force(&work_entry->resolved_forces[noise_index], bank, index, ctx);
+					tfx__wide_apply_white_noise_force<at_locations>(&work_entry->resolved_forces[noise_index], bank, index, ctx, frame);
 					break;
 				default:
 					break;
