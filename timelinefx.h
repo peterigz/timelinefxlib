@@ -686,7 +686,7 @@ typedef struct tfx_gpu_particle_tick_s {	//64 bytes
 	tfxU32 force_offset;					//Row of this tick's first force in the same array as the ticks, see tfx_gpu_particle_frame_t force_rows
 	tfxU32 force_count;						//Rows, so a fluctuating vortex counts twice
 	tfxU32 flags;							//tfxGPUParticleTickFlags
-	tfxU32 padding;
+	float location_age_offset;				//Milliseconds the ticks after this one in the fetch added to an unpaused location's age
 } tfx_gpu_particle_tick_t;
 
 typedef enum {
@@ -710,7 +710,8 @@ typedef enum {
 	tfxGPUForceFlags_profile_bezier = 1 << 8,							//profile is a bezier segment, otherwise points on the straight line
 	tfxGPUForceFlags_bounded = 1 << 9,									//Noise only: faded by the profile out to the falloff distance from origin
 	tfxGPUForceFlags_fluctuating = 1 << 10,								//Vortex only: the next row is its tfx_gpu_particle_vortex_fluctuation_t
-	tfxGPUForceFlags_at_location = 1 << 11,								//Evaluated in the particle's spawn location frame, origin already less the anchor
+	tfxGPUForceFlags_at_location = 1 << 11,								//Evaluated in the particle's spawn location frame, origin already less the anchor. A shockwave is timed by the location's age
+	tfxGPUForceFlags_location_delay = 1 << 12,							//Wind and noise: front holds a delay each particle waits out on its location's age. A delayed wind row adds to the flow
 } tfx_gpu_particle_force_flag_bits;
 
 #define tfxGPU_FORCE_TYPE_MASK 0xFF
@@ -721,24 +722,24 @@ typedef struct tfx_gpu_particle_force_s {	//64 bytes
 	tfxU32 type_flags;						//tfx_gpu_particle_force_type | tfx_gpu_particle_force_flag_bits
 	float strength;							//Times the effect's noise multiplier, and the motion randomness base for white noise
 	float falloff_scale;					//Reciprocal of the distance the profile spans, in the particles' units
-	float front;							//Shockwave: how far its leading edge has travelled
+	float front;							//Shockwave: how far its leading edge has travelled, at_location: where it is at location time 0. Other at_location rows: the delay
 	tfx_float32x3_t origin;
-	float radial_ratio;						//Vortex
+	float radial_ratio;						//Vortex. at_location shockwave: the front's speed per millisecond of location time
 	tfx_float32x3_t axis;					//Vortex: the unit axis. Wind: the summed flow
-	float axial_ratio;						//Vortex
+	float axial_ratio;						//Vortex. at_location shockwave: the radius it dies at
 	tfx_float32x4_t profile;				//The profile graph's segment: from, curve1, curve2, to
 } tfx_gpu_particle_force_t;
 
-//The row after a fluctuating vortex's force row
+//The row after a fluctuating vortex's force row; after an at_location row harmonic_cos/harmonic_sin/turn_offset hold weight, turns per ms and turn at location time 0
 typedef struct tfx_gpu_particle_vortex_fluctuation_s {	//64 bytes
 	tfx_float32x3_t reference;				//Angle zero about the axis
 	tfxU32 lobes;
 	tfx_float32x3_t reference_turn;			//axis x reference
-	float padding_turn;
+	float turn_offset_0;
 	float harmonic_cos[3];					//Each harmonic's weight, current turn and frame average folded together
-	float padding_cos;
+	float turn_offset_1;
 	float harmonic_sin[3];
-	float padding_sin;
+	float turn_offset_2;
 } tfx_gpu_particle_vortex_fluctuation_t;
 
 typedef enum {
@@ -763,7 +764,7 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_noise = 1 << 18,						//The emitter has a noise force, its algorithm is in the noise_algorithm bits
 	tfxGPUParticleDispatchFlags_noise_algorithm = 3 << 19,				//(flags >> tfxGPU_NOISE_ALGORITHM_SHIFT) & 3: white 0, simplex 1, curl 2, value 3
 	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
-	tfxGPUParticleDispatchFlags_location_forces = 1 << 23,				//Some force rows are at_location, read the location table by the cold spawn_location
+	tfxGPUParticleDispatchFlags_location_forces = 1 << 23,				//Some force rows are at_location, read the location table by the cold spawn_location. A relative ring's position is already in the frame
 	tfxGPUParticleDispatchFlags_location_forces_rotation = 1 << 24,		//Those locations can have a rotation
 } tfx_gpu_particle_dispatch_flag_bits;
 
@@ -805,7 +806,8 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
 	tfxU32 key;								//The host's key for choosing a kernel, see tfx_SetTemplateEmitterGPUKey and tfx_SetEffectGPUKey
-	tfxU32 padding[2];
+	float location_delay;					//The emitter's spawn delay, which each location waits out from its own age
+	float location_loop_length;				//The emitter's loop length, 0 if it doesn't loop
 } tfx_gpu_particle_dispatch_t;
 
 //A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
@@ -813,7 +815,8 @@ typedef struct tfx_gpu_spawn_location_s {	//32 bytes
 	tfx_float32x3_t position;
 	tfxU32 local_id;						//slot | generation, matched against the cold spawn_location. tfxINVALID when the slot is empty
 	tfxU64 packed_rotation;					//16 bit snorm quaternion, x|y in the low word and z|w in the high one
-	tfxU32 padding[2];
+	float age;								//Milliseconds, which times a location's own forces
+	tfxU32 paused;							//1 when the location's age stopped for the fetch
 } tfx_gpu_spawn_location_t;
 
 typedef enum {

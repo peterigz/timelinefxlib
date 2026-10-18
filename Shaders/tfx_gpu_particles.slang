@@ -75,6 +75,7 @@ static const uint tfx_force_profile_bezier = 1 << 8;
 static const uint tfx_force_bounded = 1 << 9;
 static const uint tfx_force_fluctuating = 1 << 10;
 static const uint tfx_force_at_location = 1 << 11;
+static const uint tfx_force_location_delay = 1 << 12;
 
 //Must match tfxDRAG_VARIATION_HASH_AXIS or the drag drawn here won't be the one the CPU draws for the same uid
 static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
@@ -142,7 +143,7 @@ struct tfx_gpu_particle_tick {
 	uint force_offset;					//Row of the first force row in the same buffer
 	uint force_count;
 	uint flags;							//tfxGPUParticleTickFlags
-	uint padding;
+	float location_age_offset;			//Milliseconds the later ticks of the fetch added to an unpaused location's age
 };
 
 //Mirrors tfx_gpu_particle_dispatch_t
@@ -172,8 +173,8 @@ struct tfx_gpu_particle_dispatch {
 	float noise_swerve_gain_minus_one;
 	float noise_speed_gain_minus_swerve_gain;
 	uint key;							//The host's tfx_SetTemplateEmitterGPUKey / tfx_SetEffectGPUKey, which the library never reads
-	uint padding_1;
-	uint padding_2;
+	float location_delay;				//The emitter's spawn delay, waited out from each location's age
+	float location_loop_length;			//0 if the emitter doesn't loop
 };
 
 //Mirrors tfx_gpu_spawn_location_t
@@ -181,7 +182,8 @@ struct tfx_gpu_spawn_location {
 	float3 position;
 	uint local_id;						//slot | generation, tfxINVALID when the slot is empty
 	uint2 packed_rotation;				//16 bit snorm: .x = X|Y, .y = Z|W
-	uint2 padding;
+	float age;							//Milliseconds, after the last tick of the fetch
+	uint paused;
 };
 
 //Mirrors tfx_gpu_particle_force_t. Every float3 starts on a 16 byte offset, so std430 matches the C layout
@@ -202,11 +204,11 @@ struct tfx_gpu_particle_vortex_fluctuation {
 	float3 reference;
 	uint lobes;
 	float3 reference_turn;
-	float padding_turn;
+	float turn_offset_0;
 	float3 harmonic_cos;
-	float padding_cos;
+	float turn_offset_1;
 	float3 harmonic_sin;
-	float padding_sin;
+	float turn_offset_2;
 };
 
 //Mirrors tfx_instance_t
@@ -397,12 +399,12 @@ void tfx_apply_attract_force(tfx_gpu_particle_force force, float3 position, inou
 }
 
 //tfx__wide_apply_shockwave_force: the profile runs back from the leading edge, so only particles it hasn't reached need masking
-void tfx_apply_shockwave_force(tfx_gpu_particle_force force, float3 position, inout float3 medium) {
+void tfx_apply_shockwave_force(tfx_gpu_particle_force force, float front, float3 position, inout float3 medium) {
 	const float3 offset = position - force.origin;
 	const float length_squared = dot(offset, offset);
 	const float inverse_length = tfx_force_inverse_length(length_squared);
 	const float distance = length_squared * inverse_length;
-	const float profile_time = (force.front - distance) * force.falloff_scale;
+	const float profile_time = (front - distance) * force.falloff_scale;
 	const float scale = profile_time >= 0.0 ? force.strength * tfx_sample_force_profile(force, profile_time) : 0.0;
 	medium = (offset * inverse_length) * scale + medium;
 }
@@ -554,10 +556,11 @@ struct tfx_particle_context {
 };
 
 //tfx__wide_apply_location_forces' frame: the particle less its live location, turned back by the location's rotation. The rows have the
-//anchor taken off their origin already. A particle whose location has gone feels none of these rows
+//anchor taken off their origin already. A relative ring is in that frame already. A particle whose location has gone feels none of these rows
 struct tfx_location_frame {
 	float3 position;
 	float4 rotation;
+	float time;							//tfx__wide_location_time: the emitter's age as this location sees it
 	bool alive;
 };
 
@@ -565,18 +568,43 @@ tfx_location_frame tfx_particle_location_frame(tfx_particle_context context, tfx
 	tfx_location_frame frame;
 	frame.position = hot.position;
 	frame.rotation = float4(0.0, 0.0, 0.0, 1.0);
+	frame.time = 0.0;
 	frame.alive = false;
 	const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
 	if (slot < context.dispatch.location_count) {
 		const tfx_gpu_spawn_location location = location_buffers[context.push.location_buffer_index][context.push.location_base + context.dispatch.location_offset + slot];
 		frame.alive = location.local_id == cold.spawn_location;
-		frame.position = hot.position - location.position;
-		if ((context.dispatch.flags & tfx_dispatch_location_forces_rotation) != 0) {
-			frame.rotation = tfx_unpack16bit_quaternion(location.packed_rotation);
-			frame.position = tfx_rotate_vector(frame.position, tfx_conjugate(frame.rotation));
+		const float age = location.paused != 0 ? location.age : location.age - context.tick.location_age_offset;
+		const float running_time = max(age - context.dispatch.location_delay, 0.0);
+		const float loop_length = context.dispatch.location_loop_length;
+		frame.time = loop_length > 0.0 ? running_time - floor(running_time / loop_length) * loop_length : running_time;
+		if ((context.dispatch.flags & tfx_dispatch_relative_location) == 0) {
+			frame.position = hot.position - location.position;
+			if ((context.dispatch.flags & tfx_dispatch_location_forces_rotation) != 0) {
+				frame.rotation = tfx_unpack16bit_quaternion(location.packed_rotation);
+				frame.position = tfx_rotate_vector(frame.position, tfx_conjugate(frame.rotation));
+			}
 		}
 	}
 	return frame;
+}
+
+//tfx__wide_apply_location_shockwave_force: an at_location row holds the front at location time 0, its speed in radial_ratio and its radius in axial_ratio
+void tfx_apply_location_shockwave_force(tfx_gpu_particle_force force, float location_time, float3 position, inout float3 medium) {
+	const float front = location_time * force.radial_ratio + force.front;
+	if (front <= force.axial_ratio) {
+		tfx_apply_shockwave_force(force, front, position, medium);
+	}
+}
+
+//tfx__wide_location_fluctuation: an at_location row holds each harmonic's weight, turns per millisecond and turn at location time 0
+tfx_gpu_particle_vortex_fluctuation tfx_location_fluctuation(tfx_gpu_particle_vortex_fluctuation row, float location_time) {
+	float3 turns = row.harmonic_sin * location_time + float3(row.turn_offset_0, row.turn_offset_1, row.turn_offset_2);
+	turns -= floor(turns);
+	const float3 angle = turns * tfx_two_pi;
+	row.harmonic_sin = row.harmonic_cos * sin(angle);
+	row.harmonic_cos = row.harmonic_cos * cos(angle);
+	return row;
 }
 
 //tfx_apply_forces over the tick's force rows, which the CPU packed in its order: wind, vortices, attracts, shockwaves, the same at
@@ -586,7 +614,7 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 	const uint first_row = context.push.tick_base + context.tick.force_offset;
 	const uint end_row = first_row + context.tick.force_count;
 	bool location_forces = (context.dispatch.flags & tfx_dispatch_location_forces) != 0;
-	tfx_location_frame frame = { hot.position, float4(0.0, 0.0, 0.0, 1.0), false };
+	tfx_location_frame frame = { hot.position, float4(0.0, 0.0, 0.0, 1.0), 0.0, false };
 	if (location_forces) {
 		frame = tfx_particle_location_frame(context, hot, cold);
 	}
@@ -596,8 +624,12 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 		const tfx_gpu_particle_force force = force_buffers[buffer_index][row];
 		const uint type = force.type_flags & tfx_force_type_mask;
 		if (type == tfx_force_wind) {
-			//The CPU seeds the medium with the summed wind rather than adding it
-			medium = force.axis;
+			if ((force.type_flags & tfx_force_location_delay) == 0) {
+				//The CPU seeds the medium with the summed wind rather than adding it
+				medium = force.axis;
+			} else if (!frame.alive || frame.time >= force.front) {
+				medium += force.axis;
+			}
 			continue;
 		}
 		if (type == tfx_force_noise) {
@@ -606,23 +638,40 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 				medium += tfx_rotate_vector(location_medium, frame.rotation);
 			}
 			const bool noise_at_location = location_forces && (force.type_flags & tfx_force_at_location) != 0;
+			//tfx__wide_location_delay_reached: a gone location's particles keep the noise
+			const bool noise_on = (force.type_flags & tfx_force_location_delay) == 0 || !frame.alive || frame.time >= force.front;
 			location_forces = false;
-			medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life, noise_at_location ? frame.position : hot.position, !noise_at_location || frame.alive);
+			if (noise_on) {
+				medium += tfx_noise_medium(context.push, context.dispatch, force, context.tick, hot, cold, context.noise, context.life, noise_at_location ? frame.position : hot.position, !noise_at_location || frame.alive);
+			}
 			continue;
 		}
 		const bool at_location = location_forces && (force.type_flags & tfx_force_at_location) != 0;
 		const float3 position = at_location ? frame.position : hot.position;
 		float3 target = at_location ? location_medium : medium;
+		//An at_location attract or vortex holds its delay in front, waited out from the particle's location time
+		const bool switched_on = !at_location || frame.time >= force.front;
 		if (type == tfx_force_vortex) {
 			tfx_gpu_particle_vortex_fluctuation fluctuation = {};
 			if ((force.type_flags & tfx_force_fluctuating) != 0) {
 				fluctuation = fluctuation_buffers[buffer_index][++row];
+				if (at_location) {
+					fluctuation = tfx_location_fluctuation(fluctuation, frame.time);
+				}
 			}
-			tfx_apply_vortex_force(force, fluctuation, position, target);
+			if (switched_on) {
+				tfx_apply_vortex_force(force, fluctuation, position, target);
+			}
 		} else if (type == tfx_force_attract) {
-			tfx_apply_attract_force(force, position, target);
+			if (switched_on) {
+				tfx_apply_attract_force(force, position, target);
+			}
 		} else if (type == tfx_force_shockwave) {
-			tfx_apply_shockwave_force(force, position, target);
+			if (at_location) {
+				tfx_apply_location_shockwave_force(force, frame.time, position, target);
+			} else {
+				tfx_apply_shockwave_force(force, force.front, position, target);
+			}
 		}
 		if (at_location) {
 			location_medium = target;

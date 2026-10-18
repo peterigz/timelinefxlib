@@ -3148,6 +3148,7 @@ typedef enum {
 	tfx_ctx_policy_flag_has_position_forces                    	= 1 << 20,		//Position dependent forces evaluated where the particle is
 	tfx_ctx_policy_flag_location_forces                        	= 1 << 21,		//Position dependent forces evaluated in each particle's spawn location frame
 	tfx_ctx_policy_flag_location_noise                         	= 1 << 22,		//A bounded noise field whose falloff is measured in each particle's spawn location frame
+	tfx_ctx_policy_flag_location_clock                         	= 1 << 23,		//A per location force or noise timed by each particle's spawn location age: a shockwave, a delay or a fluctuation
 } tfx_context_policy_flag_bits;
 
 typedef enum {
@@ -6010,6 +6011,7 @@ typedef enum {
 	//they are dropped at setup when their extent is zero rather than being resolved without one.
 	tfx_force_resolved_flag_bounded                             = 1 << 1,
 	tfx_force_resolved_flag_fluctuating                         = 1 << 2,
+	tfx_force_resolved_flag_location_delay                      = 1 << 3,		//Some locations haven't reached the delay, so each lane checks its own
 } tfx_force_resolved_flag_bits;
 
 #define tfxVORTEX_FLUCTUATION_HARMONICS 3
@@ -6022,6 +6024,51 @@ typedef struct tfx_vortex_fluctuation_s {
 	float harmonic_cos[tfxVORTEX_FLUCTUATION_HARMONICS];
 	float harmonic_sin[tfxVORTEX_FLUCTUATION_HARMONICS];
 } tfx_vortex_fluctuation_t;
+
+//The parts of a fluctuation that don't change over time, which tfx__vortex_fluctuation_at turns into the harmonics at any moment
+typedef struct tfx_vortex_fluctuation_motion_s {
+	tfxU32 lobes;
+	float turns_per_second[tfxVORTEX_FLUCTUATION_HARMONICS];
+	float phase[tfxVORTEX_FLUCTUATION_HARMONICS];			//Radians
+	float weight[tfxVORTEX_FLUCTUATION_HARMONICS];			//The fluctuation amount and the frame average folded in
+	float half_frame_seconds;
+} tfx_vortex_fluctuation_motion_t;
+
+tfxINTERNAL inline void tfx__vortex_fluctuation_at(const tfx_vortex_fluctuation_motion_t *motion, float active_seconds, tfx_vortex_fluctuation_t *fluctuation) {
+	fluctuation->lobes = motion->lobes;
+	//Sampled at the middle of the frame so the frame average is centred on it
+	const float middle_seconds = active_seconds - motion->half_frame_seconds;
+	for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+		float turns = motion->turns_per_second[harmonic_index] * middle_seconds;
+		//Wrapped before it becomes an angle so a long running effect keeps its precision
+		turns -= floorf(turns);
+		const float angle = turns * tfxPI2 + motion->phase[harmonic_index];
+		fluctuation->harmonic_cos[harmonic_index] = motion->weight[harmonic_index] * cosf(angle);
+		fluctuation->harmonic_sin[harmonic_index] = motion->weight[harmonic_index] * sinf(angle);
+	}
+}
+
+//A fluctuation turned from a location's time in milliseconds, as an at_location fluctuation row holds it
+typedef struct tfx_vortex_fluctuation_turns_s {
+	float turns_per_millisecond[tfxVORTEX_FLUCTUATION_HARMONICS];
+	float turn_offset[tfxVORTEX_FLUCTUATION_HARMONICS];		//Each harmonic's turn at location time 0, with the phase, delay and half frame folded in
+	float weight[tfxVORTEX_FLUCTUATION_HARMONICS];
+} tfx_vortex_fluctuation_turns_t;
+
+tfxINTERNAL inline void tfx__vortex_fluctuation_turns(const tfx_vortex_fluctuation_motion_t *motion, float delay, tfx_vortex_fluctuation_turns_t *turns) {
+	for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+		turns->turns_per_millisecond[harmonic_index] = motion->turns_per_second[harmonic_index] * 0.001f;
+		const float turn_offset = motion->phase[harmonic_index] / tfxPI2 - motion->turns_per_second[harmonic_index] * (delay * 0.001f + motion->half_frame_seconds);
+		turns->turn_offset[harmonic_index] = turn_offset - floorf(turn_offset);
+		turns->weight[harmonic_index] = motion->weight[harmonic_index];
+	}
+}
+
+//One location's harmonics for one fluctuating vortex, kept while the particle loop stays on that location
+typedef struct tfx_location_fluctuation_s {
+	tfxU32 local_id;
+	tfx_vortex_fluctuation_t fluctuation;
+} tfx_location_fluctuation_t;
 
 //Struct that gets written outside of the particle loop that calculates various things based on the
 //force type and space (emitter, effect world)
@@ -6039,14 +6086,17 @@ typedef struct tfx_force_resolved_s {
 			tfxWideFloat radial_ratio, axial_ratio;
 			float reference[3], reference_turn[3];
 			tfx_vortex_fluctuation_t fluctuation;
+			tfx_vortex_fluctuation_turns_t turns;		//At user spawn locations, where each location works out its own fluctuation
 		} vortex;
 		//How far the wave's leading edge has travelled this frame. Resolved from speed and the effect clock at
 		//setup so the inner loop never touches a clock.
-		struct { tfxWideFloat front; } shockwave;
+		//A location's front is front + front_speed * its location time, and it dies past radius
+		struct { tfxWideFloat front, front_speed, radius; } shockwave;
 		struct { tfx_noise_type algorithm; } noise;
 	};
 	tfx_graph_t *profile_graph;
 	tfxU32 flags;
+	float location_delay;			//At user spawn locations: the delay, waited out from each particle's location time
 } tfx_force_resolved_t;
 
 //An attract, vortex or shockwave force resolved once per emitter per tick, before the CPU widens it or the GPU packs it
@@ -6055,12 +6105,15 @@ typedef struct tfx_resolved_position_force_s {
 	tfx_vec3_t axis;
 	float strength;
 	float falloff_scale;
-	float front;
+	float front;						//Timed per location: where the front is at location time 0
+	float front_speed;					//Timed per location: per millisecond of location time
+	float front_radius;					//Timed per location: where the wave dies
 	float radial_ratio;
 	float axial_ratio;
 	float reference[3];
 	float reference_turn[3];
 	tfx_vortex_fluctuation_t fluctuation;
+	tfx_vortex_fluctuation_motion_t fluctuation_motion;	//Timed per location: instead of fluctuation
 	tfx_graph_t *profile_graph;
 	tfxU32 flags;						//tfx_force_resolved_flag_bits
 } tfx_resolved_position_force_t;
@@ -7031,11 +7084,17 @@ typedef struct tfx_control_work_entry_s {
 	//empty range.
 	tfxU32 force_group_start[tfxFORCE_TYPE_COUNT];
 	tfxU32 force_group_count[tfxFORCE_TYPE_COUNT];
-	//Where each group's per location run (Effect/Emitter space on a world bank at user spawn locations) starts, after its world run
+	//Where each group's per location run (Effect/Emitter space at user spawn locations) starts, after its world run. On a local bank only the location timed ones have one
 	tfxU32 force_location_start[tfxFORCE_TYPE_COUNT];
 	struct tfx_user_spawn_locations_s *force_locations;
 	//The host's effect position that every location stands in for
 	tfx_vec3_t force_location_anchor;
+	//A relative, trajectory or edge traversal bank is in its location's frame already
+	bool force_locations_in_place;
+	//The emitter's spawn delay and loop length, which turn a location's age into the time its timed forces run on
+	float location_delay;
+	float location_loop_length;
+	float location_inverse_loop_length;
 }tfx_control_work_entry_t;
 
 typedef struct tfx_stage_work_entry_s {
@@ -7256,7 +7315,7 @@ typedef enum {
 } tfx_user_spawn_location_list_flag_bits;
 
 //Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
-//for the liveness check and packed_rotation for the relative rotation. The ages are only read once per location in the runs loop
+//for the liveness check and packed_rotation for the relative rotation. age is only gathered per particle by a location timed force
 typedef struct tfx_user_spawn_location_s {
 	tfx_vec3_t position;
 	tfx_vec3_t captured_position;
@@ -7883,6 +7942,7 @@ tfxAPI_EDITOR void tfx__update_graph_wide_oscillator(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__init_emitter_force(tfx_force_t *force);
 tfxAPI_EDITOR void tfx__set_emitter_force_type(tfx_force_t *force, tfx_force_type type);
 tfxAPI_EDITOR void tfx__get_vortex_fluctuation(const tfx_force_t *force, float active_seconds, float frame_seconds, tfx_vortex_fluctuation_t *fluctuation);
+tfxINTERNAL void tfx__get_vortex_fluctuation_motion(const tfx_force_t *force, float frame_seconds, tfx_vortex_fluctuation_motion_t *motion);
 tfxAPI_EDITOR tfx_force_t *tfx__add_emitter_force(tfx_effect_descriptor emitter, tfx_force_type type);
 tfxAPI_EDITOR void tfx__delete_emitter_force(tfx_effect_descriptor emitter, tfxU32 force_index);
 tfxAPI_EDITOR void tfx__clear_emitter_forces(tfx_effect_descriptor emitter);
@@ -7950,7 +8010,7 @@ tfxINTERNAL void   tfx__resolve_noise_force(const tfx_force_t *force, tfx_partic
 tfxINTERNAL bool   tfx__noise_gains(float noise_speed_bias, float *swerve_gain_minus_one, float *speed_gain_minus_swerve_gain);
 tfxINTERNAL void   tfx__get_force_space(tfx_stage pm, tfx_particle_emitter_state_t *emitter, float overall_scale, tfx_force_space_t *space);
 tfxINTERNAL bool   tfx__resolve_wind_force(const tfx_force_t *force, tfx_force_space_t *space, float strength, tfx_vec3_t *summed_medium);
-tfxINTERNAL bool   tfx__resolve_position_force(const tfx_force_t *force, tfx_force_space_t *space, float strength, tfx_resolved_position_force_t *resolved);
+tfxINTERNAL bool   tfx__resolve_position_force(const tfx_force_t *force, tfx_force_space_t *space, float strength, bool timed_per_location, tfx_resolved_position_force_t *resolved);
 tfxINTERNAL float  tfx__sample_motion_randomness_base(tfx_particle_emitter_state_t *emitter);
 tfxINTERNAL const tfx_force_t *tfx__get_enabled_noise_force(const tfx_particle_emitter_properties_t *properties);
 tfxINTERNAL void   tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data);
@@ -8775,6 +8835,7 @@ struct tfx_position_policy_context {
 	tfx_wide_easing_function motion_randomness_easing;
 	tfxWideFloat force_medium_x, force_medium_y, force_medium_z;
 	tfxContextPolicyFlags flags;
+	tfx_location_fluctuation_t location_fluctuations[tfxMAX_FORCES];	//Indexed like work_entry->resolved_forces
 };
 
 //Control setup policies
@@ -8894,8 +8955,63 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_sample_force_profile(const tfx_force_r
 	return tfxWideAnd(inside, sample);
 }
 
+//A block of particles in their live locations' frames: inverse(location rotation) * (position - location) + anchor, or unmoved on a local bank
+struct tfx_location_frame_t {
+	tfxWideFloat position_x;
+	tfxWideFloat position_y;
+	tfxWideFloat position_z;
+	tfxWideFloat rotation_x;
+	tfxWideFloat rotation_y;
+	tfxWideFloat rotation_z;
+	tfxWideFloat rotation_w;
+	tfxWideFloat alive_mask;
+	tfxWideFloat location_time;		//Milliseconds, only with tfx_ctx_policy_flag_location_clock
+	tfxU32 first_id;
+	int alive_bits;
+	bool rotated;
+	bool shared_location;
+};
+
+//Each lane's harmonics at its location's own time, kept while the loop stays on one location and worked out per block when the locations mix
+tfxINTERNAL inline void tfx__wide_location_fluctuation(const tfx_force_resolved_t *force, tfx_location_fluctuation_t &cache, const tfx_location_frame_t &frame, tfxWideFloat *harmonic_cos, tfxWideFloat *harmonic_sin) {
+	if (frame.shared_location && cache.local_id == frame.first_id) {
+		for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+			harmonic_cos[harmonic_index] = tfxWideSetSingle(cache.fluctuation.harmonic_cos[harmonic_index]);
+			harmonic_sin[harmonic_index] = tfxWideSetSingle(cache.fluctuation.harmonic_sin[harmonic_index]);
+		}
+		return;
+	}
+	const tfx_vortex_fluctuation_turns_t &turns = force->vortex.turns;
+	for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+		//Half a turn on and back again puts the turn in [-0.5, 0.5), so half its angle is in [-pi/2, pi/2) where the short polynomials hold
+		tfxWideFloat turn = tfxWideMulAdd(frame.location_time, tfxWideSetSingle(turns.turns_per_millisecond[harmonic_index]), tfxWideSetSingle(turns.turn_offset[harmonic_index] + 0.5f));
+		turn = tfxWideSub(tfxWideSub(turn, tfxWideFloor(turn)), tfxWIDEHALF.m);
+		const tfxWideFloat half_angle = tfxWideMul(turn, tfxWIDEPI.m);
+		const tfxWideFloat half_angle_squared = tfxWideMul(half_angle, half_angle);
+		tfxWideFloat half_sine = tfxWideMulAdd(half_angle_squared, tfxWideSetSingle(-0.00018363f), tfxWideSetSingle(0.00830629f));
+		half_sine = tfxWideMulAdd(half_angle_squared, half_sine, tfxWideSetSingle(-0.16664824f));
+		half_sine = tfxWideMul(half_angle, tfxWideMulAdd(half_angle_squared, half_sine, tfxWideSetSingle(0.99999661f)));
+		const tfxWideFloat half_cosine = tfxWideCos52s(half_angle);
+		const tfxWideFloat weight = tfxWideSetSingle(turns.weight[harmonic_index]);
+		harmonic_sin[harmonic_index] = tfxWideMul(weight, tfxWideMul(tfxWIDETWO.m, tfxWideMul(half_sine, half_cosine)));
+		harmonic_cos[harmonic_index] = tfxWideMul(weight, tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWIDETWO.m, tfxWideMul(half_sine, half_sine))));
+	}
+	if (frame.shared_location) {
+		cache.local_id = frame.first_id;
+		for (tfxU32 harmonic_index = 0; harmonic_index != tfxVORTEX_FLUCTUATION_HARMONICS; ++harmonic_index) {
+			tfxWideArray lanes;
+			lanes.m = harmonic_cos[harmonic_index];
+			cache.fluctuation.harmonic_cos[harmonic_index] = lanes.a[0];
+			lanes.m = harmonic_sin[harmonic_index];
+			cache.fluctuation.harmonic_sin[harmonic_index] = lanes.a[0];
+		}
+	}
+}
+
 //Scales a vortex's strength by where the particle sits around the axis. cos/sin of n * angle come from powers of the unit arm as a complex number, so no angle is ever taken.
-tfxINTERNAL inline tfxWideFloat tfx__wide_vortex_fluctuation(const tfx_force_resolved_t *force, tfxWideFloat radial_x, tfxWideFloat radial_y, tfxWideFloat radial_z) {
+//At locations every lane brings its own harmonics
+template <bool at_locations>
+tfxINTERNAL inline tfxWideFloat tfx__wide_vortex_fluctuation(const tfx_force_resolved_t *force, tfxWideFloat radial_x, tfxWideFloat radial_y, tfxWideFloat radial_z, const tfxWideFloat *location_cos, const tfxWideFloat *location_sin) {
 	const float *reference = force->vortex.reference;
 	const float *reference_turn = force->vortex.reference_turn;
 	const tfx_vortex_fluctuation_t &fluctuation = force->vortex.fluctuation;
@@ -8939,16 +9055,17 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_vortex_fluctuation(const tfx_force_res
 			power_imaginary = tfxWideMulAdd(power_real, arm_imaginary, tfxWideMul(power_imaginary, arm_real));
 			power_real = next_real;
 		}
-		variation = tfxWideMulAdd(power_real, tfxWideSetSingle(fluctuation.harmonic_cos[harmonic_index]), variation);
-		variation = tfxWideMulAdd(power_imaginary, tfxWideSetSingle(fluctuation.harmonic_sin[harmonic_index]), variation);
+		variation = tfxWideMulAdd(power_real, at_locations ? location_cos[harmonic_index] : tfxWideSetSingle(fluctuation.harmonic_cos[harmonic_index]), variation);
+		variation = tfxWideMulAdd(power_imaginary, at_locations ? location_sin[harmonic_index] : tfxWideSetSingle(fluctuation.harmonic_sin[harmonic_index]), variation);
 	}
 	return variation;
 }
 
 //Adds one vortex's flow to the medium. This is the shape every position dependent force follows: offset the particle
 //from the resolved origin, turn a distance into the profile's 0..1 coordinate, then accumulate
-//strength * profile * direction.
-tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+//strength * profile * direction. At locations the frame times the delay and the fluctuation by each lane's location.
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame, tfx_location_fluctuation_t *fluctuation_cache) {
 	const tfxWideFloat axis_x = force->axis_x;
 	const tfxWideFloat axis_y = force->axis_y;
 	const tfxWideFloat axis_z = force->axis_z;
@@ -8980,7 +9097,14 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 	tfxWideFloat scale = tfxWideMul(force->strength,
 		tfx__wide_sample_force_profile(force, tfxWideMul(radial_distance, force->falloff_scale)));
 	if (force->flags & tfx_force_resolved_flag_fluctuating) {
-		scale = tfxWideMul(scale, tfx__wide_vortex_fluctuation(force, radial_x, radial_y, radial_z));
+		tfxWideFloat harmonic_cos[tfxVORTEX_FLUCTUATION_HARMONICS], harmonic_sin[tfxVORTEX_FLUCTUATION_HARMONICS];
+		if (at_locations) {
+			tfx__wide_location_fluctuation(force, *fluctuation_cache, *frame, harmonic_cos, harmonic_sin);
+		}
+		scale = tfxWideMul(scale, tfx__wide_vortex_fluctuation<at_locations>(force, radial_x, radial_y, radial_z, harmonic_cos, harmonic_sin));
+	}
+	if (at_locations && force->flags & tfx_force_resolved_flag_location_delay) {
+		scale = tfxWideAnd(tfxWideGreaterEqual(frame->location_time, tfxWideSetSingle(force->location_delay)), scale);
 	}
 
 	//Spinning is the whole point of a vortex, so the tangential component is implicitly 1 and strength scales it.
@@ -9000,7 +9124,8 @@ tfxINTERNAL inline void tfx__wide_apply_vortex_force(const tfx_force_resolved_t 
 
 //Adds one attract or repel force to the medium. The direction is the same sign as vortex's radial ratio, so a
 //positive strength pushes out from the origin and a negative one pulls in.
-tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+template <bool at_locations>
+tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx, const tfx_location_frame_t *frame) {
 	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
 	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
 	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
@@ -9018,6 +9143,9 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 
 	//Scaled by distance so the pull grows towards the edge of the field and eases off near the origin
 	scale = tfxWideMul(scale, distance);
+	if (at_locations && force->flags & tfx_force_resolved_flag_location_delay) {
+		scale = tfxWideAnd(tfxWideGreaterEqual(frame->location_time, tfxWideSetSingle(force->location_delay)), scale);
+	}
 
 	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);
 	ctx.medium_velocity_y = tfxWideMulAdd(tfxWideMul(offset_y, inverse_length), scale, ctx.medium_velocity_y);
@@ -9028,7 +9156,7 @@ tfxINTERNAL inline void tfx__wide_apply_attract_force(const tfx_force_resolved_t
 //the shell rather than out from the centre, so a particle feels the wave only while the front is passing it, and
 //the push is radially outward at the profile's magnitude. Sign follows attract and vortex's radial ratio, so a
 //positive strength blows outward and a negative one sucks inward.
-tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved_t *force, tfx_position_policy_context &ctx) {
+tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved_t *force, const tfxWideFloat front, tfx_position_policy_context &ctx) {
 	const tfxWideFloat offset_x = tfxWideSub(ctx.position_x.m, force->origin_x);
 	const tfxWideFloat offset_y = tfxWideSub(ctx.position_y.m, force->origin_y);
 	const tfxWideFloat offset_z = tfxWideSub(ctx.position_z.m, force->origin_z);
@@ -9044,13 +9172,20 @@ tfxINTERNAL inline void tfx__wide_apply_shockwave_force(const tfx_force_resolved
 	//Measured backwards from the leading edge: 0 at the front itself, 1 one thickness behind it. That way the
 	//profile reads front to tail and the radius the wave dies at bounds the field in space as well as in time.
 	//The sampler kills the tail side at 1, so only the particles the wave has not reached yet need masking here.
-	const tfxWideFloat profile_time = tfxWideMul(tfxWideSub(force->shockwave.front, distance), force->falloff_scale);
+	const tfxWideFloat profile_time = tfxWideMul(tfxWideSub(front, distance), force->falloff_scale);
 	const tfxWideFloat reached = tfxWideGreaterEqual(profile_time, tfxWIDEZERO.m);
 	const tfxWideFloat scale = tfxWideAnd(reached, tfxWideMul(force->strength, tfx__wide_sample_force_profile(force, profile_time)));
 
 	ctx.medium_velocity_x = tfxWideMulAdd(tfxWideMul(offset_x, inverse_length), scale, ctx.medium_velocity_x);
 	ctx.medium_velocity_y = tfxWideMulAdd(tfxWideMul(offset_y, inverse_length), scale, ctx.medium_velocity_y);
 	ctx.medium_velocity_z = tfxWideMulAdd(tfxWideMul(offset_z, inverse_length), scale, ctx.medium_velocity_z);
+}
+
+//Each lane's front runs on its location's time. A spent lane's front goes far behind every particle so the reached mask drops it
+tfxINTERNAL inline void tfx__wide_apply_location_shockwave_force(const tfx_force_resolved_t *force, const tfxWideFloat location_time, tfx_position_policy_context &ctx) {
+	const tfxWideFloat front = tfxWideMulAdd(location_time, force->shockwave.front_speed, force->shockwave.front);
+	const tfxWideFloat live = tfxWideLessEqual(front, force->shockwave.radius);
+	tfx__wide_apply_shockwave_force(force, tfxWideOr(tfxWideAnd(live, front), tfxWideAndNot(live, tfxWideSetSingle(-FLT_MAX))), ctx);
 }
 
 tfxINTERNAL inline void tfx__wide_rotate_vec3(tfxWideFloat q_x, tfxWideFloat q_y, tfxWideFloat q_z, tfxWideFloat q_w, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
@@ -9063,19 +9198,12 @@ tfxINTERNAL inline void tfx__wide_rotate_vec3(tfxWideFloat q_x, tfxWideFloat q_y
 	*z = tfxWideAdd(tfxWideMul(tfxWideSub(tfxWideMul(c_x, q_y), tfxWideMul(c_y, q_x)), tfxWIDETWO.m), *z);
 }
 
-//A block of world bank particles moved into their live locations' frames: inverse(location rotation) * (position - location) + anchor
-struct tfx_location_frame_t {
-	tfxWideFloat position_x;
-	tfxWideFloat position_y;
-	tfxWideFloat position_z;
-	tfxWideFloat rotation_x;
-	tfxWideFloat rotation_y;
-	tfxWideFloat rotation_z;
-	tfxWideFloat rotation_w;
-	tfxWideFloat alive_mask;
-	int alive_bits;
-	bool rotated;
-};
+//What the emitter's age would be at this location: it waits out the spawn delay from the location's own age and loops the same way
+tfxINTERNAL tfxFORCE_INLINE tfxWideFloat tfx__wide_location_time(const tfxWideFloat age, const tfx_control_work_entry_t *work_entry) {
+	const tfxWideFloat running_time = tfxWideMax(tfxWideSub(age, tfxWideSetSingle(work_entry->location_delay)), tfxWideSetZero);
+	const tfxWideFloat loops = tfxWideFloor(tfxWideMul(running_time, tfxWideSetSingle(work_entry->location_inverse_loop_length)));
+	return tfxWideSub(running_time, tfxWideMul(loops, tfxWideSetSingle(work_entry->location_loop_length)));
+}
 
 //Forced inline because a call makes the hot loop save and restore every callee saved vector register on each block
 tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tfx_particle_soa_t &bank, const tfx_position_policy_context &ctx, tfx_location_frame_t &frame) {
@@ -9085,11 +9213,14 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tf
 	const tfxWideFloat world_x = ctx.position_x.m;
 	const tfxWideFloat world_y = ctx.position_y.m;
 	const tfxWideFloat world_z = ctx.position_z.m;
-	frame.rotated = (location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
+	const bool in_place = work_entry->force_locations_in_place;
+	const bool timed = (ctx.flags & tfx_ctx_policy_flag_location_clock) != 0;
+	frame.rotated = !in_place && (location_list->flags & tfxUserSpawnLocationListFlags_has_rotation) != 0;
 	frame.rotation_x = tfxWideSetZero;
 	frame.rotation_y = tfxWideSetZero;
 	frame.rotation_z = tfxWideSetZero;
 	frame.rotation_w = tfxWIDEONE.m;
+	frame.location_time = tfxWideSetZero;
 	frame.alive_mask = tfxWideCast(tfxWideSetSinglei(-1));
 	frame.alive_bits = (1 << tfxDataWidth) - 1;
 	tfxWideInt rotation_xy = tfxWideSetZeroi;
@@ -9097,7 +9228,9 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tf
 	//A location's particles spawn as one contiguous run, so nearly every block shares one location and needs only one lookup
 	const tfxU32 first_id = bank.spawn_location[index];
 	const tfxWideInt local_ids = tfxWideLoadi((tfxWideIntLoader *)&bank.spawn_location[index]);
-	if (tfxWideMoveMask(tfxWideCast(tfxWideEqualsi(local_ids, tfxWideSetSinglei((int)first_id)))) == (1 << tfxDataWidth) - 1) {
+	frame.first_id = first_id;
+	frame.shared_location = tfxWideMoveMask(tfxWideCast(tfxWideEqualsi(local_ids, tfxWideSetSinglei((int)first_id)))) == (1 << tfxDataWidth) - 1;
+	if (frame.shared_location) {
 		const tfxU32 slot = first_id & tfxSPAWN_LOCATION_SLOT_MASK;
 		const bool live = slot < location_list->locations.current_size
 			&& location_list->locations[slot].flags & tfxUserSpawnLocationFlags_active
@@ -9112,7 +9245,14 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tf
 			return;
 		}
 		const tfx_user_spawn_location_t &location = location_list->locations[slot];
-		if (frame.rotated) {
+		if (timed) {
+			frame.location_time = tfx__wide_location_time(tfxWideSetSingle((float)location.age), work_entry);
+		}
+		if (in_place) {
+			frame.position_x = world_x;
+			frame.position_y = world_y;
+			frame.position_z = world_z;
+		} else if (frame.rotated) {
 			frame.position_x = tfxWideSub(world_x, tfxWideSetSingle(location.position.x));
 			frame.position_y = tfxWideSub(world_y, tfxWideSetSingle(location.position.y));
 			frame.position_z = tfxWideSub(world_z, tfxWideSetSingle(location.position.z));
@@ -9125,20 +9265,23 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tf
 			frame.position_z = tfxWideSub(world_z, tfxWideSetSingle(location.position.z - anchor.z));
 		}
 	} else {
-		tfxWideArray gathered_x, gathered_y, gathered_z;
+		tfxWideArray gathered_x, gathered_y, gathered_z, gathered_age;
 		tfxWideArrayi gathered_alive, gathered_xy, gathered_zw;
 		for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
 			const tfxU32 local_id = bank.spawn_location[index + lane];
 			const tfxU32 slot = local_id & tfxSPAWN_LOCATION_SLOT_MASK;
 			tfx_vec3_t position = {};
 			tfxU64 packed_rotation = tfxPACKED_W_QUATERNION;
+			double age = 0.0;
 			bool live = false;
 			if (slot < location_list->locations.current_size) {
 				const tfx_user_spawn_location_t &location = location_list->locations[slot];
 				live = (location.flags & tfxUserSpawnLocationFlags_active) && tfx__spawn_location_local_id(slot, location.generation) == local_id;
 				position = location.position;
 				packed_rotation = location.packed_rotation;
+				age = location.age;
 			}
+			gathered_age.a[lane] = (float)age;
 			gathered_x.a[lane] = position.x;
 			gathered_y.a[lane] = position.y;
 			gathered_z.a[lane] = position.z;
@@ -9148,12 +9291,21 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_location_frame(tfxU32 index, const tf
 		}
 		frame.alive_mask = tfxWideCast(gathered_alive.m);
 		frame.alive_bits = tfxWideMoveMask(frame.alive_mask);
-		frame.position_x = tfxWideSub(world_x, gathered_x.m);
-		frame.position_y = tfxWideSub(world_y, gathered_y.m);
-		frame.position_z = tfxWideSub(world_z, gathered_z.m);
+		if (timed) {
+			frame.location_time = tfx__wide_location_time(gathered_age.m, work_entry);
+		}
+		if (in_place) {
+			frame.position_x = world_x;
+			frame.position_y = world_y;
+			frame.position_z = world_z;
+		} else {
+			frame.position_x = tfxWideSub(world_x, gathered_x.m);
+			frame.position_y = tfxWideSub(world_y, gathered_y.m);
+			frame.position_z = tfxWideSub(world_z, gathered_z.m);
+		}
 		rotation_xy = gathered_xy.m;
 		rotation_zw = gathered_zw.m;
-		if (!frame.rotated) {
+		if (!in_place && !frame.rotated) {
 			frame.position_x = tfxWideAdd(frame.position_x, tfxWideSetSingle(anchor.x));
 			frame.position_y = tfxWideAdd(frame.position_y, tfxWideSetSingle(anchor.y));
 			frame.position_z = tfxWideAdd(frame.position_z, tfxWideSetSingle(anchor.z));
@@ -9186,6 +9338,20 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_noise_falloff(const tfx_force_resolved
 	const tfxWideFloat distance = tfxWideMul(length_squared, inverse_length);
 	const tfxWideFloat falloff = tfx__wide_sample_force_profile(force, tfxWideMul(distance, force->falloff_scale));
 	return in_location_frame ? tfxWideAnd(frame->alive_mask, falloff) : falloff;
+}
+
+//The lanes whose location has reached a wind or noise delay; a gone location's particles keep the flow
+tfxINTERNAL inline tfxWideFloat tfx__wide_location_delay_reached(const tfx_force_resolved_t *force, const tfx_location_frame_t &frame) {
+	const tfxWideFloat reached = tfxWideGreaterEqual(frame.location_time, tfxWideSetSingle(force->location_delay));
+	return tfxWideOr(reached, tfxWideAndNot(frame.alive_mask, tfxWideCast(tfxWideSetSinglei(-1))));
+}
+
+template <bool at_locations>
+tfxINTERNAL inline tfxWideFloat tfx__wide_noise_delay(const tfx_force_resolved_t *force, const tfx_location_frame_t *frame, tfxWideFloat amplitude) {
+	if (at_locations && force->flags & tfx_force_resolved_flag_location_delay) {
+		return tfxWideAnd(tfx__wide_location_delay_reached(force, *frame), amplitude);
+	}
+	return amplitude;
 }
 
 template <bool at_locations>
@@ -9248,6 +9414,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_simplex_force(const tfx_force_reso
 	if (force->flags & tfx_force_resolved_flag_bounded) {
 		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
+	amplitude = tfx__wide_noise_delay<at_locations>(force, frame, amplitude);
 
 	noise_x = tfxWideMul(amplitude, noise_x);
 	noise_y = tfxWideMul(amplitude, noise_y);
@@ -9333,6 +9500,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_curl_force(const tfx_force_resolve
 	if (force->flags & tfx_force_resolved_flag_bounded) {
 		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
+	amplitude = tfx__wide_noise_delay<at_locations>(force, frame, amplitude);
 
 	noise_x = tfxWideMul(amplitude, noise_x);
 	noise_y = tfxWideMul(amplitude, noise_y);
@@ -9399,6 +9567,7 @@ tfxINTERNAL inline void tfx__wide_apply_noise_value_force(const tfx_force_resolv
 	if (force->flags & tfx_force_resolved_flag_bounded) {
 		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
+	amplitude = tfx__wide_noise_delay<at_locations>(force, frame, amplitude);
 
 	noise_x = tfxWideMul(amplitude, noise_x);
 	noise_y = tfxWideMul(amplitude, noise_y);
@@ -9464,6 +9633,7 @@ tfxINTERNAL inline void tfx__wide_apply_white_noise_force(const tfx_force_resolv
 	if (force->flags & tfx_force_resolved_flag_bounded) {
 		amplitude = tfxWideMul(amplitude, tfx__wide_noise_falloff<at_locations>(force, ctx, frame));
 	}
+	amplitude = tfx__wide_noise_delay<at_locations>(force, frame, amplitude);
 
 	noise_x = tfxWideMul(amplitude, noise_x);
 	noise_y = tfxWideMul(amplitude, noise_y);
@@ -9504,15 +9674,15 @@ tfxINTERNAL tfxFORCE_INLINE void tfx__wide_apply_location_forces(const tfx_locat
 	}
 	const tfxU32 vortex_end = work_entry->force_group_start[tfxForceVortex] + work_entry->force_group_count[tfxForceVortex];
 	for (tfxU32 force_index = work_entry->force_location_start[tfxForceVortex]; force_index != vortex_end; ++force_index) {
-		tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+		tfx__wide_apply_vortex_force<true>(&work_entry->resolved_forces[force_index], ctx, &frame, &ctx.location_fluctuations[force_index]);
 	}
 	const tfxU32 attract_end = work_entry->force_group_start[tfxForceAttract] + work_entry->force_group_count[tfxForceAttract];
 	for (tfxU32 force_index = work_entry->force_location_start[tfxForceAttract]; force_index != attract_end; ++force_index) {
-		tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+		tfx__wide_apply_attract_force<true>(&work_entry->resolved_forces[force_index], ctx, &frame);
 	}
 	const tfxU32 shockwave_end = work_entry->force_group_start[tfxForceShockwave] + work_entry->force_group_count[tfxForceShockwave];
 	for (tfxU32 force_index = work_entry->force_location_start[tfxForceShockwave]; force_index != shockwave_end; ++force_index) {
-		tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
+		tfx__wide_apply_location_shockwave_force(&work_entry->resolved_forces[force_index], frame.location_time, ctx);
 	}
 	if (separate) {
 		if (frame.rotated) {
@@ -9545,25 +9715,35 @@ struct tfx_apply_forces_policy {
 			const tfxU32 vortex_start = work_entry->force_group_start[tfxForceVortex];
 			const tfxU32 vortex_end = work_entry->force_location_start[tfxForceVortex];
 			for (tfxU32 force_index = vortex_start; force_index != vortex_end; ++force_index) {
-				tfx__wide_apply_vortex_force(&work_entry->resolved_forces[force_index], ctx);
+				tfx__wide_apply_vortex_force<false>(&work_entry->resolved_forces[force_index], ctx, nullptr, nullptr);
 			}
 			const tfxU32 attract_start = work_entry->force_group_start[tfxForceAttract];
 			const tfxU32 attract_end = work_entry->force_location_start[tfxForceAttract];
 			for (tfxU32 force_index = attract_start; force_index != attract_end; ++force_index) {
-				tfx__wide_apply_attract_force(&work_entry->resolved_forces[force_index], ctx);
+				tfx__wide_apply_attract_force<false>(&work_entry->resolved_forces[force_index], ctx, nullptr);
 			}
 			const tfxU32 shockwave_start = work_entry->force_group_start[tfxForceShockwave];
 			const tfxU32 shockwave_end = work_entry->force_location_start[tfxForceShockwave];
 			for (tfxU32 force_index = shockwave_start; force_index != shockwave_end; ++force_index) {
-				tfx__wide_apply_shockwave_force(&work_entry->resolved_forces[force_index], ctx);
+				const tfx_force_resolved_t *force = &work_entry->resolved_forces[force_index];
+				tfx__wide_apply_shockwave_force(force, force->shockwave.front, ctx);
 			}
 		}
-		//This chain only runs when the setup found location forces or location noise, so the frame is always needed
+		//This chain only runs when the setup found location forces, location noise or a location clock, so the frame is always needed
 		tfx_location_frame_t location_frame;
 		const tfx_location_frame_t *frame = nullptr;
 		if (at_locations) {
 			tfx__wide_location_frame(index, bank, ctx, location_frame);
 			frame = &location_frame;
+			//Only winds some locations haven't reached get here, the rest are in the summed flow
+			const tfxU32 wind_end = work_entry->force_group_start[tfxForceWind] + work_entry->force_group_count[tfxForceWind];
+			for (tfxU32 force_index = work_entry->force_group_start[tfxForceWind]; force_index != wind_end; ++force_index) {
+				const tfx_force_resolved_t *force = &work_entry->resolved_forces[force_index];
+				const tfxWideFloat on = tfx__wide_location_delay_reached(force, location_frame);
+				ctx.medium_velocity_x = tfxWideAdd(ctx.medium_velocity_x, tfxWideAnd(on, force->axis_x));
+				ctx.medium_velocity_y = tfxWideAdd(ctx.medium_velocity_y, tfxWideAnd(on, force->axis_y));
+				ctx.medium_velocity_z = tfxWideAdd(ctx.medium_velocity_z, tfxWideAnd(on, force->axis_z));
+			}
 			if (ctx.flags & tfx_ctx_policy_flag_location_forces) {
 				tfx__wide_apply_location_forces(location_frame, ctx);
 			}
