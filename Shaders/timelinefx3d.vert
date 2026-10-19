@@ -144,14 +144,23 @@ void main() {
     //(peviously lerped_rotation)
 	vec4 lerped_quaternion = mix(normalize(vec4(unpackSnorm2x16(in_prev_billboards[pc.prev_billboards_index].data[prev_index].quaternion.x), unpackSnorm2x16(in_prev_billboards[pc.prev_billboards_index].data[prev_index].quaternion.y))), quaternion, ub[pc.uniform_index].timer_lerp.x);
     vec3 motion = position.xyz - in_prev_billboards[pc.prev_billboards_index].data[prev_index].position.xyz;
+	vec3 previous_alignment = unpackSnorm4x8(in_prev_billboards[pc.prev_billboards_index].data[prev_index].alignment).xyz;
     #endif
     motion.z += 0.000001;
+	//A zero alignment leaves the direction to the position delta, with the stretch in w a factor of the distance moved.
+	//Otherwise it's the vector to align to, and any stretch in w is already the streak length along it.
 	bool has_alignment = dot(alignment, alignment) > 0;
-    float travel_distance = length(motion); // Actual distance travelled this frame. Stretch always scales with the real motion now.
-    float stretch_factor = position.w * interpolate_is_active;
-
-    motion = normalize(motion); // Normalize for direction
-    vec3 final_alignment = has_alignment ? alignment : motion; // Vector the billboard is oriented to: motion for motion-align, otherwise the supplied alignment vector.
+	float stretch_factor = position.w * interpolate_is_active;
+	float stretch_length = has_alignment ? stretch_factor : length(motion) * stretch_factor;
+	vec3 final_alignment = has_alignment ? normalize(alignment) : normalize(motion);
+    #ifndef NO_LERP
+	vec3 lerped_alignment = mix(previous_alignment, final_alignment, ub[pc.uniform_index].timer_lerp.x);
+	if (has_alignment && dot(previous_alignment, previous_alignment) > 0 && dot(lerped_alignment, lerped_alignment) > 0.0001) {
+		final_alignment = normalize(lerped_alignment);
+	}
+    #endif
+	//A stretching emitter can keep the particle's own spin rather than turn it to its alignment vector
+	bool keep_spin = (props.flags & 0x4u) != 0u && position.w > 0.0;
     //----
 
     //Info about how to align the billboard is stored in the lowest 2 bits of props.flags.
@@ -170,9 +179,6 @@ void main() {
     //stored in alignment.xyz. billboarding and align_type will always be 0 if this is the case. the second
     //bit is the only bit set if this is the case: 10
     bool vector_align = align_flags == 0x2u;
-
-    //Stretch always follows the direction of travel (motion), never the alignment vector.
-    vec3 camera_relative_aligment = motion * inverse(mat3(ub[pc.uniform_index].view));
 
     int index = indexes[gl_VertexIndex];
 
@@ -214,7 +220,7 @@ void main() {
 									  -final_s_roll, final_c_roll, 0.0,
 									   0.0,          0.0,           1.0);
 
-	final_rot_mat = align_type ? align_mat * base_spin_mat : (vector_align ? vector_align_roll_mat * base_spin_mat : base_spin_mat);
+	final_rot_mat = keep_spin ? base_spin_mat : (align_type ? align_mat * base_spin_mat : (vector_align ? vector_align_roll_mat * base_spin_mat : base_spin_mat));
 	// --- Final Rotation ---
 
     const vec3 identity_bounds[4] = vec3[4](
@@ -230,23 +236,19 @@ void main() {
 
     mat4 modelView = ub[pc.uniform_index].view * model;
 
-    //Calculate the amount to stretch the particles. A stretch value (set in the editor) of 1 means that the particle is stretched
-    //by the amount travelled.
-
     //Get the direction to stretch based on the billboarding option
-	vec3 stretch_direction = billboarding ? motion : normalize(camera_relative_aligment); // Stretch along the direction of travel
+	vec3 stretch_direction = billboarding ? final_alignment : normalize(camera_relative_alignment);
     //Half the amount in order to apply half of the stretch in the forward direction and the other half behind
-	float vertex_offset_magnitude = 0.5 * travel_distance * stretch_factor;
+	float vertex_offset_magnitude = 0.5 * stretch_length;
 
-	//The stretch elongates the sprite by travel_distance: "front" corners are pushed forward along stretch_direction and
+	//The stretch elongates the sprite by stretch_length: "front" corners are pushed forward along stretch_direction and
 	//"back" corners backward. This used to be sign(dot(pos, stretch_direction)) * magnitude, but sign() is discontinuous -
 	//as stretch_direction sweeps past a quad corner (dot -> 0) that corner flips from +magnitude to -magnitude and the
 	//silhouette snaps. That was hidden while the quad was rotated to line up with stretch_direction (a clean 2-front/2-back
-	//split), but fixed-align particles rotate the quad to their align vector (path gradient / emission dir) while stretch
-	//follows motion - a different direction - so the split is unstable. Instead scale each vertex along stretch_direction by
-	//its own projection, normalised by the quad's projected half-extent. This is continuous (no snapping), keeps the total
-	//elongation equal to travel_distance, and reduces exactly to the old rigid front/back push when the quad *is* aligned
-	//with the stretch direction.
+	//split), but camera facing and keep spin particles don't rotate the quad to the stretch direction, so the split is
+	//unstable. Instead scale each vertex along stretch_direction by its own projection, normalised by the quad's projected
+	//half-extent. This is continuous (no snapping), keeps the total elongation equal to stretch_length, and reduces exactly
+	//to the old rigid front/back push when the quad *is* aligned with the stretch direction.
 	float projected_half_extent = 0.0;
 	for (int corner = 0; corner < 4; ++corner) {
 		projected_half_extent = max(projected_half_extent, abs(dot(final_rot_mat * identity_bounds[corner], stretch_direction)));
@@ -255,7 +257,7 @@ void main() {
 	vec3 potential_offset = stretch_direction * (projected_position / max(projected_half_extent, 0.00001)) * vertex_offset_magnitude;
 
     //Apply the stretch if applicable
-	bool apply_stretch = (travel_distance > 0.00001 && stretch_factor > 0.0);
+	bool apply_stretch = stretch_length > 0.00001;
 	pos += apply_stretch ? potential_offset : vec3(0.0);
 
     //Billboarding. If billboarding = 0 then billboarding is active and the quad will always face the camera, 

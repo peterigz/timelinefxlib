@@ -5612,6 +5612,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("hidden", tfxBool);
 	names_and_types.Insert("use_path_as_trajectory", tfxBool);
 	names_and_types.Insert("orient_to_camera", tfxBool);
+	names_and_types.Insert("stretch_keeps_spin", tfxBool);
 	names_and_types.Insert("resimulate_on_edit", tfxBool);
 	names_and_types.Insert("version", tfxUInt);
 
@@ -6728,6 +6729,7 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 
 	if (gpu_properties) {
 		if (tfx__property_is(property_name, "billboard_option")) return tfx__property_u32(out_value, gpu_properties->flags & 0x3);
+		if (tfx__property_is(property_name, "stretch_keeps_spin")) return tfx__property_bool(out_value, gpu_properties->flags & tfxGPUPropertyFlags_stretch_keeps_spin);
 		if (tfx__property_is(property_name, "image_handle_x")) return tfx__property_float(out_value, gpu_properties->image_handle.x);
 		if (tfx__property_is(property_name, "image_handle_y")) return tfx__property_float(out_value, gpu_properties->image_handle.y);
 	}
@@ -7233,6 +7235,11 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_use_path_as_trajectory; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_use_path_as_trajectory; }
 	} else if (*field == "orient_to_camera") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_orient_to_camera; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_orient_to_camera; }
+	} else if (*field == "stretch_keeps_spin" && effect->type == tfxEmitterType) {
+		tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(effect);
+		if (gpu_properties) {
+			if (value) { gpu_properties->flags |= tfxGPUPropertyFlags_stretch_keeps_spin; } else { gpu_properties->flags &= ~tfxGPUPropertyFlags_stretch_keeps_spin; }
+		}
 	} else if (*field == "spawn_location_source") {
 		if (value) { effect->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_spawn_location_source; } else { effect->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_spawn_location_source; }
 	} else if (*field == "use_color_hint") {
@@ -7335,6 +7342,7 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("angle_offset_pitch=%f", emitter->state_properties.angle_offsets.pitch);
 	file->AddLine("angle_offset_yaw=%f", emitter->state_properties.angle_offsets.yaw);
 	file->AddLine("billboard_option=%i", gpu_properties->flags & 0x3);
+	file->AddLine("stretch_keeps_spin=%i", (gpu_properties->flags & tfxGPUPropertyFlags_stretch_keeps_spin) != 0);
 	file->AddLine("vector_align_type=%i", properties->vector_align_type);
 
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
@@ -12087,22 +12095,21 @@ void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float upd
 		for (tfxEachLayer) {
 			for (tfxU32 j = sprite_data->normal.frame_meta[frame].index_offset[layer]; j != sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer]; ++j) {
 				tfx_instance_t &instance = sprite_data->real_time_sprites.billboard_instance[j];
-				if (instance.captured_index == tfxINVALID) { instance.position.w = 0; continue; }
-				if (instance.alignment.packed == 0) {
-					if (instance.captured_index < sprite_data->normal.total_sprites) {
-						tfx_instance_t &captured_instance = sprite_data->real_time_sprites.billboard_instance[instance.captured_index];
-						tfx_vec3_t position = {instance.position.x, instance.position.y, instance.position.z };
-						tfx_vec3_t captured_position = {captured_instance.position.x, captured_instance.position.y, captured_instance.position.z };
-						tfx_vec3_t motion = position - captured_position;
-						motion.z += 0.000001f;
-						instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion);
-						motion = tfx__normalize_vec3(&motion);
-						instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
-					} else {
-						tfxPrint("Error: instance.captured_index out of range.");
-					}
+				//Already the velocity direction with the streak length in w, or a fixed alignment with no stretch
+				if (instance.alignment.packed != 0) continue;
+				//Nothing to measure a streak against, but an emitter that keeps its spin keeps its floor
+				if (instance.captured_index == tfxINVALID) { instance.position.w = tfxMin(instance.position.w, tfxSTRETCH_KEEP_SPIN_FLOOR); continue; }
+				if (instance.captured_index < sprite_data->normal.total_sprites) {
+					tfx_instance_t &captured_instance = sprite_data->real_time_sprites.billboard_instance[instance.captured_index];
+					tfx_vec3_t position = {instance.position.x, instance.position.y, instance.position.z };
+					tfx_vec3_t captured_position = {captured_instance.position.x, captured_instance.position.y, captured_instance.position.z };
+					tfx_vec3_t motion = position - captured_position;
+					motion.z += 0.000001f;
+					instance.position.w = instance.position.w * tfx__vec3_length_fast(&motion);
+					motion = tfx__normalize_vec3(&motion);
+					instance.alignment.packed = tfx__pack8bit_xyz(motion.x, motion.y, motion.z);
 				} else {
-					instance.position.w = 0;
+					tfxPrint("Error: instance.captured_index out of range.");
 				}
 			}
 		}
@@ -16133,8 +16140,13 @@ typedef struct tfx_instance_pass_s {
 	tfxWideFloat handle_z;
 	tfxWideFloat overall_scale;
 	tfxWideFloat global_stretch;
+	tfxWideFloat stretch_speed_scale;	//Particle speed to world streak length
+	tfxWideFloat stretch_floor;
 	tfx_wide_graph_sampler_t stretch_sampler;
 	tfx_vector_align_type vector_align_type;
+	bool velocity_stretch;				//Stretch is the streak length measured by the particle's speed. Otherwise it's a factor of the position delta the vertex shader measures
+	bool velocity_alignment;			//Alignment is the velocity direction rather than a fixed vector or one the vertex shader derives
+	bool rotate_velocity;
 	bool transform_relative;
 	bool transform_relative_path;
 	tfx_user_spawn_locations_t *user_spawn_locations;
@@ -16200,6 +16212,12 @@ typedef struct tfx_instance_pass_s {
 	bool update_bounding_boxes;
 } tfx_instance_pass_t;
 
+//Only an emitter that stretches keeps its spin, so the flag can't stop an unstretched emitter turning to its vector
+tfxINTERNAL inline bool tfx__stretch_keeps_spin(const tfx_particle_emitter_state_t &emitter) {
+	return (emitter.state_properties.control_profile & tfxEmitterControlProfile_stretch) && emitter.state_properties.gpu_property_index != tfxINVALID
+		&& (emitter.library->particle_gpu_properties[emitter.state_properties.gpu_property_index].flags & tfxGPUPropertyFlags_stretch_keeps_spin);
+}
+
 tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, tfx_instance_pass_t *pass) {
 	tfx_stage_t &pm = *work_entry->pm;
 	tfx_particle_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
@@ -16230,12 +16248,35 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->handle_y = tfxWideSetSingle(handle.y);
 	pass->handle_z = tfxWideSetSingle(handle.z);
 	pass->overall_scale = tfxWideSetSingle(work_entry->overall_scale);
-	pass->global_stretch = tfxWideSetSingle(work_entry->global_stretch);
 	pass->stretch_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_stretch_index);
 	pass->vector_align_type = work_entry->properties->vector_align_type;
+	//Path traversal and trajectories place their particles directly, so the stored velocity isn't how they move
+	const bool positional_motion = ((control_profile & tfxEmitterControlProfile_path) && ((control_profile & tfxEmitterControlProfile_edge_traversal) || (property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory)))
+		|| ((control_profile & tfxEmitterControlProfile_trajectory) && (control_profile & tfxEmitterControlProfile_any_line));
+	const bool stretches = (control_profile & tfxEmitterControlProfile_stretch) != 0;
+	//Without a velocity the streak can only be measured along the position delta, so it has to align to it
+	if (stretches && positional_motion) {
+		pass->vector_align_type = tfxVectorAlignType_motion;
+	}
 	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
 	pass->transform_relative_path = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && emission_type == tfxPath;
 	pass->user_spawn_rotation = pass->user_spawn_locations && pass->user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_rotation;
+	pass->velocity_stretch = stretches && !positional_motion;
+	//Unstretched motion alignment is left to the vertex shader's position delta, which costs nothing here
+	pass->velocity_alignment = pass->velocity_stretch && pass->vector_align_type != tfxVectorAlignType_emission && pass->vector_align_type != tfxVectorAlignType_emitter;
+	pass->rotate_velocity = pass->transform_relative || pass->transform_relative_path || pass->user_spawn_locations;
+	float global_stretch = work_entry->global_stretch;
+	if (pass->velocity_stretch) {
+		//tfx_apply_position moves a particle velocity * velocity_adjuster * overall_scale a second, and the relative transform scales it again
+		const float velocity_adjuster = tfx__sample_multi_node_graph(&work_entry->graphs->graphs[tfxEmitter_overtime_velocity_adjuster_index], (float)emitter.age, emitter.oscillator_time);
+		const float relative_scale = pass->rotate_velocity ? work_entry->overall_scale : 1.f;
+		pass->stretch_speed_scale = tfxWideSetSingle(velocity_adjuster * work_entry->overall_scale * relative_scale * tfxSTRETCH_REFERENCE_TIME);
+	} else if (pm.update_time > 0.0) {
+		//The vertex shader multiplies stretch by the distance moved this tick, so take the tick length back out of it
+		global_stretch *= tfxSTRETCH_REFERENCE_TIME / (float)pm.update_time;
+	}
+	pass->global_stretch = tfxWideSetSingle(global_stretch);
+	pass->stretch_floor = tfxWideSetSingle(tfx__stretch_keeps_spin(emitter) ? tfxSTRETCH_KEEP_SPIN_FLOOR : 0.f);
 	pass->align_to_rotated_emission = pass->vector_align_type == tfxVectorAlignType_emission && (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	pass->is_spawn_location_source = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source) && emitter.spawn_locations_index != tfxINVALID;
 
@@ -16339,6 +16380,27 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 	}
 
 	block->packed_alignment.m = tfxWideSetZeroi;
+	if (pass->velocity_stretch) {
+		tfxWideFloat velocity_x = tfxWideLoad(&bank.velocity_x[index]);
+		tfxWideFloat velocity_y = tfxWideLoad(&bank.velocity_y[index]);
+		tfxWideFloat velocity_z = tfxWideLoad(&bank.velocity_z[index]);
+		const tfxWideFloat speed_squared = tfxWideAdd(tfxWideAdd(tfxWideMul(velocity_x, velocity_x), tfxWideMul(velocity_y, velocity_y)), tfxWideMul(velocity_z, velocity_z));
+		const tfxWideFloat moving = tfxWideGreater(speed_squared, tfxWideSetSingle(1e-12f));
+		const tfxWideFloat inverse_speed = tfxWideAnd(moving, tfxWideRSqrt(tfxWideMax(speed_squared, tfxWideSetSingle(1e-12f))));
+		block->stretch.m = tfxWideMul(block->stretch.m, tfxWideMul(tfxWideMul(speed_squared, inverse_speed), pass->stretch_speed_scale));
+		if (pass->velocity_alignment) {
+			if (pass->rotate_velocity) {
+				tfx__wide_transform_quaternion_vec3(&emitter.rotation, &velocity_x, &velocity_y, &velocity_z);
+			}
+			if (pass->user_spawn_rotation) {
+				tfx__wide_transform_packed_quaternion_vec3(&block->location_rotation_xy.m, &block->location_rotation_zw.m, &velocity_x, &velocity_y, &velocity_z);
+			}
+			//A stationary particle packs a zero alignment, which the vertex shader takes as unaligned and unstretched.
+			//The margin keeps the approximate rsqrt from overflowing the snorm pack
+			const tfxWideFloat direction_scale = tfxWideMul(inverse_speed, tfxWideSetSingle(.999f));
+			block->packed_alignment.m = tfx__wide_pack8bit_xyz(tfxWideMul(velocity_x, direction_scale), tfxWideMul(velocity_y, direction_scale), tfxWideMul(velocity_z, direction_scale));
+		}
+	}
 	if (pass->vector_align_type == tfxVectorAlignType_emission) {
 		const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfxWideFloat alignment_vector_x;
@@ -16362,6 +16424,7 @@ tfxINTERNAL inline void tfx__block_particle_transform(const tfx_instance_pass_t 
 		}
 		block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 	}
+	block->stretch.m = tfxWideMax(block->stretch.m, pass->stretch_floor);
 
 	if (pass->is_spawn_location_source) {
 		tfx_spawn_points_soa_t &locations = pass->pm->particle_location_arrays[emitter.spawn_locations_index];
@@ -24382,8 +24445,14 @@ tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emi
 	const tfxParticleEmitterFlags property_flags = emitter.state_properties.property_flags;
 	const tfxEmitterControlProfileFlags control_profile = emitter.state_properties.control_profile;
 	tfxGPUParticleDispatchFlags flags = tfxGPUParticleDispatchFlags_none;
-	flags |= properties->vector_align_type == tfxVectorAlignType_emission ? tfxGPUParticleDispatchFlags_align_emission : 0;
-	flags |= properties->vector_align_type == tfxVectorAlignType_emitter ? tfxGPUParticleDispatchFlags_align_emitter : 0;
+	const tfx_vector_align_type vector_align_type = properties->vector_align_type;
+	const bool stretches = (control_profile & tfxEmitterControlProfile_stretch) != 0;
+	const bool fixed_alignment = vector_align_type == tfxVectorAlignType_emission || vector_align_type == tfxVectorAlignType_emitter;
+	flags |= vector_align_type == tfxVectorAlignType_emission ? tfxGPUParticleDispatchFlags_align_emission : 0;
+	flags |= vector_align_type == tfxVectorAlignType_emitter ? tfxGPUParticleDispatchFlags_align_emitter : 0;
+	flags |= stretches ? tfxGPUParticleDispatchFlags_velocity_stretch : 0;
+	flags |= stretches && !fixed_alignment ? tfxGPUParticleDispatchFlags_velocity_alignment : 0;
+	flags |= tfx__stretch_keeps_spin(emitter) ? tfxGPUParticleDispatchFlags_stretch_keeps_spin : 0;
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_random_color ? tfxGPUParticleDispatchFlags_random_color : 0;
 	flags |= property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size ? tfxGPUParticleDispatchFlags_lifetime_uniform_size : 0;
 	flags |= property_flags & tfxEmitterPropertyFlags_base_uniform_size ? tfxGPUParticleDispatchFlags_base_uniform_size : 0;
@@ -24395,7 +24464,7 @@ tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emi
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_play_once ? tfxGPUParticleDispatchFlags_play_once : 0;
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation ? tfxGPUParticleDispatchFlags_reverse_animation : 0;
 	flags |= properties->drag_variation > 0.f ? tfxGPUParticleDispatchFlags_drag_variation : 0;
-	flags |= properties->vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position ? tfxGPUParticleDispatchFlags_align_rotated_emission : 0;
+	flags |= vector_align_type == tfxVectorAlignType_emission && shared_flags & tfxSharedEmitterPropertyFlags_relative_position ? tfxGPUParticleDispatchFlags_align_rotated_emission : 0;
 	return flags;
 }
 

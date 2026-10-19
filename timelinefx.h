@@ -766,6 +766,9 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
 	tfxGPUParticleDispatchFlags_location_forces = 1 << 23,				//Some force rows are at_location, read the location table by the cold spawn_location. A relative ring's position is already in the frame
 	tfxGPUParticleDispatchFlags_location_forces_rotation = 1 << 24,		//Those locations can have a rotation
+	tfxGPUParticleDispatchFlags_velocity_alignment = 1 << 25,			//Alignment is the velocity direction
+	tfxGPUParticleDispatchFlags_stretch_keeps_spin = 1 << 26,			//Floor the instance stretch at tfxSTRETCH_KEEP_SPIN_FLOOR so the vertex shader keeps the spin
+	tfxGPUParticleDispatchFlags_velocity_stretch = 1 << 27,				//The instance stretch is the streak length measured by the particle's speed
 } tfx_gpu_particle_dispatch_flag_bits;
 
 #define tfxGPU_NOISE_ALGORITHM_SHIFT 19

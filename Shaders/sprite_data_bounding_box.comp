@@ -188,7 +188,9 @@ void calculate_vertex_position(inout vec3 min_vertex, inout vec3 max_vertex, uin
 	mat3 base_spin_mat = QuaternionToRotationMatrix(quaternion);
 	mat3 final_rot_mat;
 
-	if(align_type) {
+	//A stretching emitter can keep the particle's own spin rather than turn it to its alignment vector
+	bool keep_spin = (emitter_properties[pc.emitter_properties_index].data[property_index].flags & 0x4u) != 0u && stretch > 0.0;
+	if(align_type && !keep_spin) {
 		//Mode 11: Build orientation frame from alignment vector
 		vec3 normal = normalize(alignment);
 		vec3 tangent = normalize(cross(up, normal));
@@ -222,8 +224,7 @@ void calculate_vertex_position(inout vec3 min_vertex, inout vec3 max_vertex, uin
 		//For world-space sprites (free rotation mode 01 and align_type mode 11), compute exact vertex positions
 		for(int i = 0; i != 4; ++i) {
 			vec3 v = final_rot_mat * identity_bounds[i];
-			//Apply stretch along alignment direction (matches static_billboard.vert line 154)
-			//stretch is stored in position.w, applied as: alignment * dot(pos, alignment) * stretch
+			//Every corner pushed the whole half stretch, which bounds static_billboard.vert's projection scaled push
 			v += alignment * sign(dot(v, alignment)) * 0.5 * abs(stretch);
 			v += position;
 			min_vertex = min(min_vertex, v);
