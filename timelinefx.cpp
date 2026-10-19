@@ -15272,6 +15272,15 @@ tfxINTERNAL tfx_user_spawn_locations_t *tfx__location_timed_user_spawn_locations
 	return nullptr;
 }
 
+//Non relative particles aligned to the emitter turn with their live location's rotation
+tfxINTERNAL tfx_user_spawn_locations_t *tfx__aligned_user_spawn_locations(tfx_stage pm, const tfx_particle_emitter_state_t &emitter, const tfx_particle_emitter_properties_t *properties, tfx_emission_type emission_type) {
+	if (properties->vector_align_type != tfxVectorAlignType_emitter || emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+		return nullptr;
+	}
+	tfx_user_spawn_locations_t *location_list = tfx__location_timed_user_spawn_locations(pm, emitter, emission_type);
+	return location_list && location_list->flags & tfxUserSpawnLocationListFlags_has_rotation ? location_list : nullptr;
+}
+
 //A force at user spawn locations that runs on each location's age rather than the emitter's: a shockwave, a delay or a fluctuation
 tfxINTERNAL bool tfx__force_needs_location_clock(const tfx_force_t *force) {
 	if (force->type == tfxForceShockwave) {
@@ -15337,6 +15346,20 @@ tfxINTERNAL inline void tfx__gather_user_spawn_rotations(tfx_user_spawn_location
 	for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
 		tfxU32 slot = particle_locations[index + lane] & tfxSPAWN_LOCATION_SLOT_MASK;
 		tfxU64 rotation = slot < user_location_list->locations.current_size ? user_location_list->locations[slot].packed_rotation : tfxPACKED_W_QUATERNION;
+		gathered_xy.a[lane] = (int)(tfxU32)(rotation & 0xFFFFFFFF);
+		gathered_zw.a[lane] = (int)(tfxU32)(rotation >> 32);
+	}
+	*rotation_xy = gathered_xy.m;
+	*rotation_zw = gathered_zw.m;
+}
+
+//A non relative particle outlives its location, so once the location has gone it keeps the emitter's own rotation
+tfxINTERNAL inline void tfx__gather_live_user_spawn_rotations(tfx_user_spawn_locations_t *user_location_list, const tfxU32 *particle_locations, tfxU32 index, tfxWideInt *rotation_xy, tfxWideInt *rotation_zw) {
+	tfxWideArrayi gathered_xy;
+	tfxWideArrayi gathered_zw;
+	for (tfxU32 lane = 0; lane != tfxDataWidth; ++lane) {
+		const tfxU32 local_id = particle_locations[index + lane];
+		tfxU64 rotation = tfx__user_spawn_location_is_live(user_location_list, local_id) ? user_location_list->locations[local_id & tfxSPAWN_LOCATION_SLOT_MASK].packed_rotation : tfxPACKED_W_QUATERNION;
 		gathered_xy.a[lane] = (int)(tfxU32)(rotation & 0xFFFFFFFF);
 		gathered_zw.a[lane] = (int)(tfxU32)(rotation >> 32);
 	}
@@ -16210,6 +16233,9 @@ typedef struct tfx_instance_pass_s {
 	tfxU32 wrap_single_sprite;
 	bool is_ordered;
 	bool update_bounding_boxes;
+
+	//Last so the fields the common loop reads keep their offsets
+	tfx_user_spawn_locations_t *aligned_locations;	//Non relative particles aligned to the emitter at rotated locations, turned by their live location
 } tfx_instance_pass_t;
 
 //Only an emitter that stretches keeps its spin, so the flag can't stop an unstretched emitter turning to its vector
@@ -16265,6 +16291,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	//Unstretched motion alignment is left to the vertex shader's position delta, which costs nothing here
 	pass->velocity_alignment = pass->velocity_stretch && pass->vector_align_type != tfxVectorAlignType_emission && pass->vector_align_type != tfxVectorAlignType_emitter;
 	pass->rotate_velocity = pass->transform_relative || pass->transform_relative_path || pass->user_spawn_locations;
+	pass->aligned_locations = pass->vector_align_type == tfxVectorAlignType_emitter ? tfx__aligned_user_spawn_locations(&pm, emitter, work_entry->properties, emission_type) : nullptr;
 	float global_stretch = work_entry->global_stretch;
 	if (pass->velocity_stretch) {
 		//tfx_apply_position moves a particle velocity * velocity_adjuster * overall_scale a second, and the relative transform scales it again
@@ -16344,6 +16371,18 @@ TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	pass->is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
 TFX_ENABLE_COMPILER_WARNING()
 	pass->update_bounding_boxes = (pm.flags & tfxStageFlags_update_bounding_boxes) != 0;
+}
+
+tfxINTERNAL inline void tfx__align_to_live_user_spawn_locations(const tfx_instance_pass_t *pass, tfxU32 index, tfx_instance_block_t *block) {
+	tfxWideFloat alignment_vector_x = tfxWideSetZero;
+	tfxWideFloat alignment_vector_y = tfxWideSetSingle(1.f);
+	tfxWideFloat alignment_vector_z = tfxWideSetZero;
+	tfx__wide_transform_quaternion_vec3(&pass->emitter->rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+	tfxWideInt rotation_xy;
+	tfxWideInt rotation_zw;
+	tfx__gather_live_user_spawn_rotations(pass->aligned_locations, pass->bank->spawn_location, index, &rotation_xy, &rotation_zw);
+	tfx__wide_transform_packed_quaternion_vec3(&rotation_xy, &rotation_zw, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+	block->packed_alignment.m = tfx__wide_pack8bit_xyz(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 }
 
 //World position, stretch and the packed alignment vector. Also maintains the spawn_locations ring for
@@ -16758,9 +16797,8 @@ tfxINTERNAL inline void tfx__write_instance_block_ordered(const tfx_instance_pas
 //flags_single_loop_count before the write helpers clear tfxParticleFlags_capture_after_transform, and the
 //image frame block reads image_frame before storing the advanced frame back. Everything else each block
 //touches is local to that block, so no cross-block hazard exists.
-void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+template <bool live_location_alignment>
+tfxINTERNAL void tfx__control_particle_instance_blocks(tfx_control_work_entry_t *work_entry) {
 	tfx_instance_pass_t pass;
 	tfx__setup_instance_pass(work_entry, &pass);
 
@@ -16776,6 +16814,9 @@ void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
 		tfx_instance_block_t block;
 
 		tfx__block_particle_transform(&pass, index, life, &block);
+		if (live_location_alignment && pass.aligned_locations) {
+			tfx__align_to_live_user_spawn_locations(&pass, index, &block);
+		}
 		tfx__block_particle_spin(&pass, index, life, &block);
 		tfx__block_particle_size(&pass, index, life, &block);
 		tfx__block_particle_color(&pass, index, life, &block);
@@ -16791,6 +16832,16 @@ void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
 
 		start_diff = 0;
 	}
+}
+
+void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx__control_particle_instance_blocks<false>(static_cast<tfx_control_work_entry_t *>(data));
+}
+
+void tfx__control_particle_instances_at_aligned_locations(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx__control_particle_instance_blocks<true>(static_cast<tfx_control_work_entry_t *>(data));
 }
 void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
@@ -24624,6 +24675,15 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 				dispatch.location_count = force_locations->locations.current_size;
 			}
 		}
+		if (!location_list) {
+			tfx_user_spawn_locations_t *aligned_locations = tfx__aligned_user_spawn_locations(pm, emitter, properties, emission_type);
+			if (aligned_locations) {
+				tfx__pack_gpu_spawn_locations(pm, aligned_locations);
+				dispatch.flags |= tfxGPUParticleDispatchFlags_align_location;
+				dispatch.location_offset = aligned_locations->gpu_frame_offset;
+				dispatch.location_count = aligned_locations->locations.current_size;
+			}
+		}
 		dispatch.location_delay = emitter.state_properties.delay_spawning;
 		dispatch.location_loop_length = emitter.source_emitter->state_properties.loop_length;
 		if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) {
@@ -25255,7 +25315,12 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 			//There's no need to call controll functions in warm up if they don't write back to the particle bank.
 			//Transform, spin, size, color, hide and image frame are all fused into this one pass so that each
 			//tfx_instance_t is written once, whole, rather than streamed over six times.
-			tfx__control_particle_instances(&pm->work_queue, work_entry);
+			//Its own instantiation, because even an untaken call in the block loop costs every other emitter its register allocation
+			if (tfx__aligned_user_spawn_locations(pm, emitter, work_entry->properties, work_entry->shared_properties->emission_type)) {
+				tfx__control_particle_instances_at_aligned_locations(&pm->work_queue, work_entry);
+			} else {
+				tfx__control_particle_instances(&pm->work_queue, work_entry);
+			}
 		} else {
 			tfx__control_particle_transform_warmup(&pm->work_queue, work_entry);
 			tfx__control_particle_image_frame_warmup(&pm->work_queue, work_entry);

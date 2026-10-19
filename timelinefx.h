@@ -769,6 +769,7 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_velocity_alignment = 1 << 25,			//Alignment is the velocity direction
 	tfxGPUParticleDispatchFlags_stretch_keeps_spin = 1 << 26,			//Floor the instance stretch at tfxSTRETCH_KEEP_SPIN_FLOOR so the vertex shader keeps the spin
 	tfxGPUParticleDispatchFlags_velocity_stretch = 1 << 27,				//The instance stretch is the streak length measured by the particle's speed
+	tfxGPUParticleDispatchFlags_align_location = 1 << 28,				//A non relative ring aligned to the emitter turns by its particle's live location rotation
 } tfx_gpu_particle_dispatch_flag_bits;
 
 #define tfxGPU_NOISE_ALGORITHM_SHIFT 19

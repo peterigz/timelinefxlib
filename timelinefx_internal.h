@@ -10175,6 +10175,7 @@ tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_age(tfx_work_queue_t *queue, void *data);
 //The fused transform/spin/size/color/hide/image_frame pass: one loop over the bank, one whole write per instance.
 tfxINTERNAL void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_particle_instances_at_aligned_locations(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_uid_warmup(tfx_work_queue_t *queue, void *data);
