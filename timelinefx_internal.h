@@ -3099,18 +3099,6 @@ typedef enum {
 	tfxBillboarding_max                                         = 4
 } tfx_billboarding_option;
 
-//tfx_gpu_particle_properties_t flags above the billboarding option in bits 0-1
-typedef enum {
-	tfxGPUPropertyFlags_billboarding_mask                       = 0x3,
-	tfxGPUPropertyFlags_stretch_keeps_spin                      = 1 << 2,       //Stretched particles keep their spin instead of turning to face their velocity
-} tfx_gpu_property_flag_bits;
-
-//Seconds of travel a stretch of 1 streaks a particle over, whatever the update rate
-#define tfxSTRETCH_REFERENCE_TIME (1.f / 60.f)
-//Least instance stretch of an emitter that keeps its spin, too short to draw but enough for the vertex shader to keep
-//the spin while the particle is at rest or its stretch graph is at 0
-#define tfxSTRETCH_KEEP_SPIN_FLOOR 1e-6f
-
 typedef enum {
 	tfxEmitterControlProfile_basic                              = 0,
 	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,

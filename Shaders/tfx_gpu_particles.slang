@@ -1651,9 +1651,6 @@ static const uint tfx_dispatch_noise_algorithm_shift = 19;
 static const uint tfx_dispatch_noise_anisotropic = 1 << 22;
 static const uint tfx_dispatch_location_forces = 1 << 23;
 static const uint tfx_dispatch_location_forces_rotation = 1 << 24;
-static const uint tfx_dispatch_velocity_alignment = 1 << 25;
-static const uint tfx_dispatch_stretch_keeps_spin = 1 << 26;
-static const uint tfx_dispatch_velocity_stretch = 1 << 27;
 
 //The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
 static const uint tfx_noise_white = 0;
@@ -1687,10 +1684,6 @@ static const uint tfx_force_location_delay = 1 << 12;
 static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
 static const float tfx_size_packed_scale = 32767.0 / 64.0;
 static const float tfx_color_packed_scale = 32767.0 / 128.0;
-//tfxSTRETCH_REFERENCE_TIME
-static const float tfx_stretch_reference_time = 1.0 / 60.0;
-//tfxSTRETCH_KEEP_SPIN_FLOOR
-static const float tfx_stretch_keep_spin_floor = 0.000001;
 static const uint tfx_capture_bit = 1 << 15;
 //tfxSPAWN_LOCATION_SLOT_MASK
 static const uint tfx_spawn_location_slot_mask = (1u << 20) - 1;
@@ -2170,7 +2163,7 @@ struct tfx_no_particle_spawn : ITfxParticleSpawn {
 //A live particle's instance in world space before it's packed
 struct tfx_particle_draw {
 	float3 position;
-	float stretch;						//The instance's position.w: the stretch graph, or the streak length with velocity stretch
+	float stretch;						//The instance's position.w, the stretch graph
 	float4 rotation;					//Quaternion xyzw
 	float3 alignment;					//Unit vector the billboard aligns to, zero for none
 	float intensity;					//Packed 16 bit, within +-128
@@ -2359,29 +2352,6 @@ void tfx_write_particle_instance<TWrite : ITfxParticleWrite>(tfx_particle_contex
 	const float stretch = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_stretch), life) * dispatch.global_stretch;
 	draw.stretch = stretch;
 	draw.alignment = float3(0.0, 0.0, 0.0);
-	if ((flags & tfx_dispatch_velocity_stretch) != 0) {
-		float3 velocity = hot.velocity;
-		float speed_scale = tick.velocity_adjuster * tick.overall_scale * tfx_stretch_reference_time;
-		//tfx_ring_transform.direction_to_world, and a relative ring's positions get scaled again on the way to world
-		if ((flags & tfx_dispatch_relative_location) != 0) {
-			if ((flags & tfx_dispatch_velocity_alignment) != 0) {
-				velocity = tfx_rotate_vector(velocity, dispatch.emitter_rotation);
-				if ((flags & tfx_dispatch_location_rotation) != 0) {
-					velocity = tfx_rotate_vector(velocity, tfx_unpack16bit_quaternion(location_rotation));
-				}
-			}
-			speed_scale *= tick.overall_scale;
-		}
-		const float speed = length(velocity);
-		draw.stretch = stretch * speed * speed_scale;
-		//A stationary particle packs a zero alignment, which the vertex shader takes as unaligned and unstretched
-		if ((flags & tfx_dispatch_velocity_alignment) != 0 && speed > 0.000001) {
-			draw.alignment = velocity / speed;
-		}
-		if ((flags & tfx_dispatch_stretch_keeps_spin) != 0) {
-			draw.stretch = max(draw.stretch, tfx_stretch_keep_spin_floor);
-		}
-	}
 	if ((flags & tfx_dispatch_align_emission) != 0) {
 		float3 alignment = tfx_unpack10bit(cold.velocity_normal);
 		if ((flags & tfx_dispatch_align_rotated_emission) != 0) {
