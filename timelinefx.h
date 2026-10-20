@@ -2174,9 +2174,9 @@ tfx_SetStageGPUSimulation has it off, and when they are the source another emitt
 runs in the kernel: the library resolves each emitter's forces every tick into force rows that follow the tick records,
 so they need nothing more from you.
 
-The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
-its push constants. Every buffer access it makes goes through Shaders/tfx_gpu_buffers.slang, which handles each binding
-model. By default it indexes bindless arrays (Vulkan, D3D12). On Metal every buffer index is a slot in an argument buffer
+The reference kernel is Shaders/tfx_gpu_particles.slang, a single file with a contents list at its top, entry point
+simulate_particles, with tfx_gpu_particle_push_t as its push constants. Every buffer access it makes goes through its
+Buffer_access section, which handles each binding model. By default it indexes bindless arrays (Vulkan, D3D12). On Metal every buffer index is a slot in an argument buffer
 of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, OpenGL),
 binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
 To add custom forces, collision or anything else per particle without forking it, write your own

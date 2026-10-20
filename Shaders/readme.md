@@ -31,17 +31,11 @@ The vertex shader then transforms those vertices, unpacks that segment index, sa
 
 | Shader | What it does |
 | --- | --- |
-| `tfx_gpu_particles.slang` | Simulates `run_on_gpu` emitters and writes their instances |
-| `tfx_gpu_types.slang` | The buffer rows, each a byte for byte mirror of its C struct |
-| `tfx_gpu_buffers.slang` | Every buffer the kernel reads or writes, declared and accessed through one function per row type |
-| `tfx_gpu_spawn.slang` | Builds the spawns the kernel generates from each tick's spawn block |
-| `tfx_gpu_common.slang` | The hashes and constants the other modules share, each the twin of a CPU function |
-| `tfx_graphs.slang` | The graph lookup it imports, the same sampling the CPU uses |
-| `tfx_noise.slang` | The noise force's white, simplex, curl and value fields it imports, ports of the CPU's wide noise |
+| `tfx_gpu_particles.slang` | Simulates `run_on_gpu` emitters and writes their instances: the whole kernel in one file, with its own graph sampling, noise fields and spawn generation |
 
-These are Slang rather than GLSL, so they can grow into variants and user hooks. Compile `simulate_particles` from `tfx_gpu_particles.slang` with `TimelineFXLib/Shaders` on the include path.
+It's Slang rather than GLSL, so it can carry user hooks and compile for every API from one source. Compile `simulate_particles` from `tfx_gpu_particles.slang`, a single module like the library's single header. A contents list at its top names each section with a keyword that appears just once more, at the section itself, so searching for it (in Vim, `*` on the keyword) jumps there.
 
-The kernel reaches its buffers only through the `tfx_load_*` / `tfx_store_*` functions in `tfx_gpu_buffers.slang`, which take rows relative to their own array and add the push constants' bases. By default they index bindless arrays, which suits Vulkan and D3D12. Every other binding model is handled in the same file, so nothing needs replacing.
+The kernel reaches its buffers only through the `tfx_load_*` / `tfx_store_*` functions in its buffer access section, which take rows relative to their own array and add the push constants' bases. By default they index bindless arrays, which suits Vulkan and D3D12. Every other binding model is handled in the same file, so nothing needs replacing.
 
 ### Fixed bindings: WGSL, D3D11 and OpenGL
 
