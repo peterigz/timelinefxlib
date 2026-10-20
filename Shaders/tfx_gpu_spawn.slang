@@ -2,6 +2,9 @@
 //multipliers. Everything here is a pure function of its arguments, so a test entry compiled with slangc -target cpp can be checked
 //against the library. Change the two together.
 
+//Exported so a host's spawn hook keeps tfx_hash_unit
+__exported import tfx_gpu_common;
+
 //tfx_gpu_spawn_block_flag_bits
 static const uint tfx_spawn_relative = 1 << 0;
 static const uint tfx_spawn_random_color = 1 << 1;
@@ -80,8 +83,6 @@ static const uint tfx_spawn_axis_emission_jitter = 0x51a7001cu;
 static const uint tfx_spawn_axis_roll_jitter = 0x51a7001du;
 //Must match tfxSPAWN_IMPULSE_HASH_AXIS, which tfx_apply_velocity relaunches looping singles on
 static const uint tfx_spawn_impulse_hash_axis = 0x2545f491u;
-//tfxPI2
-static const float tfx_spawn_pi2 = 6.283185307;
 //tfxGOLDEN_ANGLE
 static const float tfx_spawn_golden_angle = 2.39996323;
 
@@ -211,27 +212,9 @@ struct tfx_generated_spawn {
 	uint spawn_location;
 	float3 noise_offset;
 	float noise_resolution;
+	uint user_value;					//The location's user data by default, kept in the particle's cold row for the host's hooks
+	uint user_flags;					//The particle's starting user flag bits, tfx_particle_user_flags_mask of its hot flags
 };
-
-//tfx__seedgen_u32, a murmur3 finalizer
-uint tfx_seedgen(uint hash) {
-	hash ^= hash >> 15;
-	hash *= 0x85ebca6bu;
-	hash ^= hash >> 13;
-	hash *= 0xc2b2ae35u;
-	hash ^= hash >> 16;
-	return hash;
-}
-
-//Port of tfx__white_unit: the signed reinterpret is what centres it on 0
-float tfx_white_unit(uint seed, uint axis) {
-	return (float(int(tfx_seedgen(seed ^ axis))) / 4294967295.0) * 2.0;
-}
-
-//tfx__hash_unit, exact on both sides because 24 bits convert to a float without rounding
-float tfx_hash_unit(uint seed, uint axis) {
-	return float(tfx_seedgen(seed ^ axis) >> 8) * (1.0 / 16777216.0);
-}
 
 //tfx__wide_unpack10bit: x in the top 10 bits, z in the bottom
 float3 tfx_unpack10bit(uint packed) {
@@ -481,7 +464,7 @@ uint tfx_permute_index(uint index, uint length, uint seed) {
 //tfx__angle_step_span, start in x and step in y
 float2 tfx_angle_step_span(float range, float centre, uint divisions) {
 	divisions = max(divisions, 1u);
-	const bool full_circle = range >= tfx_spawn_pi2 - 0.001;
+	const bool full_circle = range >= tfx_two_pi - 0.001;
 	const float step = full_circle ? range / float(divisions) : (divisions > 1 ? range / float(divisions - 1) : 0.0);
 	const float start = full_circle || divisions == 1 ? centre : centre - range * 0.5;
 	return float2(start, step);
@@ -519,16 +502,16 @@ float3 tfx_generate_stepped_direction(tfx_gpu_spawn_block_e block_e, tfx_gpu_spa
 		const float angle = float(division) * tfx_spawn_golden_angle;
 		const float3 radial = axis * cos(angle) + cross(direction, axis) * sin(angle);
 		float3 stepped = direction * cos_tilt + radial * sin_tilt;
-		const float jitter_cone = block_e.emission_step_jitter * 0.5 * sqrt(tfx_spawn_pi2 * cap_height_step);
+		const float jitter_cone = block_e.emission_step_jitter * 0.5 * sqrt(tfx_two_pi * cap_height_step);
 		if (jitter_cone != 0.0) {
 			const float z = 1.0 - (1.0 - cos(jitter_cone)) * tfx_hash_unit(uid, tfx_spawn_axis_cone_z);
-			const float phi = tfx_spawn_pi2 * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
+			const float phi = tfx_two_pi * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
 			stepped = tfx_vector_in_cone(tfx_normalize_fast(stepped), z, phi);
 		}
 		return stepped;
 	}
 	const bool ring = (step_flags & tfx_step_ring) != 0;
-	const float2 span = tfx_angle_step_span(ring ? tfx_spawn_pi2 : block_e.emission_range, 0.0, divisions);
+	const float2 span = tfx_angle_step_span(ring ? tfx_two_pi : block_e.emission_range, 0.0, divisions);
 	float angle = span.x + span.y * float(division);
 	const float half_jitter = span.y * block_e.emission_step_jitter * 0.5;
 	if (half_jitter > 0.0) {
@@ -548,7 +531,7 @@ float tfx_generate_stepped_roll(tfx_gpu_spawn_block_b block_b, tfx_gpu_spawn_blo
 	const uint ordinal = ((step_flags & tfx_step_restart_each_spawn) != 0 ? 0 : run.spawn_ordinal) + (spawn_index - run.first_spawn);
 	const uint division = tfx_angle_step_division((block_e.step_settings >> 2) & 3u, divisions, ordinal, block_e.step_seed);
 	const float range = block_b.angle_offsets.z;
-	const float centre = range >= tfx_spawn_pi2 - 0.001 ? 0.0 : range * 0.5;
+	const float centre = range >= tfx_two_pi - 0.001 ? 0.0 : range * 0.5;
 	const float2 span = tfx_angle_step_span(range, centre, divisions);
 	float angle = span.x + span.y * float(division);
 	const float half_jitter = span.y * block_e.roll_step_jitter * 0.5;
@@ -595,7 +578,7 @@ float3 tfx_generate_shape_offset(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_bl
 			unit_v = tfx_shifted_sequence(sequence_index, 3, block_a.uid_base, tfx_spawn_axis_sequence_phi);
 			unit_w = tfx_shifted_sequence(sequence_index, 5, block_a.uid_base, tfx_spawn_axis_sequence_radius);
 		}
-		const float theta = unit_u * tfx_spawn_pi2;
+		const float theta = unit_u * tfx_two_pi;
 		const float cos_phi = block_c.arc_size + unit_v * (block_c.arc_offset - block_c.arc_size);
 		const float radius = fill_area ? pow(unit_w, 1.0 / 3.0) : 1.0;
 		const float sin_phi = sqrt(max(0.0, 1.0 - cos_phi * cos_phi));
@@ -614,7 +597,7 @@ float3 tfx_generate_shape_offset(tfx_gpu_spawn_block_a block_a, tfx_gpu_spawn_bl
 	if (block_d.shape == tfx_emission_cylinder) {
 		if (fill_area) {
 			const float radius = sqrt(unit_u);
-			const float angle = unit_v * tfx_spawn_pi2;
+			const float angle = unit_v * tfx_two_pi;
 			return float3(half_size.x * radius * cos(angle), unit_w * emitter_size.y, half_size.z * radius * sin(angle));
 		}
 		const float theta = unit_u * block_c.arc_size + block_c.arc_offset;
@@ -685,7 +668,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 	if (block_a.splatter != 0.0) {
 		//Uniform in the ball, the same distribution as the CPU's rejection sampling without the loop
 		const float z = 1.0 - 2.0 * tfx_hash_unit(uid, tfx_spawn_axis_splatter_z);
-		const float phi = tfx_spawn_pi2 * tfx_hash_unit(uid, tfx_spawn_axis_splatter_phi);
+		const float phi = tfx_two_pi * tfx_hash_unit(uid, tfx_spawn_axis_splatter_phi);
 		const float radius = pow(tfx_hash_unit(uid, tfx_spawn_axis_splatter_radius), 1.0 / 3.0) * block_a.splatter;
 		const float ring = sqrt(max(1.0 - z * z, 0.0)) * radius;
 		splat = float3(ring * cos(phi), ring * sin(phi), z * radius);
@@ -732,7 +715,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 	}
 	if ((flags & tfx_spawn_emission_cone) != 0) {
 		const float z = 1.0 - (1.0 - block_a.emission_cone_cosine) * tfx_hash_unit(uid, tfx_spawn_axis_cone_z);
-		const float phi = tfx_spawn_pi2 * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
+		const float phi = tfx_two_pi * tfx_hash_unit(uid, tfx_spawn_axis_cone_phi);
 		direction = tfx_vector_in_cone(direction, z, phi);
 	}
 	direction = tfx_normalize_fast(direction);
@@ -774,7 +757,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 			const float4 inverse_rotation = float4(-location_rotation.xyz, location_rotation.w);
 			offsets = tfx_quaternion_to_spin_euler(tfx_multiply_quaternions(inverse_rotation, tfx_spin_euler_to_quaternion(offsets)));
 		}
-		spawn.rotation_offsets = tfx_pack10bit_unsigned(offsets * (1.0 / tfx_spawn_pi2));
+		spawn.rotation_offsets = tfx_pack10bit_unsigned(offsets * (1.0 / tfx_two_pi));
 	} else {
 		float roll = (flags & tfx_spawn_specify_roll) != 0 ? block_b.angle_offsets.z : tfx_hash_unit(uid, tfx_spawn_axis_roll_offset) * block_b.angle_offsets.z;
 		if ((flags & tfx_spawn_stepped_roll) != 0) {
@@ -812,5 +795,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 	spawn.random_color = (flags & tfx_spawn_random_color) != 0 ? tfx_hash_unit(uid, tfx_spawn_axis_random_color) : 0.0;
 	spawn.spawn_location = run.local_id;
 	spawn.noise_resolution = (flags & tfx_spawn_noise_resolution) != 0 ? block_a.noise_resolution : 0.0;
+	spawn.user_value = run.user_data;
+	spawn.user_flags = 0;
 	return spawn;
 }

@@ -8,6 +8,8 @@ import tfx_graphs;
 import tfx_noise;
 //Exported so a host's ITfxParticleSpawn sees tfx_generated_spawn and the hash draws
 __exported import tfx_gpu_spawn;
+//The buffer rows and every access to them, exported so a host's hooks can use both
+__exported import tfx_gpu_buffers;
 
 static const uint tfx_group_size = 256;
 
@@ -63,6 +65,9 @@ static const uint tfx_noise_value = 3;
 
 //tfx_gpu_particle_flag_bits
 static const uint tfx_particle_remove = 1 << 0;
+//tfxGPU_PARTICLE_USER_FLAGS_SHIFT and _MASK: the host's own per particle state, which the library never reads
+static const uint tfx_particle_user_flags_shift = 16;
+static const uint tfx_particle_user_flags_mask = 0xFFFF0000u;
 
 //tfx_gpu_particle_tick_flag_bits
 static const uint tfx_tick_generated = 1 << 0;
@@ -91,186 +96,6 @@ static const float tfx_stretch_keep_spin_floor = 0.000001;
 static const uint tfx_capture_bit = 1 << 15;
 //tfxSPAWN_LOCATION_SLOT_MASK
 static const uint tfx_spawn_location_slot_mask = (1u << 20) - 1;
-
-//Mirrors tfx_gpu_particle_hot_t
-struct tfx_gpu_particle_hot {
-	float3 position;
-	uint flags;
-	float3 velocity;
-	float age;							//Milliseconds
-};
-
-//Mirrors tfx_gpu_particle_cold_t
-struct tfx_gpu_particle_cold {
-	uint uid;
-	float inv_max_age;
-	uint velocity_normal;
-	float base_velocity;
-	float base_weight;
-	float base_size_x;
-	float base_size_y;
-	float intensity_factor;
-	float random_color;
-	uint rotation_offsets;
-	float base_roll_spin;
-	float base_pitch_spin;
-	float base_yaw_spin;
-	float image_start_frame;
-	uint spawn_location;
-	uint padding;
-};
-
-//Mirrors tfx_gpu_particle_noise_t
-struct tfx_gpu_particle_noise {
-	float3 offset;						//Authored units, zero for white noise
-	float resolution;
-};
-
-//Mirrors tfx_gpu_particle_spawn_t
-struct tfx_gpu_particle_spawn {
-	tfx_gpu_particle_hot hot;
-	tfx_gpu_particle_cold cold;
-	tfx_gpu_particle_noise noise;
-};
-
-//Mirrors tfx_gpu_particle_tick_t
-struct tfx_gpu_particle_tick {
-	uint head;
-	uint count;
-	uint spawn_count;
-	uint upload_offset;
-	float frame_length;					//Milliseconds
-	float update_time;					//Seconds
-	float overall_scale;
-	float velocity_adjuster;
-	float drag_alpha;
-	float acceleration_scale;
-	float drag_alpha_variation;
-	float acceleration_scale_variation;
-	uint force_offset;					//Row of the first force row in the same buffer
-	uint force_count;
-	uint flags;							//tfxGPUParticleTickFlags
-	float location_age_offset;			//Milliseconds the later ticks of the fetch added to an unpaused location's age
-};
-
-//Mirrors tfx_gpu_particle_dispatch_t
-struct tfx_gpu_particle_dispatch {
-	uint base;
-	uint capacity;
-	uint first_tick;
-	uint tick_count;
-	uint slot_start;
-	uint slot_count;
-	uint flags;
-	uint graph_offset;
-	uint property_index;
-	uint instance_start;
-	uint previous_instance_start;
-	uint bumped_since_write;
-	uint spawned_since_write;
-	float global_intensity;
-	float global_stretch;
-	float image_frame_rate;
-	float end_frame;
-	float emitter_roll;
-	uint location_offset;
-	uint location_count;
-	float4 emitter_rotation;			//Quaternion xyzw
-	float3 handle;
-	float noise_swerve_gain_minus_one;
-	float noise_speed_gain_minus_swerve_gain;
-	uint key;							//The host's tfx_SetTemplateEmitterGPUKey / tfx_SetEffectGPUKey, which the library never reads
-	float location_delay;				//The emitter's spawn delay, waited out from each location's age
-	float location_loop_length;			//0 if the emitter doesn't loop
-};
-
-//Mirrors tfx_gpu_spawn_location_t
-struct tfx_gpu_spawn_location {
-	float3 position;
-	uint local_id;						//slot | generation, tfxINVALID when the slot is empty
-	uint2 packed_rotation;				//16 bit snorm: .x = X|Y, .y = Z|W
-	float age;							//Milliseconds, after the last tick of the fetch
-	uint paused;
-};
-
-//Mirrors tfx_gpu_particle_force_t. Every float3 starts on a 16 byte offset, so std430 matches the C layout
-struct tfx_gpu_particle_force {
-	uint type_flags;
-	float strength;
-	float falloff_scale;
-	float front;
-	float3 origin;
-	float radial_ratio;
-	float3 axis;						//Vortex axis, or the summed wind flow
-	float axial_ratio;
-	float4 profile;						//from, curve1, curve2, to
-};
-
-//Mirrors tfx_gpu_particle_vortex_fluctuation_t, the row after a fluctuating vortex
-struct tfx_gpu_particle_vortex_fluctuation {
-	float3 reference;
-	uint lobes;
-	float3 reference_turn;
-	float turn_offset_0;
-	float3 harmonic_cos;
-	float turn_offset_1;
-	float3 harmonic_sin;
-	float turn_offset_2;
-};
-
-//Mirrors tfx_instance_t
-struct tfx_instance {
-	float4 position;					//Stretch in w
-	uint2 quaternion;					//16 bit snorm: .x = X|Y, .y = Z|W
-	uint size;
-	uint alignment;
-	uint intensity_gradient_map;
-	uint curved_alpha_life;
-	uint indexes;						//[gpu property index << 16, capture flag << 15, image frame]
-	uint captured_index;
-};
-
-//Mirrors tfx_gpu_particle_push_t
-struct tfx_gpu_particle_push {
-	uint dispatch_index;
-	uint hot_buffer_index;
-	uint cold_buffer_index;
-	uint noise_buffer_index;
-	uint instance_buffer_index;
-	uint graph_buffer_index;
-	uint dispatch_buffer_index;
-	uint tick_buffer_index;
-	uint spawn_buffer_index;
-	uint location_buffer_index;
-	uint cold_base;						//Each base is the row its section starts at in its buffer
-	uint noise_base;
-	uint tick_base;
-	uint spawn_base;
-	uint location_base;
-	uint padding;
-};
-
-//The pool's hot, cold and noise sections can be views of one buffer, as can the frame's arrays
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_hot> hot_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_cold> cold_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_noise> noise_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_instance> instance_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_spawn> spawn_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[];
-//The force rows after the tick records, the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[];
-//A generated tick's spawn block, runs and multipliers, 64 byte rows of the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_e> spawn_block_e_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[];
 
 //The pack helpers truncate like _mm_cvttps_epi32, and mask the two's complement bits as the CPU does
 uint tfx_pack16bit_2sscaled(float x, float y, float max_value) {
@@ -310,7 +135,7 @@ float4 tfx_euler_to_quaternion(float pitch, float yaw, float roll) {
 }
 
 tfx_gpu_graph_data tfx_graph(tfx_gpu_particle_push push, uint graph_offset, uint graph) {
-	return graph_buffers[push.graph_buffer_index][graph_offset + graph];
+	return tfx_load_graph(push, graph_offset + graph);
 }
 
 //tfx__wide_sample_force_profile: one segment, no easing or oscillator, and the far edge is killed rather than clamped
@@ -527,7 +352,7 @@ tfx_ring_transform tfx_particle_ring_transform(tfx_gpu_particle_push push, tfx_g
 	if ((dispatch.flags & tfx_dispatch_relative_location) != 0) {
 		const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
 		if (slot < dispatch.location_count) {
-			const tfx_gpu_spawn_location location = location_buffers[push.location_buffer_index][push.location_base + dispatch.location_offset + slot];
+			const tfx_gpu_spawn_location location = tfx_load_location(push, dispatch.location_offset + slot);
 			transform.location_rotation = location.packed_rotation;
 			transform.location_position = location.position;
 			transform.location_id = location.local_id;
@@ -579,7 +404,7 @@ tfx_location_frame tfx_particle_location_frame(tfx_particle_context context, tfx
 	frame.alive = false;
 	const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
 	if (slot < context.dispatch.location_count) {
-		const tfx_gpu_spawn_location location = location_buffers[context.push.location_buffer_index][context.push.location_base + context.dispatch.location_offset + slot];
+		const tfx_gpu_spawn_location location = tfx_load_location(context.push, context.dispatch.location_offset + slot);
 		frame.alive = location.local_id == cold.spawn_location;
 		const float age = location.paused != 0 ? location.age : location.age - context.tick.location_age_offset;
 		const float running_time = max(age - context.dispatch.location_delay, 0.0);
@@ -617,8 +442,7 @@ tfx_gpu_particle_vortex_fluctuation tfx_location_fluctuation(tfx_gpu_particle_vo
 //tfx_apply_forces over the tick's force rows, which the CPU packed in its order: wind, vortices, attracts, shockwaves, the same at
 //locations, noise
 float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold) {
-	const uint buffer_index = context.push.tick_buffer_index;
-	const uint first_row = context.push.tick_base + context.tick.force_offset;
+	const uint first_row = context.tick.force_offset;
 	const uint end_row = first_row + context.tick.force_count;
 	bool location_forces = (context.dispatch.flags & tfx_dispatch_location_forces) != 0;
 	tfx_location_frame frame = { hot.position, float4(0.0, 0.0, 0.0, 1.0), 0.0, false };
@@ -628,7 +452,7 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 	float3 medium = float3(0.0, 0.0, 0.0);
 	float3 location_medium = float3(0.0, 0.0, 0.0);
 	for (uint row = first_row; row < end_row; ++row) {
-		const tfx_gpu_particle_force force = force_buffers[buffer_index][row];
+		const tfx_gpu_particle_force force = tfx_load_force(context.push, row);
 		const uint type = force.type_flags & tfx_force_type_mask;
 		if (type == tfx_force_wind) {
 			if ((force.type_flags & tfx_force_location_delay) == 0) {
@@ -661,7 +485,7 @@ float3 tfx_force_medium(tfx_particle_context context, tfx_gpu_particle_hot hot, 
 		if (type == tfx_force_vortex) {
 			tfx_gpu_particle_vortex_fluctuation fluctuation = {};
 			if ((force.type_flags & tfx_force_fluctuating) != 0) {
-				fluctuation = fluctuation_buffers[buffer_index][++row];
+				fluctuation = tfx_load_fluctuation(context.push, ++row);
 				if (at_location) {
 					fluctuation = tfx_location_fluctuation(fluctuation, frame.time);
 				}
@@ -734,6 +558,30 @@ struct tfx_no_particle_spawn : ITfxParticleSpawn {
 	}
 };
 
+//A live particle's instance in world space before it's packed
+struct tfx_particle_draw {
+	float3 position;
+	float stretch;						//The instance's position.w: the stretch graph, or the streak length with velocity stretch
+	float4 rotation;					//Quaternion xyzw
+	float3 alignment;					//Unit vector the billboard aligns to, zero for none
+	float intensity;					//Packed 16 bit, within +-128
+	float2 size;						//Overall scale applied, packed 16 bit within +-64
+	float gradient_map;					//Where the color ramp is sampled
+	float curved_alpha;
+	float alpha_sharpness;
+	uint image_frame;					//Must stay below the emitter's frame count
+};
+
+//Changes how a live particle is drawn after its world transform, on the last tick of the fetch only. hot is in ring space
+interface ITfxParticleWrite {
+	void before_write(inout tfx_particle_draw draw, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_particle_context context);
+}
+
+struct tfx_no_particle_write : ITfxParticleWrite {
+	void before_write(inout tfx_particle_draw draw, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_particle_context context) {
+	}
+};
+
 //tfx_apply_lookup_velocity, tfx_apply_lookup_weight, tfx_apply_forces, tfx_apply_velocity and tfx_apply_position
 void tfx_control_particle<TUpdate : ITfxParticleUpdate>(tfx_particle_context context, inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_gpu_graph_data velocity_graph, tfx_gpu_graph_data weight_graph, bool drag_variation, TUpdate update) {
 	const tfx_gpu_particle_push push = context.push;
@@ -801,7 +649,7 @@ float4 tfx_location_roll_quaternion(float roll, float4 location) {
 }
 
 //location_rotation is only read when a relative location ring's locations have rotations
-uint2 tfx_particle_quaternion(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_cold cold, float life, uint2 location_rotation) {
+float4 tfx_particle_quaternion(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_cold cold, float life, uint2 location_rotation) {
 	const uint flags = dispatch.flags;
 	const bool rotate_from_location = (flags & tfx_dispatch_location_rotation) != 0;
 	if ((flags & tfx_dispatch_spin_pitch_and_yaw) == 0) {
@@ -814,9 +662,9 @@ uint2 tfx_particle_quaternion(tfx_gpu_particle_push push, tfx_gpu_particle_dispa
 		}
 		roll += asfloat(cold.rotation_offsets);
 		if ((flags & tfx_dispatch_relative_angle) != 0 && rotate_from_location) {
-			return tfx_pack16bit_quaternion(tfx_location_roll_quaternion(roll, tfx_unpack16bit_quaternion(location_rotation)));
+			return tfx_location_roll_quaternion(roll, tfx_unpack16bit_quaternion(location_rotation));
 		}
-		return tfx_pack16bit_quaternion(tfx_euler_to_quaternion(0.0, 0.0, roll));
+		return tfx_euler_to_quaternion(0.0, 0.0, roll);
 	}
 
 	const float3 offsets = tfx_unpack10bit(cold.rotation_offsets) * tfx_two_pi;
@@ -838,7 +686,7 @@ uint2 tfx_particle_quaternion(tfx_gpu_particle_push push, tfx_gpu_particle_dispa
 		}
 		q = tfx_conjugate_multiply(dispatch.emitter_rotation, q);
 	}
-	return tfx_pack16bit_quaternion(q);
+	return q;
 }
 
 //tfx__block_particle_image_frame without the stored frame: the CPU advances it once per tick before using it, so on the tick a
@@ -859,14 +707,14 @@ uint tfx_particle_image_frame(tfx_gpu_particle_dispatch dispatch, tfx_gpu_partic
 			image_frame = dispatch.end_frame - image_frame;
 		}
 	}
-	return dispatch.property_index | uint(int(image_frame));
+	return uint(int(image_frame));
 }
 
-//A removed particle still holding its slot: uncaptured, so the vertex shader zeroes size and stretch and only needs a valid quaternion and property index
-void tfx_write_empty_instance(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, float3 position, uint ring_position) {
+//A removed particle still holding its slot: uncaptured, so the vertex shader zeroes size and stretch, and nothing reads its position, only a valid quaternion and property index
+void tfx_write_empty_instance(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, uint ring_position) {
 	const uint instance_index = dispatch.instance_start + ring_position;
 	tfx_instance instance;
-	instance.position = float4(position, 0.0);
+	instance.position = float4(0.0, 0.0, 0.0, 0.0);
 	instance.quaternion = uint2(0u, 0x7FFF0000u);
 	instance.size = 0;
 	instance.alignment = 0;
@@ -874,24 +722,30 @@ void tfx_write_empty_instance(tfx_gpu_particle_push push, tfx_gpu_particle_dispa
 	instance.curved_alpha_life = 0;
 	instance.indexes = dispatch.property_index;
 	instance.captured_index = instance_index;
-	instance_buffers[push.instance_buffer_index][instance_index] = instance;
+	tfx_store_instance(push, instance_index, instance);
 }
 
-//tfx__control_particle_instances for one particle, at ring position ring_position of the last tick
-void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float3 position, float life, uint ring_position, uint2 location_rotation) {
+//tfx__control_particle_instances for one particle, at the context's ring position on the last tick
+void tfx_write_particle_instance<TWrite : ITfxParticleWrite>(tfx_particle_context context, tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, float3 position, uint2 location_rotation, TWrite write_hook) {
+	const tfx_gpu_particle_push push = context.push;
+	const tfx_gpu_particle_dispatch dispatch = context.dispatch;
+	const tfx_gpu_particle_tick tick = context.tick;
+	const float life = context.life;
+	const uint ring_position = context.ring_position;
 	const uint flags = dispatch.flags;
 	const uint graph_offset = dispatch.graph_offset;
 	const bool alive = (hot.flags & tfx_particle_remove) == 0;
 	if (!alive) {
-		tfx_write_empty_instance(push, dispatch, position, ring_position);
+		tfx_write_empty_instance(push, dispatch, ring_position);
 		return;
 	}
-	tfx_instance instance;
+	tfx_particle_draw draw;
+	draw.position = position;
 
 	//----Transform
 	const float stretch = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_stretch), life) * dispatch.global_stretch;
-	instance.position = float4(position, stretch);
-	instance.alignment = 0;
+	draw.stretch = stretch;
+	draw.alignment = float3(0.0, 0.0, 0.0);
 	if ((flags & tfx_dispatch_velocity_stretch) != 0) {
 		float3 velocity = hot.velocity;
 		float speed_scale = tick.velocity_adjuster * tick.overall_scale * tfx_stretch_reference_time;
@@ -906,13 +760,13 @@ void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_di
 			speed_scale *= tick.overall_scale;
 		}
 		const float speed = length(velocity);
-		instance.position.w = stretch * speed * speed_scale;
+		draw.stretch = stretch * speed * speed_scale;
 		//A stationary particle packs a zero alignment, which the vertex shader takes as unaligned and unstretched
 		if ((flags & tfx_dispatch_velocity_alignment) != 0 && speed > 0.000001) {
-			instance.alignment = tfx_pack8bit_xyz(velocity / speed);
+			draw.alignment = velocity / speed;
 		}
 		if ((flags & tfx_dispatch_stretch_keeps_spin) != 0) {
-			instance.position.w = max(instance.position.w, tfx_stretch_keep_spin_floor);
+			draw.stretch = max(draw.stretch, tfx_stretch_keep_spin_floor);
 		}
 	}
 	if ((flags & tfx_dispatch_align_emission) != 0) {
@@ -923,20 +777,20 @@ void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_di
 		if ((flags & tfx_dispatch_location_rotation) != 0) {
 			alignment = tfx_rotate_vector(alignment, tfx_unpack16bit_quaternion(location_rotation));
 		}
-		instance.alignment = tfx_pack8bit_xyz(alignment);
+		draw.alignment = alignment;
 	} else if ((flags & tfx_dispatch_align_emitter) != 0) {
 		float3 alignment = tfx_rotate_vector(float3(0.0, 1.0, 0.0), dispatch.emitter_rotation);
 		if ((flags & tfx_dispatch_location_rotation) != 0) {
 			alignment = tfx_rotate_vector(alignment, tfx_unpack16bit_quaternion(location_rotation));
 		}
-		instance.alignment = tfx_pack8bit_xyz(alignment);
+		draw.alignment = alignment;
 	}
 
 	//----Spin
-	instance.quaternion = tfx_particle_quaternion(push, dispatch, cold, life, location_rotation);
+	draw.rotation = tfx_particle_quaternion(push, dispatch, cold, life, location_rotation);
 
 	//----Size
-	instance.size = 0;
+	draw.size = float2(0.0, 0.0);
 	if ((flags & tfx_dispatch_do_not_render) == 0) {
 		const float size_life = min(life, 1.0);
 		const float lookup_width = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_width), size_life);
@@ -950,40 +804,48 @@ void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_di
 		} else {
 			scale_y = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_height), size_life) * cold.base_size_y;
 		}
-		instance.size = tfx_pack16bit_2sscaled(scale_x * tick.overall_scale, scale_y * tick.overall_scale, tfx_size_packed_scale);
+		draw.size = float2(scale_x, scale_y) * tick.overall_scale;
 	}
 
 	//----Color
-	const float intensity = dispatch.global_intensity * tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_intensity), life) * cold.intensity_factor;
-	const float curved_alpha = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_curved_alpha), life);
-	const float alpha_sharpness = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_alpha_sharpness), life);
-	const float gradient_map = (flags & tfx_dispatch_random_color) != 0 ? cold.random_color : tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_gradient_mapper), life);
-	instance.intensity_gradient_map = tfx_pack16bit_2sscaled(intensity, gradient_map, tfx_color_packed_scale);
-	instance.curved_alpha_life = tfx_pack8bitunorm_xyz(float3(curved_alpha, alpha_sharpness, life));
+	draw.intensity = dispatch.global_intensity * tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_intensity), life) * cold.intensity_factor;
+	draw.curved_alpha = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_curved_alpha), life);
+	draw.alpha_sharpness = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_alpha_sharpness), life);
+	draw.gradient_map = (flags & tfx_dispatch_random_color) != 0 ? cold.random_color : tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_gradient_mapper), life);
+	draw.image_frame = tfx_particle_image_frame(dispatch, cold, hot, tick);
+
+	write_hook.before_write(draw, hot, cold, context);
+
+	tfx_instance instance;
+	instance.position = float4(draw.position, draw.stretch);
+	instance.quaternion = tfx_pack16bit_quaternion(draw.rotation);
+	instance.size = tfx_pack16bit_2sscaled(draw.size.x, draw.size.y, tfx_size_packed_scale);
+	instance.alignment = tfx_pack8bit_xyz(draw.alignment);
+	instance.intensity_gradient_map = tfx_pack16bit_2sscaled(draw.intensity, draw.gradient_map, tfx_color_packed_scale);
+	instance.curved_alpha_life = tfx_pack8bitunorm_xyz(float3(draw.curved_alpha, draw.alpha_sharpness, life));
 
 	//----Image frame and interpolation. Only particles that were in the ring at the previous write have somewhere to come from
 	const uint instance_index = dispatch.instance_start + ring_position;
 	const bool capture = (flags & tfx_dispatch_capture) != 0 && ring_position + dispatch.spawned_since_write < tick.count;
-	instance.indexes = tfx_particle_image_frame(dispatch, cold, hot, tick) | (capture ? tfx_capture_bit : 0);
+	instance.indexes = dispatch.property_index | draw.image_frame | (capture ? tfx_capture_bit : 0);
 	instance.captured_index = capture ? dispatch.previous_instance_start + ring_position + dispatch.bumped_since_write : instance_index;
 
-	instance_buffers[push.instance_buffer_index][instance_index] = instance;
+	tfx_store_instance(push, instance_index, instance);
 }
 
 //A spawn the kernel builds from its tick's block rather than loading a row, see tfx__record_gpu_groups
 void tfx_generate_particle<TSpawn : ITfxParticleSpawn>(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, uint spawn_index, TSpawn spawn_hook, out tfx_gpu_particle_hot hot, out tfx_gpu_particle_cold cold, out tfx_gpu_particle_noise noise) {
-	const uint buffer_index = push.tick_buffer_index;
-	const uint block_row = push.tick_base + tick.upload_offset;
-	const tfx_gpu_spawn_block_a block_a = spawn_block_a_buffers[buffer_index][block_row];
-	const tfx_gpu_spawn_block_b block_b = spawn_block_b_buffers[buffer_index][block_row + 1];
-	const tfx_gpu_spawn_block_c block_c = spawn_block_c_buffers[buffer_index][block_row + 2];
+	const uint block_row = tick.upload_offset;
+	const tfx_gpu_spawn_block_a block_a = tfx_load_spawn_block_a(push, block_row);
+	const tfx_gpu_spawn_block_b block_b = tfx_load_spawn_block_b(push, block_row + 1);
+	const tfx_gpu_spawn_block_c block_c = tfx_load_spawn_block_c(push, block_row + 2);
 	tfx_gpu_spawn_block_d block_d = {};
 	if ((block_a.flags & tfx_spawn_shape) != 0) {
-		block_d = spawn_block_d_buffers[buffer_index][block_row + 3];
+		block_d = tfx_load_spawn_block_d(push, block_row + 3);
 	}
 	tfx_gpu_spawn_block_e block_e = {};
 	if ((block_a.flags & (tfx_spawn_grid | tfx_spawn_stepped_emission | tfx_spawn_stepped_roll)) != 0) {
-		block_e = spawn_block_e_buffers[buffer_index][block_row + 4];
+		block_e = tfx_load_spawn_block_e(push, block_row + 4);
 	}
 	//The last run starting at or before the spawn. Neighbouring threads are in the same run, so the search stays coherent
 	const uint first_run = block_row + block_a.run_row;
@@ -991,17 +853,17 @@ void tfx_generate_particle<TSpawn : ITfxParticleSpawn>(tfx_gpu_particle_push pus
 	uint high = block_a.run_count - 1;
 	while (low < high) {
 		const uint middle = (low + high + 1) >> 1;
-		if (spawn_run_buffers[buffer_index][first_run + middle].first_spawn <= spawn_index) {
+		if (tfx_load_spawn_run_first_spawn(push, first_run + middle) <= spawn_index) {
 			low = middle;
 		} else {
 			high = middle - 1;
 		}
 	}
-	const tfx_gpu_spawn_run run = spawn_run_buffers[buffer_index][first_run + low];
+	const tfx_gpu_spawn_run run = tfx_load_spawn_run(push, first_run + low);
 	const bool has_multipliers = run.multipliers_row != 0xFFFFFFFFu;
 	tfx_gpu_spawn_multipliers multipliers = {};
 	if (has_multipliers) {
-		multipliers = spawn_multipliers_buffers[buffer_index][block_row + run.multipliers_row];
+		multipliers = tfx_load_spawn_multipliers(push, block_row + run.multipliers_row);
 	}
 	tfx_generated_spawn spawn = tfx_generate_spawn(block_a, block_b, block_c, block_d, block_e, run, multipliers, has_multipliers, spawn_index);
 	if ((block_a.flags & tfx_spawn_user) != 0) {
@@ -1017,7 +879,7 @@ void tfx_generate_particle<TSpawn : ITfxParticleSpawn>(tfx_gpu_particle_push pus
 		spawn_hook.after_spawn(spawn, context);
 	}
 	hot.position = spawn.position;
-	hot.flags = 0;
+	hot.flags = spawn.user_flags & tfx_particle_user_flags_mask;
 	hot.velocity = spawn.velocity;
 	hot.age = spawn.age;
 	cold.uid = spawn.uid;
@@ -1037,7 +899,7 @@ void tfx_generate_particle<TSpawn : ITfxParticleSpawn>(tfx_gpu_particle_push pus
 	const float image_frame_rate_per_millisecond = dispatch.image_frame_rate * 0.001;
 	cold.image_start_frame = spawn.image_frame - image_frame_rate_per_millisecond * spawn.age;
 	cold.spawn_location = spawn.spawn_location;
-	cold.padding = 0;
+	cold.user_value = spawn.user_value;
 	noise.offset = spawn.noise_offset;
 	noise.resolution = spawn.noise_resolution;
 }
@@ -1048,8 +910,8 @@ uint tfx_wrap_ring(uint position, uint capacity) {
 }
 
 //The kernel for one ring, push.dispatch_index, with a thread per slot. Dispatch in groups of tfx_group_size
-void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint thread_index, tfx_gpu_particle_push push, TUpdate update, TSpawn spawn_hook) {
-	const tfx_gpu_particle_dispatch dispatch = dispatch_buffers[push.dispatch_buffer_index][push.dispatch_index];
+void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn, TWrite : ITfxParticleWrite>(uint thread_index, tfx_gpu_particle_push push, TUpdate update, TSpawn spawn_hook, TWrite write_hook) {
+	const tfx_gpu_particle_dispatch dispatch = tfx_load_dispatch(push, push.dispatch_index);
 	if (thread_index >= dispatch.slot_count) {
 		return;
 	}
@@ -1069,7 +931,7 @@ void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint
 	bool dead = false;
 	const uint end_tick = dispatch.first_tick + dispatch.tick_count;
 	for (uint tick_index = dispatch.first_tick; tick_index != end_tick; ++tick_index) {
-		const tfx_gpu_particle_tick tick = tick_buffers[push.tick_buffer_index][push.tick_base + tick_index];
+		const tfx_gpu_particle_tick tick = tfx_load_tick(push, tick_index);
 		const uint ring_position = tfx_wrap_ring(ring_slot + dispatch.capacity - tick.head, dispatch.capacity);
 		if (ring_position >= tick.count) {
 			live = false;
@@ -1081,22 +943,22 @@ void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint
 			if ((tick.flags & tfx_tick_generated) != 0) {
 				tfx_generate_particle(push, dispatch, tick, ring_position - first_spawn, spawn_hook, hot, cold, noise);
 			} else {
-				const uint row = push.spawn_base + tick.upload_offset + ring_position - first_spawn;
-				hot = spawn_buffers[push.spawn_buffer_index][row].hot;
-				cold = spawn_buffers[push.spawn_buffer_index][row].cold;
+				const uint row = tick.upload_offset + ring_position - first_spawn;
+				hot = tfx_load_spawn_hot(push, row);
+				cold = tfx_load_spawn_cold(push, row);
 				if (has_noise) {
-					noise = spawn_buffers[push.spawn_buffer_index][row].noise;
+					noise = tfx_load_spawn_noise(push, row);
 				}
 			}
 			ingested = true;
 			dead = false;
 		} else if (!live) {
-			hot = hot_buffers[push.hot_buffer_index][pool_slot];
+			hot = tfx_load_hot(push, pool_slot);
 			dead = (hot.flags & tfx_particle_remove) != 0;
 			if (!dead) {
-				cold = cold_buffers[push.cold_buffer_index][push.cold_base + pool_slot];
+				cold = tfx_load_cold(push, pool_slot);
 				if (has_noise) {
-					noise = noise_buffers[push.noise_buffer_index][push.noise_base + pool_slot];
+					noise = tfx_load_noise(push, pool_slot);
 				}
 			}
 		}
@@ -1105,53 +967,73 @@ void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint
 		const bool last_tick = tick_index + 1 == end_tick;
 		if (dead) {
 			if (last_tick) {
-				tfx_write_empty_instance(push, dispatch, hot.position, ring_position);
+				tfx_write_empty_instance(push, dispatch, ring_position);
 			}
 			continue;
 		}
-		const float life = hot.age * cold.inv_max_age;
+		tfx_particle_context context;
+		context.push = push;
+		context.dispatch = dispatch;
+		context.tick = tick;
+		context.noise = noise;
+		context.life = hot.age * cold.inv_max_age;
+		context.ring_position = ring_position;
+		context.last_tick = last_tick;
 		//An expired or killed particle holds its slot until its batch expires, and is written with no size
 		if ((hot.flags & tfx_particle_remove) == 0) {
-			tfx_particle_context context;
-			context.push = push;
-			context.dispatch = dispatch;
-			context.tick = tick;
-			context.noise = noise;
-			context.life = life;
-			context.ring_position = ring_position;
-			context.last_tick = last_tick;
 			tfx_control_particle(context, hot, cold, velocity_graph, weight_graph, drag_variation, update);
 			update.after_move(hot, cold, context);
 		}
 		if (last_tick) {
 			uint2 location_rotation;
 			const float3 position = tfx_particle_world_position(push, dispatch, tick, hot, cold, location_rotation);
-			tfx_write_particle_instance(push, dispatch, tick, hot, cold, position, life, ring_position, location_rotation);
+			tfx_write_particle_instance(context, hot, cold, position, location_rotation, write_hook);
 		}
 		tfx_age_particle(hot, cold, tick);
 	}
 
 	if (live && !dead) {
-		hot_buffers[push.hot_buffer_index][pool_slot] = hot;
+		tfx_store_hot(push, pool_slot, hot);
 		if (ingested) {
-			cold_buffers[push.cold_buffer_index][push.cold_base + pool_slot] = cold;
+			tfx_store_cold(push, pool_slot, cold);
 			if (has_noise) {
-				noise_buffers[push.noise_buffer_index][push.noise_base + pool_slot] = noise;
+				tfx_store_noise(push, pool_slot, noise);
 			}
 		}
 	}
 }
 
-//For a host with an update but no spawn hook
+//For a host with an update and a spawn hook but no write hook
+void tfx_simulate<TUpdate : ITfxParticleUpdate, TSpawn : ITfxParticleSpawn>(uint thread_index, tfx_gpu_particle_push push, TUpdate update, TSpawn spawn_hook) {
+	tfx_simulate(thread_index, push, update, spawn_hook, tfx_no_particle_write());
+}
+
+//For a host with an update but no spawn or write hook
 void tfx_simulate<TUpdate : ITfxParticleUpdate>(uint thread_index, tfx_gpu_particle_push push, TUpdate update) {
-	tfx_simulate(thread_index, push, update, tfx_no_particle_spawn());
+	tfx_simulate(thread_index, push, update, tfx_no_particle_spawn(), tfx_no_particle_write());
 }
 
 //Only the library's entry point reads these, so a host's entry point can declare its own push constants
 [[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants;
+//WebGPU and OpenGL have no push constants, so there they're a uniform buffer moved along per dispatch. The register keeps it out of Metal's buffer slots
+[[vk::binding(4, 0)]] ConstantBuffer<tfx_gpu_particle_push> tfx_uniform_push_constants : register(b15);
+
+//HLSL keeps tfx_push_constants under TFX_FIXED_BINDINGS: it's a plain cbuffer at b0, which is what D3D11 wants
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_UNIFORM_PUSH_CASES case wgsl: case glsl:
+#else
+#define TFX_UNIFORM_PUSH_CASES case wgsl:
+#endif
+
+tfx_gpu_particle_push tfx_entry_push_constants() {
+	__target_switch {
+	TFX_UNIFORM_PUSH_CASES return tfx_uniform_push_constants;
+	default: return tfx_push_constants;
+	}
+}
 
 [shader("compute")]
 [numthreads(tfx_group_size, 1, 1)]
 void simulate_particles(uint3 thread_id : SV_DispatchThreadID) {
-	tfx_simulate<tfx_no_particle_update>(thread_id.x, tfx_push_constants, tfx_no_particle_update());
+	tfx_simulate<tfx_no_particle_update>(thread_id.x, tfx_entry_push_constants(), tfx_no_particle_update());
 }

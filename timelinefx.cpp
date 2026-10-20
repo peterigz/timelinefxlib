@@ -20533,6 +20533,7 @@ tfxINTERNAL float tfx__record_generated_spawns(tfx_stage pm, const tfx_particle_
 		memcpy(&pm->gpu_force_rows[first_run_row + run_index], &run, sizeof(tfx_gpu_spawn_run_t));
 		first_spawn += spawn_run.count;
 	}
+	//Also guarantees a run for every spawn, which the kernel's run search starting at run_count - 1 relies on
 	TFX_ASSERT(first_spawn == entry->amount_to_spawn);
 	memcpy(&pm->gpu_force_rows[*block_row], &block, sizeof(tfx_gpu_spawn_block_t));
 	return longest_life;
@@ -21325,7 +21326,7 @@ void tfx__generate_gpu_spawn(const tfx_gpu_spawn_block_t *block, const tfx_gpu_s
 	cold.base_yaw_spin = yaw_spin;
 	cold.image_start_frame = 0.f;
 	cold.spawn_location = run->local_id;
-	cold.padding = 0;
+	cold.user_value = run->user_data;
 	spawn->noise.offset.x = noise_offset.x;
 	spawn->noise.offset.y = noise_offset.y;
 	spawn->noise.offset.z = noise_offset.z;
@@ -24364,6 +24365,15 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 	}
 }
 
+//A packed particle's user_value, the same one a generated spawn takes from its run: 0 once the particle's location slot has moved on
+tfxINTERNAL tfxU32 tfx__spawn_location_user_value(const tfx_user_spawn_locations_t *location_list, tfxU32 spawn_location) {
+	const tfxU32 slot = spawn_location & tfxSPAWN_LOCATION_SLOT_MASK;
+	if (!location_list || slot >= location_list->locations.current_size) {
+		return 0;
+	}
+	return tfx__spawn_location_local_id(slot, location_list->locations[slot].generation) == spawn_location ? location_list->tweaks[slot].user_data : 0;
+}
+
 //The emitter's CPU bank only ever holds this tick's spawns, or the whole warmed bank on the first tick after a warmup
 void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
@@ -24371,6 +24381,8 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	tfx_stage pm = work_entry->pm;
 	tfx_gpu_particle_group_t &group = pm->gpu_groups[work_entry->group_index];
 	tfx_particle_emitter_state_t &emitter = pm->emitters[group.emitter_index];
+	const tfx_effect_state_t &effect = pm->effects[emitter.parent_index];
+	const tfx_user_spawn_locations_t *location_list = effect.state_flags & tfxEffectStateFlags_user_spawn_locations ? effect.user_spawn_locations : nullptr;
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 	tfx_gpu_particle_spawn_t *spawns = &pm->gpu_spawns[group.upload_offset];
@@ -24411,7 +24423,7 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		cold_row.base_yaw_spin = bank.base_yaw_spin[index];
 		cold_row.image_start_frame = bank.image_frame[index] - image_frame_rate_per_millisecond * age;
 		cold_row.spawn_location = bank.spawn_location[index];
-		cold_row.padding = 0;
+		cold_row.user_value = tfx__spawn_location_user_value(location_list, cold_row.spawn_location);
 		spawn.noise.offset.x = has_noise ? bank.noise_offset_x[index] : 0.f;
 		spawn.noise.offset.y = has_noise ? bank.noise_offset_y[index] : 0.f;
 		spawn.noise.offset.z = has_noise ? bank.noise_offset_z[index] : 0.f;

@@ -32,14 +32,44 @@ The vertex shader then transforms those vertices, unpacks that segment index, sa
 | Shader | What it does |
 | --- | --- |
 | `tfx_gpu_particles.slang` | Simulates `run_on_gpu` emitters and writes their instances |
+| `tfx_gpu_types.slang` | The buffer rows, each a byte for byte mirror of its C struct |
+| `tfx_gpu_buffers.slang` | Every buffer the kernel reads or writes, declared and accessed through one function per row type |
+| `tfx_gpu_spawn.slang` | Builds the spawns the kernel generates from each tick's spawn block |
+| `tfx_gpu_common.slang` | The hashes and constants the other modules share, each the twin of a CPU function |
 | `tfx_graphs.slang` | The graph lookup it imports, the same sampling the CPU uses |
 | `tfx_noise.slang` | The noise force's white, simplex, curl and value fields it imports, ports of the CPU's wide noise |
 
 These are Slang rather than GLSL, so they can grow into variants and user hooks. Compile `simulate_particles` from `tfx_gpu_particles.slang` with `TimelineFXLib/Shaders` on the include path.
 
+The kernel reaches its buffers only through the `tfx_load_*` / `tfx_store_*` functions in `tfx_gpu_buffers.slang`, which take rows relative to their own array and add the push constants' bases. By default they index bindless arrays, which suits Vulkan and D3D12. Every other binding model is handled in the same file, so nothing needs replacing.
+
+### Fixed bindings: WGSL, D3D11 and OpenGL
+
+WGSL always uses fixed bindings, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default. Compile with `-D TFX_FIXED_BINDINGS` to use the same layout on every other target, which is what D3D11 and OpenGL need. The kernel binds the one-buffer setup and ignores the push constants' buffer indexes (the bases still apply). Rows are read as raw bytes in the C layout.
+
+| Buffer | WGSL / GLSL / SPIR-V (group/set 0) | HLSL |
+| --- | --- | --- |
+| The pool, read write: the hot section at its start, cold and noise at `cold_base` / `noise_base` | binding 0 | `u0` |
+| The instance buffer, read write | binding 1 | `u1` |
+| The graph lookups, read only | binding 2 | `t0` |
+| The frame's upload from `tfx_CopyGPUParticleUpload`, read only, dispatches at its start | binding 3 | `t1` |
+| The push constants | binding 4, a uniform buffer | `b0`, a constant buffer |
+
+- **WGSL:** each dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset.
+- **D3D11:** compile with `-target dxbc -profile cs_5_0 -line-directive-mode none`. fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits. Create the pool, instance, graph and upload buffers with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and give them raw (`DXGI_FORMAT_R32_TYPELESS`) views. Update the constant buffer before each dispatch. fxc warns that 256 threads times the kernel's temp registers is over its recommended total, so measure there.
+- **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. Bind the four buffers as SSBOs at bindings 0 to 3 (`glBindBufferBase`) and the push constants as a UBO at binding 4.
+- **A host entry point with its own push constants** does what `simulate_particles` does: declare them twice, `[[vk::push_constant]]` and `[[vk::binding(4, 0)]] ... : register(b15)` (the register keeps it out of Metal's buffer slots), and read them through a function that picks with `__target_switch`: `case wgsl:` (plus `case glsl:` under `TFX_FIXED_BINDINGS`) returns the uniform one, `default:` the push constant one.
+
+### Metal
+
+Metal has its own path, chosen when Slang targets Metal. Each buffer index in the push constants is a slot in `tfx_metal_buffers`, an argument buffer of `TFX_METAL_BUFFER_COUNT` (default 16, override with `-D`) 64 bit `gpuAddress` values. The accessors read and write every row through it as raw bytes packed exactly like the C structs, because a Metal `float3` is 16 bytes rather than 12. The host:
+- fills an `MTLBuffer` with the addresses and points each push constant index at its slot. A section can be its own slot with its address offset and a base of 0, or share one address with the bases.
+- binds the push constants and the table at the `[[buffer(n)]]` slots Slang gives them. `simulate_particles` uses 0 and 1. A host entry point with its own push constants gets its own slots, so read them from Slang's reflection.
+- calls `useResource` on every buffer the table points to: read for the frame's upload and the graph lookups, read and write for the pool and the instance buffer.
+
 On a stage with a `gpu_particle_capacity`, `tfx_GetGPUParticleFrame` hands you dispatch records, tick records, the rows spawned since the last fetch and a table of spawn locations that relative particles follow. Dispatch the kernel once per record with `tfx_gpu_particle_push_t` as push constants and `(slot_count + 255) / 256` groups. Each thread owns one ring slot: it takes in any spawn that lands in its slot, runs every tick of the fetch, keeps the particle state in a pool you size once from `tfx_GetGPUParticleBufferSizes`, and writes its instance into the same instance buffer as the CPU particles, in the range after them. The vertex and fragment shaders above draw them unchanged.
 
-The pool has hot, cold and noise sections, and each section starts on a 256 byte boundary. They can share one buffer or have one each, and the same goes for the frame's arrays: `upload_bytes` and the frame's upload offsets lay them all out in one buffer, which `tfx_CopyGPUParticleUpload` fills. Every buffer in the push constants has its own index plus, for those that can share, a `*_base` row the section starts at. On Vulkan, Metal and OpenGL, where storage buffers are untyped, one buffer and one index with the bases is enough. On D3D12 a structured view carries its row size, so give each section a view of its own, either over the section with a base of 0, or over the whole buffer with the base. D3D11 fixes the row size on the buffer itself, so there each section needs a buffer of its own and a base of 0.
+The pool has hot, cold and noise sections, and each section starts on a 256 byte boundary. They can share one buffer or have one each, and the same goes for the frame's arrays: `upload_bytes` and the frame's upload offsets lay them all out in one buffer, which `tfx_CopyGPUParticleUpload` fills. Every buffer in the push constants has its own index plus, for those that can share, a `*_base` row the section starts at. On Vulkan and Metal, where storage buffers are untyped, one buffer and one index with the bases is enough. On D3D12 a structured view carries its row size, so give each section a view of its own, either over the section with a base of 0, or over the whole buffer with the base. The fixed binding targets above always use one pool buffer and one upload buffer with the bases.
 
 ## Compute shaders for pre-baked effects
 

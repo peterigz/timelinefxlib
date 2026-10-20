@@ -653,7 +653,7 @@ typedef struct tfx_gpu_particle_cold_s {	//64 bytes
 	float base_yaw_spin;
 	float image_start_frame;				//The frame at age 0, so the current frame is image_start_frame + image_frame_rate * age
 	tfxU32 spawn_location;
-	tfxU32 padding;
+	tfxU32 user_value;						//The spawn location's tfx_SetSpawnLocationUserData, unless a host's after_spawn changed it. 0 without a location
 } tfx_gpu_particle_cold_t;
 
 //A GPU simulated particle's noise state, fixed when it spawns, one per pool slot. Only rings with a noise force read it
@@ -779,6 +779,10 @@ typedef enum {
 	tfxGPUParticleFlags_none = 0,
 	tfxGPUParticleFlags_remove = 1 << 0,								//Expired, drawn with zero size until the ring head passes it
 } tfx_gpu_particle_flag_bits;
+
+//Bits 16 to 31 of a GPU particle's flags belong to the host's kernel hooks. The library zeroes them at spawn and never reads them
+#define tfxGPU_PARTICLE_USER_FLAGS_SHIFT 16
+#define tfxGPU_PARTICLE_USER_FLAGS_MASK 0xFFFF0000u
 
 typedef tfxU32 tfxGPUParticleFlags;              //tfx_gpu_particle_flag_bits
 
@@ -2171,7 +2175,11 @@ runs in the kernel: the library resolves each emitter's forces every tick into f
 so they need nothing more from you.
 
 The reference kernel is Shaders/tfx_gpu_particles.slang, entry point simulate_particles, with tfx_gpu_particle_push_t as
-its push constants. To add custom forces, collision or anything else per particle without forking it, write your own
+its push constants. Every buffer access it makes goes through Shaders/tfx_gpu_buffers.slang, which handles each binding
+model. By default it indexes bindless arrays (Vulkan, D3D12). On Metal every buffer index is a slot in an argument buffer
+of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, OpenGL),
+binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
+To add custom forces, collision or anything else per particle without forking it, write your own
 entry point in your own Slang module:
   1. import tfx_gpu_particles and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
      added to the particle's acceleration before drag and integration, like the built-in forces, and after_move runs
@@ -2184,11 +2192,20 @@ entry point in your own Slang module:
      position. context.user_data is the location's tfx_SetSpawnLocationUserData. Positions are world space, or local to
      the location when context.relative. Spawns the CPU makes (warmup, no pool, the fallbacks below) go through
      tfx_SetStageSpawnCallback instead, so register one too for the same look everywhere.
+     To change how particles are drawn, declare a struct that implements ITfxParticleWrite. before_write gets each live
+     particle's tfx_particle_draw on the last tick of the fetch, after its world transform and before it's packed:
+     world position, stretch, rotation, alignment, size, intensity, color ramp position, alpha and image frame.
+     Per particle state for your hooks: bits 16 to 31 of hot.flags (tfxGPU_PARTICLE_USER_FLAGS_MASK) are yours, zero at
+     spawn and kept every tick, and cold.user_value holds the spawn location's tfx_SetSpawnLocationUserData. after_spawn
+     can set both on the spawns the kernel generates (spawn.user_flags, spawn.user_value).
   2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
-     It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64.
+     It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64. For WGSL, and OpenGL under
+     TFX_FIXED_BINDINGS, which have no push constants, also declare them as [[vk::binding(4, 0)]] ConstantBuffer<...>
+     : register(b15) and pick with __target_switch, as the library's simulate_particles does (Shaders/readme.md).
   3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
-     tfx_simulate(thread_id.x, your_push.tfx, update), or tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook)
-     with a spawn hook. tfx_no_particle_update stands in when you only have a spawn hook.
+     tfx_simulate(thread_id.x, your_push.tfx, update), tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook)
+     with a spawn hook, or tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook, write_hook) with a write hook.
+     tfx_no_particle_update, tfx_no_particle_spawn and tfx_no_particle_write stand in for the hooks you don't have.
   4. Dispatch it exactly like simulate_particles. Send your whole push block once, then only the first 4 bytes,
      dispatch_index, per dispatch.
 Your update only runs on the GPU: Run on GPU emitters that fall back to the CPU, for any of the reasons above,
@@ -2203,10 +2220,10 @@ The current setup (subject to change, this is all WIP)
 Setup, once:
   1. Create the particle pool from tfx_GetGPUParticleBufferSizes. It holds the particles between frames and never
      needs resizing or clearing. Its hot, cold and noise sections can share one buffer (pool_bytes) or have one each.
-     Where storage buffers are untyped (Vulkan, Metal, OpenGL) one bindless index with cold_base and noise_base does
+     Where storage buffers are untyped (Vulkan, and Metal's table slots) one index with cold_base and noise_base does
      for all three. D3D12 structured views carry their row size, so make one view per section, either over the
-     section with a base of 0 or over the whole buffer with the base. D3D11 fixes the row size on the buffer itself,
-     so there each section needs its own buffer and a base of 0.
+     section with a base of 0 or over the whole buffer with the base. WGSL and TFX_FIXED_BINDINGS builds (D3D11,
+     OpenGL) always use one pool buffer with the bases.
   2. Upload the graph lookups from tfx_GetGPUGraphLookupsBuffer, as ribbons do.
 
 Per frame, after tfx_UpdateStage:

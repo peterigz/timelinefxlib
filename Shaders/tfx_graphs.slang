@@ -1,5 +1,7 @@
 //Graph lookups for the GPU kernels. Mirrors tfx__sample_wide_graph: one segment, easing, then bezier or linear, then the oscillator
 
+import tfx_gpu_common;
+
 static const int tfx_graph_use_bezier_sampling = 1;
 static const int tfx_graph_enable_oscillator = 2;
 
@@ -9,8 +11,6 @@ static const int tfx_easing_out = 5;
 static const int tfx_easing_in_out = 6;
 static const int tfx_easing_smoothstep = 17;
 static const int tfx_easing_out_in = 18;
-
-static const float tfx_two_pi = 6.283185307;
 
 //Mirrors tfx_gpu_graph_data_t, one per graph from tfx_GetGPUGraphLookupsBuffer
 struct tfx_gpu_graph_data {

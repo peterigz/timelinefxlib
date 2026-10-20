@@ -1,31 +1,17 @@
 //Noise fields for the GPU particle kernel, scalar ports of the CPU's wide noise in timelinefx_internal.h. Every hash, prime and
 //operation order follows the CPU so the two only differ by rounding.
 
+import tfx_gpu_common;
+
 static const float tfx_noise_epsilon = 1e-12;
 static const float tfx_noise_offset = 100.0;			//tfxWIDENOISEOFFSET
 static const float tfx_simplex_kernel_radius_squared = 0.5;	//tfxSIMPLEX_KERNEL_RADIUS_SQUARED
 static const float tfx_curl_scale = 30.857;
 
-//tfx__wide_seedgen_base: murmur3's finalizer over base ^ h
-uint tfx_seedgen_base(uint base, uint h) {
-	h ^= base;
-	h ^= h >> 15;
-	h *= 0x85ebca6bu;
-	h ^= h >> 13;
-	h *= 0xc2b2ae35u;
-	h ^= h >> 16;
-	return h;
-}
-
-//tfx__wide_white_unit: the signed reinterpret is what centres it on 0
-float tfx_noise_white_unit(uint seed, uint axis) {
-	return (float(int(tfx_seedgen_base(seed, axis))) / 4294967295.0) * 2.0;
-}
-
 //---- Value noise, tfx__wide_value_noise_3d
 
 float3 tfx_value_noise_corner(uint lattice_x, uint lattice_y, uint lattice_z) {
-	const uint h = tfx_seedgen_base(lattice_x + lattice_y, lattice_z);
+	const uint h = tfx_seedgen((lattice_x + lattice_y) ^ lattice_z);
 	return float3(float((h >> 20) & 0x3FFu), float((h >> 10) & 0x3FFu), float(h & 0x3FFu)) * (1.0 / 511.0) - 1.0;
 }
 
@@ -80,10 +66,10 @@ tfx_simplex_cell tfx_simplex_cell_at(float3 position) {
 	const uint3 first_corner = lattice + first_step * primes;
 	const uint3 second_corner = lattice + second_step * primes;
 	const uint3 last_corner = lattice + primes;
-	result.hash0 = tfx_seedgen_base(lattice.x + lattice.y, lattice.z);
-	result.hash1 = tfx_seedgen_base(first_corner.x + first_corner.y, first_corner.z);
-	result.hash2 = tfx_seedgen_base(second_corner.x + second_corner.y, second_corner.z);
-	result.hash3 = tfx_seedgen_base(last_corner.x + last_corner.y, last_corner.z);
+	result.hash0 = tfx_seedgen((lattice.x + lattice.y) ^ lattice.z);
+	result.hash1 = tfx_seedgen((first_corner.x + first_corner.y) ^ first_corner.z);
+	result.hash2 = tfx_seedgen((second_corner.x + second_corner.y) ^ second_corner.z);
+	result.hash3 = tfx_seedgen((last_corner.x + last_corner.y) ^ last_corner.z);
 	return result;
 }
 
@@ -178,18 +164,18 @@ float3 tfx_white_noise_direction(uint uid, float age, float noise_resolution) {
 	const uint axis_z = 0xb5297a4du;
 	const uint axis_phase = 0x27d4eb2fu;
 
-	const float phase_offset = (tfx_noise_white_unit(uid, axis_phase) * 0.5 + 0.5) * 256.0;
+	const float phase_offset = (tfx_white_unit(uid, axis_phase) * 0.5 + 0.5) * 256.0;
 	const float phase = phase_offset + age * (noise_resolution * inv_period_scale);
 	const uint bucket = uint(int(phase));
 	float fraction = phase - float(int(bucket));
 	fraction = fraction * fraction * (3.0 - 2.0 * fraction);
 
-	const uint direction_seed = tfx_seedgen_base(bucket, uid);
-	const uint next_direction_seed = tfx_seedgen_base(bucket + 1u, uid);
+	const uint direction_seed = tfx_seedgen(bucket ^ uid);
+	const uint next_direction_seed = tfx_seedgen((bucket + 1u) ^ uid);
 	const float one_minus_fraction = 1.0 - fraction;
-	const float3 noise = float3(tfx_noise_white_unit(direction_seed, axis_x) * one_minus_fraction + tfx_noise_white_unit(next_direction_seed, axis_x) * fraction,
-								tfx_noise_white_unit(direction_seed, axis_y) * one_minus_fraction + tfx_noise_white_unit(next_direction_seed, axis_y) * fraction,
-								tfx_noise_white_unit(direction_seed, axis_z) * one_minus_fraction + tfx_noise_white_unit(next_direction_seed, axis_z) * fraction);
+	const float3 noise = float3(tfx_white_unit(direction_seed, axis_x) * one_minus_fraction + tfx_white_unit(next_direction_seed, axis_x) * fraction,
+								tfx_white_unit(direction_seed, axis_y) * one_minus_fraction + tfx_white_unit(next_direction_seed, axis_y) * fraction,
+								tfx_white_unit(direction_seed, axis_z) * one_minus_fraction + tfx_white_unit(next_direction_seed, axis_z) * fraction);
 	return noise * rsqrt(max(dot(noise, noise), tfx_noise_epsilon));
 }
 
