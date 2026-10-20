@@ -54,7 +54,6 @@ static const uint tfx_dispatch_location_forces_rotation = 1 << 24;
 static const uint tfx_dispatch_velocity_alignment = 1 << 25;
 static const uint tfx_dispatch_stretch_keeps_spin = 1 << 26;
 static const uint tfx_dispatch_velocity_stretch = 1 << 27;
-static const uint tfx_dispatch_align_location = 1 << 28;
 
 //The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
 static const uint tfx_noise_white = 0;
@@ -537,18 +536,6 @@ tfx_ring_transform tfx_particle_ring_transform(tfx_gpu_particle_push push, tfx_g
 	return transform;
 }
 
-//tfx__gather_live_user_spawn_rotations: a non relative particle outlives its location and keeps the emitter's own rotation once it has gone
-uint2 tfx_particle_live_location_rotation(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_cold cold) {
-	const uint slot = cold.spawn_location & tfx_spawn_location_slot_mask;
-	if (slot < dispatch.location_count) {
-		const tfx_gpu_spawn_location location = location_buffers[push.location_buffer_index][push.location_base + dispatch.location_offset + slot];
-		if (location.local_id == cold.spawn_location) {
-			return location.packed_rotation;
-		}
-	}
-	return uint2(0u, 0x7FFF0000u);
-}
-
 //A relative particle whose location has gone is removed here, before the write, so it's drawn with no size and isn't captured, which
 //is what the CPU's location_alive mask does in the instance pass ahead of its age pass kill
 float3 tfx_particle_world_position(tfx_gpu_particle_push push, tfx_gpu_particle_dispatch dispatch, tfx_gpu_particle_tick tick, inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, out uint2 location_rotation) {
@@ -557,9 +544,6 @@ float3 tfx_particle_world_position(tfx_gpu_particle_push push, tfx_gpu_particle_
 		hot.flags |= tfx_particle_remove;
 	}
 	location_rotation = transform.location_rotation;
-	if ((dispatch.flags & tfx_dispatch_align_location) != 0) {
-		location_rotation = tfx_particle_live_location_rotation(push, dispatch, cold);
-	}
 	return transform.to_world(hot.position);
 }
 
@@ -942,7 +926,7 @@ void tfx_write_particle_instance(tfx_gpu_particle_push push, tfx_gpu_particle_di
 		instance.alignment = tfx_pack8bit_xyz(alignment);
 	} else if ((flags & tfx_dispatch_align_emitter) != 0) {
 		float3 alignment = tfx_rotate_vector(float3(0.0, 1.0, 0.0), dispatch.emitter_rotation);
-		if ((flags & (tfx_dispatch_location_rotation | tfx_dispatch_align_location)) != 0) {
+		if ((flags & tfx_dispatch_location_rotation) != 0) {
 			alignment = tfx_rotate_vector(alignment, tfx_unpack16bit_quaternion(location_rotation));
 		}
 		instance.alignment = tfx_pack8bit_xyz(alignment);
