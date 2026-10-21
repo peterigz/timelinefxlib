@@ -14469,6 +14469,22 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 					continue;
 				}
 				tfx_effect_instance_data_t &sprites = effect.instance_data;
+				if (!(effect.state_flags & tfxEffectStateFlags_pending_warmup)) {
+					//A GPU emitter warms up on the CPU but its bank goes into its ring next, so its particles leave the depth order here
+					for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+						tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+						if (emitter.state_properties.gpu_group_index == tfxINVALID || emitter.particles_index == tfxINVALID) {
+							continue;
+						}
+						tfxU32 emitter_layer = emitter.library->shared_properties[emitter.state_properties.shared_index].layer;
+						tfx_vector_t<tfx_depth_index_t> &depth_indexes = sprites.depth_indexes[emitter_layer][sprites.current_depth_buffer_index[emitter_layer]];
+						tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
+						tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
+						for (tfxU32 i = 0; i != buffer.current_size; ++i) {
+							depth_indexes[bank.depth_index[tfx__get_circular_index(&buffer, i)]].particle_id = tfxINVALID;
+						}
+					}
+				}
 				for (tfxEachLayer) {
 					tfxU32 current_buffer_index = sprites.current_depth_buffer_index[layer];
 					tfxU32 next_buffer_index = current_buffer_index ^ 1;
