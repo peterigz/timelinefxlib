@@ -3099,6 +3099,9 @@ typedef enum {
 	tfxBillboarding_max                                         = 4
 } tfx_billboarding_option;
 
+//Seconds of travel a stretch of 1 streaks a particle over, whatever the update rate
+#define tfxSTRETCH_REFERENCE_TIME (1.f / 60.f)
+
 typedef enum {
 	tfxEmitterControlProfile_basic                              = 0,
 	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,

@@ -231,7 +231,7 @@ void main() {
     mat4 modelView = ub[pc.uniform_index].view * model;
 
     //Calculate the amount to stretch the particles. A stretch value (set in the editor) of 1 means that the particle is stretched
-    //by the amount travelled.
+    //by the distance travelled in a 60th of a second; position.w already has the update length taken out of it.
 
     //Get the direction to stretch based on the billboarding option
 	vec3 stretch_direction = billboarding ? motion : normalize(camera_relative_aligment); // Stretch along the direction of travel

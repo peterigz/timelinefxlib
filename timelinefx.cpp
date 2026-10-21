@@ -16230,7 +16230,8 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->handle_y = tfxWideSetSingle(handle.y);
 	pass->handle_z = tfxWideSetSingle(handle.z);
 	pass->overall_scale = tfxWideSetSingle(work_entry->overall_scale);
-	pass->global_stretch = tfxWideSetSingle(work_entry->global_stretch);
+	//The vertex shader multiplies stretch by the distance moved this update, so take the update length back out of it
+	pass->global_stretch = tfxWideSetSingle(pm.update_time > 0.0 ? work_entry->global_stretch * tfxSTRETCH_REFERENCE_TIME / (float)pm.update_time : work_entry->global_stretch);
 	pass->stretch_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_stretch_index);
 	pass->vector_align_type = work_entry->properties->vector_align_type;
 	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
@@ -24510,9 +24511,11 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		dispatch.tick_count = group.ticks.current_size;
 		//The location table holds the ages after the last tick, and locations age on every tick the ring updates
 		float later_ticks_length = 0.f;
+		float written_update_time = 0.f;
 		for (tfxU32 tick_index = group.ticks.current_size; tick_index-- != 0;) {
 			group.ticks[tick_index].location_age_offset = later_ticks_length;
 			later_ticks_length += group.ticks[tick_index].frame_length;
+			written_update_time += group.ticks[tick_index].update_time;
 		}
 		for (tfx_gpu_particle_tick_t &tick : group.ticks) {
 			pm->gpu_frame_ticks.push_back(tick);
@@ -24531,7 +24534,8 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		}
 		dispatch.key = effect.gpu_key != tfxINVALID ? effect.gpu_key : emitter.state_properties.gpu_key;
 		dispatch.global_intensity = effect.spawn_controls.intensity;
-		dispatch.global_stretch = effect.stretch;
+		//The vertex shader multiplies stretch by the distance moved over every tick since the last write, so take their length back out of it
+		dispatch.global_stretch = written_update_time > 0.f ? effect.stretch * tfxSTRETCH_REFERENCE_TIME / written_update_time : effect.stretch;
 		dispatch.image_frame_rate = emitter.state_properties.image_frame_rate;
 		dispatch.end_frame = emitter.state_properties.end_frame;
 		const bool roll_only = !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw);
