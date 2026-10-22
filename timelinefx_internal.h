@@ -3343,6 +3343,7 @@ typedef enum {
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
 	tfxEmitterStateFlags_orient_to_camera_pending               = 1 << 26,      //The camera facing rotation hasn't been latched yet. Cleared on the emitter's first update once the parent effect has a world transform
 	tfxEmitterStateFlags_has_rotated_path                       = 1 << 27,
+	tfxEmitterStateFlags_relative_angle                         = 1 << 28,      //Relative angle on a billboard mode that doesn't take its orientation from the alignment vector, which already carries the emitter rotation
 	tfxEmitterStateFlags_wrap_single_sprite                     = 1 << 30,
 	tfxEmitterStateFlags_src_ribbon_is_also_relative	        = 1 << 31,	    //Flagged when emission type is spawn on ribbon and both the emitter and ribbon emitter are relative.
 } tfx_emitter_state_flag_bits;

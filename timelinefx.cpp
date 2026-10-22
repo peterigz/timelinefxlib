@@ -13226,6 +13226,7 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 		state_flags |= shared_properties->emission_type == tfxLine && property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 		state_flags |= (gpu_properties->flags & 0x3) == tfxBillboarding_free_align || ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
+		state_flags |= property_flags & tfxEmitterPropertyFlags_relative_angle && ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_camera || (gpu_properties->flags & 0x3) == tfxBillboarding_free_align) ? tfxEmitterStateFlags_relative_angle : 0;
 		state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
 		if (emitter->state_properties.path_attributes != tfxINVALID) {
 			tfx_emitter_path_t *path = &emitter->library->paths[emitter->state_properties.path_attributes];
@@ -16271,7 +16272,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->spin_pitch_and_yaw = (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) != 0;
 	pass->has_spin_roll = (control_profile & tfxEmitterControlProfile_spin) != 0;
 	pass->has_spin_3d = (control_profile & tfxEmitterControlProfile_spin3d) != 0;
-	pass->relative_angle = (property_flags & tfxEmitterPropertyFlags_relative_angle) != 0;
+	pass->relative_angle = (emitter.state_flags & tfxEmitterStateFlags_relative_angle) != 0;
 	//Twist of the emitter rotation about the roll axis, only read by the roll-only spin path
 	pass->emitter_roll = pass->relative_angle && !pass->spin_pitch_and_yaw ? tfxWideSetSingle(2.f * atan2f(emitter.rotation.x, emitter.rotation.w)) : tfxWideSetZero;
 
@@ -20330,7 +20331,7 @@ void tfx__spawn_particle_user_location_tweaks(tfx_work_queue_t *queue, void *dat
 		return;
 	}
 	//Relative angle particles turn with the emitter live, so the location's part of that rotation is baked into their angle offsets
-	const bool rotate_angle = rotate_emission && (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
+	const bool rotate_angle = rotate_emission && (emitter.state_flags & tfxEmitterStateFlags_relative_angle);
 	const bool spin_pitch_and_yaw = (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) != 0;
 	const float spawn_impulse = entry->properties->spawn_impulse;
 	const float spawn_impulse_variation = entry->properties->spawn_impulse_variation;
@@ -20509,7 +20510,7 @@ void tfx__build_gpu_spawn_block(tfx_stage pm, const tfx_spawn_work_entry_t *entr
 	flags |= angle_settings & tfxAngleSettingFlags_specify_pitch ? tfxGPUSpawnBlockFlags_specify_pitch : 0;
 	flags |= angle_settings & tfxAngleSettingFlags_specify_yaw ? tfxGPUSpawnBlockFlags_specify_yaw : 0;
 	flags |= angle_settings & tfxAngleSettingFlags_specify_roll ? tfxGPUSpawnBlockFlags_specify_roll : 0;
-	flags |= property_flags & tfxEmitterPropertyFlags_relative_angle ? tfxGPUSpawnBlockFlags_relative_angle : 0;
+	flags |= emitter.state_flags & tfxEmitterStateFlags_relative_angle ? tfxGPUSpawnBlockFlags_relative_angle : 0;
 	flags |= entry->emission_type == tfxUser ? tfxGPUSpawnBlockFlags_user : 0;
 	if (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_simplex_noise_type) {
 		flags |= tfxGPUSpawnBlockFlags_noise_offsets | tfxGPUSpawnBlockFlags_noise_resolution;
@@ -24420,7 +24421,7 @@ tfxINTERNAL tfxGPUParticleDispatchFlags tfx__gpu_dispatch_flags(tfx_particle_emi
 	flags |= control_profile & tfxEmitterControlProfile_spin ? tfxGPUParticleDispatchFlags_spin_roll : 0;
 	flags |= control_profile & tfxEmitterControlProfile_spin3d ? tfxGPUParticleDispatchFlags_spin_3d : 0;
 	flags |= emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw ? tfxGPUParticleDispatchFlags_spin_pitch_and_yaw : 0;
-	flags |= property_flags & tfxEmitterPropertyFlags_relative_angle ? tfxGPUParticleDispatchFlags_relative_angle : 0;
+	flags |= emitter.state_flags & tfxEmitterStateFlags_relative_angle ? tfxGPUParticleDispatchFlags_relative_angle : 0;
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_play_once ? tfxGPUParticleDispatchFlags_play_once : 0;
 	flags |= shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation ? tfxGPUParticleDispatchFlags_reverse_animation : 0;
 	flags |= properties->drag_variation > 0.f ? tfxGPUParticleDispatchFlags_drag_variation : 0;
@@ -24555,7 +24556,7 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		dispatch.image_frame_rate = emitter.state_properties.image_frame_rate;
 		dispatch.end_frame = emitter.state_properties.end_frame;
 		const bool roll_only = !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw);
-		dispatch.emitter_roll = roll_only && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle ? 2.f * atan2f(emitter.rotation.x, emitter.rotation.w) : 0.f;
+		dispatch.emitter_roll = roll_only && emitter.state_flags & tfxEmitterStateFlags_relative_angle ?2.f * atan2f(emitter.rotation.x, emitter.rotation.w) : 0.f;
 		dispatch.emitter_rotation.x = emitter.rotation.x;
 		dispatch.emitter_rotation.y = emitter.rotation.y;
 		dispatch.emitter_rotation.z = emitter.rotation.z;
