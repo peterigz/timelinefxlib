@@ -3,7 +3,7 @@
 
 #define TFX_VERSION_NAME "Alpha"
 #define TFX_VERSION_MAJOR 0
-#define TFX_VERSION_MINOR 37
+#define TFX_VERSION_MINOR 38
 #define TFX_VERSION_PATCH 0
 
 #define TFX_STRINGIFY(x) #x
