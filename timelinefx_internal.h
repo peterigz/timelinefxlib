@@ -6472,6 +6472,7 @@ typedef enum {
 	tfxGPUGroupFlags_none = 0,
 	tfxGPUGroupFlags_has_written = 1 << 0,			//Written into the instance buffer of a previous fetch, so it can interpolate
 	tfxGPUGroupFlags_updated_this_tick = 1 << 1,
+	tfxGPUGroupFlags_warmed_bank = 1 << 2,			//The bank still held the warmup's particles when the tick started
 } tfx_gpu_group_flag_bits;
 
 typedef tfxU32 tfxGPUGroupFlags;
@@ -6499,6 +6500,7 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  instance_start;				//Where ring position 0 goes in the instance buffer, from the last tick's layout
 	tfxU32  upload_offset;				//This tick's rows in the stage's spawn upload arrays
 	tfxU32  upload_count;
+	tfxU32  removed_spawn_count;		//This tick's spawns the spawner flagged removed, so the bank's live count needs no walk
 	struct tfx_spawn_work_entry_s *generated_spawn;	//Set for a tick whose spawns the kernel generates, until tfx__record_gpu_groups writes their block
 	tfxGPUGroupFlags flags;
 	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
@@ -6516,6 +6518,7 @@ typedef struct tfx_gpu_particle_group_s {
 typedef struct tfx_gpu_pack_work_entry_s {
 	struct tfx_stage_s *pm;
 	tfxU32 group_index;
+	tfxU32 pushes_batch;				//The pack measures the tick's expiry and pushes its one tracking batch
 } tfx_gpu_pack_work_entry_t;
 
 //WebGPU's default storage binding offset alignment, and the worst case on OpenGL and Vulkan

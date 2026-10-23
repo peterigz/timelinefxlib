@@ -22499,6 +22499,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 
 	int node = 0;
 	float t = 0.f;
+	tfxU32 removed_count = 0;
 
 	//Applied where emitter_size is, ahead of any path rotation, so a location's emitter size multipliers match the effect's for rotated paths too
 	//Edge traversal rebuilds the position from the emitter's own size every frame, so it doesn't take them
@@ -22538,6 +22539,7 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 			if (!slot) {
 				//The last of the source's paths finished part way through this update
 				entry->particle_data->flags_single_loop_count[index] |= tfxParticleFlags_remove;
+				removed_count++;
 				tween += entry->qty_step_size;
 				continue;
 			}
@@ -22650,6 +22652,9 @@ void tfx__spawn_particle_path(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tween += entry->qty_step_size;
+	}
+	if (removed_count && emitter.state_properties.gpu_group_index != tfxINVALID) {
+		pm.gpu_groups[emitter.state_properties.gpu_group_index].removed_spawn_count += removed_count;
 	}
 }
 
@@ -23968,6 +23973,11 @@ tfxINTERNAL void tfx__grow_gpu_group_tracking(tfx_gpu_particle_group_t *group) {
 tfxU32 tfx__advance_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter) {
 	tfx_gpu_particle_group_t &group = pm->gpu_groups[emitter->state_properties.gpu_group_index];
 	group.flags |= tfxGPUGroupFlags_updated_this_tick;
+	group.removed_spawn_count = 0;
+	//Every tick clears the bank, so only a warmup can have left rows in it
+	if (emitter->particles_index != tfxINVALID && pm->particle_array_buffers[emitter->particles_index].current_size) {
+		group.flags |= tfxGPUGroupFlags_warmed_bank;
+	}
 	while (group.tracking_count > 0) {
 		tfx_gpu_spawn_tracking_t &front = group.tracking[group.tracking_head];
 		if (group.time_ms < front.expire_ms) {
@@ -24008,15 +24018,19 @@ tfxINTERNAL void tfx__push_gpu_batch(tfx_gpu_particle_group_t &group, double exp
 	group.tracking_count++;
 }
 
-//Counts the bank rows that will be packed and sets them as tracking batches. A batch is bumped once the ring time before a
-//tick reaches the ring time before this one plus the batch's longest remaining life: that's the tick its last particle died in.
-//A bank whose ages spread wider than a frame is a warmed up one, packed in age order, so it's split into batches that can
-//each be bumped as they die instead of all waiting on the youngest.
+//A batch is bumped once the ring time before a tick reaches the ring time before this one plus the batch's longest remaining life:
+//that's the tick its last particle died in. The margin keeps float age rounding from bumping a particle the tick before it dies
+tfxINTERNAL double tfx__gpu_batch_start_ms(tfx_stage pm, const tfx_gpu_particle_group_t &group) {
+	return group.time_ms - pm->frame_length + tfxGPU_EXPIRY_MARGIN;
+}
+
+//Only for the tick that hands a warmed bank over, every other tick's batch is measured by its pack. Counts the bank rows that will
+//be packed and sets them as tracking batches. A bank whose ages spread wider than a frame is packed in age order, so it's split
+//into batches that can each be bumped as they die instead of all waiting on the youngest.
 tfxINTERNAL tfxU32 tfx__set_gpu_batches(tfx_stage pm, tfx_gpu_particle_group_t &group, tfxU32 particles_index) {
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[particles_index];
 	tfx_particle_soa_t &bank = pm->particle_arrays[particles_index];
-	//The margin keeps float age rounding from bumping a particle the tick before it dies
-	const double previous_time_ms = group.time_ms - pm->frame_length + tfxGPU_EXPIRY_MARGIN;
+	const double previous_time_ms = tfx__gpu_batch_start_ms(pm, group);
 	tfxU32 live = 0;
 	float longest_remaining_life = 0.f;
 	float youngest_age = tfxMAX_FLOAT;
@@ -24249,16 +24263,24 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 		}
 		const tfx_spawn_work_entry_t *generated_spawn = group.generated_spawn;
 		group.generated_spawn = nullptr;
+		const bool warmed_bank = (group.flags & tfxGPUGroupFlags_warmed_bank) != 0;
+		group.flags &= ~tfxGPUGroupFlags_warmed_bank;
 		tfxU32 live;
 		tfxU32 upload_offset;
 		if (generated_spawn) {
 			live = generated_spawn->amount_to_spawn;
 			const float longest_life = tfx__record_generated_spawns(pm, emitter, generated_spawn, &upload_offset);
 			//Every particle in the tick has an age of at least 0, so none outlives the longest life it could have been given
-			tfx__push_gpu_batch(group, group.time_ms - pm->frame_length + tfxGPU_EXPIRY_MARGIN + longest_life, live);
+			tfx__push_gpu_batch(group, tfx__gpu_batch_start_ms(pm, group) + longest_life, live);
 			group.upload_count = 0;
 		} else {
-			live = emitter.particles_index != tfxINVALID ? tfx__set_gpu_batches(pm, group, emitter.particles_index) : 0;
+			if (emitter.particles_index == tfxINVALID) {
+				live = 0;
+			} else if (warmed_bank) {
+				live = tfx__set_gpu_batches(pm, group, emitter.particles_index);
+			} else {
+				live = pm->particle_array_buffers[emitter.particles_index].current_size - group.removed_spawn_count;
+			}
 			upload_offset = pm->gpu_spawns.current_size;
 			group.upload_offset = upload_offset;
 			group.upload_count = live;
@@ -24277,6 +24299,11 @@ void tfx__record_gpu_groups(tfx_stage pm) {
 			tfx_gpu_pack_work_entry_t &work_entry = pm->gpu_pack_work.next();
 			work_entry.pm = pm;
 			work_entry.group_index = group_index;
+			work_entry.pushes_batch = !warmed_bank;
+			//The pack pushes from a worker, which must never grow the tracking ring
+			if (!warmed_bank && group.tracking_count == group.tracking.current_size) {
+				tfx__grow_gpu_group_tracking(&group);
+			}
 		} else if (emitter.particles_index != tfxINVALID) {
 			tfx__clear_soa_buffer(&pm->particle_array_buffers[emitter.particles_index]);
 		}
@@ -24344,6 +24371,7 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	const float image_frame_rate_per_millisecond = emitter.state_properties.image_frame_rate * 0.001f;
 	//Only the noise spawners write the bank's noise fields, so an emitter without noise uploads zeros rather than stale rows
 	const bool has_noise = (emitter.state_properties.control_profile & tfxEmitterControlProfile_has_any_noise) != 0;
+	float longest_remaining_life = 0.f;
 	tfxU32 row = 0;
 	for (tfxU32 i = 0; i != buffer.current_size; ++i) {
 		const tfxU32 index = tfx__get_circular_index(&buffer, i);
@@ -24352,6 +24380,7 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		}
 		const float age = bank.age[index];
 		const float inv_max_age = bank.inv_max_age[index];
+		longest_remaining_life = tfx__Max(longest_remaining_life, 1.f / inv_max_age - age);
 		tfx_gpu_particle_spawn_t &spawn = spawns[row];
 		tfx_gpu_particle_hot_t &hot_row = spawn.hot;
 		hot_row.position.x = bank.position_x[index];
@@ -24386,6 +24415,9 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 		row++;
 	}
 	TFX_ASSERT(row == group.upload_count);
+	if (work_entry->pushes_batch) {
+		tfx__push_gpu_batch(group, tfx__gpu_batch_start_ms(pm, group) + longest_remaining_life, row);
+	}
 	tfx__clear_soa_buffer(&buffer);
 }
 
