@@ -2957,20 +2957,6 @@ typedef enum {
 	tfxLetFree
 } tfx_line_traversal_end_behaviour;
 
-//Mainly for the editor, maybe this can just be moved there instead?
-typedef enum {
-	tfxFullColor,
-	tfxOneColor,
-	tfxGreyScale
-} tfx_export_color_options;
-
-//Mainly for the editor, maybe this can just be moved there instead?
-typedef enum {
-	tfxSpriteSheet,
-	tfxStrip,
-	tfxSeparateImages
-} tfx_export_options;
-
 //tfx_graph_t data can be looked up in one of 2 ways, either by just using linear/bezier interpolation (slower), or look up the value in a pre-compiled look up table.
 typedef enum {
 	tfxPrecise,
@@ -5906,32 +5892,6 @@ typedef struct tfx_preview_camera_settings_s {
 	bool attach_effect_to_camera;
 } tfx_preview_camera_settings_t;
 
-//todo: this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
-typedef struct tfx_sprite_sheet_settings_s {
-	tfx_vec2_t frame_size;
-	float zoom;
-	int frames;
-	int export_frame_count;
-	float current_time;
-	int current_frame;
-	int frame_offset;
-	int extra_frames_count;
-	tfxU32 seed;
-	tfxAnimationFlags animation_flags;
-	tfx_render_view_mode view_mode;
-	tfxU32 needs_exporting;
-	float max_radius;
-	tfxU32 largest_frame;
-	float playback_speed;
-	float effect_z_offset;
-	tfx_export_color_options color_option;
-	tfx_export_options export_option;
-	tfx_camera_settings_t camera_settings;
-	//Maybe irrelevent:
-	float scale;
-	tfx_vec3_t position;
-} tfx_sprite_sheet_settings_t;
-
 //This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
 typedef struct tfx_sprite_data_settings_s {
 	int real_frames;
@@ -6643,8 +6603,6 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 uid;
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
 	float max_radius;
-	//Index to sprite sheet settings stored in the effect library. 
-	tfxIndex sprite_sheet_settings_index;
 	//Index to sprite data settings stored in the effect library. 
 	tfxIndex sprite_data_settings_index;
 	//Index to preview camera settings stored in the effect library. Would like to move this at some point
@@ -7598,12 +7556,10 @@ typedef struct tfx_library_s {
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_graph_list_t> graphs;
-	tfx_vector_t<tfx_sprite_sheet_settings_t> sprite_sheet_settings;
 	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	tfx_vector_t<tfx_preview_camera_settings_t> preview_camera_settings;
 
 	tfx_vector_t<tfxU32> free_graph_lists;
-	tfx_vector_t<tfxU32> free_animation_settings;
 	tfx_vector_t<tfxU32> free_preview_camera_settings;
 	tfx_vector_t<tfxU32> free_particle_emitter_properties;
 	tfx_vector_t<tfxU32> free_shared_emitter_properties;
@@ -8092,7 +8048,6 @@ tfxAPI_EDITOR tfx_effect_descriptor tfx__library_move_up(tfx_library library, tf
 tfxAPI_EDITOR tfx_effect_descriptor tfx__library_move_down(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__add_library_effect_graphs(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_transform_graphs(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);

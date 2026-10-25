@@ -4247,7 +4247,6 @@ tfx_effect_descriptor tfx__add_new_library_effect(tfx_library library, tfx_str64
 	tfx__reset_effect_graphs(effect, true);
 	effect->state_properties.transform_index = tfx__add_library_transform_graphs(library);
 	tfx__reset_transform_graphs(effect, true);
-	tfx__add_library_sprite_sheet_settings(library, effect);
 	tfx__add_library_sprite_data_settings(library, effect);
 	tfx__add_library_preview_camera_settings_effect(library, effect);
 	effect->name = *name;
@@ -4759,38 +4758,6 @@ void tfx__add_library_effect_graphs(tfx_library library, tfx_effect_descriptor e
 	}
 }
 
-tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_descriptor effect) {
-	TFX_ASSERT(effect->type == tfxEffectType);
-	tfx_sprite_sheet_settings_t a{};
-	a.frames = 32;
-	a.current_frame = 1;
-	a.frame_offset = 0;
-	a.extra_frames_count = 0;
-	a.position = tfx_vec2_t(0.f, 0.f);
-	a.frame_size = tfx_vec2_t(256.f, 256.f);
-	a.playback_speed = 1.f;
-	a.view_mode = tfx_perspective_view;
-	a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
-	a.seed = 0;
-	a.zoom = 1.f;
-	a.scale = 1.f;
-	a.needs_exporting = 0;
-	a.color_option = tfx_export_color_options::tfxFullColor;
-	a.export_option = tfx_export_options::tfxSpriteSheet;
-	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
-	a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
-	a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
-	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
-	a.effect_z_offset = tfx__length_vec3(&a.camera_settings.camera_position);
-	a.camera_settings.camera_isometric = false;
-	a.camera_settings.camera_isometric_scale = 5.f;
-	a.camera_settings.camera_hide_floor = false;
-	library->sprite_sheet_settings.push_back(a);
-	effect->sprite_sheet_settings_index = library->sprite_sheet_settings.size() - 1;
-	return effect->sprite_sheet_settings_index;
-}
-
 tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_descriptor effect) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	TFX_ASSERT_HANDLE(effect);		//Not a valid effect handle
@@ -4934,11 +4901,9 @@ void tfx__init_library(tfx_library library) {
 	library->paths.init();
 	library->graphs.init();
 	library->graphs.set_alignment(16);
-	library->sprite_sheet_settings.init();
 	library->sprite_data_settings.init();
 	library->preview_camera_settings.init();
 	library->free_graph_lists.init();
-	library->free_animation_settings.init();
 	library->free_preview_camera_settings.init();
 	library->free_particle_emitter_properties.init();
 	library->free_paths.init();
@@ -5068,14 +5033,12 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	library->color_ramps.color_ramp_bitmaps.free();
 	library->graphs.free();
 	library->paths.free();
-	library->sprite_sheet_settings.free();
 	library->preview_camera_settings.free();
 	library->emitter_properties.free();
 	library->shared_properties.free();
 	library->ribbon_properties.free();
 	library->pre_recorded_effects.FreeAll();
 	library->particle_gpu_properties.free();
-	library->free_animation_settings.free();
 	library->free_preview_camera_settings.free();
 	library->free_infos.free();
 	library->free_particle_emitter_properties.free();
@@ -5836,28 +5799,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("color_ramp_index", tfxUInt);
 
 	//Animation settings
-	names_and_types.Insert("playback_speed", tfxFloat);
-	names_and_types.Insert("animation_magenta_mask", tfxBool);
-	names_and_types.Insert("animation_magenta_mask_always", tfxBool);
-	names_and_types.Insert("frames", tfxUInt);
-	names_and_types.Insert("export_frame_count", tfxUInt);
-	names_and_types.Insert("current_frame", tfxUInt);
-	names_and_types.Insert("frame_offset", tfxUInt);
-	names_and_types.Insert("extra_frames_count", tfxSInt);
 	names_and_types.Insert("layer", tfxUInt);
-	names_and_types.Insert("position_x", tfxFloat);
-	names_and_types.Insert("position_y", tfxFloat);
-	names_and_types.Insert("position_z", tfxFloat);
-	names_and_types.Insert("animation_offset_into_camera", tfxFloat);
-	names_and_types.Insert("frame_width", tfxFloat);
-	names_and_types.Insert("frame_height", tfxFloat);
 	names_and_types.Insert("animation_flags", tfxUInt);
-	names_and_types.Insert("animation_view_mode", tfxSInt);
-	names_and_types.Insert("loop", tfxBool);
-	names_and_types.Insert("seamless", tfxBool);
-	names_and_types.Insert("seed", tfxUInt);
-	names_and_types.Insert("zoom", tfxFloat);
-	names_and_types.Insert("scale", tfxFloat);
 	names_and_types.Insert("sprite_data_seed", tfxUInt);
 	names_and_types.Insert("sprite_data_flags", tfxUInt);
 	names_and_types.Insert("sprite_data_frames", tfxUInt);
@@ -5865,21 +5808,6 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("sprite_data_extra_frames_count", tfxUInt);
 	names_and_types.Insert("sprite_data_playback_speed", tfxFloat);
 	names_and_types.Insert("sprite_data_recording_frame_rate", tfxFloat);
-	names_and_types.Insert("color_option", tfxSInt);
-	names_and_types.Insert("export_option", tfxSInt);
-	names_and_types.Insert("export_with_transparency", tfxBool);
-	names_and_types.Insert("camera_position_x", tfxFloat);
-	names_and_types.Insert("camera_position_y", tfxFloat);
-	names_and_types.Insert("camera_position_z", tfxFloat);
-	names_and_types.Insert("camera_pitch", tfxFloat);
-	names_and_types.Insert("camera_yaw", tfxFloat);
-	names_and_types.Insert("camera_fov", tfxFloat);
-	names_and_types.Insert("camera_floor_height", tfxFloat);
-	names_and_types.Insert("camera_isometric", tfxBool);
-	names_and_types.Insert("camera_isometric_scale", tfxFloat);
-	names_and_types.Insert("camera_hide_floor", tfxBool);
-	names_and_types.Insert("camera_free_speed", tfxFloat);
-	names_and_types.Insert("camera_ray_offset", tfxFloat);
 	names_and_types.Insert("preview_camera_position_x", tfxFloat);
 	names_and_types.Insert("preview_camera_position_y", tfxFloat);
 	names_and_types.Insert("preview_camera_position_z", tfxFloat);
@@ -6771,41 +6699,9 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 		if (tfx__property_is(property_name, "path_reverse_direction")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_reverse_direction);
 	}
 
-	//Only effects own sprite sheet, sprite data and preview camera settings
+	//Only effects own sprite data and preview camera settings
 	if (effect->type != tfxEffectType) return false;
 
-	tfx_sprite_sheet_settings_t &sprite_sheet = library->sprite_sheet_settings[effect->sprite_sheet_settings_index];
-	if (tfx__property_is(property_name, "frames")) return tfx__property_u32(out_value, sprite_sheet.frames);
-	if (tfx__property_is(property_name, "export_frame_count")) return tfx__property_u32(out_value, sprite_sheet.export_frame_count);
-	if (tfx__property_is(property_name, "current_frame")) return tfx__property_u32(out_value, sprite_sheet.current_frame);
-	if (tfx__property_is(property_name, "seed")) return tfx__property_u32(out_value, sprite_sheet.seed);
-	if (tfx__property_is(property_name, "frame_offset")) return tfx__property_u32(out_value, (tfxU32)sprite_sheet.frame_offset);
-	if (tfx__property_is(property_name, "animation_flags")) return tfx__property_u32(out_value, sprite_sheet.animation_flags & tfxAnimationFlags_needs_recording);
-	if (tfx__property_is(property_name, "extra_frames_count")) return tfx__property_int(out_value, sprite_sheet.extra_frames_count);
-	if (tfx__property_is(property_name, "color_option")) return tfx__property_int(out_value, sprite_sheet.color_option);
-	if (tfx__property_is(property_name, "export_option")) return tfx__property_int(out_value, sprite_sheet.export_option);
-	if (tfx__property_is(property_name, "animation_view_mode")) return tfx__property_int(out_value, sprite_sheet.view_mode);
-	if (tfx__property_is(property_name, "position_x")) return tfx__property_float(out_value, sprite_sheet.position.x);
-	if (tfx__property_is(property_name, "position_y")) return tfx__property_float(out_value, sprite_sheet.position.y);
-	if (tfx__property_is(property_name, "position_z")) return tfx__property_float(out_value, sprite_sheet.position.z);
-	if (tfx__property_is(property_name, "frame_width")) return tfx__property_float(out_value, sprite_sheet.frame_size.x);
-	if (tfx__property_is(property_name, "frame_height")) return tfx__property_float(out_value, sprite_sheet.frame_size.y);
-	if (tfx__property_is(property_name, "zoom")) return tfx__property_float(out_value, sprite_sheet.zoom);
-	if (tfx__property_is(property_name, "scale")) return tfx__property_float(out_value, sprite_sheet.scale);
-	if (tfx__property_is(property_name, "playback_speed")) return tfx__property_float(out_value, sprite_sheet.playback_speed);
-	if (tfx__property_is(property_name, "camera_position_x")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_position.x);
-	if (tfx__property_is(property_name, "camera_position_y")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_position.y);
-	if (tfx__property_is(property_name, "camera_position_z")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_position.z);
-	if (tfx__property_is(property_name, "camera_pitch")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_pitch);
-	if (tfx__property_is(property_name, "camera_yaw")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_yaw);
-	if (tfx__property_is(property_name, "camera_fov")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_fov);
-	if (tfx__property_is(property_name, "camera_floor_height")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_floor_height);
-	if (tfx__property_is(property_name, "camera_isometric_scale")) return tfx__property_float(out_value, sprite_sheet.camera_settings.camera_isometric_scale);
-	if (tfx__property_is(property_name, "loop")) return tfx__property_bool(out_value, sprite_sheet.animation_flags & tfxAnimationFlags_loop);
-	if (tfx__property_is(property_name, "seamless")) return tfx__property_bool(out_value, sprite_sheet.animation_flags & tfxAnimationFlags_seamless);
-	if (tfx__property_is(property_name, "export_with_transparency")) return tfx__property_bool(out_value, sprite_sheet.animation_flags & tfxAnimationFlags_export_with_transparency);
-	if (tfx__property_is(property_name, "camera_isometric")) return tfx__property_bool(out_value, sprite_sheet.camera_settings.camera_isometric);
-	if (tfx__property_is(property_name, "camera_hide_floor")) return tfx__property_bool(out_value, sprite_sheet.camera_settings.camera_hide_floor);
 
 	tfx_sprite_data_settings_t &sprite_data = library->sprite_data_settings[effect->sprite_data_settings_index];
 	if (tfx__property_is(property_name, "sprite_data_flags")) return tfx__property_u32(out_value, sprite_data.animation_flags & tfxAnimationFlags_needs_recording);
@@ -6956,11 +6852,6 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "single_decay_amount" && shared_properties) shared_properties->single_decay_amount = value;
 	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
-	else if (*field == "frames") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frames = value;
-	else if (*field == "export_frame_count") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_frame_count = value;
-	else if (*field == "current_frame") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].current_frame = value;
-	else if (*field == "seed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].seed = value;
-	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
 	else if (*field == "ribbon_noise_algorithm" && ribbon_properties) ribbon_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "ribbon_noise_octaves" && ribbon_properties) ribbon_properties->noise_octaves = value;
@@ -6982,7 +6873,6 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "vector_align_type" && emitter_properties) emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
 	else if (*field == "angle_setting" && emitter_properties) emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
 	else if (*field == "sort_passes") effect->sort_passes = tfxMin(5, value);
-	else if (*field == "animation_flags") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
 	else if (*field == "sprite_data_flags") effect->library->sprite_data_settings[effect->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
 	else if (*field == "sprite_data_seed") effect->library->sprite_data_settings[effect->sprite_data_settings_index].seed = value;
 	else if (*field == "sprite_data_frame_offset") effect->library->sprite_data_settings[effect->sprite_data_settings_index].frame_offset = value;
@@ -7011,12 +6901,7 @@ void tfx__assign_effector_property_int(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "emission_layout" && emitter_properties) tfx__set_emission_step_layout(&emitter_properties->emission_steps, value >= 0 && value < tfxEmissionStepLayout_max ? (tfx_emission_step_layout)value : tfxEmissionStepLayout_fan);
 	else if (*field == "roll_distribution" && emitter_properties) emitter_properties->roll_steps.distribution = value >= 0 && value < tfxAngleStepDistribution_max ? (tfx_angle_step_distribution)value : tfxAngleStepDistribution_random;
 	else if (*field == "emission_type" && shared_properties) shared_properties->emission_type = (tfx_emission_type)value;
-	else if (*field == "color_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
-	else if (*field == "export_option") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
-	else if (*field == "frame_offset") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_offset = value;
-	else if (*field == "extra_frames_count") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].extra_frames_count = value;
 	else if (*field == "preview_camera_view_mode") effect->library->preview_camera_settings[effect->preview_camera_settings].view_mode = (tfx_render_view_mode)value;
-	else if (*field == "animation_view_mode") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].view_mode = (tfx_render_view_mode)value;
 	else if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect)];  path->settings.extrusion_type = (tfx_path_extrusion_type)value;
 	} else if (*field == "path_rotation_distribution") {
@@ -7041,26 +6926,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "ribbon_noise_lock_rate") { ribbon_properties->noise_lock_rate = value; return; }
 		else if (*field == "ribbon_lag_time") { ribbon_properties->lag_time = value; return; }
 	}
-	if (*field == "position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.x = value;
-	else if (*field == "position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.y = value;
-	else if (*field == "position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].position.z = value;
-	else if (*field == "animation_offset_into_camera") {
-		effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].effect_z_offset = value;
-	}
-	else if (*field == "frame_width") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_size.x = value;
-	else if (*field == "frame_height") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].frame_size.y = value;
-	else if (*field == "zoom") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].zoom = value;
-	else if (*field == "scale") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].scale = value;
-	else if (*field == "playback_speed") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].playback_speed = value;
-	else if (*field == "camera_position_x") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_position.x = value;
-	else if (*field == "camera_position_y") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_position.y = value;
-	else if (*field == "camera_position_z") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_position.z = value;
-	else if (*field == "camera_pitch") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_pitch = value;
-	else if (*field == "camera_yaw") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_yaw = value;
-	else if (*field == "camera_fov") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_fov = value;
-	else if (*field == "camera_floor_height") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
-	else if (*field == "camera_isometric_scale") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
-	else if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.x = value;
+	if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.x = value;
 	else if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.y = value;
 	else if (*field == "preview_camera_position_z") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.z = value;
 	else if (*field == "preview_camera_pitch") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_pitch = value;
@@ -7148,12 +7014,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	}
 }
 void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256_t *field, bool value) {
-	if (*field == "loop") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
-	else if (*field == "seamless") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
-	else if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
-	else if (*field == "camera_isometric") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_isometric = false;
-	else if (*field == "camera_hide_floor") effect->library->sprite_sheet_settings[effect->sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
-	else if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[effect->preview_camera_settings].attach_effect_to_camera = value;
+	if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[effect->preview_camera_settings].attach_effect_to_camera = value;
 	else if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_hide_floor = value;
 	else if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_isometric = value;
 	else if (*field == "roll_steps_restart" && effect->type == tfxEmitterType) {
@@ -10161,6 +10022,21 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	return error;
 }
 
+//Sprite sheet settings belong to the editor now, but libraries saved before that still carry them in their animation settings
+tfxINTERNAL bool tfx__is_legacy_sprite_sheet_key(const char *key) {
+	static const char *legacy_keys[] = {
+		"frames", "export_frame_count", "current_frame", "frame_offset", "extra_frames_count", "position_x", "position_y", "position_z",
+		"animation_offset_into_camera", "frame_width", "frame_height", "animation_view_mode", "loop", "seamless", "seed", "zoom", "scale",
+		"playback_speed", "color_option", "export_option", "export_with_transparency", "camera_position_x", "camera_position_y",
+		"camera_position_z", "camera_pitch", "camera_yaw", "camera_fov", "camera_floor_height", "camera_isometric", "camera_isometric_scale",
+		"camera_hide_floor",
+	};
+	for (const char *legacy_key : legacy_keys) {
+		if (strcmp(key, legacy_key) == 0) return true;
+	}
+	return false;
+}
+
 tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, bool shapes_from_recorded_hashes) {
 	TFX_ASSERT_HANDLE(lib);	//Library is not initialised!
 	if (!tfxStore->data_types.initialised) {
@@ -10254,7 +10130,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
 				tfx__reset_transform_graphs(effect, false);
 				effect->type = tfx_effect_descriptor_type::tfxEffectType;
-				tfx__add_library_sprite_sheet_settings(lib, effect);
 				tfx__add_library_sprite_data_settings(lib, effect);
 				tfx__add_library_preview_camera_settings_effect(lib, effect);
 				effect->uid = uid++;
@@ -10332,7 +10207,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartRibbonEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings || context == tfxStartMorphPath) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					tfx__assign_property_line(effect_stack.back(), &pair, package->header.file_version);
-				} else {
+				} else if (context != tfxStartAnimationSettings || !tfx__is_legacy_sprite_sheet_key(pair[0].c_str())) {
 					error |= tfxErrorCode_some_data_not_loaded;
 				}
 			} else if (context == tfxStartGraphs && (effect_stack.back()->type == tfxEmitterType || effect_stack.back()->type == tfxRibbonType)) {
@@ -10673,17 +10548,9 @@ tfxINTERNAL void tfx__repoint_live_emitter_images(tfx_library library) {
 }
 
 //Called when a new effect in a library is added from tfx_RefreshLibrary
-tfxINTERNAL void tfx__adopt_disk_effect_settings(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect, tfxU32 sprite_sheet_index, tfxU32 sprite_data_index, tfxU32 camera_index) {
+tfxINTERNAL void tfx__adopt_disk_effect_settings(tfx_effect_descriptor effect, tfx_effect_descriptor disk_effect, tfxU32 sprite_data_index, tfxU32 camera_index) {
 	tfx_library library = effect->library;
 	tfx_library disk_library = disk_effect->library;
-	if (disk_effect->sprite_sheet_settings_index < disk_library->sprite_sheet_settings.current_size) {
-		if (sprite_sheet_index == tfxINVALID) {
-			sprite_sheet_index = library->sprite_sheet_settings.current_size;
-			library->sprite_sheet_settings.push_back(disk_library->sprite_sheet_settings[disk_effect->sprite_sheet_settings_index]);
-		} else {
-			library->sprite_sheet_settings[sprite_sheet_index] = disk_library->sprite_sheet_settings[disk_effect->sprite_sheet_settings_index];
-		}
-	}
 	if (disk_effect->sprite_data_settings_index < disk_library->sprite_data_settings.current_size) {
 		if (sprite_data_index == tfxINVALID) {
 			sprite_data_index = library->sprite_data_settings.current_size;
@@ -10700,7 +10567,6 @@ tfxINTERNAL void tfx__adopt_disk_effect_settings(tfx_effect_descriptor effect, t
 			library->preview_camera_settings[camera_index] = disk_library->preview_camera_settings[disk_effect->preview_camera_settings];
 		}
 	}
-	effect->sprite_sheet_settings_index = sprite_sheet_index;
 	effect->sprite_data_settings_index = sprite_data_index;
 	effect->preview_camera_settings = camera_index;
 }
@@ -10718,12 +10584,11 @@ tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_
 	}
 	effect->effect_flags &= ~tfxEffectPropertyFlags_marked_for_deletion;
 	if (disk_effect->version > effect->version) {
-		tfxU32 sprite_sheet_index = effect->sprite_sheet_settings_index;
 		tfxU32 sprite_data_index = effect->sprite_data_settings_index;
 		tfxU32 camera_index = effect->preview_camera_settings;
 		tfxU32 uid = effect->uid;
 		tfx__overwrite_effect(disk_effect, &effect);
-		tfx__adopt_disk_effect_settings(effect, disk_effect, sprite_sheet_index, sprite_data_index, camera_index);
+		tfx__adopt_disk_effect_settings(effect, disk_effect, sprite_data_index, camera_index);
 		effect->uid = uid;
 		effect->effect_flags |= tfxEffectPropertyFlags_was_updated;
 		result->changed_count++;
@@ -10733,7 +10598,7 @@ tfxINTERNAL void tfx__update_effect_from_disk(tfx_effect_descriptor effect, tfx_
 
 tfxINTERNAL tfx_effect_descriptor tfx__clone_disk_effect(tfx_library library, tfx_effect_descriptor disk_effect) {
 	tfx_effect_descriptor effect = tfx__clone_effect_into_library(disk_effect, nullptr, library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
-	tfx__adopt_disk_effect_settings(effect, disk_effect, tfxINVALID, tfxINVALID, tfxINVALID);
+	tfx__adopt_disk_effect_settings(effect, disk_effect, tfxINVALID, tfxINVALID);
 	effect->uid = ++library->uid;
 	return effect;
 }
