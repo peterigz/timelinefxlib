@@ -3403,6 +3403,7 @@ typedef enum {
 	tfxAnimationFlags_needs_recording                           = 1 << 2,
 	tfxAnimationFlags_export_with_transparency                  = 1 << 3,
 	tfxAnimationFlags_auto_set_length                           = 1 << 4,
+	tfxAnimationFlags_reverse                                   = 1 << 5,
 } tfx_animation_flag_bits;
 
 typedef enum {
