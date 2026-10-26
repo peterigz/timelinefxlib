@@ -3352,6 +3352,7 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 			clone->state_properties.morph_path_attributes = morph_path_index;
 			tfx__build_path_nodes(&destination_library->paths[morph_path_index]);
 		}
+		tfx__copy_spawn_map(library, destination_library, tfx__get_shared_emitter_properties(clone)->spawn_map_hash);
 	}
 
 	for (tfx_effect_descriptor child : effect_to_clone->children) {
@@ -4846,12 +4847,16 @@ tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 		library->shared_properties[recycled_index].spawn_amount = 1;
 		library->shared_properties[recycled_index].single_decay_time = 1000.f;
 		library->shared_properties[recycled_index].single_decay_shape = 1.f;
+		library->shared_properties[recycled_index].spawn_map_resolution = 64;
+		library->shared_properties[recycled_index].spawn_map_threshold = 1;
 		return recycled_index;
 	}
 	tfx_shared_properties_t properties{};
 	properties.spawn_amount = 1;
 	properties.single_decay_time = 1000.f;
 	properties.single_decay_shape = 1.f;
+	properties.spawn_map_resolution = 64;
+	properties.spawn_map_threshold = 1;
 	library->shared_properties.push_back(properties);
 	return library->shared_properties.current_size - 1;
 }
@@ -4986,6 +4991,295 @@ tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path) {
 	return find_name;
 }
 
+//--------------------------------
+//Spawn maps
+//--------------------------------
+//Packed velocity normals for the 256 edge angles a spawn map point can carry
+static tfxU32 tfxSpawnMapEdgeNormals[256];
+static bool tfxSpawnMapEdgeNormalsMade = false;
+
+tfxINTERNAL void tfx__make_spawn_map_edge_normals() {
+	for (int angle_index = 0; angle_index != 256; ++angle_index) {
+		float angle = (float)angle_index * (tfxPI2 / 256.f);
+		tfx_vec3_t normal(cosf(angle), 0.f, sinf(angle));
+		tfxSpawnMapEdgeNormals[angle_index] = tfx__pack10bit_unsigned(&normal);
+	}
+	tfxSpawnMapEdgeNormalsMade = true;
+}
+
+tfxKey tfx__spawn_map_hash(const tfxU8 *values, tfxU32 width, tfxU32 height) {
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, values, (tfxU64)width * height, ((tfxU64)width << 32) | height);
+	return hash ? hash : 1;
+}
+
+//Edges are texels with an empty 4-neighbour or on the border, their angle points down the Sobel gradient so it faces out of the shape.
+//Image rows run along +z when the map is laid on the ground, so the angle is taken in image space as it is
+void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map) {
+	if (!tfxSpawnMapEdgeNormalsMade) {
+		tfx__make_spawn_map_edge_normals();
+	}
+	const int width = (int)spawn_map->width;
+	const int height = (int)spawn_map->height;
+	const tfxU8 *values = spawn_map->values.data;
+	tfxU32 point_count = 0;
+	tfxU32 edge_count = 0;
+	for (int y = 0; y != height; ++y) {
+		for (int x = 0; x != width; ++x) {
+			if (!values[y * width + x]) continue;
+			point_count++;
+			bool on_edge = x == 0 || y == 0 || x == width - 1 || y == height - 1
+				|| !values[y * width + x - 1] || !values[y * width + x + 1] || !values[(y - 1) * width + x] || !values[(y + 1) * width + x];
+			edge_count += on_edge;
+		}
+	}
+	spawn_map->points.free();
+	spawn_map->points.resize(point_count);
+	spawn_map->edge_count = edge_count;
+	spawn_map->inverse_width = 1.f / (float)width;
+	spawn_map->inverse_height = 1.f / (float)height;
+	spawn_map->coverage = (float)point_count / (float)(width * height);
+	tfxU32 edge_cursor = 0;
+	tfxU32 interior_cursor = edge_count;
+	for (int y = 0; y != height; ++y) {
+		for (int x = 0; x != width; ++x) {
+			if (!values[y * width + x]) continue;
+			bool on_edge = x == 0 || y == 0 || x == width - 1 || y == height - 1
+				|| !values[y * width + x - 1] || !values[y * width + x + 1] || !values[(y - 1) * width + x] || !values[(y + 1) * width + x];
+			tfxU32 packed = (tfxU32)x | ((tfxU32)y << 12);
+			if (!on_edge) {
+				spawn_map->points[interior_cursor++] = packed;
+				continue;
+			}
+			int samples[3][3];
+			for (int offset_y = -1; offset_y != 2; ++offset_y) {
+				for (int offset_x = -1; offset_x != 2; ++offset_x) {
+					int sample_x = x + offset_x;
+					int sample_y = y + offset_y;
+					bool inside = sample_x >= 0 && sample_y >= 0 && sample_x < width && sample_y < height;
+					samples[offset_y + 1][offset_x + 1] = inside ? (int)values[sample_y * width + sample_x] : 0;
+				}
+			}
+			int gradient_x = (samples[0][2] + 2 * samples[1][2] + samples[2][2]) - (samples[0][0] + 2 * samples[1][0] + samples[2][0]);
+			int gradient_y = (samples[2][0] + 2 * samples[2][1] + samples[2][2]) - (samples[0][0] + 2 * samples[0][1] + samples[0][2]);
+			tfxU32 angle_index = 64;
+			if (gradient_x || gradient_y) {
+				float angle = atan2f((float)-gradient_y, (float)-gradient_x);
+				if (angle < 0.f) angle += tfxPI2;
+				angle_index = (tfxU32)(angle * (256.f / tfxPI2) + .5f) & 255;
+			}
+			spawn_map->points[edge_cursor++] = packed | (angle_index << 24);
+		}
+	}
+}
+
+tfxKey tfx__add_spawn_map(tfx_library library, const tfxU8 *values, tfxU32 width, tfxU32 height) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	if (!values || width == 0 || height == 0 || width > tfxSPAWN_MAP_MAX_SIZE || height > tfxSPAWN_MAP_MAX_SIZE) {
+		return 0;
+	}
+	tfxKey spawn_map_hash = tfx__spawn_map_hash(values, width, height);
+	if (library->spawn_maps.ValidKey(spawn_map_hash)) {
+		return spawn_map_hash;
+	}
+	//Filled in place, a tfx_vector_t must never be copied in or left holding memory when it goes out of scope
+	tfx_spawn_map_t &spawn_map = library->spawn_maps.Insert(spawn_map_hash, tfx_spawn_map_t{});
+	spawn_map.width = width;
+	spawn_map.height = height;
+	spawn_map.values.resize(width * height);
+	memcpy(spawn_map.values.data, values, (size_t)width * height);
+	tfx__build_spawn_map(&spawn_map);
+	return spawn_map_hash;
+}
+
+tfx_spawn_map_t *tfx__get_spawn_map(tfx_library library, tfxKey spawn_map_hash) {
+	return spawn_map_hash ? library->spawn_maps.AtPtr(spawn_map_hash) : nullptr;
+}
+
+void tfx__remove_spawn_map(tfx_library library, tfxKey spawn_map_hash) {
+	tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(library, spawn_map_hash);
+	if (!spawn_map) {
+		return;
+	}
+	spawn_map->values.free();
+	spawn_map->points.free();
+	library->spawn_maps.Remove(spawn_map_hash);
+}
+
+void tfx__copy_spawn_map(tfx_library source_library, tfx_library destination_library, tfxKey spawn_map_hash) {
+	if (source_library == destination_library || !spawn_map_hash || destination_library->spawn_maps.ValidKey(spawn_map_hash)) {
+		return;
+	}
+	tfx_spawn_map_t *source = tfx__get_spawn_map(source_library, spawn_map_hash);
+	if (source) {
+		tfx__add_spawn_map(destination_library, source->values.data, source->width, source->height);
+	}
+}
+
+void tfx__free_spawn_maps(tfx_library library) {
+	for (tfx_spawn_map_t &spawn_map : library->spawn_maps.data) {
+		spawn_map.values.free();
+		spawn_map.points.free();
+	}
+	library->spawn_maps.FreeAll();
+}
+
+static const char tfxBase64Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+tfxINTERNAL int tfx__base64_value(char character) {
+	if (character >= 'A' && character <= 'Z') return character - 'A';
+	if (character >= 'a' && character <= 'z') return character - 'a' + 26;
+	if (character >= '0' && character <= '9') return character - '0' + 52;
+	if (character == '+') return 62;
+	if (character == '/') return 63;
+	return -1;
+}
+
+//PackBits: a header n of 0-127 is followed by n + 1 literal bytes, 129-255 repeats the next byte 257 - n times
+tfxINTERNAL void tfx__pack_bits(const tfxU8 *values, tfxU32 count, tfx_vector_t<tfxU8> *packed) {
+	tfxU32 index = 0;
+	while (index < count) {
+		tfxU32 run = 1;
+		while (index + run < count && run < 128 && values[index + run] == values[index]) {
+			run++;
+		}
+		if (run > 1) {
+			packed->push_back((tfxU8)(257 - run));
+			packed->push_back(values[index]);
+			index += run;
+			continue;
+		}
+		tfxU32 literal_start = index;
+		tfxU32 literal_count = 0;
+		while (index < count && literal_count < 128 && !(index + 1 < count && values[index] == values[index + 1])) {
+			index++;
+			literal_count++;
+		}
+		packed->push_back((tfxU8)(literal_count - 1));
+		for (tfxU32 literal_index = 0; literal_index != literal_count; ++literal_index) {
+			packed->push_back(values[literal_start + literal_index]);
+		}
+	}
+}
+
+tfxINTERNAL bool tfx__unpack_bits(const tfxU8 *packed, tfxU32 packed_count, tfxU8 *values, tfxU32 count) {
+	tfxU32 read = 0;
+	tfxU32 written = 0;
+	while (read < packed_count && written < count) {
+		tfxU32 header = packed[read++];
+		if (header < 128) {
+			tfxU32 literal_count = header + 1;
+			if (read + literal_count > packed_count || written + literal_count > count) return false;
+			memcpy(values + written, packed + read, literal_count);
+			read += literal_count;
+			written += literal_count;
+		} else if (header > 128) {
+			tfxU32 run = 257 - header;
+			if (read >= packed_count || written + run > count) return false;
+			memset(values + written, packed[read++], run);
+			written += run;
+		}
+	}
+	return written == count;
+}
+
+void tfx__stream_spawn_maps(tfx_library library, tfx_stream_t *file) {
+	tmpStack(tfxKey, written_hashes);
+	tmpStack(tfx_effect_descriptor, stack);
+	for (tfx_effect_descriptor effect : library->effects) {
+		stack.push_back(effect);
+	}
+	tfx_vector_t<tfxU8> packed;
+	tfx_vector_t<char> encoded;
+	while (stack.size()) {
+		tfx_effect_descriptor current = stack.pop_back();
+		if (tfx__is_descriptor_hidden(current)) continue;
+		for (tfx_effect_descriptor child : current->children) {
+			stack.push_back(child);
+		}
+		if (current->type != tfxEmitterType) continue;
+		tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(current);
+		if (shared_properties->emission_type != tfxBitmap) continue;
+		tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(library, shared_properties->spawn_map_hash);
+		if (!spawn_map) continue;
+		bool already_written = false;
+		for (tfxKey written_hash : written_hashes) {
+			already_written |= written_hash == shared_properties->spawn_map_hash;
+		}
+		if (already_written) continue;
+		if (written_hashes.empty()) {
+			file->AddLine("%i", tfxStartSpawnMaps);
+		}
+		written_hashes.push_back(shared_properties->spawn_map_hash);
+		packed.clear();
+		tfx__pack_bits(spawn_map->values.data, spawn_map->values.current_size, &packed);
+		encoded.clear();
+		for (tfxU32 index = 0; index < packed.current_size; index += 3) {
+			tfxU32 remaining = packed.current_size - index;
+			tfxU32 triple = (tfxU32)packed[index] << 16;
+			if (remaining > 1) triple |= (tfxU32)packed[index + 1] << 8;
+			if (remaining > 2) triple |= (tfxU32)packed[index + 2];
+			encoded.push_back(tfxBase64Alphabet[(triple >> 18) & 63]);
+			encoded.push_back(tfxBase64Alphabet[(triple >> 12) & 63]);
+			if (remaining > 1) encoded.push_back(tfxBase64Alphabet[(triple >> 6) & 63]);
+			if (remaining > 2) encoded.push_back(tfxBase64Alphabet[triple & 63]);
+		}
+		encoded.push_back('\0');
+		file->AddLine("spawn_map,%llu,%u,%u,%s", shared_properties->spawn_map_hash, spawn_map->width, spawn_map->height, encoded.data);
+	}
+	if (!written_hashes.empty()) {
+		file->AddLine("%i", tfxEndSpawnMaps);
+	}
+	packed.free();
+	encoded.free();
+	written_hashes.free();
+	stack.free();
+}
+
+//spawn_map,<hash>,<width>,<height>,<base64 of the packed values>. The hash is taken again from the values rather than trusted
+bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 length) {
+	const char *end = line + length;
+	const char *fields[5];
+	tfxU32 field_count = 0;
+	const char *cursor = line;
+	fields[field_count++] = cursor;
+	while (cursor < end && field_count < 5) {
+		if (*cursor == ',') {
+			fields[field_count++] = cursor + 1;
+		}
+		cursor++;
+	}
+	if (field_count != 5 || strncmp(fields[0], "spawn_map,", 10) != 0) {
+		return false;
+	}
+	tfxU32 width = (tfxU32)strtoul(fields[2], NULL, 10);
+	tfxU32 height = (tfxU32)strtoul(fields[3], NULL, 10);
+	if (width == 0 || height == 0 || width > tfxSPAWN_MAP_MAX_SIZE || height > tfxSPAWN_MAP_MAX_SIZE) {
+		return false;
+	}
+	tfx_vector_t<tfxU8> packed;
+	tfxU32 bits = 0;
+	int bit_count = 0;
+	for (const char *character = fields[4]; character < end; ++character) {
+		int value = tfx__base64_value(*character);
+		if (value < 0) break;
+		bits = (bits << 6) | (tfxU32)value;
+		bit_count += 6;
+		if (bit_count >= 8) {
+			bit_count -= 8;
+			packed.push_back((tfxU8)((bits >> bit_count) & 0xFF));
+		}
+	}
+	tfx_vector_t<tfxU8> values;
+	values.resize(width * height);
+	bool unpacked = tfx__unpack_bits(packed.data, packed.current_size, values.data, width * height);
+	if (unpacked) {
+		tfx__add_spawn_map(library, values.data, width, height);
+	}
+	values.free();
+	packed.free();
+	return unpacked;
+}
+
 //Everything tfx_FreeLibrary releases except the handle itself and, when keep_shapes is set, the shape set and
 //the gpu shape list that indexes it. Split out so a reload can empty the library in place: the descriptors
 //the loader then builds take the real library pointer from the start, which is what makes reloading into the
@@ -5010,6 +5304,7 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 			tfx_FreeGPUShapesList(library->gpu_shapes);
 		}
 	}
+	tfx__free_spawn_maps(library);
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
 			tfx__free_graph(&graph);
@@ -5472,6 +5767,12 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("image_index", tfxUInt);
 	names_and_types.Insert("image_hash", tfxUInt64);
+	names_and_types.Insert("spawn_map_hash", tfxUInt64);
+	names_and_types.Insert("spawn_map_source_hash", tfxUInt64);
+	names_and_types.Insert("spawn_map_source_frame", tfxUInt);
+	names_and_types.Insert("spawn_map_resolution", tfxUInt);
+	names_and_types.Insert("spawn_map_threshold", tfxUInt);
+	names_and_types.Insert("spawn_map_channel", tfxUInt);
 	names_and_types.Insert("image_handle_x", tfxFloat);
 	names_and_types.Insert("image_handle_y", tfxFloat);
 	names_and_types.Insert("spawn_amount", tfxUInt);
@@ -6623,6 +6924,12 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 		if (tfx__property_is(property_name, "image_start_frame")) return tfx__property_float(out_value, shared_properties->start_frame);
 		if (tfx__property_is(property_name, "image_frame_rate")) return tfx__property_float(out_value, shared_properties->frame_rate);
 		if (tfx__property_is(property_name, "image_hash")) return tfx__property_u64(out_value, shared_properties->image_hash);
+		if (tfx__property_is(property_name, "spawn_map_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_hash);
+		if (tfx__property_is(property_name, "spawn_map_source_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_source_hash);
+		if (tfx__property_is(property_name, "spawn_map_source_frame")) return tfx__property_u32(out_value, shared_properties->spawn_map_source_frame);
+		if (tfx__property_is(property_name, "spawn_map_resolution")) return tfx__property_u32(out_value, shared_properties->spawn_map_resolution);
+		if (tfx__property_is(property_name, "spawn_map_threshold")) return tfx__property_u32(out_value, shared_properties->spawn_map_threshold);
+		if (tfx__property_is(property_name, "spawn_map_channel")) return tfx__property_u32(out_value, shared_properties->spawn_map_channel);
 		if (tfx__property_is(property_name, "paired_emitter_hash")) return tfx__property_u64(out_value, shared_properties->paired_emitter_hash);
 	}
 
@@ -6832,6 +7139,8 @@ void tfx__assign_effector_property_u64(tfx_effect_descriptor effect, tfx_str256_
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
 	if (*field == "image_hash" && shared_properties) tfx__get_shared_emitter_properties(effect)->image_hash = value;
 	else if (*field == "paired_emitter_hash" && shared_properties) tfx__get_shared_emitter_properties(effect)->paired_emitter_hash = value;
+	else if (*field == "spawn_map_hash" && shared_properties) shared_properties->spawn_map_hash = value;
+	else if (*field == "spawn_map_source_hash" && shared_properties) shared_properties->spawn_map_source_hash = value;
 }
 
 void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
@@ -6850,6 +7159,10 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "layer" && shared_properties) shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	else if (*field == "single_shot_limit" && shared_properties) shared_properties->single_shot_limit = value;
 	else if (*field == "single_decay_amount" && shared_properties) shared_properties->single_decay_amount = value;
+	else if (*field == "spawn_map_source_frame" && shared_properties) shared_properties->spawn_map_source_frame = value;
+	else if (*field == "spawn_map_resolution" && shared_properties) shared_properties->spawn_map_resolution = tfx__Clamp((tfxU32)16, (tfxU32)tfxSPAWN_MAP_MAX_SIZE, value);
+	else if (*field == "spawn_map_threshold" && shared_properties) shared_properties->spawn_map_threshold = tfx__Clamp((tfxU32)1, (tfxU32)255, value);
+	else if (*field == "spawn_map_channel" && shared_properties) shared_properties->spawn_map_channel = value;
 	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
@@ -7157,6 +7470,14 @@ void tfx__stream_particle_emitter_properties(tfx_effect_descriptor emitter, tfx_
 	file->AddLine("grid_rows=%f", shared_properties->grid_points.x);
 	file->AddLine("grid_columns=%f", shared_properties->grid_points.y);
 	file->AddLine("grid_depth=%f", shared_properties->grid_points.z);
+	if (shared_properties->emission_type == tfxBitmap) {
+		file->AddLine("spawn_map_hash=%llu", shared_properties->spawn_map_hash);
+		file->AddLine("spawn_map_source_hash=%llu", shared_properties->spawn_map_source_hash);
+		file->AddLine("spawn_map_source_frame=%u", shared_properties->spawn_map_source_frame);
+		file->AddLine("spawn_map_resolution=%u", shared_properties->spawn_map_resolution);
+		file->AddLine("spawn_map_threshold=%u", shared_properties->spawn_map_threshold);
+		file->AddLine("spawn_map_channel=%u", shared_properties->spawn_map_channel);
+	}
 	file->AddLine("delay_spawning=%f", emitter->state_properties.delay_spawning);
 	file->AddLine("loop_length=%f", emitter->state_properties.loop_length);
 	file->AddLine("drag_half_life=%f", emitter_properties->drag_half_life);
@@ -10191,6 +10512,13 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 		if (context_set == false) {
 			if (context == tfxStartEffect && !current_effect) {
+				continue;
+			}
+			//Read whole, the split below would cut the grid data at a field's 256 characters
+			if (context == tfxStartSpawnMaps) {
+				if (!tfx__read_spawn_map_line(lib, line.start, (tfxU32)line.length)) {
+					error |= tfxErrorCode_some_data_not_loaded;
+				}
 				continue;
 			}
 			pair.clear();
@@ -18231,6 +18559,10 @@ tfxINTERNAL float tfx__spawn_ratio_scale(const tfx_particle_emitter_state_t &emi
 		return tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.z) / 50.f;
 	case tfxLine:
 		return emitter.emitter_size.y / 100.f;
+	case tfxBitmap: {
+		const tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(emitter.library, emitter.library->shared_properties[emitter.state_properties.shared_index].spawn_map_hash);
+		return tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.z) * (spawn_map ? spawn_map->coverage : 1.f) / 50.f;
+	}
 	default:
 		break;
 	}
@@ -18869,6 +19201,8 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 			source.spawn_ratio_axes = tfx_vec3_t(1.f, 1.f, 1.f);
 		} else if (emission_type == tfxDisc) {
 			source.spawn_ratio_axes = tfx_vec3_t(1.f, 0.f, 1.f);
+		} else if (emission_type == tfxBitmap) {
+			source.spawn_ratio_axes = tfx_vec3_t(1.f, 0.f, 1.f);
 		} else if (emission_type == tfxLine) {
 			source.spawn_ratio_axes = tfx_vec3_t(0.f, 1.f, 0.f);
 		}
@@ -18945,8 +19279,17 @@ tfxINTERNAL double tfx__user_spawn_ribbon_weights(tfx_ribbon_work_entry_t *entry
 	return tfx__user_spawn_location_runs(entry->user_spawn_locations, &entry->ribbon_bucket->user_spawn_runs, &entry->random, &source, &entry->user_spawn_run_start, &entry->user_spawn_run_count);
 }
 
+//The texels a Bitmap emitter picks from: all of them when it fills the area, otherwise only the edge
+tfxINTERNAL tfxU32 tfx__bitmap_point_count(tfx_library library, tfxSharedEmitterFlags shared_flags, const tfx_shared_properties_t *shared_properties) {
+	const tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(library, shared_properties->spawn_map_hash);
+	if (!spawn_map) {
+		return 0;
+	}
+	return (shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? spawn_map->points.current_size : spawn_map->edge_count;
+}
+
 //The amount a single emitter with match_amount_to_grid_points spawns so that every grid point gets one particle
-tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_common_state_properties_t &state_properties, const tfx_shared_properties_t *shared_properties, float spawn_quantity) {
+tfxINTERNAL float tfx__grid_points_spawn_amount(tfx_library library, const tfx_common_state_properties_t &state_properties, const tfx_shared_properties_t *shared_properties, float spawn_quantity) {
 	float x = tfxMax(shared_properties->grid_points.x, 1.f);
 	float y = tfxMax(shared_properties->grid_points.y, 1.f);
 	float z = tfxMax(shared_properties->grid_points.z, 1.f);
@@ -18968,6 +19311,8 @@ tfxINTERNAL float tfx__grid_points_spawn_amount(const tfx_common_state_propertie
 		return y;
 	case tfx_emission_type::tfxIcosphere:
 		return (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
+	case tfx_emission_type::tfxBitmap:
+		return (float)tfx__bitmap_point_count(library, state_properties.shared_flags, shared_properties);
 	default:
 		break;
 	}
@@ -19164,6 +19509,10 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
 	tfx_random_t *random = &entry->random;
 	tfx_library library = emitter.library;
+	//With no map, or nothing on the side it spawns from, there's nowhere to put a particle
+	if (shared_properties->emission_type == tfxBitmap && !tfx__bitmap_point_count(library, emitter.state_properties.shared_flags, shared_properties)) {
+		return 0;
+	}
 	tfx_AlterRandomSeedU32(random, 25 + emitter.seed_index);
 	const bool is_single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
 	if (!is_single) {
@@ -19218,7 +19567,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		}
 		float burst_amount = 0.f;
 		if (emitter.single_decay_age == 0.f) {
-			burst_amount = match_grid_points ? tfx__grid_points_spawn_amount(emitter.state_properties, shared_properties, (float)emitter.spawn_quantity) : (float)emitter.spawn_quantity;
+			burst_amount = match_grid_points ? tfx__grid_points_spawn_amount(emitter.library, emitter.state_properties, shared_properties, (float)emitter.spawn_quantity) : (float)emitter.spawn_quantity;
 		}
 		float frame_length = (float)pm->frame_length;
 		tfxU32 decay_amount = tfx__single_decay_spawn_amount((float)shared_properties->single_decay_amount * global_amount, emitter.single_decay_age, emitter.single_decay_age + frame_length, shared_properties->single_decay_time, shared_properties->single_decay_shape);
@@ -19274,6 +19623,9 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && shared_properties->emission_type == tfxLine) {
 			emitter.spawn_quantity = (emitter.spawn_quantity / 100.0) * emitter.emitter_size.y;
 		}
+		else if (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && shared_properties->emission_type == tfxBitmap) {
+			emitter.spawn_quantity *= tfx__spawn_ratio_scale(emitter, tfxBitmap);
+		}
 
 		emitter.spawn_quantity *= pm->update_time;
 		emitter.spawn_quantity += distance_amount;
@@ -19282,7 +19634,7 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	else {
 		//A decaying emitter already sized its burst to the grid above
 		if (match_grid_points && !single_decay) {
-			emitter.spawn_quantity = tfx__grid_points_spawn_amount(emitter.state_properties, shared_properties, (float)emitter.spawn_quantity);
+			emitter.spawn_quantity = tfx__grid_points_spawn_amount(emitter.library, emitter.state_properties, shared_properties, (float)emitter.spawn_quantity);
 		}
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
@@ -19627,6 +19979,8 @@ void tfx__run_spawn_pipeline(tfx_stage pm, tfx_spawn_work_entry_t *work_entry, t
 		tfx__spawn_particle_point(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxArea) {
 		tfx__spawn_particle_area(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type == tfxBitmap) {
+		tfx__spawn_particle_bitmap(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxEllipse) {
 		tfx__spawn_particle_ellipsoid(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxDisc) {
@@ -21731,6 +22085,88 @@ void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data) {
 
 }
 
+//Places particles on the spawn map's texels laid flat over the emitter's width and depth, the top of the image towards -z.
+//Off the grid they land anywhere inside the texel, on it they sit on the texel centre, in turn unless the grid is random
+void tfx__spawn_particle_bitmap(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
+	tfx_random_t random = entry->random;
+	tfx_stage_t &pm = *entry->pm;
+	tfx_particle_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
+	tfx_AlterRandomSeedU32(&random, 15 + emitter.seed_index);
+	const tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(emitter.library, entry->shared_properties->spawn_map_hash);
+	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
+	const tfxU32 point_count = spawn_map ? ((shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? spawn_map->points.current_size : spawn_map->edge_count) : 0;
+	if (!point_count) {
+		//tfx__new_sprites_needed spawns none without points, this only keeps the slots defined if a map goes missing mid tick
+		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
+			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+			entry->particle_data->position_x[index] = entry->particle_data->position_y[index] = entry->particle_data->position_z[index] = 0.f;
+		}
+		return;
+	}
+	const bool on_grid = (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) != 0;
+	const bool in_turn = on_grid && !(shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
+	const bool forwards = (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) != 0;
+	const bool writes_normal = entry->properties->emission_direction == tfxSurface && !(shared_flags & tfxSharedEmitterPropertyFlags_fill_area);
+	const float width = emitter.emitter_size.x;
+	const float depth = emitter.emitter_size.z;
+	const float inverse_width = spawn_map->inverse_width;
+	const float inverse_height = spawn_map->inverse_height;
+	const tfxU32 *points = spawn_map->points.data;
+	const bool relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
+	double tween = entry->tween;
+	tfxU32 cursor = (tfxU32)tfx__Max(emitter.grid_coords.x, 0.f) % point_count;
+
+	for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		tfxU32 point_index;
+		if (in_turn) {
+			if (forwards) {
+				point_index = cursor;
+				cursor = cursor + 1 == point_count ? 0 : cursor + 1;
+			} else {
+				cursor = cursor == 0 ? point_count - 1 : cursor - 1;
+				point_index = cursor;
+			}
+		} else {
+			point_index = tfx__Min(tfx_RandomRangeZeroToMaxUInt(&random, point_count), point_count - 1);
+		}
+		const tfxU32 packed = points[point_index];
+		float texel_x = (float)(packed & 0xFFF);
+		float texel_y = (float)((packed >> 12) & 0xFFF);
+		if (on_grid) {
+			texel_x += .5f;
+			texel_y += .5f;
+		} else {
+			texel_x += tfx_GenerateRandom(&random);
+			texel_y += tfx_GenerateRandom(&random);
+		}
+		float &local_position_x = entry->particle_data->position_x[index];
+		float &local_position_y = entry->particle_data->position_y[index];
+		float &local_position_z = entry->particle_data->position_z[index];
+		local_position_x = (texel_x * inverse_width - .5f) * width;
+		local_position_y = 0.f;
+		local_position_z = (texel_y * inverse_height - .5f) * depth;
+		if (writes_normal) {
+			entry->particle_data->velocity_normal[index] = tfxSpawnMapEdgeNormals[packed >> 24];
+		}
+
+		if (!relative) {
+			tfx_vec3_t lerp_position = tfx__spawn_anchor(entry, emitter, i, (float)tween);
+			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) * entry->user_spawn_shape_scale + emitter.handle;
+			tfx_vec3_t position = tfx__rotate_vector_quaternion(&entry->user_spawn_rotation, position_plus_handle);
+			local_position_x = lerp_position.x + position.x * entry->overall_scale;
+			local_position_y = lerp_position.y + position.y * entry->overall_scale;
+			local_position_z = lerp_position.z + position.z * entry->overall_scale;
+		}
+		tween += entry->qty_step_size;
+	}
+	if (in_turn) {
+		emitter.grid_coords.x = (float)cursor;
+	}
+}
+
 void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
@@ -23217,7 +23653,7 @@ void tfx__spawn_particle_micro_update(tfx_work_queue_t *queue, void *data) {
 	//The shapes that write their own normal: path and spawn on ribbon gradients, and an unfilled area's faces. Anything else would read
 	//whatever normal the bank slot last held, so Path Gradient on another shape and Surface on a filled area are taken as Specified
 	const bool spawner_wrote_normal = (emission_direction == tfxPathGradient && (emission_type == tfxPath || emission_type == tfxSpawnOnRibbon))
-		|| (emission_direction == tfxSurface && emission_type == tfxArea && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
+		|| (emission_direction == tfxSurface && (emission_type == tfxArea || emission_type == tfxBitmap) && !(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
 
 	//Outwards/inwards/surface emission measures the direction from the point the particle spawned around, so the runs are walked a second
 	//time here to recover the location each particle belongs to. Relative emitters keep their position local and need none of it
@@ -23556,6 +23992,10 @@ tfxINTERNAL float tfx__max_spawn_ratio_scale(tfx_effect_descriptor emitter, tfx_
 		return tfxMax(0.1f, size.x) * tfxMax(0.1f, size.z) / 50.f;
 	case tfxLine:
 		return size.y / 100.f;
+	case tfxBitmap: {
+		const tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(emitter->library, tfx__get_shared_emitter_properties(emitter)->spawn_map_hash);
+		return tfxMax(0.1f, size.x) * tfxMax(0.1f, size.z) * (spawn_map ? spawn_map->coverage : 1.f) / 50.f;
+	}
 	default:
 		break;
 	}
@@ -23658,7 +24098,7 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 		const float global_amount = child->parent ? tfx__get_graph_max_value(&child->parent->library->graphs[child->parent->state_properties.graph_list_index].graphs[tfxEffect_global_amount_index]) : 1.f;
 		float total = (float)(shared_properties->spawn_amount + shared_properties->spawn_amount_variation) * global_amount;
 		if ((child->state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) && (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid)) {
-			total = tfx__grid_points_spawn_amount(child->state_properties, shared_properties, total);
+			total = tfx__grid_points_spawn_amount(child->library, child->state_properties, shared_properties, total);
 		}
 		total += tfx__has_single_decay(shared_properties) ? (float)shared_properties->single_decay_amount * global_amount : 0.f;
 		if (per_source_particle && !spawns_on_ribbon) {

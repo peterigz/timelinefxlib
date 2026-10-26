@@ -2889,6 +2889,7 @@ typedef enum {
 	tfxSpawnOnRibbon,
 	tfxDisc,
 	tfxUser,									//Spawns as a Point, then the host places the particles with its spawn hooks
+	tfxBitmap,									//Spawns on the texels of a baked spawn map, laid flat over the emitter's width and depth
 	tfxEmissionTypeMax,
 } tfx_emission_type;
 
@@ -3024,7 +3025,9 @@ typedef enum {
 	tfxStartMorphPath,
 	tfxEndMorphPath,
 	tfxStartBookmarks,
-	tfxEndBookmarks
+	tfxEndBookmarks,
+	tfxStartSpawnMaps,
+	tfxEndSpawnMaps
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
@@ -5584,7 +5587,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 6;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter.
+const tfxU32 tfxFILE_VERSION = 7;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6169,6 +6172,13 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfx_vec3_t base_noise_step;
 	//The amount to vary the noise offset per particle when they spawn
 	float noise_offset_variation;
+	//Bitmap emission: the library's spawn map. The rest are the editor's bake settings, kept so it can bake again
+	tfxKey spawn_map_hash;
+	tfxKey spawn_map_source_hash;
+	tfxU32 spawn_map_source_frame;
+	tfxU32 spawn_map_resolution;
+	tfxU32 spawn_map_threshold;
+	tfxU32 spawn_map_channel;
 } tfx_shared_properties_t;
 
 typedef struct tfx_ribbon_bucket_info_s {
@@ -7538,6 +7548,22 @@ typedef struct tfx_shape_file_s {
 	tfxU32 sheet_height;
 } tfx_shape_file_t;
 
+#define tfxSPAWN_MAP_MAX_SIZE 4096
+//A Bitmap emitter's spawn grid, keyed in the library by tfx__spawn_map_hash. Only width, height and values are saved,
+//the editor bakes the threshold in so any non zero value is a texel that spawns
+typedef struct tfx_spawn_map_s {
+	tfxU32 width;
+	tfxU32 height;
+	tfx_vector_t<tfxU8> values;
+	//Packed x (12 bits), y (12 bits) and an outward edge angle (8 bits). Edge texels first, each section in row order
+	tfx_vector_t<tfxU32> points;
+	tfxU32 edge_count;
+	float inverse_width;
+	float inverse_height;
+	//Share of the grid that spawns, so the spawn ratio follows the visible area rather than the whole rectangle
+	float coverage;
+} tfx_spawn_map_t;
+
 typedef struct tfx_library_s {
 	tfxU32 magic;
 	tfxErrorFlags error_flags;
@@ -7548,6 +7574,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_effect_descriptor> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
 	tfx_storage_map_t<tfx_shape_file_t> shape_files;	//Keyed by image hash, like particle_shapes
+	tfx_storage_map_t<tfx_spawn_map_t> spawn_maps;		//Keyed by spawn_map_hash, shared by every Bitmap emitter baked from the same grid
 	tfx_vector_t<tfx_particle_emitter_properties_t> emitter_properties;
 	tfx_vector_t<tfx_shared_properties_t> shared_properties;
 	tfx_vector_t<tfx_ribbon_emitter_properties_t> ribbon_properties;
@@ -7697,6 +7724,22 @@ tfxAPI_EDITOR void tfx__update_ribbon_bucket_id(tfx_effect_descriptor ribbon_emi
 //Reading/Writing files
 //--------------------------------
 tfxAPI_EDITOR void tfx__read_entire_file(const char *file_name, tfx_stream buffer, bool terminate = false);
+
+//--------------------------------
+//Spawn maps
+//--------------------------------
+tfxAPI_EDITOR tfxKey tfx__spawn_map_hash(const tfxU8 *values, tfxU32 width, tfxU32 height);
+//Adds the grid if the library doesn't have it yet and builds its points. Returns its key, or 0 if the size is out of range
+tfxAPI_EDITOR tfxKey tfx__add_spawn_map(tfx_library library, const tfxU8 *values, tfxU32 width, tfxU32 height);
+tfxAPI_EDITOR tfx_spawn_map_t *tfx__get_spawn_map(tfx_library library, tfxKey spawn_map_hash);
+//The storage moves, so nothing may be spawning from the library while a map is removed
+tfxAPI_EDITOR void tfx__remove_spawn_map(tfx_library library, tfxKey spawn_map_hash);
+//Writes the spawn maps block with every grid a visible Bitmap emitter uses
+tfxAPI_EDITOR void tfx__stream_spawn_maps(tfx_library library, tfx_stream_t *file);
+tfxINTERNAL void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map);
+tfxAPI_EDITOR bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 length);
+tfxINTERNAL void tfx__copy_spawn_map(tfx_library source_library, tfx_library destination_library, tfxKey spawn_map_hash);
+tfxINTERNAL void tfx__free_spawn_maps(tfx_library library);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package);
 //Reads one named entry out of a package on disk without loading the whole package into memory
@@ -10067,6 +10110,7 @@ tfxINTERNAL void tfx__spawn_particle_other_emitter_single(tfx_work_queue_t *queu
 tfxINTERNAL void tfx__spawn_particle_line(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_line_start(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_bitmap(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_disc(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data);
