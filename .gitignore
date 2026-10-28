@@ -13,3 +13,4 @@ TimelineFX.vcxproj
 API_ROADMAP.md
 HOT_RELOAD_ROADMAP.md
 *.tfx_r
+implementations/imgui.ini
