@@ -6851,16 +6851,6 @@ typedef struct tfx_sprite_data_s {
 	bool has_ribbons;
 } tfx_sprite_data_t;
 
-typedef struct tfx_ribbon_data_push_s {
-	tfxU32 animation_instances_total;
-	tfxU32 ribbons_total;
-	tfxU32 offsets_index;
-	tfxU32 animation_instances_index;
-	tfxU32 ribbon_data_index;
-	tfxU32 ribbon_output_index;
-	tfxU32 ribbon_properties_index;
-} tfx_ribbon_data_push_t;
-
 
 //One location's share of an emitter's spawn this update. Particles of a run are contiguous in the bank
 typedef struct tfx_user_spawn_run_s {
@@ -7148,7 +7138,7 @@ typedef struct tfx_animation_ribbon_properties_s {
 	float animation_frames;
 	tfxU32 start_frame_index;
 	tfxU32 flags;
-	tfxU32 graph_lookup_offset;
+	tfxU32 graph_lookup_offset;		//Into the animation manager's ribbon_graph_data, not the library's global table
 	tfxU32 bucket_index;
 	tfxU32 morph_segment_start_index;	//Absolute index into the animation manager segment array, tfxINVALID when the emitter does not morph
 	float noise_frequency;
@@ -7171,6 +7161,7 @@ typedef struct tfx_animation_ribbon_bucket_s {
 	tfxU32 ribbon_offset;
 	tfxU32 index_offset;
 	tfxU32 vertex_offset;
+	tfx_ribbon_bucket_globals_t globals;	//Filled by tfx_NextAnimationRibbonDispatch
 } tfx_animation_ribbon_bucket_t;
 
 typedef struct tfx_color_ramp_bitmap_data_t {
@@ -7246,7 +7237,7 @@ typedef struct tfx_animation_manager_s {
 	tfx_vector_t<tfx_ribbon_segment_t> ribbon_segment_data;
 	tfx_vector_t<tfx_animation_ribbon_properties_t> ribbon_properties;
 	tfx_vector_t<tfx_animation_instance_ribbon_data_t> ribbon_property_metrics;
-	tfx_vector_t<tfx_gpu_graph_data_t> ribbon_graph_data;
+	tfx_vector_t<tfx_gpu_graph_data_t> ribbon_graph_data;		//Each ribbon emitter's graph lookups, copied when its sprite data is added so playback needs no library
 	tfx_vector_t<tfx_animation_ribbon_bucket_t> animation_ribbon_buckets;
 } tfx_animation_manager_t;
 #endif
@@ -10251,6 +10242,7 @@ tfxAPI_EDITOR void tfx__record_library_shape_file(tfx_library library, tfxKey im
 //--------------------------------
 tfxINTERNAL tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager animation_manager);
 tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU32 index);
+tfxINTERNAL void tfx__rebuild_animation_ribbon_buckets(tfx_animation_manager animation_manager);
 tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_vector_t<tfxU32> &emitter_property_map, tfx_vector_t<tfxU32> &ribbon_property_map, bool *has_animated_shape);
 tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances);
 

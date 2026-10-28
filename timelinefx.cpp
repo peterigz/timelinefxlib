@@ -10037,6 +10037,44 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	return stats;
 }
 
+//Buckets aren't saved with sprite data, so a load builds them from the ribbon properties the way tfx_AddSpriteData does
+void tfx__rebuild_animation_ribbon_buckets(tfx_animation_manager animation_manager) {
+	animation_manager->animation_ribbon_buckets.clear();
+	for (tfx_animation_ribbon_properties_t &properties : animation_manager->ribbon_properties) {
+		tfxKey bucket_id = (tfxKey)properties.segment_count;
+		tfxU32 found_bucket_index = tfxINVALID;
+		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
+			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
+				found_bucket_index = b;
+				break;
+			}
+		}
+		if (found_bucket_index == tfxINVALID) {
+			tfx_animation_ribbon_bucket_t bucket{};
+			bucket.bucket_id = bucket_id;
+			bucket.segment_count = properties.segment_count;
+			bucket.tessellation = properties.tessellation;
+			found_bucket_index = animation_manager->animation_ribbon_buckets.current_size;
+			animation_manager->animation_ribbon_buckets.push_back(bucket);
+		}
+		properties.bucket_index = found_bucket_index;
+	}
+	for (tfx_sprite_data_metrics_t &metrics : animation_manager->effect_animation_info.data) {
+		if (metrics.ribbon_property_count == 0) {
+			continue;
+		}
+		tfxU32 frame_count = metrics.per_property_ribbon_counts.current_size / metrics.ribbon_property_count;
+		for (tfxU32 p = 0; p < metrics.ribbon_property_count; p++) {
+			tfxU32 max_count = 0;
+			for (tfxU32 f = 0; f < frame_count; f++) {
+				max_count = tfx__Max(max_count, metrics.per_property_ribbon_counts[f * metrics.ribbon_property_count + p]);
+			}
+			tfxU32 bucket_index = animation_manager->ribbon_properties[metrics.ribbon_property_start + p].bucket_index;
+			animation_manager->animation_ribbon_buckets[bucket_index].max_ribbon_count += max_count;
+		}
+	}
+}
+
 tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager animation_manager, tfx_shape_loader shape_loader, void *user_data) {
 	//TFX_ASSERT(shape_loader);            //Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 	if (!tfxStore->data_types.initialised) {
@@ -10088,6 +10126,12 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		memcpy(animation_manager->ribbon_properties.data, ribbon_properties_data->data.data, ribbon_properties_data->file_size);
 	}
 
+	tfx_package_entry_info_t *ribbon_graph_data = tfx__get_package_file(package, "ribbon_graph_data");
+	if (ribbon_graph_data && ribbon_graph_data->file_size > 0) {
+		animation_manager->ribbon_graph_data.resize((tfxU32)(ribbon_graph_data->file_size / sizeof(tfx_gpu_graph_data_t)));
+		memcpy(animation_manager->ribbon_graph_data.data, ribbon_graph_data->data.data, ribbon_graph_data->file_size);
+	}
+
 	tmpStack(tfx_sprite_data_metrics_t, metrics_stack);
 	tmpStack(tfx_frame_meta_t, frame_meta_stack);
 	tmpStack(tfx_ribbon_frame_meta_t, ribbon_frame_meta_stack);
@@ -10102,9 +10146,17 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 	tfx_storage_map_t<tfx_data_type> &names_and_types = tfxStore->data_types.names_and_types;
 
+	bool awaiting_ribbon_count = false;
 	while (!data->data.EoF()) {
 		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
+
+		//The count is a bare number on the line after its start marker, so it has to be read before it's mistaken for a context
+		if (awaiting_ribbon_count) {
+			awaiting_ribbon_count = false;
+			ribbon_count_stack.push_back((tfxU32)atoi(line.start));
+			continue;
+		}
 
 		if (tfx__line_is_uint(&line)) {
 			context = atoi(line.start);
@@ -10126,7 +10178,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				ribbon_frame_meta_stack.push_back_copy(frame_meta);
 			}
 			else if (context == tfxStartRibbonEmitterCount) {
-				//Value will be parsed on the next line
+				awaiting_ribbon_count = true;
 			}
 			else if (context == tfxStartEmitter) {
 				tfx_gpu_particle_properties_t emitter_properties{};
@@ -10135,13 +10187,6 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		}
 
 		if (context_set == false) {
-			//Ribbon emitter count is a bare value, not a key=value pair
-			if (context == tfxStartRibbonEmitterCount) {
-				tfxU32 ribbon_count = (tfxU32)atoi(line.start);
-				ribbon_count_stack.push_back(ribbon_count);
-				continue;
-			}
-
 			pair.clear();
 			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
@@ -10326,6 +10371,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	}
 
 	tfx__free_package(package);
+	tfx__rebuild_animation_ribbon_buckets(animation_manager);
 
 	if (!shape_loader) {
 		error |= tfxErrorCode_library_loaded_without_shape_loader;
@@ -12399,7 +12445,12 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.shader_type = ribbon_properties.angle_type;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 		properties.flags = effect->state_properties.property_flags;
-		properties.graph_lookup_offset = effect->gpu_lookup_offset;
+		//Sprite data can be played without the library, so the manager keeps its own copy of the rows in the same order as the global table
+		properties.graph_lookup_offset = animation_manager->ribbon_graph_data.current_size;
+		for (tfx_graph_t &graph : effect->library->graphs[effect->state_properties.graph_list_index].graphs) {
+			if (!tfx__gpu_overtime_graph(&graph)) continue;
+			animation_manager->ribbon_graph_data.push_back(tfx__gpu_graph_data(&graph));
+		}
 		tfx_image_data_t &image = *effect->state_properties.image;
 		properties.animation_frames = image.animation_frames;
 		if (properties.animation_frames > 1 && effect->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate) {
@@ -13208,9 +13259,94 @@ void *tfx_GetAnimationRibbonDataBufferPointer(tfx_animation_manager animation_ma
 	return animation_manager->ribbon_data.data;
 }
 
+void *tfx_GetAnimationRibbonGraphLookupsBufferPointer(tfx_animation_manager animation_manager) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	return animation_manager->ribbon_graph_data.data;
+}
+
 bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager) {
 	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
 	return animation_manager->ribbon_data.current_size > 0;
+}
+
+tfx_ribbon_batch_sizes_t tfx_GetAnimationRibbonBufferSizes(tfx_animation_manager animation_manager, tfxU32 vertex_size) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	tfx_ribbon_batch_sizes_t sizes{};
+	sizes.segment_buffer_size_in_bytes = animation_manager->ribbon_segment_data.size_in_bytes();
+	sizes.ribbon_buffer_size_in_bytes = (size_t)animation_manager->buffer_metrics.total_ribbons_to_draw * sizeof(tfx_ribbon_t);
+	sizes.emitter_buffer_size_in_bytes = tfx_GetAnimationRibbonEmittersSizeInBytes(animation_manager);
+	for (tfx_animation_ribbon_bucket_t &bucket : animation_manager->animation_ribbon_buckets) {
+		tfx_ribbon_buffer_info_t info = tfx_GenerateRibbonBufferInfo(bucket.tessellation);
+		sizes.vertex_buffer_size_in_bytes += (size_t)bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment * vertex_size;
+		sizes.index_buffer_size_in_bytes += (size_t)bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment * sizeof(tfxU32);
+	}
+	return sizes;
+}
+
+size_t tfx_GetAnimationRibbonEmittersSizeInBytes(tfx_animation_manager animation_manager) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	return (size_t)animation_manager->ribbon_properties.current_size * sizeof(tfx_gpu_ribbon_emitter_t);
+}
+
+void tfx_CopyAnimationRibbonEmitters(tfx_animation_manager animation_manager, void *destination) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	tfx_gpu_ribbon_emitter_t *emitters = (tfx_gpu_ribbon_emitter_t *)destination;
+	for (tfxU32 index = 0; index != animation_manager->ribbon_properties.current_size; ++index) {
+		tfx_animation_ribbon_properties_t &properties = animation_manager->ribbon_properties[index];
+		tfx_gpu_ribbon_emitter_t emitter{};
+		emitter.lookup_offset = properties.graph_lookup_offset;
+		emitter.fixed_angle_normal = { 0.f, 1.f, 0.f };
+		emitter.angle_type = properties.shader_type;
+		//sample_ribbon_path indexes the shared segments by this, so a zero here reads far out of bounds
+		emitter.sample_count_noise = (properties.sample_count & 0xFFFFFF) | (properties.noise_packed << 24);
+		//ribbon_data_playback.comp has already put the image start into each ribbon, so ribbon_3d.vert mustn't add it again
+		emitter.start_frame_index = 0;
+		emitter.morph_segment_start_index = properties.morph_segment_start_index;
+		emitter.noise_frequency = properties.noise_frequency;
+		emitter.noise_speed = properties.noise_speed;
+		emitter.noise_phase_range = properties.noise_phase_range;
+		emitter.noise_lock_rate = properties.noise_lock_rate;
+		emitters[index] = emitter;
+	}
+}
+
+tfx_ribbon_dispatch_t tfx_CreateAnimationRibbonDispatch(void) {
+	return {};
+}
+
+bool tfx_NextAnimationRibbonDispatch(tfx_animation_manager animation_manager, tfx_ribbon_dispatch_t *ribbon_dispatch) {
+	TFX_ASSERT_HANDLE(animation_manager);	//Not a valid animation manager handle
+	while (ribbon_dispatch->next_bucket < animation_manager->animation_ribbon_buckets.current_size) {
+		tfx_animation_ribbon_bucket_t &bucket = animation_manager->animation_ribbon_buckets[ribbon_dispatch->next_bucket++];
+		if (bucket.ribbon_count == 0) {
+			continue;
+		}
+		tfx_ribbon_buffer_info_t info = tfx_GenerateRibbonBufferInfo(bucket.tessellation);
+		ribbon_dispatch->ribbon_data = nullptr;
+		ribbon_dispatch->sort_key = 0;
+		ribbon_dispatch->index_offset = bucket.index_offset;
+		ribbon_dispatch->vertex_offset = bucket.vertex_offset;
+		ribbon_dispatch->ribbon_offset = bucket.ribbon_offset;
+		ribbon_dispatch->segment_offset = 0;
+		ribbon_dispatch->index_count = bucket.ribbon_count * (bucket.segment_count - 1) * info.indices_per_segment;
+		ribbon_dispatch->vertex_count = bucket.ribbon_count * bucket.segment_count * info.vertices_per_segment;
+		ribbon_dispatch->total_segments = bucket.ribbon_count * bucket.segment_count;
+		//Segment start indexes in baked ribbons are already absolute into the animation manager's segments, so the segment offset is 0
+		tfx_ribbon_bucket_globals_t &globals = bucket.globals;
+		globals.segment_count = bucket.segment_count;
+		globals.tessellation = bucket.tessellation;
+		globals.index_offset = bucket.index_offset;
+		globals.vertex_offset = bucket.vertex_offset;
+		globals.ribbon_count = bucket.ribbon_count;
+		globals.ribbon_offset = bucket.ribbon_offset;
+		globals.segment_offset = 0;
+		globals.emitter_offset = 0;
+		//Baked emitters have identity transforms, so there's nothing to interpolate
+		globals.lerp = 1.f;
+		ribbon_dispatch->globals = &globals;
+		return true;
+	}
+	return false;
 }
 
 bool tfx_HasAnimatedShapes(tfx_animation_manager animation_manager) {
@@ -15329,6 +15465,10 @@ size_t tfx_GetAnimationRibbonPropertySizeInBytes(tfx_animation_manager animation
 size_t tfx_GetAnimationRibbonSegmentsSizeInBytes(tfx_animation_manager animation_manager) {
 	return animation_manager->ribbon_segment_data.size_in_bytes();
 
+}
+
+size_t tfx_GetAnimationRibbonGraphLookupsSizeInBytes(tfx_animation_manager animation_manager) {
+	return animation_manager->ribbon_graph_data.size_in_bytes();
 }
 
 size_t tfx_GetAnimationRibbonDataSizeInBytes(tfx_animation_manager animation_manager) {
@@ -17607,6 +17747,7 @@ bool tfx__next_ribbon_bucket(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatc
 	tfx_ribbon_bucket_t *bucket = pm->ribbon_segment_buckets.next_item();
 	if (bucket) {
 		ribbon_dispatch->ribbon_data = bucket;
+		ribbon_dispatch->globals = &bucket->globals;
 		return true;
 	}
 	return false;
@@ -17632,6 +17773,7 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 		}
 		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
 		ribbon_dispatch->ribbon_data = bucket;
+		ribbon_dispatch->globals = &bucket->globals;
 		ribbon_dispatch->sort_key = bucket->sort_key;
 		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
 		ribbon_dispatch->index_offset = ribbon_dispatch->last_index_offset;
@@ -17658,7 +17800,7 @@ void tfx_ResetRibbonDispatchIterator(tfx_stage pm) {
 }
 
 tfx_ribbon_bucket_globals_t *tfx_GetRibbonDispatchGlobals(tfx_ribbon_dispatch_t *ribbon_dispatch) {
-	return &ribbon_dispatch->ribbon_data->globals;
+	return ribbon_dispatch->globals;
 }
 
 tfx_stage tfx__next_global_stage() {
