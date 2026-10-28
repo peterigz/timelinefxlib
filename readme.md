@@ -54,10 +54,12 @@ Every function is documented in timelinefx.h, and there's a table of contents at
 * Many different types of effects are possible with more coming as features are added.
 
 ## Examples
-You can find examples of how to integrate the library in [my own renderer, Zest](https://github.com/peterigz/zest) in the examples/SDL2 folder:
+The [implementations](implementations) folder has minimal examples of drawing TimelineFX with a graphics API directly, starting with Direct3D 11. Each API has one small backend, and they all share a renderer agnostic layer that loads the shapes, builds a texture atlas and gathers each frame's instances. They play the same scene, covering CPU particles, ribbons, GPU simulated particles and baked playback, and the [readme](implementations/README.md) walks through the setup order, the frame loop and a checklist for porting to another API.
+
+There are more examples in [my own renderer, Zest](https://github.com/peterigz/zest) in the examples/SDL2 folder:
 * zest-timelinefx - updating and drawing effects simulated in real time.
 * zest-timelinefx-c - the same thing using the C API.
 * zest-timelinefx-prerecorded-effects - drawing pre-baked effects with the compute shaders.
 * zest-timelinefx-reload - running TimelineFX inside a DLL that is unloaded and reloaded while the simulation keeps running.
 
-I will build out more examples of how to integrate this library with other renderers over time so watch this space.
+More graphics APIs (D3D12, Vulkan, OpenGL, WebGPU and Metal) will follow in the implementations folder, so watch this space.

@@ -1,6 +1,6 @@
 # Shader Examples
 
-TimelineFX is render agnostic, so you will have to decide how to integrate it into your own renderer. (I'll be looking to add integrations into popular renderers over time).
+TimelineFX is render agnostic, so you will have to decide how to integrate it into your own renderer. The [implementations](../implementations) folder has complete examples for specific graphics APIs, starting with Direct3D 11.
 
 The shaders in this folder are the exact shaders that the TimelineFX editor uses to draw its preview. The editor compiles them straight from this folder, so they're always up to date with the library, and they're a working example of what you need in order to render TimelineFX particles and ribbons yourself. The library itself never compiles or references them - it never talks to a GPU - so they're a reference implementation you can port to your own renderer and pipeline setup.
 
@@ -64,7 +64,13 @@ WGSL always uses fixed bindings, because WebGPU has no descriptor arrays or push
 | The push constants | binding 4, a uniform buffer | `b0`, a constant buffer |
 
 - **WGSL:** each dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset.
-- **D3D11:** compile with `-target dxbc -profile cs_5_0 -line-directive-mode none`. fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits. Create the pool, instance, graph and upload buffers with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and give them raw (`DXGI_FORMAT_R32_TYPELESS`) views. Update the constant buffer before each dispatch. fxc warns that 256 threads times the kernel's temp registers is over its recommended total, so measure there.
+- **D3D11:** compile with `-target dxbc -profile cs_5_0 -line-directive-mode none` and no `-stage` (the entry point declares it, and slangc warns if you pass it as well). fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits. [implementations](../implementations) has a working D3D11 host with this build in its CMake. Notes from it:
+  - Create the pool, instance, graph and upload buffers with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and give them raw (`DXGI_FORMAT_R32_TYPELESS`) views. The upload can be a `DYNAMIC` buffer that `tfx_CopyGPUParticleUpload` fills straight through `Map(WRITE_DISCARD)`.
+  - Create the pool zeroed. The library never clears it and it never needs clearing after that.
+  - Update the constant buffer before each dispatch, changing only `dispatch_index`.
+  - The instance buffer the kernel writes is the one your vertex shader reads, so unbind it from the vertex shader after drawing. A buffer bound for reading and writing at once gets one of its binds cleared, with a debug layer warning.
+  - If you keep two instance buffers for interpolation, copy both across when they grow, because the GPU instances in the previous one exist nowhere else.
+  - fxc warns that 256 threads times the kernel's temp registers is over its recommended total (X4714), and that a few functions may use an uninitialized variable (X4000). Neither shows up at run time: about 106,000 particles take about 110 µs per dispatching fetch, on par with Vulkan.
 - **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. Bind the four buffers as SSBOs at bindings 0 to 3 (`glBindBufferBase`) and the push constants as a UBO at binding 4.
 - **A host entry point with its own push constants** does what `simulate_particles` does: declare them twice, `[[vk::push_constant]]` and `[[vk::binding(4, 0)]] ... : register(b15)` (the register keeps it out of Metal's buffer slots), and read them through a function that picks with `__target_switch`: `case wgsl:` (plus `case glsl:` under `TFX_FIXED_BINDINGS`) returns the uniform one, `default:` the push constant one.
 
@@ -108,7 +114,7 @@ For maximum speed you can pre-bake an effect to sprite data and update the insta
 
 Baked billboards need their own vertex shader. `sprite_data_playback.comp` has already done the interpolation between baked frames, resolved the image frame (the emitter's start frame included) and baked the stretch into `position.w`, so `static_billboard.vert` reads each instance as it is, with no previous buffer and no timer lerp. `timelinefx3d.vert` would add the start frame a second time and see no motion to stretch along. It also takes a `vec4 offset` and `ndc_offset_x/y` in its push constants, which the editor uses to draw seamless sprite sheets; leave them at zero otherwise.
 
-Baked ribbons go through the same `ribbons.comp` and ribbon shaders as live ones. Every frame, after `tfx_UpdateAnimationManager`, dispatch `ribbon_data_playback.comp` with `tfx_ribbon_data_push_t`, then walk the animation manager's buckets with `tfx_CreateAnimationRibbonDispatch` and `tfx_NextAnimationRibbonDispatch` exactly as you walk a stage's: one `ribbons.comp` dispatch and one indexed draw per bucket. `tfx_CopyAnimationRibbonEmitters` gives you the emitter buffer `ribbons.comp` reads for baked ribbons, and `tfx_GetAnimationRibbonBufferSizes` the buffer sizes for the frame.
+Baked ribbons go through the same `ribbons.comp` and ribbon shaders as live ones. Every frame, after `tfx_UpdateAnimationManager`, dispatch `ribbon_data_playback.comp` with `tfx_ribbon_data_push_t`, then walk the animation manager's buckets with `tfx_CreateAnimationRibbonDispatch` and `tfx_NextAnimationRibbonDispatch` exactly as you walk a stage's: one `ribbons.comp` dispatch and one indexed draw per bucket. `tfx_CopyAnimationRibbonEmitters` gives you the emitter buffer `ribbons.comp` reads for baked ribbons, and `tfx_GetAnimationRibbonBufferSizes` the buffer sizes for the frame. Baked ribbons carry their own graph rows, so bind `tfx_GetAnimationRibbonGraphLookupsBufferPointer` in place of `tfx_GetGPUGraphLookupsBuffer` for their compute and draw. That way sprite data plays back without a library loaded.
 
 The bounding box shaders are optional extras rather than part of the render path:
 
