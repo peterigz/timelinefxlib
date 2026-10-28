@@ -70,7 +70,7 @@ WGSL always uses fixed bindings, because WebGPU has no descriptor arrays or push
   - Update the constant buffer before each dispatch, changing only `dispatch_index`.
   - The instance buffer the kernel writes is the one your vertex shader reads, so unbind it from the vertex shader after drawing. A buffer bound for reading and writing at once gets one of its binds cleared, with a debug layer warning.
   - If you keep two instance buffers for interpolation, copy both across when they grow, because the GPU instances in the previous one exist nowhere else.
-  - fxc warns that 256 threads times the kernel's temp registers is over its recommended total (X4714), and that a few functions may use an uninitialized variable (X4000). Neither shows up at run time: about 106,000 particles take about 110 µs per dispatching fetch, on par with Vulkan.
+  - fxc warns that 256 threads times the kernel's temp registers is over its recommended total (X4714), and that a few functions may use an uninitialized variable (X4000). Neither shows up at run time: about 106,000 particles take about 110 µs per dispatching fetch (AMD 6600xt), on par with Vulkan.
 - **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. Bind the four buffers as SSBOs at bindings 0 to 3 (`glBindBufferBase`) and the push constants as a UBO at binding 4.
 - **A host entry point with its own push constants** does what `simulate_particles` does: declare them twice, `[[vk::push_constant]]` and `[[vk::binding(4, 0)]] ... : register(b15)` (the register keeps it out of Metal's buffer slots), and read them through a function that picks with `__target_switch`: `case wgsl:` (plus `case glsl:` under `TFX_FIXED_BINDINGS`) returns the uniform one, `default:` the push constant one.
 
