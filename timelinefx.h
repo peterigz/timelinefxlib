@@ -2328,22 +2328,41 @@ could reduce the numbers as well if needed (they don't take a lot of space thoug
 */
 tfxAPI void tfx_SetStageWorkQueueSizes(tfx_stage pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
-/*Free the memory for a specific emitter type. When an emitter is created it creates memory to store all of the particles that it updates each frame. If you have
-multiple emitters of the same type then their particle lists are resused rather then freed as they expire. When they're freed then the unused list is added to a list
-of free particle banks for that emitter type so that they can then be recycled if another emitter of the same type is created. If you want to free the memory for a
-specific emitter then you can call this function to do that.
-NOTE: No emitters of the type passed to the function must be in use in the effect manager.
-* @param pm                        A pointer to an intialised tfx_stage_t.
-* @param emitter                   A pointer to a valid tfx_effect_descriptor_t of type tfxEmitterType
+/*
+Every emitter on a stage stores its particles in a particle array that grows as it needs to. When the emitter ends its array isn't freed, it's kept
+idle so the next emitter of the same type can reuse it without allocating or growing again. The following functions free those idle arrays. Arrays
+that running emitters are using are never touched, so these are safe to call at any time apart from inside the stage's update, for example from an
+effect update callback. They wait for an update that is running on another thread to finish first.
 */
-tfxAPI void tfx_FreeParticleListsMemory(tfx_stage pm, tfx_effect_descriptor emitter);
 
 /*
-Free all the memory that is associated with an effect. Depending on the configuration of the effect manager this might be instance_data, particle lists and spawn location lists.
+Free every idle particle array on the stage, and the stage's lists of them.
 * @param pm                        A pointer to an intialised tfx_stage_t.
-* @param emitter                   A pointer to a valid tfx_effect_descriptor_t of type tfxEffectType
 */
-tfxAPI void tfx_FreeEffectListsMemory(tfx_stage pm, tfx_effect_descriptor effect);
+tfxAPI void tfx_FreeAllParticleArrays(tfx_stage pm);
+
+/*
+Free the idle particle arrays of one emitter type.
+* @param pm                        A pointer to an intialised tfx_stage_t.
+* @param path                      The emitter's full path in its library, for example "Explosion/Sparks". An effect's path does nothing here, use
+                                   tfx_FreeEffectParticleArrays to free every emitter in an effect.
+*/
+tfxAPI void tfx_FreeEmitterParticleArrays(tfx_stage pm, const char *path);
+
+/*
+Free the idle particle arrays of every emitter below an effect or folder. An emitter's descriptor frees just that emitter.
+* @param pm                        A pointer to an intialised tfx_stage_t.
+* @param descriptor                A valid tfx_effect_descriptor of an effect, folder or emitter
+*/
+tfxAPI void tfx_FreeEffectParticleArrays(tfx_stage pm, tfx_effect_descriptor descriptor);
+
+/*
+Free the particle arrays that have been idle for at least idle_milliseconds of stage updates. Idle arrays are kept oldest first, so it stops at the
+first one of each emitter type that isn't due. That makes it cheap enough to call regularly, every second or so, or when the game changes level.
+* @param pm                        A pointer to an intialised tfx_stage_t.
+* @param idle_milliseconds         How long an array must have been idle, in milliseconds of updates, to be freed. 0 frees every idle array.
+*/
+tfxAPI void tfx_TrimParticleArrays(tfx_stage pm, float idle_milliseconds);
 
 /*
 Get the current particle count for a effect manager

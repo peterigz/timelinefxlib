@@ -3790,7 +3790,7 @@ void tfx__build_path_nodes(tfx_emitter_path_t *path) {
 	}
 	if (path->buffers.node_buffer.current_size < node_count) {
 		if (node_count >= path->buffers.node_buffer.capacity) {
-			tfx__grow_soa_arrays(&path->buffers.node_buffer, path->buffers.node_buffer.capacity, node_count);
+			tfx__grow_soa_arrays(&path->buffers.node_buffer, node_count);
 		}
 		path->buffers.node_buffer.current_size = node_count;
 	}
@@ -12146,7 +12146,7 @@ void tfx__compress_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, float
 				c_sprites.billboard_instance[ci] = sprites.billboard_instance[i];
 				ci++;
 				if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
-					bool result = tfx__grow_soa_arrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);
+					bool result = tfx__grow_soa_arrays(&sprite_data->compressed_sprites_buffer, sprite_data->compressed_sprites_buffer.capacity + 1, true);
 					TFX_ASSERT(result);        //Failed to grow sprite compression array
 				}
 			}
@@ -12167,7 +12167,7 @@ void tfx__compress_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, float
 					c_sprites.billboard_instance[ci] = sprites.billboard_instance[i];
 					ci++;
 					if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
-						bool result = tfx__grow_soa_arrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);
+						bool result = tfx__grow_soa_arrays(&sprite_data->compressed_sprites_buffer, sprite_data->compressed_sprites_buffer.capacity + 1, true);
 						TFX_ASSERT(result);        //Failed to grow sprite compression array
 					}
 				}
@@ -12263,7 +12263,7 @@ void tfx__compress_ribbon_data(tfx_sprite_data_t *sprite_data, tfx_sprite_data_s
 				c_ribbons.ribbon_instance[ci] = ribbons.ribbon_instance[i];
 				ci++;
 				if (ci >= sprite_data->compressed_ribbons_buffer.capacity) {
-					bool result = tfx__grow_soa_arrays(&sprite_data->compressed_ribbons_buffer, ci, sprite_data->compressed_ribbons_buffer.capacity + 1, true);
+					bool result = tfx__grow_soa_arrays(&sprite_data->compressed_ribbons_buffer, sprite_data->compressed_ribbons_buffer.capacity + 1, true);
 					TFX_ASSERT(result);        //Failed to grow ribbon compression array
 				}
 			}
@@ -12280,7 +12280,7 @@ void tfx__compress_ribbon_data(tfx_sprite_data_t *sprite_data, tfx_sprite_data_s
 					c_ribbons.ribbon_instance[ci] = ribbons.ribbon_instance[i];
 					ci++;
 					if (ci >= sprite_data->compressed_ribbons_buffer.capacity) {
-						bool result = tfx__grow_soa_arrays(&sprite_data->compressed_ribbons_buffer, ci, sprite_data->compressed_ribbons_buffer.capacity + 1, true);
+						bool result = tfx__grow_soa_arrays(&sprite_data->compressed_ribbons_buffer, sprite_data->compressed_ribbons_buffer.capacity + 1, true);
 						TFX_ASSERT(result);        //Failed to grow ribbon compression array
 					}
 				}
@@ -14353,33 +14353,29 @@ tfx_change_tier tfx__get_graph_change_tier(tfx_graph_type graph_type, bool effec
 	}
 }
 
+tfxINTERNAL void tfx__push_free_particle_bank(tfx_storage_map_t<tfx_vector_t<tfx_free_particle_bank_t>> *free_lists, tfxKey emitter_hash, tfxU32 bank_index, double freed_time) {
+	if (!free_lists->ValidKey(emitter_hash)) {
+		free_lists->Insert(emitter_hash, {});
+	}
+	free_lists->At(emitter_hash).push_back({ bank_index, freed_time });
+}
+
 void tfx__free_particle_list(tfx_stage pm, tfxU32 index) {
-	if (pm->emitters[index].particles_index == tfxINVALID) {
+	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
+	if (emitter.particles_index == tfxINVALID) {
 		return;
 	}
-	if (pm->free_particle_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
-		pm->free_particle_lists.At(pm->emitters[index].source_emitter->path_hash).push_back(pm->emitters[index].particles_index);
-		pm->emitters[index].particles_index = tfxINVALID;
-	}
-	else if (pm->emitters[index].particles_index != tfxINVALID) {
-		pm->free_particle_lists.Insert(pm->emitters[index].source_emitter->path_hash, {});
-		tfx_vector_t<tfxU32> &new_indexes = pm->free_particle_lists.At(pm->emitters[index].source_emitter->path_hash);
-		new_indexes.push_back(pm->emitters[index].particles_index);
-		pm->emitters[index].particles_index = tfxINVALID;
-	}
+	tfx__push_free_particle_bank(&pm->free_particle_lists, emitter.source_emitter->path_hash, emitter.particles_index, pm->tick_time);
+	emitter.particles_index = tfxINVALID;
 }
 
 void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index) {
-	if (pm->free_particle_location_lists.ValidKey(pm->emitters[index].source_emitter->path_hash) && pm->emitters[index].spawn_locations_index != tfxINVALID) {
-		tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
-		pm->free_particle_location_lists.At(pm->emitters[index].source_emitter->path_hash).push_back(pm->emitters[index].spawn_locations_index);
+	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
+	if (emitter.spawn_locations_index == tfxINVALID) {
+		return;
 	}
-	else if (pm->emitters[index].spawn_locations_index != tfxINVALID) {
-		pm->free_particle_location_lists.Insert(pm->emitters[index].source_emitter->path_hash, {});
-		tfx_vector_t<tfxU32> &new_indexes = pm->free_particle_location_lists.At(pm->emitters[index].source_emitter->path_hash);
-		tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
-		new_indexes.push_back(pm->emitters[index].spawn_locations_index);
-	}
+	tfx__clear_soa_buffer(&pm->particle_location_buffers[emitter.spawn_locations_index]);
+	tfx__push_free_particle_bank(&pm->free_particle_location_lists, emitter.source_emitter->path_hash, emitter.spawn_locations_index, pm->tick_time);
 }
 
 void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm) {
@@ -15162,6 +15158,7 @@ void tfx__update_stage(void *data) {
 	for (tfxU32 step = 0; step != step_count; ++step) {
 		pm->steps_remaining = step_count - step;
 		tfx__update_stage_tick(pm, elapsed_time, pm->steps_remaining <= write_step_count);
+		pm->tick_time += pm->frame_length;
 	}
 	pm->steps_remaining = 0;
 
@@ -17464,10 +17461,6 @@ void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_external_recording(pm);
 	tfx_ClearStage(pm, true, true);
-	for (auto &bank : pm->free_particle_lists.data) {
-		bank.free();
-	}
-	pm->free_particle_lists.FreeAll();
 
 	tfxStageFlags current_flags = (pm->flags & tfxStageFlags_dynamic_sprite_allocation) |
 											(pm->flags & tfxStageFlags_double_buffer_sprites) |
@@ -18216,6 +18209,7 @@ void tfx__free_all_particle_lists(tfx_stage pm) {
 	}
 	pm->particle_array_buffers.free();
 	pm->particle_arrays.free();
+	pm->empty_particle_banks.free();
 }
 
 void tfx__free_all_spawn_location_lists(tfx_stage pm) {
@@ -18224,6 +18218,7 @@ void tfx__free_all_spawn_location_lists(tfx_stage pm) {
 	}
 	pm->particle_location_buffers.free();
 	pm->particle_location_arrays.free();
+	pm->empty_particle_location_banks.free();
 }
 
 void tfx_SoftExpireAll(tfx_stage pm) {
@@ -18384,34 +18379,28 @@ tfxU32 tfx_GetFreeEffectCount(tfx_stage pm) {
 	return pm->free_effects.current_size;
 }
 
-void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index) {
-	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t *>(buffer->user_data);
-	for (tfxU32 i = index; i != buffer->capacity; ++i) {
-		particles->inv_max_age[i] = 1.f;
-		particles->age[i] = 1.f;
-		particles->life[i] = 1.f;
-		particles->flags_single_loop_count[i] = 0;
-	}
-}
-
 tfxU32 tfx__grab_particle_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags) {
 	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
+		tfx_vector_t<tfx_free_particle_bank_t> &free_banks = pm->free_particle_lists.At(emitter_hash);
 		if (free_banks.current_size) {
-			pm->particle_array_buffers[free_banks.back()].current_size = 0;
-			return free_banks.pop_back();
+			tfxU32 index = free_banks.pop_back().index;
+			pm->particle_array_buffers[index].current_size = 0;
+			return index;
 		}
 	}
-	tfx_particle_soa_t lists;
-	pm->particle_arrays.push_back(lists);
-	tfxU32 index = pm->particle_arrays.current_size - 1;
-	tfx_soa_buffer_t buffer;
-	tfx__init_soa_buffer(&buffer);
-	buffer.resize_callback = tfx__resize_particle_soa_callback;
-	buffer.user_data = &pm->particle_arrays.back();
-	pm->particle_array_buffers.push_back(buffer);
-	TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
-	tfx__init_particle_soa(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, flags);
+	tfxU32 index;
+	if (pm->empty_particle_banks.current_size) {
+		index = pm->empty_particle_banks.pop_back();
+	} else {
+		tfx_particle_soa_t lists;
+		pm->particle_arrays.push_back(lists);
+		index = pm->particle_arrays.current_size - 1;
+		tfx_soa_buffer_t buffer;
+		tfx__init_soa_buffer(&buffer);
+		pm->particle_array_buffers.push_back(buffer);
+		TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
+	}
+	tfx__init_particle_soa(&pm->particle_array_buffers[index], &pm->particle_arrays[index], reserve_amount, flags);
 	return index;
 }
 
@@ -18467,55 +18456,136 @@ void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_hash, tfxU32 ribbon_index) {
 	bucket.active_ribbons--;
 }
 
-void tfx_FreeParticleListsMemory(tfx_stage pm, tfx_effect_descriptor emitter) {
-	if (pm->free_particle_lists.ValidKey(emitter->path_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter->path_hash);
-		for (tfxU32 i : free_banks) {
-			tfx__free_soa_buffer(&pm->particle_array_buffers[i]);
-		}
-		free_banks.free();
+//A free list is oldest first, so the banks that went idle at or before freed_before are a run at the front
+tfxINTERNAL void tfx__free_idle_particle_banks(tfx_vector_t<tfx_free_particle_bank_t> *free_banks, tfx_vector_t<tfx_soa_buffer_t> *buffers, tfx_vector_t<tfxU32> *empty_banks, double freed_before) {
+	tfxU32 freed_count = 0;
+	while (freed_count != free_banks->current_size && (*free_banks)[freed_count].freed_time <= freed_before) {
+		tfxU32 bank_index = (*free_banks)[freed_count].index;
+		tfx__free_soa_buffer(&(*buffers)[bank_index]);
+		empty_banks->push_back(bank_index);
+		freed_count++;
 	}
-	if (pm->free_particle_location_lists.ValidKey(emitter->path_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter->path_hash);
-		for (tfxU32 i : free_banks) {
-			tfx__free_soa_buffer(&pm->particle_location_buffers[i]);
-		}
-		free_banks.free();
-	}
-	for (tfx_effect_descriptor effect : emitter->children) {
-		tfx_FreeEffectListsMemory(pm, effect);
+	if (freed_count == free_banks->current_size) {
+		free_banks->free();
+	} else if (freed_count) {
+		memmove(free_banks->data, free_banks->data + freed_count, (size_t)(free_banks->current_size - freed_count) * sizeof(tfx_free_particle_bank_t));
+		free_banks->current_size -= freed_count;
 	}
 }
 
-void tfx_FreeEffectListsMemory(tfx_stage pm, tfx_effect_descriptor effect) {
-	if (effect->type == tfxFolder) {
-		for (tfx_effect_descriptor child : effect->children) {
-			tfx_FreeEffectListsMemory(pm, child);
-		}
+tfxINTERNAL void tfx__free_path_particle_arrays(tfx_stage pm, tfxKey path_hash) {
+	if (pm->free_particle_lists.ValidKey(path_hash)) {
+		tfx__free_idle_particle_banks(&pm->free_particle_lists.At(path_hash), &pm->particle_array_buffers, &pm->empty_particle_banks, tfxMAX_FLOAT);
 	}
-	for (tfx_effect_descriptor emitter : effect->children) {
-		tfx_FreeParticleListsMemory(pm, emitter);
+	if (pm->free_particle_location_lists.ValidKey(path_hash)) {
+		tfx__free_idle_particle_banks(&pm->free_particle_location_lists.At(path_hash), &pm->particle_location_buffers, &pm->empty_particle_location_banks, tfxMAX_FLOAT);
 	}
+}
+
+tfxINTERNAL void tfx__free_descriptor_particle_arrays(tfx_stage pm, tfx_effect_descriptor descriptor) {
+	tfx__free_path_particle_arrays(pm, descriptor->path_hash);
+	for (tfx_effect_descriptor child : descriptor->children) {
+		tfx__free_descriptor_particle_arrays(pm, child);
+	}
+}
+
+//Once no bank is in use the slots themselves can go, which keeps the bank count down for particle ids
+tfxINTERNAL void tfx__release_empty_particle_bank_slots(tfx_stage pm) {
+	if (pm->empty_particle_banks.current_size == pm->particle_array_buffers.current_size) {
+		tfx__free_all_particle_lists(pm);
+	}
+	if (pm->empty_particle_location_banks.current_size == pm->particle_location_buffers.current_size) {
+		tfx__free_all_spawn_location_lists(pm);
+	}
+}
+
+tfxINTERNAL bool tfx__begin_particle_array_free(tfx_stage pm) {
+	if (tfx__stage_updating_on_this_thread == pm) {
+		TFX_ASSERT(0 && "Particle arrays can't be freed from inside the stage's update, for example from an effect update callback");
+		return false;
+	}
+	tfx__wait_for_external_recording(pm);
+	tfx__wait_for_stage_update(pm);
+	tfx__sync_lock(&pm->add_effect_mutex);
+	return true;
+}
+
+void tfx_FreeAllParticleArrays(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);
+	if (!tfx__begin_particle_array_free(pm)) {
+		return;
+	}
+	for (tfx_vector_t<tfx_free_particle_bank_t> &free_banks : pm->free_particle_lists.data) {
+		tfx__free_idle_particle_banks(&free_banks, &pm->particle_array_buffers, &pm->empty_particle_banks, tfxMAX_FLOAT);
+	}
+	pm->free_particle_lists.FreeAll();
+	for (tfx_vector_t<tfx_free_particle_bank_t> &free_banks : pm->free_particle_location_lists.data) {
+		tfx__free_idle_particle_banks(&free_banks, &pm->particle_location_buffers, &pm->empty_particle_location_banks, tfxMAX_FLOAT);
+	}
+	pm->free_particle_location_lists.FreeAll();
+	tfx__release_empty_particle_bank_slots(pm);
+	tfx__sync_unlock(&pm->add_effect_mutex);
+}
+
+void tfx_FreeEmitterParticleArrays(tfx_stage pm, const char *path) {
+	TFX_ASSERT_HANDLE(pm);
+	TFX_ASSERT(path);
+	if (!tfx__begin_particle_array_free(pm)) {
+		return;
+	}
+	tfx__free_path_particle_arrays(pm, tfx_Hash(&tfxStore->hasher, path, strlen(path), 0));
+	tfx__release_empty_particle_bank_slots(pm);
+	tfx__sync_unlock(&pm->add_effect_mutex);
+}
+
+void tfx_FreeEffectParticleArrays(tfx_stage pm, tfx_effect_descriptor descriptor) {
+	TFX_ASSERT_HANDLE(pm);
+	TFX_ASSERT_HANDLE(descriptor);
+	if (!tfx__begin_particle_array_free(pm)) {
+		return;
+	}
+	tfx__free_descriptor_particle_arrays(pm, descriptor);
+	tfx__release_empty_particle_bank_slots(pm);
+	tfx__sync_unlock(&pm->add_effect_mutex);
+}
+
+void tfx_TrimParticleArrays(tfx_stage pm, float idle_milliseconds) {
+	TFX_ASSERT_HANDLE(pm);
+	if (!tfx__begin_particle_array_free(pm)) {
+		return;
+	}
+	const double freed_before = pm->tick_time - (double)idle_milliseconds;
+	for (tfx_vector_t<tfx_free_particle_bank_t> &free_banks : pm->free_particle_lists.data) {
+		tfx__free_idle_particle_banks(&free_banks, &pm->particle_array_buffers, &pm->empty_particle_banks, freed_before);
+	}
+	for (tfx_vector_t<tfx_free_particle_bank_t> &free_banks : pm->free_particle_location_lists.data) {
+		tfx__free_idle_particle_banks(&free_banks, &pm->particle_location_buffers, &pm->empty_particle_location_banks, freed_before);
+	}
+	tfx__release_empty_particle_bank_slots(pm);
+	tfx__sync_unlock(&pm->add_effect_mutex);
 }
 
 tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
 	if (pm->free_particle_location_lists.ValidKey(emitter_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter_hash);
+		tfx_vector_t<tfx_free_particle_bank_t> &free_banks = pm->free_particle_location_lists.At(emitter_hash);
 		if (free_banks.current_size) {
-			pm->particle_location_buffers[free_banks.back()].current_size = 0;
-			return free_banks.pop_back();
+			tfxU32 index = free_banks.pop_back().index;
+			pm->particle_location_buffers[index].current_size = 0;
+			return index;
 		}
 	}
-
-	tfx_spawn_points_soa_t lists;
-	tfxU32 index = pm->particle_location_arrays.locked_push_back(lists);
-	tfx_soa_buffer_t buffer;
-	tfx__init_soa_buffer(&buffer);
-	buffer.resize_callback = nullptr;
-	buffer.user_data = nullptr;
-	pm->particle_location_buffers.push_back(buffer);
-	TFX_ASSERT(index == pm->particle_location_buffers.current_size - 1);
-	tfx__init_particle_location_soa(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
+	tfxU32 index;
+	if (pm->empty_particle_location_banks.current_size) {
+		index = pm->empty_particle_location_banks.pop_back();
+	} else {
+		tfx_spawn_points_soa_t lists;
+		index = pm->particle_location_arrays.locked_push_back(lists);
+		tfx_soa_buffer_t buffer;
+		tfx__init_soa_buffer(&buffer);
+		pm->particle_location_buffers.push_back(buffer);
+		TFX_ASSERT(index == pm->particle_location_buffers.current_size - 1);
+	}
+	tfx__init_particle_location_soa(&pm->particle_location_buffers[index], &pm->particle_location_arrays[index], reserve_amount);
 	return index;
 }
 
@@ -25745,9 +25815,6 @@ bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *alloc
 	tfxMemoryAllocator->split_block_callback = tfx__null_split_callback;
 	tfxMemoryAllocator->add_pool_callback = tfx__null_add_pool_callback;
 	tfxMemoryAllocator->unable_to_reallocate_callback = tfx__null_unable_to_reallocate_callback;
-	for (tfx_stage stage : tfxStore->stages.data) {
-		for (tfx_soa_buffer_t &buffer : stage->particle_array_buffers) if (buffer.resize_callback) buffer.resize_callback = tfx__resize_particle_soa_callback;
-	}
 	//Set user callbacks to null for uv_lookup in the libraries and update_callbacks in the effects.
 	for (tfx_library library : tfxStore->libraries.data) {
 		library->uv_lookup = nullptr;

@@ -3983,8 +3983,6 @@ typedef struct tfx_soa_buffer_s {
 #else
 	tfx_vector_t array_ptrs;    //Container for all the pointers into the arena
 #endif
-	void *user_data;
-	void(*resize_callback)(struct tfx_soa_buffer_s *ring, tfxU32 new_index_start);
 	void *struct_of_arrays;					//Pointer to the struct of arrays. Important that this is a stable pointer! Set with tfx__finish_soa_buffer_setup
 	void *data;								//Pointer to the area in memory that contains all of the array data    
 }tfx_soa_buffer_t;
@@ -4309,8 +4307,6 @@ inline void tfx__init_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->alignment = 4;
 	buffer->block_size = tfxDataWidth;
 	buffer->buffer_amount = 0;
-	buffer->user_data = nullptr;
-	buffer->resize_callback = nullptr;
 	buffer->struct_of_arrays = nullptr;
 	buffer->data = nullptr;
 	buffer->array_ptrs.free();
@@ -4372,36 +4368,37 @@ inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_
 		size_t mod = running_offset % buffer->alignment;
 		running_offset += mod ? buffer->alignment - mod : 0;
 	}
-	if (buffer->resize_callback) {
-		buffer->resize_callback(buffer, 0);
-	}
 }
 
 //Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
-inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true, bool exact = false) {
+inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 new_target_size, bool keep_data = true, bool exact = false) {
 	TFX_ASSERT(buffer->capacity);            //buffer must already have a capacity!
 	tfxU32 new_capacity = 0;
 	new_capacity = new_target_size > buffer->capacity ? new_target_size : buffer->capacity + buffer->capacity / 2;
 	new_capacity = exact ? new_capacity : (new_capacity / buffer->block_size + 1) * buffer->block_size;
 	void *new_data = tfxALLOCATE_ALIGNED(tfx__get_soa_capacity_requirement(buffer, new_capacity), buffer->alignment);
 	TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
-	memset(new_data, 0, new_capacity * buffer->struct_size);
+	const bool wrapped = buffer->start_index + buffer->current_size > buffer->capacity;
 	size_t running_offset = 0;
-	if (keep_data) {
-		for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
-			size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
-			size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+	for (tfxU32 i = 0; i != buffer->array_ptrs.current_size; ++i) {
+		size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
+		size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+		size_t copied_bytes = 0;
+		if (keep_data) {
 			//Wrapped when the last row is past the end, including the case where it sits exactly at index 0
-			if (buffer->start_index + buffer->current_size > buffer->capacity) {
+			if (wrapped) {
 				memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 				memcpy((char *)new_data + (capacity - start_index) + running_offset, (char *)buffer->array_ptrs[i].ptr, (size_t)(start_index));
+				copied_bytes = capacity;
 			} else {
 				memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
+				copied_bytes = capacity - start_index;
 			}
-			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-			size_t mod = running_offset % buffer->alignment;
-			running_offset += mod ? buffer->alignment - mod : 0;
 		}
+		memset((char *)new_data + running_offset + copied_bytes, 0, buffer->array_ptrs[i].unit_size * new_capacity - copied_bytes);
+		running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	void *old_data = buffer->data;
 
@@ -4418,10 +4415,6 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 	}
 	tfxFREE(old_data);
 
-	if (buffer->resize_callback) {
-		buffer->resize_callback(buffer, first_new_index);
-	}
-
 	buffer->start_index = 0;
 
 	return true;
@@ -4431,7 +4424,7 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 inline void tfx__resize_soa_buffer(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
 	if (new_size >= buffer->capacity) {
-		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
+		tfx__grow_soa_arrays(buffer, new_size);
 	}
 	buffer->current_size = new_size;
 }
@@ -4448,7 +4441,7 @@ inline void tfx__copy_soa_buffer(tfx_soa_buffer_t *dst, tfx_soa_buffer_t *src) {
 inline void tfx__set_soa_capacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	TFX_ASSERT(buffer->data);            //No data allocated in buffer
 	if (new_size > buffer->capacity) {
-		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size, true, true);
+		tfx__grow_soa_arrays(buffer, new_size, true, true);
 	}
 }
 
@@ -4458,7 +4451,7 @@ inline tfxU32 tfx__add_soa_row(tfx_soa_buffer_t *buffer, bool grow = false) {
 	TFX_ASSERT(buffer->capacity >= buffer->buffer_amount);            //Buffer amount must not be greater than capacity of the buffer
 	tfxU32 new_size = ++buffer->current_size;
 	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
-		tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
+		tfx__grow_soa_arrays(buffer, new_size);
 	}
 	buffer->current_size = new_size;
 	TFX_ASSERT(buffer->current_size <= buffer->capacity);    //Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
@@ -4473,7 +4466,7 @@ inline tfxU32 tfx__add_soa_rows_grew(tfx_soa_buffer_t *buffer, tfxU32 amount, bo
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size + amount;
 	if (grow && new_size >= buffer->capacity - buffer->buffer_amount) {
-		grew = tfx__grow_soa_arrays(buffer, buffer->capacity, new_size);
+		grew = tfx__grow_soa_arrays(buffer, new_size);
 	}
 	buffer->current_size = new_size;
 	TFX_ASSERT(buffer->current_size < buffer->capacity);    //Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
@@ -7355,6 +7348,11 @@ typedef struct tfx_user_spawn_locations_s {
 } tfx_user_spawn_locations_t;
 #endif
 
+typedef struct tfx_free_particle_bank_s {
+	tfxU32 index;
+	double freed_time;					//The stage's tick_time when the bank went idle
+} tfx_free_particle_bank_t;
+
 //Use the effect manager to add multiple effects to your scene
 #ifdef __cplusplus
 typedef struct tfx_stage_s {
@@ -7363,8 +7361,12 @@ typedef struct tfx_stage_s {
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
 	tfx_vector_t<tfx_soa_buffer_t> particle_location_buffers;
 	tfx_bucket_array_t<tfx_spawn_points_soa_t> particle_location_arrays;
-	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
-	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
+	//Idle banks per emitter path hash, oldest first because they're taken from the back
+	tfx_storage_map_t<tfx_vector_t<tfx_free_particle_bank_t>> free_particle_lists;
+	tfx_storage_map_t<tfx_vector_t<tfx_free_particle_bank_t>> free_particle_location_lists;
+	//Bank slots whose memory was freed, reused before a new slot is added
+	tfx_vector_t<tfxU32> empty_particle_banks;
+	tfx_vector_t<tfxU32> empty_particle_location_banks;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
 	//GPU particle simulation, only used when info.gpu_particle_capacity is set
@@ -7511,6 +7513,7 @@ typedef struct tfx_stage_s {
 	tfxWideFloat frame_length_wide;
 	double update_time;
 	tfxWideFloat update_time_wide;
+	double tick_time;					//Milliseconds of ticks the stage has run, stamps freed particle arrays for tfx_TrimParticleArrays
 } tfx_stage_t;
 #endif
 
@@ -7658,7 +7661,6 @@ typedef struct tfx_data_entry_s {
 //------------------------------------------------------------
 
 #ifdef __cplusplus
-tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index);
 
 //--------------------------------
 //Internal functions used either by the library or editor
