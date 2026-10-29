@@ -170,8 +170,11 @@ void main()
 	//before the sprite actually spawns. We also set it to 0 if the captured_index equals the sprite index. lerp_offset will always be 1 if the particle Sprite
 	//has been spawned for 1 or more frames.
 	vec4 curved_alpha_life = unpackUnorm4x8(sprite_data[pc.sprite_data_index].data[sprite_data_index].curved_alpha_life);
-	float lerp_offset = curved_alpha_life.w;
+	//The spawn record holds the lerp_offset and it's the captured sprite of the next frame, the first one that interpolates from it
+	float lerp_offset = unpackUnorm4x8(sprite_data[pc.sprite_data_index].data[captured_index].curved_alpha_life).w;
 	float spawn_scale = ((lerp_offset >= (1 - lerp)) && (captured_index != sprite_data_index)) ? 1 : 0;
+	//The captured state is the sprite at its spawn time, so interpolate from the spawn point rather than the start of the frame
+	lerp = clamp((lerp - (1 - lerp_offset)) / max(lerp_offset, one_div_255), 0, 1);
 
 	//Do all of the interpolation for transfrom, intensity etc.
 	//If you feel that you can get away with not interpolating some of the data then you could optimise some of these out but it will largely

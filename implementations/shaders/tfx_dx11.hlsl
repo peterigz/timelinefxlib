@@ -1092,8 +1092,11 @@ void sprite_playback(uint3 dispatch_thread_id : SV_DispatchThreadID) {
 	uint property_index = (indexes & 0xFFFF0000) >> 16;
 	//lerp_offset is how far into the frame the sprite spawns, 1 once it's lived a whole frame. Not spawned yet means no size
 	float4 curved_alpha_life = unpack_unorm4x8(current_third.y);
-	float lerp_offset = curved_alpha_life.w;
+	//The spawn record holds the lerp_offset and it's the captured sprite of the next frame, the first one that interpolates from it
+	float lerp_offset = unpack_unorm4x8(captured_third.y).w;
 	float spawn_scale = ((lerp_offset >= (1 - lerp_amount)) && (captured_index != sprite_data_index)) ? 1 : 0;
+	//The captured state is the sprite at its spawn time, so interpolate from the spawn point rather than the start of the frame
+	lerp_amount = saturate((lerp_amount - (1 - lerp_offset)) / max(lerp_offset, 1.0 / 255.0));
 
 	float3 lerped_position = lerp(asfloat(captured_first.xyz), asfloat(current_first.xyz), lerp_amount) * animation.scale;
 	float4 quaternion = float4(tfx_unpack_snorm16x2(current_second.x), tfx_unpack_snorm16x2(current_second.y));
@@ -1299,9 +1302,11 @@ void ribbon_playback(uint3 dispatch_thread_id : SV_DispatchThreadID) {
 	if (captured_index == tfx_invalid) captured_index = ribbon_record_index;
 	tfx_ribbon_data captured = baked_ribbons[captured_index];
 
-	//Ported as it is: unlike sprite_playback this reads the lerp offset from the captured record, see the plan's shader notes
+	//The spawn record holds the lerp_offset and it's the captured ribbon of the next frame, the first one that interpolates from it
 	float lerp_offset = float(captured.property_index_lerp_offset & 0xFFFF) * (1.0 / 65535.0);
 	float spawn_scale = ((lerp_offset >= (1 - lerp_amount)) && (captured_index != ribbon_record_index)) ? 1 : 0;
+	//The captured state is the ribbon at its spawn time, so interpolate from the spawn point rather than the start of the frame
+	lerp_amount = saturate((lerp_amount - (1 - lerp_offset)) / max(lerp_offset, 1.0 / 65535.0));
 
 	float3 lerped_position = lerp(captured.position.xyz, current.position.xyz, lerp_amount) * animation.scale;
 	float lerped_age = lerp(captured.position.w, current.position.w, lerp_amount);

@@ -146,6 +146,8 @@ void main()
 	//Determine spawn visibility using lerp_offset, same logic as sprite_data_playback.comp
 	float lerp_offset = float(ribbon_data[pc.ribbon_data_index].data[captured_index].property_index_lerp_offset & 0xFFFF) * unorm_multiplier;
 	float spawn_scale = ((lerp_offset >= (1 - lerp)) && (captured_index != ribbon_record_index)) ? 1 : 0;
+	//The captured state is the ribbon at its spawn time, so interpolate from the spawn point rather than the start of the frame
+	lerp = clamp((lerp - (1 - lerp_offset)) / max(lerp_offset, unorm_multiplier), 0, 1);
 
 	//Interpolate position
 	vec3 current_position =		ribbon_data[pc.ribbon_data_index].data[ribbon_record_index].position.xyz;
