@@ -5359,7 +5359,7 @@ void tfx_FreeLibrary(tfx_library library) {
 	tfxFREE(library);
 }
 
-//The graph slots Shaders/tfx_gpu_particles.slang reads from a particle emitter's block of the lookups
+//The graph slots Shaders/timelinefx.slang's kernel reads from a particle emitter's block of the lookups
 static const tfx_graph_type tfx__gpu_particle_graph_order[] = {
 	tfxOvertime_intensity, tfxOvertime_alpha_sharpness, tfxOvertime_curved_alpha, tfxOvertime_gradient_mapper, tfxOvertime_velocity, tfxOvertime_width,
 	tfxOvertime_height, tfxOvertime_weight, tfxOvertime_pitch_spin, tfxOvertime_yaw_spin, tfxOvertime_roll_spin, tfxOvertime_stretch,
@@ -12430,7 +12430,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		tfx_animation_ribbon_properties_t properties{};
 		properties.segment_count = ribbon_properties.bucket_info.segment_count;
 		//Must mirror the density derived in tfx__add_effect_to_stage: the recorded segments are stored at that
-		//density and ribbons.comp indexes them by sample_count, not segment_count.
+		//density and tfx_ribbon_compute indexes them by sample_count, not segment_count.
 		properties.sample_count = properties.segment_count * tfx__get_ribbon_samples_per_segment(&effect->library->graphs[effect->state_properties.graph_list_index]);
 		properties.segment_data_offset = 0;  // Set properly in tfx_AddSpriteData after segments are copied
 		//Overwritten in tfx_AddSpriteData for emitters that recorded a morph block. Zero is a valid segment
@@ -13299,7 +13299,7 @@ void tfx_CopyAnimationRibbonEmitters(tfx_animation_manager animation_manager, vo
 		emitter.angle_type = properties.shader_type;
 		//sample_ribbon_path indexes the shared segments by this, so a zero here reads far out of bounds
 		emitter.sample_count_noise = (properties.sample_count & 0xFFFFFF) | (properties.noise_packed << 24);
-		//ribbon_data_playback.comp has already put the image start into each ribbon, so ribbon_3d.vert mustn't add it again
+		//tfx_ribbon_playback has already put the image start into each ribbon, so tfx_ribbon_vertex mustn't add it again
 		emitter.start_frame_index = 0;
 		emitter.morph_segment_start_index = properties.morph_segment_start_index;
 		emitter.noise_frequency = properties.noise_frequency;
@@ -22000,7 +22000,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 			//The ribbon emitter is relative but the particle emitter is not, so the spawn position must end up in world
 			//space. ribbon_instance.position/quaternion only carry the ribbon's local (path) transform - the ribbon emitter's
 			//own world rotation and position are applied by the GPU every frame (emitter_position/emitter_quaternion in
-			//ribbons.comp). Bake that same ribbon emitter world transform in here (rotation, not the particle emitter's) so
+			//tfx_ribbon_compute). Bake that same ribbon emitter world transform in here (rotation, not the particle emitter's) so
 			//the spawn location matches the rendered ribbon, including any roll/pitch/yaw coming from its transform graphs.
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3((float)tween, ribbon_emitter.captured_position, ribbon_emitter.world_position);
 			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&ribbon_emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z));

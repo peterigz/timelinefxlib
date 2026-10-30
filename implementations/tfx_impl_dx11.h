@@ -2,11 +2,11 @@
 #define TFX_IMPL_DX11_HEADER
 
 /*
-	TimelineFX Direct3D 11 backend. Needs feature level 11.0 and shaders/tfx_dx11.hlsl, see README.md.
+	TimelineFX Direct3D 11 backend. Needs feature level 11.0 and the shaders slangc builds from ../Shaders/timelinefx.slang, see README.md.
 
 	Table of contents, search for the keyword to jump to the section:
 	[Dx11_types]		The renderer struct that owns every D3D11 object
-	[Dx11_resources]	Buffer, texture and shader compile helpers (in the .cpp)
+	[Dx11_resources]	Buffer, texture and shader loading helpers (in the .cpp)
 	[Dx11_functions]	Init, upload, render and shutdown
 */
 
@@ -71,7 +71,7 @@ typedef struct tfx_impl_dx11_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 
-	ID3D11ComputeShader *particle_kernel;		//tfx_gpu_particles.slang built by slangc, null without one
+	ID3D11ComputeShader *particle_kernel;		//simulate_particles from timelinefx.slang
 	ID3D11Buffer *particle_push;				//tfx_gpu_particle_push_t at b0
 	tfx_impl_dx11_buffer_t particle_pool;		//Raw, the hot, cold and noise sections in one buffer
 	tfx_impl_dx11_buffer_t particle_upload;	//Raw and dynamic, the frame's tfx_CopyGPUParticleUpload
@@ -113,8 +113,8 @@ typedef struct tfx_impl_dx11_s {
 
 //--- Dx11_functions
 
-//Compiles the shaders and creates the states. shader_path is the path to tfx_dx11.hlsl, kernel_path the compiled GPU particle kernel or null to go without
-bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_path, const char *kernel_path);
+//Loads the shaders and creates the states. shader_folder holds each entry point of timelinefx.slang compiled to <entry point>.cso with TFX_FIXED_BINDINGS
+bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_folder);
 //Uploads the shape atlas, color ramps, shape frame data and emitter properties. Call after tfx_UpdateLibraryGPUImageData and creating your effect templates
 bool tfx_impl_dx11_UploadLibrary(tfx_impl_dx11_t *renderer, tfx_library library, const tfx_impl_atlas_t *atlas);
 //Uploads an animation manager's baked sprite data, color ramps, shape frames and emitter properties, after tfx_BuildAnimationManagerGPUShapeData

@@ -981,7 +981,7 @@ typedef struct tfx_gpu_particle_frame_s {
 	tfxU32 spawn_base;
 } tfx_gpu_particle_frame_t;
 
-//Push constants for the reference kernel, Shaders/tfx_gpu_particles.slang. Buffers are bindless indexes, and each *_base is
+//Push constants for the reference kernel, simulate_particles in Shaders/timelinefx.slang. Buffers are bindless indexes, and each *_base is
 //the row its section starts at in that buffer: 0 for a buffer or view of its own, the section's row when sections share one
 typedef struct tfx_gpu_particle_push_s {	//64 bytes
 	tfxU32 dispatch_index;					//First, so only these 4 bytes change from one dispatch to the next
@@ -1115,7 +1115,7 @@ typedef struct tfx_sprite_data_push_s {
 	tfxU32 bounding_boxes_index;
 } tfx_sprite_data_push_t;
 
-//Push constants for ribbon_data_playback.comp
+//Push constants for tfx_ribbon_playback
 typedef struct tfx_ribbon_data_push_s {
 	tfxU32 animation_instances_total;
 	tfxU32 ribbons_total;
@@ -2185,14 +2185,14 @@ tfx_SetStageGPUSimulation has it off, and when they are the source another emitt
 runs in the kernel: the library resolves each emitter's forces every tick into force rows that follow the tick records,
 so they need nothing more from you.
 
-The reference kernel is Shaders/tfx_gpu_particles.slang, a single file with a contents list at its top, entry point
+The reference kernel is in Shaders/timelinefx.slang, a single file with a contents list at its top, entry point
 simulate_particles, with tfx_gpu_particle_push_t as its push constants. Every buffer access it makes goes through its
 Buffer_access section, which handles each binding model. By default it indexes bindless arrays (Vulkan, D3D12). On Metal every buffer index is a slot in an argument buffer
 of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, OpenGL),
 binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
 To add custom forces, collision or anything else per particle without forking it, write your own
 entry point in your own Slang module:
-  1. import tfx_gpu_particles and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
+  1. import timelinefx and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
      added to the particle's acceleration before drag and integration, like the built-in forces, and after_move runs
      once the particle has moved, before its instance is written. hot.position is in the ring's space: build the
      transform with context.ring_transform(cold) and use to_world/to_ring, and direction_to_world/direction_to_ring
@@ -3615,36 +3615,36 @@ Returns true or false if the animation manager contains effects with ribbons
 tfxAPI bool tfx_AnimationManagerHasRibbons(tfx_animation_manager animation_manager);
 
 /*
-Baked ribbons go through the same ribbons.comp and ribbon shaders as live ones. Every frame, after tfx_UpdateAnimationManager:
-  1. Dispatch ribbon_data_playback.comp with tfx_ribbon_data_push_t, (tfx_GetTotalRibbonsThatNeedDrawing + 127) / 128 groups. It
+Baked ribbons go through the same tfx_ribbon_compute and ribbon shaders as live ones. Every frame, after tfx_UpdateAnimationManager:
+  1. Dispatch tfx_ribbon_playback with tfx_ribbon_data_push_t, (tfx_GetTotalRibbonsThatNeedDrawing + 127) / 128 groups. It
      reads the ribbon data, the ribbon offsets and the animation instances and writes a tfx_ribbon_t per ribbon to draw.
   2. Walk the buckets with tfx_CreateAnimationRibbonDispatch and tfx_NextAnimationRibbonDispatch, exactly as you walk a stage's with
-     tfx_NextRibbonDispatch: one ribbons.comp dispatch per bucket with tfx_GetRibbonDispatchGlobals as its push constants, then
+     tfx_NextRibbonDispatch: one tfx_ribbon_compute dispatch per bucket with tfx_GetRibbonDispatchGlobals as its push constants, then
      walk them again for one indexed draw each. Set the globals' camera_position yourself, an animation manager has no camera.
-ribbons.comp reads the emitter buffer from tfx_CopyAnimationRibbonEmitters, the segments from
+tfx_ribbon_compute reads the emitter buffer from tfx_CopyAnimationRibbonEmitters, the segments from
 tfx_GetAnimationRibbonSegmentsBufferPointer and the graph lookups from tfx_GetAnimationRibbonGraphLookupsBufferPointer (in place of the
-library's tfx_GetGPUGraphLookupsBuffer, ribbon_3d.vert too), which only change when sprite data is added or loaded.
+library's tfx_GetGPUGraphLookupsBuffer, tfx_ribbon_vertex too), which only change when sprite data is added or loaded.
 */
 
 /*
 Get the buffer sizes baked ribbon playback needs this frame. Call after tfx_UpdateAnimationManager.
 * @param animation_manager        A handle to a tfx_animation_manager
-* @param vertex_size              The size of the vertex ribbons.comp writes, sizeof(tfx_ribbon_vertex_t) for the reference shaders
+* @param vertex_size              The size of the vertex tfx_ribbon_compute writes, sizeof(tfx_ribbon_vertex_t) for the reference shaders
 * @returns tfx_ribbon_batch_sizes_t   segment_buffer_size_in_bytes is the shared segments, ribbon_buffer_size_in_bytes the tfx_ribbon_t
-                                  rows ribbon_data_playback.comp writes, emitter_buffer_size_in_bytes the emitter rows, and the vertex and
-                                  index sizes what ribbons.comp writes for this frame's buckets
+                                  rows tfx_ribbon_playback writes, emitter_buffer_size_in_bytes the emitter rows, and the vertex and
+                                  index sizes what tfx_ribbon_compute writes for this frame's buckets
 */
 tfxAPI tfx_ribbon_batch_sizes_t tfx_GetAnimationRibbonBufferSizes(tfx_animation_manager animation_manager, tfxU32 vertex_size);
 
 /*
-Get the size of the emitter buffer that ribbons.comp reads for baked ribbons, one row per ribbon emitter in the animation manager
+Get the size of the emitter buffer that tfx_ribbon_compute reads for baked ribbons, one row per ribbon emitter in the animation manager
 * @param animation_manager        A handle to a tfx_animation_manager
 * @returns size_t                 The size in bytes
 */
 tfxAPI size_t tfx_GetAnimationRibbonEmittersSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
-Write the emitter rows that ribbons.comp reads for baked ribbons. Baked ribbon positions are already in world space, so every emitter has an
+Write the emitter rows that tfx_ribbon_compute reads for baked ribbons. Baked ribbon positions are already in world space, so every emitter has an
 identity transform and only carries what the shader samples: its graph lookups, angle type, path samples, morph target and noise settings.
 The graph lookup offsets index tfx_GetAnimationRibbonGraphLookupsBufferPointer, not the library's table.
 * @param animation_manager        A handle to a tfx_animation_manager
@@ -3661,7 +3661,7 @@ tfxAPI tfx_ribbon_dispatch_t tfx_CreateAnimationRibbonDispatch(void);
 
 /*
 Advance to the next of this frame's baked ribbon buckets that has ribbons to draw. Call in a while loop until it returns false. Fills the
-dispatch the same way tfx_NextRibbonDispatch does: total_segments for the ribbons.comp dispatch, index_count and index_offset for the draw,
+dispatch the same way tfx_NextRibbonDispatch does: total_segments for the tfx_ribbon_compute dispatch, index_count and index_offset for the draw,
 and the bucket's push constants through tfx_GetRibbonDispatchGlobals. ribbon_data is null, there's no stage bucket behind it.
 * @param animation_manager        A handle to a tfx_animation_manager, updated this frame
 * @param ribbon_dispatch          A dispatch from tfx_CreateAnimationRibbonDispatch, updated in place

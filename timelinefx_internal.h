@@ -7141,7 +7141,7 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 noise_packed;
 } tfx_animation_ribbon_properties_t;
 
-//std430 in ribbon_data_playback.comp and ribbon_data_bounding_box.comp has to agree with this byte for byte
+//tfx_animation_ribbon_properties in timelinefx.slang has to agree with this byte for byte
 tfx__static_assert(sizeof(tfx_animation_ribbon_properties_t) == 68);
 
 typedef struct tfx_animation_ribbon_bucket_s {

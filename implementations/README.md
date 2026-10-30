@@ -6,7 +6,7 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | --- | --- |
 | `tfx_impl_common.h/.cpp` | Everything that would be written the same way whatever API draws the particles: shape loading, the shape atlas, the fixed step timer, the camera matrices and gathering each frame's instances from a stage. Nothing in it talks to a GPU. |
 | `tfx_impl_dx11.h/.cpp` | The Direct3D 11 backend. |
-| `shaders/tfx_dx11.hlsl` | Every D3D11 shader, ported from the GLSL reference shaders in `../Shaders`. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point the example uses to a `.cso`. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example.tfxsd` | Burst, recorded from `example.tfx` in the editor, for baked playback. |
@@ -34,8 +34,9 @@ cmake -S TimelineFXLib/implementations -B build-examples
 cmake --build build-examples --config Debug
 ```
 
-The GPU particle kernel is compiled from `../Shaders/tfx_gpu_particles.slang` with slangc, which comes with the Vulkan
-SDK. Without slangc the examples still build, just without GPU simulation.
+Every shader is compiled from `../Shaders/timelinefx.slang` with slangc, which comes with the Vulkan SDK and with
+the Slang releases on GitHub. CMake looks on the `PATH` and in the Vulkan SDK, and stops if it can't find it, so put
+its bin folder on the `PATH` or set `TFX_SLANGC` to it.
 
 ```
 example_win32_dx11 [updates per second]
@@ -142,9 +143,11 @@ Rules the loop depends on:
   `SV_VertexID`, with 6 vertices per instance.
 - **`SV_InstanceID` doesn't include `StartInstanceLocation`**, so a draw's first instance goes in a constant buffer.
 - **The push constants become constant buffers.** The frame constants (`tfx_impl_uniforms_t`) are at b0 and the
-  per-draw instance offsets at b1. Every other resource has a fixed register, so the bindless indexes are gone.
-- **Struct layouts are checked.** The HLSL mirrors the library's GPU structs by hand, so `tfx_impl_dx11.cpp`
-  static_asserts their sizes and names the HLSL function to fix when one changes.
+  per-draw instance offsets at b1. Every other resource has a fixed register, so the bindless indexes are gone. The
+  shaders are compiled with `-D TFX_FIXED_BINDINGS`, and the `[Fixed_render_bindings]` section of `timelinefx.slang`
+  lists every register.
+- **Struct layouts are checked.** `timelinefx.slang` mirrors the library's GPU structs by hand, so `tfx_impl_dx11.cpp`
+  static_asserts their sizes and names the struct to fix when one changes.
 - **Instance buffers** are `DEFAULT` raw buffers, with UAVs when the GPU kernel writes them. The CPU instances go up in
   one `UpdateSubresource`, because the library lays the buffer out layer by layer. Each layer is then one
   `DrawInstanced(6, count)`. When the buffers grow, both copy their old contents across, since the previous buffer is
@@ -154,7 +157,7 @@ Rules the loop depends on:
 - **Views are unbound after each pass.** D3D11 won't bind a buffer for writing while it's bound for reading, so every
   compute pass and draw unbinds what the next one writes. That keeps the debug layer quiet, which is the test every
   part of the example has passed.
-- **Ribbons** are uploaded on update frames and rebuilt by `ribbon_compute` every frame, because relative ribbons follow
+- **Ribbons** are uploaded on update frames and rebuilt by `tfx_ribbon_compute` every frame, because relative ribbons follow
   their emitter with the frame's lerp. `tfx_impl_dx11_Compute` runs one dispatch per bucket with the bucket's
   `tfx_ribbon_bucket_globals_t` in a constant buffer. `tfx_impl_dx11_Render` then walks the same buckets again for the
   indexed draws. The compute shader writes the vertices to a structured buffer that the vertex shader pulls from, and
@@ -175,15 +178,15 @@ Rules the loop depends on:
     `example_scene.cpp` works both out. The capacities assume about 60 updates a second; at 20 the rings drop spawns.
 - **Baked playback:**
   - Each frame the offsets and animation instances go up.
-  - `sprite_playback` interpolates every visible baked sprite into a billboard instance.
-  - `billboard_static_vertex` draws it. That's a vertex shader with no interpolation of its own, because the compute
+  - `tfx_sprite_playback` interpolates every visible baked sprite into a billboard instance.
+  - `tfx_billboard_baked_vertex` draws it. That's a vertex shader with no interpolation of its own, because the compute
     has already interpolated between baked frames, resolved the image frame and baked the stretch.
-  - `ribbon_playback` interpolates the baked ribbons into the same `tfx_ribbon_t` rows a stage uploads, and they go
-    through `ribbon_compute` and the ribbon draw like live ones. The buckets come from
+  - `tfx_ribbon_playback` interpolates the baked ribbons into the same `tfx_ribbon_t` rows a stage uploads, and they go
+    through `tfx_ribbon_compute` and the ribbon draw like live ones. The buckets come from
     `tfx_NextAnimationRibbonDispatch` instead of `tfx_NextRibbonDispatch`, and the graph lookups from the animation
     manager (`tfx_GetAnimationRibbonGraphLookupsBufferPointer`), because a `.tfxsd` plays without a library.
-- **Shaders** compile at startup with `D3DCompileFromFile`, which comes with Windows. The GPU kernel is compiled ahead
-  of time by slangc and loaded.
+- **Shaders** are compiled ahead of time by slangc, one `<entry point>.cso` each, and `tfx_impl_dx11_Init` loads them
+  from the folder the CMake project builds them into.
 
 ## Clip space
 
@@ -206,17 +209,15 @@ Use the D3D11 backend as the template: keep its function names with your API's p
 - [ ] Add `tfx_impl_<api>.h/.cpp` with the same functions as `tfx_impl_dx11.h`: `Init`, `UploadLibrary`,
       `UploadSpriteData`, `UploadFrame`, `Compute`, `Render` and `Shutdown`. The backend draws into whatever target
       `main.cpp` has bound, so it never owns the swap chain.
-- [ ] Add a target to `CMakeLists.txt`, plus a kernel build for your target if the API runs GPU particles.
+- [ ] Add a target to `CMakeLists.txt`, with a slangc build of each entry point your backend uses.
 - [ ] Turn on the API's validation layer in debug builds and print what it says. Every step below is done when it's
       silent.
 - [ ] Static_assert the sizes of every library struct your shaders mirror, as `tfx_impl_dx11.cpp` does.
 
-**Shaders.** Port the GLSL in `../Shaders` or the HLSL in `shaders/tfx_dx11.hlsl`, whichever is closer. The GLSL is
-bindless, so it suits Vulkan and D3D12. With the atlas, put the atlas's own bindless index in the upper 16 bits of
-`texture_array_index` in your uv lookup and the GLSL works as it is. The HLSL has a fixed register per resource, which
-is closer to OpenGL and WebGPU. Keep the variable names of whichever you port from, so the two can be compared side by
-side. The GPU kernel is never ported by hand: compile `tfx_gpu_particles.slang` for your target as
-`../Shaders/readme.md` describes.
+**Shaders.** Never ported by hand: compile `../Shaders/timelinefx.slang` for your target, as `../Shaders/readme.md`
+describes. Vulkan and D3D12 use its default bindless model. D3D11 compiles it with `-D TFX_FIXED_BINDINGS`, which reads
+every resource from a fixed register and every shape from one atlas, and reads the instances and ribbon vertexes from
+buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the same define, but neither has been tried.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips, and a clamped linear sampler with mip filtering.

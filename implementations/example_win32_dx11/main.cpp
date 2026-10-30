@@ -18,17 +18,13 @@
 #ifndef TFX_EXAMPLE_ROOT
 #define TFX_EXAMPLE_ROOT "."
 #endif
-#define EXAMPLE_SHADER_PATH TFX_EXAMPLE_ROOT "/shaders/tfx_dx11.hlsl"
 #define EXAMPLE_LIBRARY_PATH TFX_EXAMPLE_ROOT "/example.tfx"
 #define EXAMPLE_SPRITE_DATA_PATH TFX_EXAMPLE_ROOT "/example.tfxsd"
-//TFX_EXAMPLE_KERNEL_PATH is the GPU particle kernel the CMake project builds with slangc, when it finds slangc
-#ifdef TFX_EXAMPLE_KERNEL_PATH
-#define EXAMPLE_KERNEL_PATH TFX_EXAMPLE_KERNEL_PATH
-#define EXAMPLE_FEATURES (example_scene_feature_ribbons | example_scene_feature_gpu_simulation | example_scene_feature_baked)
-#else
-#define EXAMPLE_KERNEL_PATH NULL
-#define EXAMPLE_FEATURES (example_scene_feature_ribbons | example_scene_feature_baked)
+//TFX_EXAMPLE_SHADER_FOLDER is where the CMake project has slangc build the shaders
+#ifndef TFX_EXAMPLE_SHADER_FOLDER
+#define TFX_EXAMPLE_SHADER_FOLDER "dx11_shaders"
 #endif
+#define EXAMPLE_FEATURES (example_scene_feature_ribbons | example_scene_feature_gpu_simulation | example_scene_feature_baked)
 
 #define EXAMPLE_WINDOW_WIDTH 1280
 #define EXAMPLE_WINDOW_HEIGHT 800
@@ -233,7 +229,7 @@ int main(int argc, char **argv) {
 	//Starts the worker threads and the memory pool that everything in the library allocates from
 	tfx_BeginTimelineFX(tfx_GetDefaultThreadCount(), EXAMPLE_MEMORY_POOL_SIZE);
 	tfx_impl_atlas_t atlas = {};
-	bool ready = tfx_impl_dx11_Init(&example.renderer, example.device, example.device_context, EXAMPLE_SHADER_PATH, EXAMPLE_KERNEL_PATH)
+	bool ready = tfx_impl_dx11_Init(&example.renderer, example.device, example.device_context, TFX_EXAMPLE_SHADER_FOLDER)
 		&& example_scene_Load(&example.scene, EXAMPLE_LIBRARY_PATH, EXAMPLE_SPRITE_DATA_PATH, EXAMPLE_FEATURES, &atlas)
 		&& tfx_impl_dx11_UploadLibrary(&example.renderer, example.scene.library, &atlas)
 		&& (!example.scene.animation_manager || tfx_impl_dx11_UploadSpriteData(&example.renderer, example.scene.animation_manager, example.scene.baked_shapes));

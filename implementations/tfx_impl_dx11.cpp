@@ -1,33 +1,34 @@
 #include "tfx_impl_dx11.h"
-#include <d3dcompiler.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define TFX_IMPL_DX11_INITIAL_INSTANCE_CAPACITY 10000
-//Matches tfx_ribbon_group_size in tfx_dx11.hlsl
+//Matches tfx_ribbon_group_size in timelinefx.slang
 #define TFX_IMPL_DX11_RIBBON_GROUP_SIZE 256
 #define TFX_IMPL_DX11_RELEASE(object) if (object) { (object)->Release(); (object) = NULL; }
 
-//The HLSL mirrors these structs by hand
-static_assert(sizeof(tfx_instance_t) == 48, "tfx_instance_t changed, update tfx_load_instance in tfx_dx11.hlsl");
-static_assert(sizeof(tfx_gpu_image_data_t) == 48, "tfx_gpu_image_data_t changed, update tfx_image_data in tfx_dx11.hlsl");
-static_assert(sizeof(tfx_gpu_particle_properties_t) == 32, "tfx_gpu_particle_properties_t changed, update tfx_emitter_properties in tfx_dx11.hlsl");
-static_assert(sizeof(tfx_ribbon_vertex_t) == 32, "tfx_ribbon_vertex_t changed, update tfx_ribbon_vertex in tfx_dx11.hlsl");
-static_assert(sizeof(tfx_gpu_graph_data_t) == 48, "tfx_gpu_graph_data_t changed, update tfx_load_graph in tfx_dx11.hlsl");
+//timelinefx.slang mirrors these structs by hand, in its [Render_rows] section
+static_assert(sizeof(tfx_instance_t) == 48, "tfx_instance_t changed, update tfx_instance in timelinefx.slang");
+static_assert(sizeof(tfx_gpu_image_data_t) == 48, "tfx_gpu_image_data_t changed, update tfx_image_data in timelinefx.slang");
+static_assert(sizeof(tfx_gpu_particle_properties_t) == 32, "tfx_gpu_particle_properties_t changed, update tfx_emitter_properties in timelinefx.slang");
+static_assert(sizeof(tfx_ribbon_vertex_t) == 32, "tfx_ribbon_vertex_t changed, update tfx_ribbon_vertex_row in timelinefx.slang");
+static_assert(sizeof(tfx_gpu_graph_data_t) == 48, "tfx_gpu_graph_data_t changed, update tfx_gpu_graph_data in timelinefx.slang");
 static_assert(sizeof(tfx_impl_uniforms_t) % 16 == 0, "Constant buffers must be a multiple of 16 bytes");
 
-//Not in the public header, these sizes are what tfx_dx11.hlsl's structs are laid out for
+//Not in the public header, these sizes are what timelinefx.slang's structs are laid out for
 #define TFX_IMPL_DX11_RIBBON_SEGMENT_SIZE 16
 #define TFX_IMPL_DX11_RIBBON_SIZE 48
 #define TFX_IMPL_DX11_RIBBON_EMITTER_SIZE 416
 #define TFX_IMPL_DX11_RIBBON_DATA_SIZE 64
 #define TFX_IMPL_DX11_RIBBON_PROPERTIES_SIZE 68
 
+//Mirrors tfx_fixed_draw_constants in timelinefx.slang
 typedef struct tfx_impl_dx11_draw_constants_s {
 	tfxU32 instance_offset;
 	tfxU32 previous_index_offset;
-	tfxU32 padding[2];
+	float ndc_offset_x;
+	float ndc_offset_y;
 } tfx_impl_dx11_draw_constants_t;
 
 //--- Dx11_resources
@@ -185,70 +186,54 @@ static ID3D11Buffer *tfx_impl_dx11__create_constant_buffer(ID3D11Device *device,
 	return buffer;
 }
 
-static ID3DBlob *tfx_impl_dx11__compile_shader(const char *shader_path, const char *entry_point, const char *target) {
-	wchar_t wide_path[MAX_PATH];
-	if (MultiByteToWideChar(CP_UTF8, 0, shader_path, -1, wide_path, MAX_PATH) == 0) {
-		printf("Shader path %s is too long\n", shader_path);
+//slangc compiles every shader ahead of time to <entry point>.cso in the shader folder. The caller frees the code
+static void *tfx_impl_dx11__load_shader_code(const char *shader_folder, const char *entry_point, size_t *size) {
+	char path[MAX_PATH];
+	snprintf(path, sizeof(path), "%s/%s.cso", shader_folder, entry_point);
+	FILE *file = fopen(path, "rb");
+	if (!file) {
+		printf("Could not open the shader %s\n", path);
 		return NULL;
 	}
-	UINT compile_flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#ifdef _DEBUG
-	compile_flags |= D3DCOMPILE_DEBUG;
-#endif
-	ID3DBlob *code = NULL;
-	ID3DBlob *errors = NULL;
-	HRESULT result = D3DCompileFromFile(wide_path, NULL, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry_point, target, compile_flags, 0, &code, &errors);
-	if (errors) {
-		printf("%s (%s):\n%s\n", shader_path, entry_point, (const char *)errors->GetBufferPointer());
-		errors->Release();
+	fseek(file, 0, SEEK_END);
+	long file_size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	void *code = file_size > 0 ? malloc((size_t)file_size) : NULL;
+	if (code && fread(code, 1, (size_t)file_size, file) != (size_t)file_size) {
+		free(code);
+		code = NULL;
 	}
-	if (FAILED(result)) {
-		printf("Could not compile %s from %s (0x%08lx)\n", entry_point, shader_path, result);
-		TFX_IMPL_DX11_RELEASE(code);
+	fclose(file);
+	if (!code) {
+		printf("Could not read the shader %s\n", path);
 		return NULL;
 	}
+	*size = (size_t)file_size;
 	return code;
 }
 
-static bool tfx_impl_dx11__create_vertex_shader(ID3D11Device *device, const char *shader_path, const char *entry_point, ID3D11VertexShader **shader) {
-	ID3DBlob *code = tfx_impl_dx11__compile_shader(shader_path, entry_point, "vs_5_0");
-	bool created = code && SUCCEEDED(device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), NULL, shader));
-	TFX_IMPL_DX11_RELEASE(code);
-	return created;
-}
-
-static bool tfx_impl_dx11__create_pixel_shader(ID3D11Device *device, const char *shader_path, const char *entry_point, ID3D11PixelShader **shader) {
-	ID3DBlob *code = tfx_impl_dx11__compile_shader(shader_path, entry_point, "ps_5_0");
-	bool created = code && SUCCEEDED(device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), NULL, shader));
-	TFX_IMPL_DX11_RELEASE(code);
-	return created;
-}
-
-static bool tfx_impl_dx11__create_compute_shader(ID3D11Device *device, const char *shader_path, const char *entry_point, ID3D11ComputeShader **shader) {
-	ID3DBlob *code = tfx_impl_dx11__compile_shader(shader_path, entry_point, "cs_5_0");
-	bool created = code && SUCCEEDED(device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), NULL, shader));
-	TFX_IMPL_DX11_RELEASE(code);
-	return created;
-}
-
-//The kernel is compiled ahead of time by slangc, so it's loaded rather than compiled
-static bool tfx_impl_dx11__load_compute_shader(ID3D11Device *device, const char *path, ID3D11ComputeShader **shader) {
-	FILE *file = fopen(path, "rb");
-	if (!file) {
-		printf("Could not open the GPU particle kernel %s\n", path);
-		return false;
-	}
-	fseek(file, 0, SEEK_END);
-	long size = ftell(file);
-	fseek(file, 0, SEEK_SET);
-	void *code = size > 0 ? malloc((size_t)size) : NULL;
-	bool loaded = code && fread(code, 1, (size_t)size, file) == (size_t)size && SUCCEEDED(device->CreateComputeShader(code, (SIZE_T)size, NULL, shader));
+static bool tfx_impl_dx11__create_vertex_shader(ID3D11Device *device, const char *shader_folder, const char *entry_point, ID3D11VertexShader **shader) {
+	size_t size = 0;
+	void *code = tfx_impl_dx11__load_shader_code(shader_folder, entry_point, &size);
+	bool created = code && SUCCEEDED(device->CreateVertexShader(code, size, NULL, shader));
 	free(code);
-	fclose(file);
-	if (!loaded) {
-		printf("Could not create the GPU particle kernel from %s\n", path);
-	}
-	return loaded;
+	return created;
+}
+
+static bool tfx_impl_dx11__create_pixel_shader(ID3D11Device *device, const char *shader_folder, const char *entry_point, ID3D11PixelShader **shader) {
+	size_t size = 0;
+	void *code = tfx_impl_dx11__load_shader_code(shader_folder, entry_point, &size);
+	bool created = code && SUCCEEDED(device->CreatePixelShader(code, size, NULL, shader));
+	free(code);
+	return created;
+}
+
+static bool tfx_impl_dx11__create_compute_shader(ID3D11Device *device, const char *shader_folder, const char *entry_point, ID3D11ComputeShader **shader) {
+	size_t size = 0;
+	void *code = tfx_impl_dx11__load_shader_code(shader_folder, entry_point, &size);
+	bool created = code && SUCCEEDED(device->CreateComputeShader(code, size, NULL, shader));
+	free(code);
+	return created;
 }
 
 static DXGI_FORMAT tfx_impl_dx11__color_ramp_format(tfxU32 bytes_per_pixel) {
@@ -299,24 +284,22 @@ static bool tfx_impl_dx11__create_color_ramps(ID3D11Device *device, tfx_bitmap_t
 
 //--- Dx11_functions
 
-bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_path, const char *kernel_path) {
+bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_folder) {
 	memset(renderer, 0, sizeof(tfx_impl_dx11_t));
 	renderer->device = device;
 	renderer->device_context = device_context;
 	device->AddRef();
 	device_context->AddRef();
 
-	if (!tfx_impl_dx11__create_vertex_shader(device, shader_path, "billboard_vertex", &renderer->billboard_vertex_shader)
-		|| !tfx_impl_dx11__create_pixel_shader(device, shader_path, "billboard_pixel", &renderer->billboard_pixel_shader)
-		|| !tfx_impl_dx11__create_compute_shader(device, shader_path, "ribbon_compute", &renderer->ribbon_compute_shader)
-		|| !tfx_impl_dx11__create_vertex_shader(device, shader_path, "ribbon_vertex", &renderer->ribbon_vertex_shader)
-		|| !tfx_impl_dx11__create_pixel_shader(device, shader_path, "ribbon_pixel", &renderer->ribbon_pixel_shader)
-		|| !tfx_impl_dx11__create_compute_shader(device, shader_path, "sprite_playback", &renderer->sprite_playback_shader)
-		|| !tfx_impl_dx11__create_vertex_shader(device, shader_path, "billboard_static_vertex", &renderer->billboard_static_vertex_shader)
-		|| !tfx_impl_dx11__create_compute_shader(device, shader_path, "ribbon_playback", &renderer->ribbon_playback_shader)) {
-		return false;
-	}
-	if (kernel_path && !tfx_impl_dx11__load_compute_shader(device, kernel_path, &renderer->particle_kernel)) {
+	if (!tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_billboard_vertex", &renderer->billboard_vertex_shader)
+		|| !tfx_impl_dx11__create_pixel_shader(device, shader_folder, "tfx_billboard_fragment", &renderer->billboard_pixel_shader)
+		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_ribbon_compute", &renderer->ribbon_compute_shader)
+		|| !tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_ribbon_vertex", &renderer->ribbon_vertex_shader)
+		|| !tfx_impl_dx11__create_pixel_shader(device, shader_folder, "tfx_ribbon_fragment", &renderer->ribbon_pixel_shader)
+		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_sprite_playback", &renderer->sprite_playback_shader)
+		|| !tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_billboard_baked_vertex", &renderer->billboard_static_vertex_shader)
+		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_ribbon_playback", &renderer->ribbon_playback_shader)
+		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "simulate_particles", &renderer->particle_kernel)) {
 		return false;
 	}
 
@@ -694,11 +677,11 @@ static void tfx_impl_dx11__simulate_gpu_particles(tfx_impl_dx11_t *renderer) {
 
 static void tfx_impl_dx11__play_back_sprites(tfx_impl_dx11_t *renderer) {
 	ID3D11DeviceContext *device_context = renderer->device_context;
-	ID3D11ShaderResourceView *properties_view = renderer->baked_emitter_properties.view;
-	ID3D11ShaderResourceView *views[3] = { renderer->baked_sprites.view, renderer->animation_offsets.view, renderer->animation_instances.view };
+	ID3D11ShaderResourceView *sprite_views[3] = { renderer->baked_sprites.view, NULL, renderer->baked_emitter_properties.view };
+	ID3D11ShaderResourceView *animation_views[2] = { renderer->animation_offsets.view, renderer->animation_instances.view };
 	device_context->CSSetShader(renderer->sprite_playback_shader, NULL, 0);
-	device_context->CSSetShaderResources(3, 1, &properties_view);
-	device_context->CSSetShaderResources(11, 3, views);
+	device_context->CSSetShaderResources(1, 3, sprite_views);
+	device_context->CSSetShaderResources(11, 2, animation_views);
 	device_context->CSSetUnorderedAccessViews(2, 1, &renderer->playback_instances.unordered_view, NULL);
 	tfx_impl_dx11__write_constants(device_context, renderer->sprite_data_constants, &renderer->sprite_data_push, sizeof(tfx_sprite_data_push_t));
 	device_context->CSSetConstantBuffers(3, 1, &renderer->sprite_data_constants);
@@ -706,17 +689,17 @@ static void tfx_impl_dx11__play_back_sprites(tfx_impl_dx11_t *renderer) {
 
 	ID3D11ShaderResourceView *no_views[3] = {};
 	ID3D11UnorderedAccessView *no_unordered_view = NULL;
-	device_context->CSSetShaderResources(3, 1, no_views);
-	device_context->CSSetShaderResources(11, 3, no_views);
+	device_context->CSSetShaderResources(1, 3, no_views);
+	device_context->CSSetShaderResources(11, 2, no_views);
 	device_context->CSSetUnorderedAccessViews(2, 1, &no_unordered_view, NULL);
 	device_context->CSSetShader(NULL, NULL, 0);
 }
 
 static void tfx_impl_dx11__play_back_ribbons(tfx_impl_dx11_t *renderer) {
 	ID3D11DeviceContext *device_context = renderer->device_context;
-	ID3D11ShaderResourceView *views[4] = { renderer->animation_instances.view, renderer->baked_ribbon_data.view, renderer->animation_ribbon_offsets.view, renderer->baked_ribbon_properties.view };
+	ID3D11ShaderResourceView *views[4] = { renderer->animation_ribbon_offsets.view, renderer->animation_instances.view, renderer->baked_ribbon_data.view, renderer->baked_ribbon_properties.view };
 	device_context->CSSetShader(renderer->ribbon_playback_shader, NULL, 0);
-	device_context->CSSetShaderResources(13, 4, views);
+	device_context->CSSetShaderResources(11, 4, views);
 	device_context->CSSetUnorderedAccessViews(3, 1, &renderer->baked_ribbons.instances.unordered_view, NULL);
 	tfx_impl_dx11__write_constants(device_context, renderer->ribbon_data_constants, &renderer->ribbon_data_push, sizeof(tfx_ribbon_data_push_t));
 	device_context->CSSetConstantBuffers(4, 1, &renderer->ribbon_data_constants);
@@ -724,7 +707,7 @@ static void tfx_impl_dx11__play_back_ribbons(tfx_impl_dx11_t *renderer) {
 
 	ID3D11ShaderResourceView *no_views[4] = {};
 	ID3D11UnorderedAccessView *no_unordered_view = NULL;
-	device_context->CSSetShaderResources(13, 4, no_views);
+	device_context->CSSetShaderResources(11, 4, no_views);
 	device_context->CSSetUnorderedAccessViews(3, 1, &no_unordered_view, NULL);
 	device_context->CSSetShader(NULL, NULL, 0);
 }
