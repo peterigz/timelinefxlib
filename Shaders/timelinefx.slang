@@ -756,6 +756,32 @@ float4 tfx_unpack16bit_quaternion(uint2 packed) {
 	return float4(values) * (1.0 / 32767.0);
 }
 
+//f16tof32 and f32tof16 lower to 16 bit types on SPIR-V, which need shaderInt16 and shaderFloat16. The GLSL.std.450 pair needs neither
+float tfx_half_to_float(uint value) {
+	__target_switch {
+	case spirv:
+		return spirv_asm {
+			%unpacked:$$float2 = OpExtInst glsl450 UnpackHalf2x16 $value;
+			result:$$float = OpCompositeExtract %unpacked 0
+		};
+	default:
+		return f16tof32(value);
+	}
+}
+
+//The half in the low 16 bits, the high 16 bits zero
+uint tfx_float_to_half(float value) {
+	__target_switch {
+	case spirv:
+		float2 packing = float2(value, 0.0);
+		return spirv_asm {
+			result:$$uint = OpExtInst glsl450 PackHalf2x16 $packing
+		};
+	default:
+		return f32tof16(value);
+	}
+}
+
 //The CPU's rotate by quaternion, tfx__wide_transform_quaternion_vec3
 float3 tfx_rotate_vector(float3 v, float4 q) {
 	return v + 2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
@@ -3673,8 +3699,8 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 
 	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, global_ribbon_index);
 	const float ribbon_age = float(ribbon.age_width & 0xFFFFu) * (1.0 / 65535.0);
-	const float ribbon_width = f16tof32(ribbon.age_width >> 16);
-	const float effect_scale = f16tof32(ribbon.scale & 0xFFFFu);
+	const float ribbon_width = tfx_half_to_float(ribbon.age_width >> 16);
+	const float effect_scale = tfx_half_to_float(ribbon.scale & 0xFFFFu);
 	const uint ribbon_flags = ribbon.start_index_flags >> tfx_ribbon_flags_shift;
 	const uint emitter_index = (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset;
 	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(push.emitters_index, emitter_index);
@@ -4019,7 +4045,7 @@ void tfx_ribbon_playback(uint3 thread_id : SV_DispatchThreadID) {
 
 	tfx_ribbon ribbon;
 	ribbon.position = lerp(captured.position.xyz, current.position.xyz, lerp_amount) * animation.scale + animation.position;
-	ribbon.age_width = uint(saturate(lerped_age) * 65535.0 + 0.5) | (f32tof16(lerped_width) << 16);
+	ribbon.age_width = uint(saturate(lerped_age) * 65535.0 + 0.5) | (tfx_float_to_half(lerped_width) << 16);
 	ribbon.quaternion = uint2(tfx_pack_snorm16x2(lerped_quaternion.xy), tfx_pack_snorm16x2(lerped_quaternion.zw));
 	ribbon.start_index_flags = (current.start_index & tfx_ribbon_start_index_mask) | (current.flags << tfx_ribbon_flags_shift);
 	//The baked emitter buffer has one row per ribbon property, so the property index is the emitter index. The seed is a per ribbon constant
@@ -4027,7 +4053,7 @@ void tfx_ribbon_playback(uint3 thread_id : SV_DispatchThreadID) {
 	ribbon.texture_indexes = (current.texture_indexes & 0xFFFFE000u) | tfx_load_ribbon_properties(push.ribbon_properties_index, property_index).start_frame_index;
 	ribbon.intensity_gradient_map = (uint(lerped_intensity_gradient_map.y * tfx_color_packed_scale) << 16) + uint(lerped_intensity_gradient_map.x * tfx_color_packed_scale);
 	ribbon.curved_alpha = (uint(int(lerped_curved_alpha.x)) & 0xFFFFu) | (uint(int(lerped_curved_alpha.y)) << 16);
-	ribbon.scale = f32tof16(lerp(captured.scale, current.scale, lerp_amount));
+	ribbon.scale = tfx_float_to_half(lerp(captured.scale, current.scale, lerp_amount));
 	tfx_store_ribbon(push.ribbon_output_index, index, ribbon);
 }
 
