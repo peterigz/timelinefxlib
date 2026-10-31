@@ -63,7 +63,7 @@ The [implementations](implementations) folder has minimal examples of drawing Ti
 There are more examples in [my own renderer, Zest](https://github.com/peterigz/zest) in the examples/SDL2 folder:
 * zest-timelinefx - updating and drawing effects simulated in real time.
 * zest-timelinefx-c - the same thing using the C API.
-* zest-timelinefx-prerecorded-effects - drawing pre-baked effects with the compute shaders.
+* zest-timelinefx-particle-techniques - the same effects drawn three ways: pre-baked with the compute shaders, simulated on the CPU, and simulated on the GPU.
 * zest-timelinefx-reload - running TimelineFX inside a DLL that is unloaded and reloaded while the simulation keeps running.
 
 More graphics APIs (D3D12, Vulkan, OpenGL, WebGPU and Metal) will follow in the implementations folder, so watch this space.

@@ -196,4 +196,4 @@ Baked ribbons go through the same `tfx_ribbon_compute` and ribbon draw as live o
 
 `tfx_sprite_bounds` and `tfx_ribbon_bounds` are optional extras rather than part of the render path. Each group reduces its sprites, or its ribbons' segments, to one box, and you reduce the groups' boxes on the CPU. The editor uses them to auto-fit the camera and to size sprite sheet exports; in a game they're useful for culling a baked effect.
 
-[See here for an example of how to use the library to draw pre-baked effect data](https://github.com/peterigz/zest/tree/main/examples/SDL2/zest-timelinefx-prerecorded-effects)
+[See here for an example of how to use the library to draw pre-baked effect data](https://github.com/peterigz/zest/tree/main/examples/SDL2/zest-timelinefx-particle-techniques)
