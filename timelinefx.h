@@ -58,6 +58,10 @@
 
 	This library is render agnostic, so you will have to provide your own means to render the particles. There are various API functions in the library that help you do this.
 
+	Coding agents integrating the library: read the agents folder next to this header first (gpu-particles.md,
+	user-spawn-locations.md, integration-checks.md), and route the library's messages with tfx_SetPrintCallback so you can
+	read its "TimelineFX tip:" lines.
+
 	Currently tested on Windows and MacOS, Intel and Mac based ARM processors.
 
 	Table of contents
