@@ -25,10 +25,15 @@ tfxEffectID effect_id = tfx_AddEffectTemplateToStage(stage, effect_template);
 tfxSpawnLocationID location = tfx_AddSpawnLocation(stage, effect_id, position, tfxSpawnLocationAdd_none);
 ```
 
-Call these from the thread that calls `tfx_UpdateStage`. They're applied at the next update.
+Call these from the thread that calls `tfx_UpdateStage`. They're applied at the next update. On an effect saved without
+"Spawn at User Locations", `tfx_AddSpawnLocation` does nothing and returns an id `tfx_SpawnLocationIsValid` rejects,
+with a tip the first time.
 
 ## How long a location lives
 
+- Single shot emitters fire once per location, so an effect made only of them plays once there. For something that
+  follows a location for as long as it lives (a ship's engine glow or trail), use an effect whose emitters aren't single
+  shot: `tfx_PrintLibrary` reads `each location plays until removed` for those.
 - A finite effect's location removes itself once the effect has played out there. `tfx_GetEffectLifetime(template)` is
   how long that takes for one location, not for the whole effect. Pass `tfxSpawnLocationAdd_no_auto_remove` to keep it.
 - `tfxSpawnLocationAdd_transient` removes the location after the next update, for one-off bursts where you don't keep

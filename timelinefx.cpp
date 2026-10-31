@@ -27870,6 +27870,13 @@ tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, 
 	TFX_VALIDATE_EFFECT(pm, effect_index, tfxINVALID_SPAWN_LOCATION);
 	tfx_user_spawn_locations_t *user_location_list = tfx__get_user_spawn_locations(pm, effect_index);
 	if (!user_location_list) {
+#ifndef TFX_DISABLE_TIPS
+		if (!(pm->flags & tfxStageFlags_spawn_location_tip_shown)) {
+			pm->flags |= tfxStageFlags_spawn_location_tip_shown;
+			tfxTIP("\"%s\" wasn't saved with Spawn at User Locations, so tfx_AddSpawnLocation does nothing for it. Position it with tfx_SetEffectPositionVec3, or use an effect tfx_PrintLibrary marks \"spawns at user spawn locations\".",
+				pm->effects[tfx__effect_slot(effect_index)].source_effect->path.c_str());
+		}
+#endif
 		return tfxINVALID_SPAWN_LOCATION;
 	}
 	tfxU32 slot;

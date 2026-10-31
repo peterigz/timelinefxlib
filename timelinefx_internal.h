@@ -3175,6 +3175,7 @@ typedef enum {
 	tfxStageFlags_update_bounding_boxes             	= 1 << 17,
 	tfxStageFlags_auto_order_effects                	= 1 << 19,
 	tfxStageFlags_has_ribbons_to_draw               	= 1 << 20,
+	tfxStageFlags_spawn_location_tip_shown          	= 1 << 21,
 	tfxStageFlags_warming_up		                	= 1 << 23,
 	tfxStageFlags_sort_effects_by_key               	= 1 << 24,		//Set the first time an effect is given a non zero sort key
 	tfxStageFlags_skip_instance_writes              	= 1 << 25,		//Warmup and intermediate sub steps: simulate the particles without writing instances

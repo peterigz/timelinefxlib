@@ -2993,7 +2993,8 @@ best left flat here.
                            tfx_SetEffectLifeMultiplier after adding the location, because the time is worked out from the effect as authored
                            and a longer life would outlive it. An effect that never ends is never auto removed either way.
 * @returns                 A tfxSpawnLocationID to use with tfx_UpdateSpawnLocation and tfx_RemoveSpawnLocation. It includes the effect so
-                           you don't need to keep the effect index with it. tfxINVALID_SPAWN_LOCATION if the effect doesn't spawn at user locations
+                           you don't need to keep the effect index with it. tfxINVALID_SPAWN_LOCATION if the effect doesn't spawn at user locations,
+                           with a tip the first time on each stage
 */
 tfxAPI tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, float position[3], tfxSpawnLocationAddFlags flags);
 
