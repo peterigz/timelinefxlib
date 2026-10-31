@@ -3164,6 +3164,7 @@ typedef enum {
 	tfxStageFlags_none                              	= 0,
 	tfxStageFlags_updating		                     	= 1,
 	tfxStageFlags_disable_spawning                  	= 2,
+	tfxStageFlags_gpu_group_order_changed           	= 1 << 3,		//A GPU group was added or released or its sort key changed, so gpu_group_order needs rebuilding
 	tfxStageFlags_update_base_values                	= 1 << 6,
 	tfxStageFlags_dynamic_sprite_allocation         	= 1 << 7,
 	tfxStageFlags_animation_loops                   	= 1 << 9,
@@ -6487,6 +6488,7 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  tail;						//Ring slot the next spawn goes in
 	tfxU32  current_size;
 	tfxU32  layer;
+	tfxU32  sort_key;					//The effect's, see tfx_SetEffectSortKey
 	void   *pool_block;					//The remote allocation that holds the range
 	double  time_ms;					//Only advances on ticks that update the emitter, so effects warming up can't bump it
 	//Running totals that are allowed to wrap, only the difference between two readings is used
@@ -6514,6 +6516,18 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  tracking_head;				//Index of the oldest valid tracking entry
 	tfxU32  tracking_count;				//Number of valid entries currently in the tracking ring
 } tfx_gpu_particle_group_t;
+
+typedef struct tfx_gpu_group_order_s {
+	tfxU64 layer_and_sort_key;
+	tfxU32 group_index;
+} tfx_gpu_group_order_t;
+
+//One sort key's GPU instances on a layer, from the last layout
+typedef struct tfx_gpu_key_range_s {
+	tfxU32 sort_key;
+	tfxU32 start;
+	tfxU32 count;
+} tfx_gpu_key_range_t;
 
 typedef struct tfx_gpu_pack_work_entry_s {
 	struct tfx_stage_s *pm;
@@ -7408,6 +7422,10 @@ typedef struct tfx_stage_s {
 	//GPU particle simulation, only used when info.gpu_particle_capacity is set
 	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;		//One per run_on_gpu emitter instance, indexed by state_properties.gpu_group_index
 	tfx_vector_t<tfxU32> free_gpu_groups;
+	tfx_vector_t<tfx_gpu_group_order_t> gpu_group_order;	//Live groups by layer, then sort key, then index
+	tfx_vector_t<tfx_gpu_key_range_t> gpu_key_ranges;		//By layer then sort key
+	tfxU32 gpu_layer_key_ranges[tfxLAYERS + 1];				//Each layer's first entry in gpu_key_ranges
+	tfxU32 gpu_key_range_position;							//tfx_GetNextInstanceKeyRange's place in the layer's GPU key ranges
 	tfx_allocator *gpu_pool_allocator;						//Hands out ring ranges of the pool, offsets are in particles
 	void *gpu_pool_blocks;									//Proxy block headers for gpu_pool_allocator
 	tfx_vector_t<tfx_gpu_pack_work_entry_t> gpu_pack_work;

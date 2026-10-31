@@ -17831,6 +17831,12 @@ void tfx_SetEffectSortKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 sort_ke
 	if (sort_key) {
 		pm->flags |= tfxStageFlags_sort_effects_by_key;
 	}
+	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+		if (group.emitter_index != tfxINVALID && pm->emitters[group.emitter_index].parent_index == effect_slot) {
+			group.sort_key = sort_key;
+			pm->flags |= tfxStageFlags_gpu_group_order_changed;
+		}
+	}
 	tfx__rebucket_effect_ribbon_emitters(pm, effect_slot);
 	tfx__sync_unlock(&pm->add_effect_mutex);
 }
@@ -24777,6 +24783,8 @@ void tfx__assign_emitter_to_gpu_group(tfx_stage pm, tfxU32 emitter_index, tfx_ef
 	group.emitter_index = emitter_index;
 	group.property_index = emitter.state_properties.property_index;
 	group.layer = tfx__get_shared_emitter_properties(emitter_descriptor)->layer;
+	group.sort_key = pm->effects[emitter.parent_index].sort_key;
+	pm->flags |= tfxStageFlags_gpu_group_order_changed;
 	tfxU32 capacity = tfx__round_up_gpu_ring_capacity(tfx_GetEmitterGPUCapacity(emitter_descriptor));
 	tfx_remote_header *pool_block = (tfx_remote_header *)tfx_AllocateRemote(pm->gpu_pool_allocator, capacity);
 	if (pool_block) {
@@ -24813,6 +24821,7 @@ void tfx__release_gpu_group(tfx_stage pm, tfx_particle_emitter_state_t *emitter)
 	group = tfx_gpu_particle_group_t{};
 	group.emitter_index = tfxINVALID;
 	pm->free_gpu_groups.push_back(group_index);
+	pm->flags |= tfxStageFlags_gpu_group_order_changed;
 	emitter->state_properties.gpu_group_index = tfxINVALID;
 }
 
@@ -25309,21 +25318,57 @@ void tfx__pack_gpu_group(tfx_work_queue_t *queue, void *data) {
 	tfx__clear_soa_buffer(&buffer);
 }
 
-//Lays the GPU instances out after the CPU ones, layer by layer, ring position i of a ring at instance_start + i
+tfxINTERNAL int tfx__sort_gpu_group_order(const void *a, const void *b) {
+	const tfx_gpu_group_order_t *first = (const tfx_gpu_group_order_t *)a;
+	const tfx_gpu_group_order_t *second = (const tfx_gpu_group_order_t *)b;
+	if (first->layer_and_sort_key != second->layer_and_sort_key) {
+		return first->layer_and_sort_key < second->layer_and_sort_key ? -1 : 1;
+	}
+	return first->group_index < second->group_index ? -1 : first->group_index > second->group_index;
+}
+
+//Only runs when a group was added or released or a sort key changed, so the layout itself stays one pass
+tfxINTERNAL void tfx__order_gpu_groups(tfx_stage pm) {
+	pm->flags &= ~tfxStageFlags_gpu_group_order_changed;
+	pm->gpu_group_order.clear();
+	for (tfxU32 group_index = 0; group_index != pm->gpu_groups.current_size; ++group_index) {
+		const tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
+		if (group.emitter_index != tfxINVALID) {
+			pm->gpu_group_order.push_back({ ((tfxU64)group.layer << 32) | group.sort_key, group_index });
+		}
+	}
+	qsort(pm->gpu_group_order.data, pm->gpu_group_order.current_size, sizeof(tfx_gpu_group_order_t), tfx__sort_gpu_group_order);
+}
+
+//Lays the GPU instances out after the CPU ones by layer then sort key, ring position i of a ring at instance_start + i
 void tfx__layout_gpu_instances(tfx_stage pm) {
+	if (pm->flags & tfxStageFlags_gpu_group_order_changed) {
+		tfx__order_gpu_groups(pm);
+	}
 	pm->gpu_instance_start = pm->instance_buffer.current_size;
+	pm->gpu_key_ranges.clear();
 	tfxU32 running_start = pm->gpu_instance_start;
+	tfxU32 order_index = 0;
 	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 		pm->gpu_layer_start[layer] = running_start;
-		for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
-			if (group.emitter_index == tfxINVALID || group.layer != layer) {
-				continue;
+		pm->gpu_layer_key_ranges[layer] = pm->gpu_key_ranges.current_size;
+		for (; order_index != pm->gpu_group_order.current_size; ++order_index) {
+			tfx_gpu_particle_group_t &group = pm->gpu_groups[pm->gpu_group_order[order_index].group_index];
+			if (group.layer != layer) {
+				break;
 			}
 			group.instance_start = running_start;
+			if (group.current_size) {
+				if (pm->gpu_key_ranges.current_size == pm->gpu_layer_key_ranges[layer] || pm->gpu_key_ranges.back().sort_key != group.sort_key) {
+					pm->gpu_key_ranges.push_back({ group.sort_key, running_start, 0 });
+				}
+				pm->gpu_key_ranges.back().count += group.current_size;
+			}
 			running_start += group.current_size;
 		}
 		pm->gpu_layer_count[layer] = running_start - pm->gpu_layer_start[layer];
 	}
+	pm->gpu_layer_key_ranges[tfxLAYERS] = pm->gpu_key_ranges.current_size;
 	pm->gpu_instance_count = running_start - pm->gpu_instance_start;
 }
 
@@ -25429,7 +25474,12 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 	pm->gpu_frame_locations.clear();
 	pm->gpu_fetch_count++;
 	const bool can_capture = (pm->flags & tfxStageFlags_double_buffer_sprites) != 0;
-	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
+	//Groups added since the last update have no ticks, but rebuilding keeps the order complete
+	if (pm->flags & tfxStageFlags_gpu_group_order_changed) {
+		tfx__order_gpu_groups(pm);
+	}
+	for (const tfx_gpu_group_order_t &order : pm->gpu_group_order) {
+		tfx_gpu_particle_group_t &group = pm->gpu_groups[order.group_index];
 		if (group.emitter_index == tfxINVALID) {
 			continue;
 		}
@@ -25906,6 +25956,11 @@ void tfx__clear_gpu_groups(tfx_stage pm) {
 	}
 	pm->gpu_groups.clear();
 	pm->free_gpu_groups.clear();
+	pm->gpu_group_order.clear();
+	pm->gpu_key_ranges.clear();
+	memset(pm->gpu_layer_key_ranges, 0, sizeof(pm->gpu_layer_key_ranges));
+	pm->gpu_key_range_position = 0;
+	pm->flags &= ~tfxStageFlags_gpu_group_order_changed;
 	pm->gpu_spawns.clear();
 	pm->gpu_force_rows.clear();
 	pm->gpu_frame_dispatches.clear();
@@ -25920,6 +25975,8 @@ void tfx__free_gpu_groups(tfx_stage pm) {
 	tfx__clear_gpu_groups(pm);
 	pm->gpu_groups.free();
 	pm->free_gpu_groups.free();
+	pm->gpu_group_order.free();
+	pm->gpu_key_ranges.free();
 	pm->gpu_pack_work.free();
 	pm->gpu_spawns.free();
 	pm->gpu_force_rows.free();
@@ -27995,39 +28052,47 @@ bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **inst
 
 void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm) {
 	pm->effect_index_position = 0;
+	pm->gpu_key_range_position = 0;
 }
 
-bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count) {
+bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfx_instance_key_range_t *range) {
 	TFX_ASSERT(layer < tfxLAYERS);
+	TFX_ASSERT(range);
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
+	memset(range, 0, sizeof(tfx_instance_key_range_t));
 	tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
 	//Effects with nothing on this layer are skipped rather than read, as ones added since the update have no offsets yet
 	while (pm->effect_index_position < effects_in_use.current_size && pm->effects[effects_in_use[pm->effect_index_position].index].instance_data.sprite_index_point[layer] == 0) {
 		pm->effect_index_position++;
 	}
-	if (pm->effect_index_position >= effects_in_use.current_size) {
-		*sort_key = 0;
-		*instances = nullptr;
-		*instance_count = 0;
+	const bool has_cpu_range = pm->effect_index_position < effects_in_use.current_size;
+	const tfxU32 gpu_range_index = pm->gpu_layer_key_ranges[layer] + pm->gpu_key_range_position;
+	const bool has_gpu_range = gpu_range_index < pm->gpu_layer_key_ranges[layer + 1];
+	if (!has_cpu_range && !has_gpu_range) {
 		return false;
 	}
-	const tfx_effect_index_t &first_effect = effects_in_use[pm->effect_index_position];
-	const tfx_effect_instance_data_t &first_data = pm->effects[first_effect.index].instance_data;
-	*sort_key = first_effect.sort_key;
-	*instances = &tfxCastBufferRef(tfx_instance_t, pm->instance_buffer)[pm->layer_start[layer] + first_data.layer_offset[layer]];
-	tfxU32 count = 0;
-	//Effects sharing a key were spawned one after the other, so their slices of the layer run on from each other
-	while (pm->effect_index_position < effects_in_use.current_size) {
-		const tfx_effect_index_t &effect_index = effects_in_use[pm->effect_index_position];
-		tfxU32 effect_count = pm->effects[effect_index.index].instance_data.sprite_index_point[layer];
-		if (effect_count && effect_index.sort_key != first_effect.sort_key) {
-			break;
+	const tfxU32 cpu_key = has_cpu_range ? effects_in_use[pm->effect_index_position].sort_key : 0;
+	const tfxU32 gpu_key = has_gpu_range ? pm->gpu_key_ranges[gpu_range_index].sort_key : 0;
+	range->sort_key = has_cpu_range && (!has_gpu_range || cpu_key <= gpu_key) ? cpu_key : gpu_key;
+	if (has_cpu_range && cpu_key == range->sort_key) {
+		range->instance_start = pm->layer_start[layer] + pm->effects[effects_in_use[pm->effect_index_position].index].instance_data.layer_offset[layer];
+		//Effects sharing a key were spawned one after the other, so their slices of the layer run on from each other
+		while (pm->effect_index_position < effects_in_use.current_size) {
+			const tfx_effect_index_t &effect_index = effects_in_use[pm->effect_index_position];
+			tfxU32 effect_count = pm->effects[effect_index.index].instance_data.sprite_index_point[layer];
+			if (effect_count && effect_index.sort_key != cpu_key) {
+				break;
+			}
+			range->instance_count += effect_count;
+			pm->effect_index_position++;
 		}
-		count += effect_count;
-		pm->effect_index_position++;
 	}
-	*instance_count = count;
+	if (has_gpu_range && gpu_key == range->sort_key) {
+		range->gpu_instance_start = pm->gpu_key_ranges[gpu_range_index].start;
+		range->gpu_instance_count = pm->gpu_key_ranges[gpu_range_index].count;
+		pm->gpu_key_range_position++;
+	}
 	return true;
 }
 

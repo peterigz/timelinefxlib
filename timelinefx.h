@@ -636,6 +636,15 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 next_bucket;						//Where tfx_NextAnimationRibbonDispatch carries on from, unused for a stage
 } tfx_ribbon_dispatch_t;
 
+//Every instance on one layer with one sort key, see tfx_GetNextInstanceKeyRange. Both starts index the instance buffer you draw from
+typedef struct tfx_instance_key_range_s {
+	tfxU32 sort_key;
+	tfxU32 instance_start;					//The CPU instances, an index into tfx_GetInstanceBuffer
+	tfxU32 instance_count;
+	tfxU32 gpu_instance_start;				//The Run on GPU instances, which the kernel writes after the CPU ones
+	tfxU32 gpu_instance_count;
+} tfx_instance_key_range_t;
+
 //The state of one GPU simulated particle that changes every update, one per pool slot
 typedef struct tfx_gpu_particle_hot_s {		//32 bytes
 	tfx_float32x3_t position;
@@ -1926,7 +1935,8 @@ tfxAPI void tfx_ToggleStageOrderEffects(tfx_stage pm, bool yesno);
 /*
 Give an effect a sort key. Within each layer of the instance buffer effects are ordered by sort key (lowest first) and then by depth if tfx_ToggleStageOrderEffects
 is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library. Use
-tfx_GetNextInstanceKeyRange to get those ranges. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
+tfx_GetNextInstanceKeyRange to get those ranges. Run on GPU emitters are ordered by key too, in a second range per key after the CPU instances, but
+not by depth. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
 Set the key straight after adding the effect. Live ribbons are stored in their bucket, so the key of an effect can't change while any of its ribbons are
 alive: the call asserts and leaves the key as it was. Keys take effect on the next tfx_UpdateStage and effects have a key of 0 until you set one.
 This waits for any stage update in progress, so call it before tfx_UpdateStage rather than straight after.
@@ -2329,7 +2339,8 @@ Per frame, after tfx_UpdateStage:
   4. One compute dispatch per tfx_gpu_particle_dispatch_t, (slot_count + 255) / 256 groups of 256. Each loops over
      its own ticks, so there are no barriers between dispatches. Order the dispatches after the previous frame's.
   5. Draw each layer as two ranges: the CPU range as normal and then [gpu_layer_start, + gpu_layer_count). The
-     captured_index of a GPU instance points into the previous instance buffer, just like a CPU one.
+     captured_index of a GPU instance points into the previous instance buffer, just like a CPU one. With sort keys,
+     draw the CPU then the GPU range of each key from tfx_GetNextInstanceKeyRange instead.
 
 The frame stays valid until the next tfx_UpdateStage. Updates that run without a fetch in between are all returned
 by the next fetch, so the GPU never misses a tick. The flip side is that every fetch must be dispatched: the next one's
@@ -3178,18 +3189,17 @@ tfxAPI bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t
 tfxAPI void tfx_ResetInstanceBufferLoopIndex(tfx_stage pm);
 
 /*
-Get the instances on one layer one sort key at a time, so each call gives you a single contiguous range of every effect sharing a key (see tfx_SetEffectSortKey).
-Call it in a while loop until it returns false, then call tfx_ResetInstanceBufferLoopIndex before the next layer. Ranges come in key order and the instances
-pointer is inside the buffer returned by tfx_GetInstanceBuffer, so subtract that to get the first instance for a draw call from one uploaded buffer.
+Get the instances on one layer one sort key at a time (see tfx_SetEffectSortKey). Call it in a while loop until it returns false, then call
+tfx_ResetInstanceBufferLoopIndex before the next layer. Ranges come in key order, and each one holds two contiguous ranges of every effect sharing the key:
+its CPU instances, and the instances its Run on GPU emitters write after the CPU ones (see tfx_GetGPUParticleFrame). Bind the key's resources and draw the
+CPU range then the GPU range, so within a key and layer an effect's GPU particles draw over its CPU ones. Either range can be empty.
 This shares its loop index with tfx_GetNextInstanceBuffer, so don't interleave the two.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param layer                    The layer to get the ranges for
-* @param sort_key                 Set to the sort key of the effects in this range
-* @param instances                Set to the first instance in the range
-* @param instance_count           Set to the number of instances in the range
+* @param range                    Set to the key and its two ranges
 * @returns bool                   true while there is another range, false when there are no more on this layer
 */
-tfxAPI bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfxU32 *sort_key, tfx_instance_t **instances, tfxU32 *instance_count);
+tfxAPI bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfx_instance_key_range_t *range);
 
 /*
 Set the roll of an effect
