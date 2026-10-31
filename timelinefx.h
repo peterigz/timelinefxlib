@@ -74,7 +74,6 @@
 	[API functions]						The main functions for use by users of the library
 		-[Random numbers]				Seeded random number generation
 		-[Initialisation_functions]		Startup and shutdown timelinefx
-		-[Global_variable_access]		Any functions that give you access to global variables relating to timelinefx
 		-[Library_functions]			Functions for loading and accessing timelinefx libraries
 		-[Particle_Manager_functions]	Create and update functions for effect managers where the main work is done to update particles every frame
 		-[Animation_manager]			Animation manager functions for playing pre-recorded effect data
@@ -169,15 +168,16 @@ typedef struct tfx_float16x4_s {
 	};
 } tfx_float16x4_t;
 
-typedef struct tfx_float16x2_s {
+//Two signed 16 bit values, which tfx_instance_t scales into its size and intensity fields
+typedef struct tfx_int16x2_s {
 	union {
 		struct {
-			tfxU16 x : 16;
-			tfxU16 y : 16;
+			int16_t x;
+			int16_t y;
 		};
 		struct { tfxU32 packed; };
 	};
-} tfx_float16x2_t;
+} tfx_int16x2_t;
 
 typedef struct tfx_float8x4_s {
 	union {
@@ -206,9 +206,9 @@ typedef struct tfx_float32x4_s {
 typedef struct tfx_instance_s {		//48 bytes
 	tfx_float32x4_t position;						//The position of the billboard with stretch in w
 	tfxU64 quaternion;								//Rotation of the billboard stored as a 16-bit snorm quaternion
-	tfx_float16x2_t size;							//Size/Scale of the sprite
+	tfx_int16x2_t size;							//Width and height scaled by 32767/64: multiply by 64/32767 to unpack, or call tfx_GetSpriteScale
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
-	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
+	tfx_int16x2_t intensity_gradient_map;			//Intensity in x and gradient map in y, scaled by 32767/128: multiply by 128/32767 to unpack
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//[gpu property index, capture flag (1 bit << 15), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
@@ -524,7 +524,7 @@ typedef enum {
 } tfx_error_flag_bits;
 
 //Errors that mean nothing at all could be read, as opposed to a partially loaded library
-#define tfxErrorCode_package_unreadable (tfxErrorCode_incorrect_package_format | tfxErrorCode_unable_to_open_file | tfxErrorCode_unable_to_read_file | tfxErrorCode_wrong_file_size | tfxErrorCode_invalid_format | tfxErrorCode_no_inventory | tfxErrorCode_invalid_inventory | tfxErrorCode_file_version_out_of_date)
+#define tfxErrorCode_package_unreadable (tfxErrorCode_incorrect_package_format | tfxErrorCode_unable_to_open_file | tfxErrorCode_unable_to_read_file | tfxErrorCode_wrong_file_size | tfxErrorCode_invalid_format | tfxErrorCode_no_inventory | tfxErrorCode_invalid_inventory)
 
 typedef tfxU32 tfxErrorFlags;                   //tfx_error_flag_bits
 
@@ -599,13 +599,13 @@ typedef struct tfx_stage_info_s {
 	double warmup_delta_time;				//The frame length tick amount for warming up effects. Higher is more performant at the cost of accuracy.
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535.
-	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit returns tfxINVALID.
+	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit fails, see tfx_EffectIDIsValid.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the effect manager to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
 											//nearest multiple of 32. Must be less than 16777215.
 	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this effect manager. Ribbons stop spawning once it is reached.
-	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this effect manager, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit returns tfxINVALID.
+	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this effect manager, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit fails, see tfx_EffectIDIsValid.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
@@ -833,7 +833,7 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 //A user spawn location as relative particles see it on the last tick of a fetch, one per location slot
 typedef struct tfx_gpu_spawn_location_s {	//32 bytes
 	tfx_float32x3_t position;
-	tfxU32 local_id;						//slot | generation, matched against the cold spawn_location. tfxINVALID when the slot is empty
+	tfxU32 local_id;						//slot | generation, matched against the cold spawn_location. 0xFFFFFFFF when the slot is empty
 	tfxU64 packed_rotation;					//16 bit snorm quaternion, x|y in the low word and z|w in the high one
 	float age;								//Milliseconds, which times a location's own forces
 	tfxU32 paused;							//1 when the location's age stopped for the fetch
@@ -940,7 +940,7 @@ typedef struct tfx_gpu_spawn_run_s {		//64 bytes
 	tfxU32 local_id;						//slot | generation, which relative particles follow
 	tfxU32 first_spawn;
 	tfxU32 count;
-	tfxU32 multipliers_row;					//The location's tfx_gpu_spawn_multipliers_t in rows after the block's first row, tfxINVALID when it has none
+	tfxU32 multipliers_row;					//The location's tfx_gpu_spawn_multipliers_t in rows after the block's first row, 0xFFFFFFFF when it has none
 	tfx_float32x3_t position;
 	tfxU32 flags;							//tfxGPUSpawnRunFlags
 	tfx_float32x3_t captured_position;		//Where the location was at the start of the tick, spawns tween from it to position
@@ -1242,7 +1242,7 @@ tfx_* function used here is documented in full below.
 
     // 7. Shutdown (see "Ownership and teardown ordering" below).
     tfx_FreeStage(stage);
-    tfx_FreeLibrary(library);	(Also frees your effect templates which are stored here)
+    tfx_FreeLibrary(library);           // also frees the effect templates made from it
     tfx_EndTimelineFX();
 
 Ownership and teardown ordering
@@ -1250,16 +1250,16 @@ Ownership and teardown ordering
 Everything is allocated from the memory pool created by tfx_BeginTimelineFX, so tfx_EndTimelineFX must be the
 very last TimelineFX call you make — it tears down the worker threads and the pool itself.
 
-tfx_EndTimelineFX sweeps up any stages, animation managers and libraries you did not free yourself (it completes
-and frees every stage, then frees every animation manager, then every library). Freeing any of them yourself
-first is fine — they deregister from the sweep as they go, so there is no double free either way. It does NOT
-sweep effect templates, so you must free those explicitly with tfx_FreeEffectTemplate before calling
-tfx_EndTimelineFX or the built-in leak check will report leaked blocks.
+tfx_EndTimelineFX sweeps up anything you did not free yourself: it completes and frees every stage, then frees every
+animation manager, then every library (and with it every effect template made from it), then any streams, packages and
+GPU shape lists still allocated. It prints one tip listing what it freed for you. That isn't a leak, it's there so you know. Freeing any of them yourself
+first is fine, they deregister from the sweep as they go, so there is no double free either way. tfx_GetMemoryInUse
+tells you how much is still allocated at any point.
 
 If you free objects yourself rather than leaving them to the sweep, free them in dependency order: free/complete
 a stage before the library whose effects it is simulating (a live stage references the library's effect data);
-an effect template holds its own detached clone of the effect so it is independent of the library once created,
-but freeing templates before the library keeps the ordering simple. A stage has outstanding worker-thread work
+an effect template holds its own detached clone of the effect, but tfx_FreeLibrary frees every template made from
+the library, so don't use one after freeing its library. A stage has outstanding worker-thread work
 after tfx_UpdateStage, so call tfx_CompleteStageWork (or use tfx_FreeStage, which completes it for you) before
 tearing anything down mid-frame.
 */
@@ -1295,9 +1295,17 @@ tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size,
 #endif
 
 /*
-Cleanup up all threads and memory used by timelinefx
+Cleanup up all threads and memory used by timelinefx. Anything you didn't free is freed for you, and a tip lists it
 */
 tfxAPI void tfx_EndTimelineFX(void);
+
+/*
+Get how much of TimelineFX's memory pools is allocated, across every pool. Call it when no stage is updating, for example
+before tfx_EndTimelineFX to find out what you haven't freed yet.
+* @param bytes                    Set to the bytes in use, can be NULL
+* @param blocks                   Set to the number of allocations, can be NULL
+*/
+tfxAPI void tfx_GetMemoryInUse(size_t *bytes, tfxU32 *blocks);
 
 /*
 Send every message TimelineFX prints, errors and tips included, to your own log instead of stdout. Tips are one line messages
@@ -1347,17 +1355,6 @@ tfxAPI void tfx_SuspendTimelineFX(void);
 Restart the worker threads after a call to tfx_SuspendTimelineFX.
 */
 tfxAPI void tfx_ResumeTimelineFX(void);
-
-//--------------------------------
-//Global_variable_access
-//--------------------------------
-/*
-Set the color format used for storing color ramps. Color ramps are generated by particle emitters and dictate how the particle colors change over the lifetime
-of the particle. They can be uploaded to the GPU so you can set your preference for the color format as you need. The format should be immediately after you
-call tfx_BeginTimelineFX
-* @param color_format        The tfx_color_format to store color ramps in: tfx_color_format_rgba8, tfx_color_format_rgba16f or tfx_color_format_rgba32f
-*/
-tfxAPI void tfx_SetColorRampFormat(tfx_color_format color_format);
 
 //--------------------------------
 //Library_functions
@@ -1493,7 +1490,8 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 	tfxErrorCode_some_images_loaded_without_user_ptr
-	tfxErrorCode_shapes_changed_on_disk
+	tfxErrorCode_shapes_changed_on_disk				Not a failure: an image was edited outside the editor and its emitters were remapped to it
+	tfxErrorCode_file_version_out_of_date			Not a failure: the library loaded fine, re-save it in the editor to update its format
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
@@ -1888,7 +1886,7 @@ Adding an effect (tfx_AddEffectTemplateToStage) is the exception: it waits for a
 before it adds, so it's always safe to call. The cheapest place to add effects is still before tfx_UpdateStage
 though, otherwise the add blocks until the update is done. Effects can't be added from inside the stage's own
 update (from an effect update callback for example) or while the stage is recording sprite data, those adds
-are refused and return tfxINVALID.
+are refused and return an id that fails tfx_EffectIDIsValid.
 */
 
 /*
@@ -1962,17 +1960,23 @@ Give every Run on GPU emitter of one effect the same dispatch key, overriding th
 next tfx_GetGPUParticleFrame and can be changed at any time.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param effect_index             The id of the effect, returned when you added it to the stage
-* @param key                      The key every dispatch of the effect carries, or tfxINVALID to go back to each emitter's template key
+* @param key                      The key every dispatch of the effect carries. tfx_ClearEffectGPUKey goes back to each emitter's template key
 */
 tfxAPI void tfx_SetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 key);
 
 /*
-Get the dispatch key set with tfx_SetEffectGPUKey, tfxINVALID when the effect uses its emitters' template keys.
+Get the dispatch key set with tfx_SetEffectGPUKey. It fails tfx_GPUKeyIsValid when the effect uses its emitters' template keys.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 * @param effect_index             The id of the effect, returned when you added it to the stage
 * @returns tfxU32                 The effect's GPU key
 */
 tfxAPI tfxU32 tfx_GetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index);
+
+//Undo tfx_SetEffectGPUKey, so the effect's dispatches carry each emitter's template key again
+tfxAPI void tfx_ClearEffectGPUKey(tfx_stage pm, tfxEffectID effect_index);
+
+//Only checks for the value tfx_GetEffectGPUKey returns when the effect has no key of its own
+tfxAPI bool tfx_GPUKeyIsValid(tfxU32 key);
 
 /*
 Get the billboard buffer in the effect manager containing all the sprite instances that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
@@ -2547,7 +2551,7 @@ see the threading contract above tfx_CreateStageInfo. An effect that spawns at u
 tfx_EffectTemplateSpawnsAtUserLocations) spawns nothing until you give it one with tfx_AddSpawnLocation.
 * @param pm                         A pointer to an initialised tfx_stage_t.
 * @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_CreateEffectTemplate
-* @returns tfxEffectID				The id to manipulate the effect with, for example with tfx_SetEffectPosition, or tfxINVALID if the stage is
+* @returns tfxEffectID				The id to manipulate the effect with, for example with tfx_SetEffectPosition. Check it with tfx_EffectIDIsValid: it fails if the stage is
 									out of room for it
 */
 tfxAPI tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect);
@@ -2557,13 +2561,11 @@ Add an effect to a tfx_stage_t. Generally you should always call tfx_AddEffectTe
 test things out you can add an effect direct from a library using this command.
 * @param pm							A pointer to an initialised tfx_stage_t. 
 * @param effect						tfx_effect_descriptor_t object that you want to add to the effect manager.
-* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
-									For example by calling tfx_SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the effect manager if it's out of space and reached it's effect limit.
-  @returns							True if the effect was succesfully added.
+* @returns tfxEffectID				The id to manipulate the effect with. Check it with tfx_EffectIDIsValid: it fails if the stage is out of room for it
 */
 tfxAPI tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect);
 
-//Only checks the id against tfxINVALID, use tfx_IsEffectExpired to find out if the effect is still running
+//Only checks for the id a failed add returns, use tfx_IsEffectExpired to find out if the effect is still running
 tfxAPI bool tfx_EffectIDIsValid(tfxEffectID id);
 tfxAPI bool tfx_AnimationIDIsValid(tfxAnimationID id);
 
@@ -2641,11 +2643,11 @@ calling tfx_RefreshLibrary, then pass them to tfx_IsBookmarkCrossed rather than 
 If more than one bookmark has the same name then the earliest one is returned.
 * @param tfx_effect_template		A handle to the effect template
 * @param name						The name of the bookmark, case sensitive
-* @returns tfxU32					The bookmark slot, or tfxINVALID if no bookmark has that name. Check with tfx_BookmarkIndexIsValid
+* @returns tfxU32					The bookmark slot. It fails tfx_BookmarkIndexIsValid if no bookmark has that name
 */
 tfxAPI tfxU32 tfx_GetBookmarkIndex(tfx_effect_template effect, const char *name);
 
-//Only checks the index against tfxINVALID, the value tfx_GetBookmarkIndex returns when no bookmark has the name
+//Only checks for the value tfx_GetBookmarkIndex returns when no bookmark has the name
 tfxAPI bool tfx_BookmarkIndexIsValid(tfxU32 bookmark_index);
 
 /*
@@ -2901,7 +2903,7 @@ Effect ids are produced by tfx_AddEffectTemplateToStage and carry a generation f
 When an effect expires and is removed, or the stage is cleared, its id goes stale and is never handed out
 again even though the slot is recycled. So holding on to an id after the effect has gone is safe: calls made
 with it are silently skipped rather than landing on whatever effect took the slot. Use tfx_IsEffectExpired
-to find out when an id has gone stale. Malformed ids such as tfxINVALID still trip an assert in debug builds.
+to find out when an id has gone stale. Malformed ids, such as one from a failed add (see tfx_EffectIDIsValid), still trip an assert in debug builds.
 The animation manager functions that take a tfxAnimationID are validated the same way but those ids have no
 generation, so they assert when invalid and should be treated as invalid once the instance has expired.
 */
@@ -3487,7 +3489,7 @@ Add an animation instance to the animation manager.
 * @param path                    tfxKey path hash of the effect name and path: effect.path_hash
 * @param start_frame            Starting frame of the animation
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
-								Return tfxINVALID if there is no room in the animation manager or the effect recorded nothing
+								It fails tfx_AnimationIDIsValid if there is no room in the animation manager or the effect recorded nothing
 */
 tfxAPI tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_manager, tfxKey path, tfxU32 start_frame);
 
@@ -3497,7 +3499,7 @@ Add an animation instance to the animation manager.
 * @param path                    const char * name of the effect. If the effect was in a folder then specify the whole path
 * @param start_frame            Starting frame of the animation
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
-								Return tfxINVALID if there is no room in the animation manager or the effect recorded nothing
+								It fails tfx_AnimationIDIsValid if there is no room in the animation manager or the effect recorded nothing
 */
 tfxAPI tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager animation_manager, const char *path, tfxU32 start_frame);
 
@@ -3849,7 +3851,7 @@ Changes made through the template setters (tfx_SetTemplate*, tfx_ScaleTemplate*,
 are re-applied when tfx_RefreshLibrary rebuilds the template. Edits made directly on descriptors fetched from the template are not.
 * @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
 * @param name                       The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
-//Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
+//Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library, which prints a tip
 */
 tfxAPI tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *name);
  
@@ -3862,7 +3864,7 @@ tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
 
 /*
 Check whether the effect a template was cloned from has gone from the library file, as found by tfx_RefreshLibrary.
-While this is true, tfx_AddEffectTemplateToStage refuses the template and returns tfxINVALID, and the refresh that found
+While this is true, tfx_AddEffectTemplateToStage refuses the template and returns an id that fails tfx_EffectIDIsValid, and the refresh that found
 the effect missing expires anything already running from it. The template is not freed: if a later refresh finds the
 effect in the file again, this goes back to false and the template can be used again. Call tfx_FreeEffectTemplate if you
 no longer need it.
@@ -3968,9 +3970,10 @@ Scale all nodes on a global graph graph of the effect
 tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float scale_amount);
 
 /*
-Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
+Set how many particles a single shot emitter spawns. Single shot emitters ignore the amount graphs, so this is how you change
+how many they spawn. Only affects emitters that have the single spawn flag set.
 * @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
-* @param amount					 A float of the amount that you want to set the single spawn amount to.
+* @param amount					 The number of particles to spawn.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
 
@@ -3996,11 +3999,12 @@ tfxAPI void tfx_SetTemplateEmitterGPUKey(tfx_effect_template t, const char *emit
 /*
 Scale all nodes on an emitter graph. Scaling a color graph gives the emitter a color ramp row and particle properties entry of its
 own, and scaling an overtime graph the GPU reads gives it its own graph lookups, so tfx_GetColorRampsVersion,
-tfx_GetParticlePropertiesVersion or tfx_GetGPUGraphLookupsVersion will tell you to upload them again.
+tfx_GetParticlePropertiesVersion or tfx_GetGPUGraphLookupsVersion will tell you to upload them again. Single shot emitters
+ignore the amount graphs, use tfx_SetTemplateSingleSpawnAmount for those.
 * @param tfx_effect_template	  Handle to a valid effect template
 * @param emitter_path			  "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
-* @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
-* @param scale amount             A float of the amount that you want to scale the graph by.
+* @param graph_index			  tfx_emitter_graph_index of the graph that you want to scale. Must be an emitter graph or an assert will be called
+* @param scale_amount             The amount to scale the graph by.
 */
 tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float scale_amount);
 
@@ -4014,6 +4018,7 @@ tfxAPI void tfx_ClearVariationLifetimeGraph(tfx_effect_descriptor emitter, float
 //General_helpers
 //--------------------------------
 
+//Unpack the width and height of a tfx_instance_t
 tfxAPI void tfx_GetSpriteScale(void *instance, float out_scale[2]);
 
 tfxAPI inline float tfx_GetDistance(float fromx, float fromy, float tox, float toy) {

@@ -32,7 +32,7 @@ what a library contains (which emitters are GPU, ring sizes, which effects need 
 | `dropped_spawns` > 0, or a `Dropping spawns:` line | The emitter's ring is too small for how many locations overlap | A larger location count in `tfx_SetTemplateGPUCapacityForLocations`, or `tfx_SetTemplateEmitterGPUCapacity` for one emitter |
 | An `Unfetched:` line, or `unfetched_gpu_updates` climbing | The host updates the stage without calling `tfx_GetGPUParticleFrame` | Fetch and dispatch on every frame the stage updated |
 | `slots_in_use` well above `estimated_live_particles` | Normal: a dead particle keeps its slot until every particle spawned in the same tick has died | Nothing. Compare `estimated_live_particles` with the CPU, never `slots_in_use` |
-| A `Library ... tfxErrorCode_` line | The library loaded with problems, e.g. `file_version_out_of_date` | Re-save it in the editor |
+| A `Library ... tfxErrorCode_` line | The library loaded with problems. `file_version_out_of_date` alone isn't one: the library loaded fine | Re-save it in the editor |
 
 ## Sizing the pool
 

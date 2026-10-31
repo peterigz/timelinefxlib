@@ -203,7 +203,8 @@ void tfx__free_handle(tfx_allocator *allocator, void *handle) {
     }
 }
 
-void tfx__scan_memory_and_free_resources() {
+//freed_counts is indexed by struct type >> 16
+void tfx__scan_memory_and_free_resources(tfxU32 *freed_counts) {
 	tfx_pool **memory_pools = tfxStore->memory_pools;
 	tfxU32 memory_pool_count = tfxStore->memory_pool_count;
 	tfx_allocator *allocator = tfxMemoryAllocator;
@@ -234,6 +235,7 @@ void tfx__scan_memory_and_free_resources() {
 						case tfx_struct_type_package:
 						case tfx_struct_type_effect_template:
 							memory_to_free.push_back(allocation);
+							freed_counts[struct_type >> 16]++;
 							break;
 						default:
 							break;
@@ -3463,9 +3465,14 @@ void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_desc
 	}
 }
 
+tfxINTERNAL const char *tfx__library_name(tfx_library library) {
+	return library->library_file_path.data && library->library_file_path.data[0] ? library->library_file_path.data : "loaded from memory";
+}
+
 tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *name) {
 	TFX_ASSERT_INIT(library->magic);				//Trying to create an effect template with an uninitialised library!
 	if (!library->effect_paths.ValidName(name)) {
+		tfxTIP("No effect \"%s\" in library \"%s\". tfx_PrintLibrary lists them.", name, tfx__library_name(library));
 		return nullptr;
 	}
 	tfx_effect_template effect_template = tfxNEW(tfx_effect_template);
@@ -11023,8 +11030,11 @@ tfxINTERNAL bool tfx__first_emitter_tip(tfx_stage pm, tfx_effect_descriptor emit
 }
 
 tfxINTERNAL void tfx__tip_library_errors(const char *library_name, tfxErrorFlags error_flags) {
+	if (error_flags & tfxErrorCode_file_version_out_of_date) {
+		tfxTIP("Library \"%s\" loaded fine, but it was saved in an older format. Re-save it in the editor to update it.", library_name);
+	}
 	tfx_str512_t names;
-	if (tfx__error_flag_names(error_flags, &names)) {
+	if (tfx__error_flag_names(error_flags & ~tfxErrorCode_file_version_out_of_date, &names)) {
 		tfxTIP("Library \"%s\" loaded with these tfxErrorCode_ flags set: %s. tfx_GetLibraryErrorStatus returns them.", library_name, names.c_str());
 	}
 }
@@ -13435,6 +13445,9 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_pa
 		return;
 	}
 	TFX_ASSERT(t->paths.At(path_key)->type == tfxEmitterType);			 //The path does not point to a emitter type
+	if ((graph_index == tfxEmitter_base_amount_index || graph_index == tfxEmitter_variation_amount_index) && t->paths.At(path_key)->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		tfxTIP("\"%s\" is single shot, so it ignores the amount graphs. Use tfx_SetTemplateSingleSpawnAmount.", emitter_path);
+	}
 	tfx_template_override_t template_override = {};
 	template_override.type = tfx_template_override_emitter_graph_scale;
 	template_override.path_hash = path_key;
@@ -13678,7 +13691,7 @@ tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effec
 #ifndef TFX_DISABLE_TIPS
 	if (effect_template->effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations && !(effect_template->flags & tfxEffectTemplateFlags_user_location_tip_shown)) {
 		effect_template->flags |= tfxEffectTemplateFlags_user_location_tip_shown;
-		tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation.", effect_template->effect->name.c_str());
+		tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation (shown once per template).", effect_template->effect->name.c_str());
 	}
 #endif
 	return tfx__add_effect_to_stage(pm, effect_template->effect);
@@ -15778,11 +15791,8 @@ tfx_gpu_image_data_t *tfx_GetGPUShape(tfx_gpu_shapes shapes, tfxU32 index) {
 
 void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	tfx_instance_t *sprite = static_cast<tfx_instance_t*>(instance);
-	tfx_float16x2_t size = sprite->size;
-	int16_t x_scaled = (int16_t)size.x;
-	int16_t y_scaled = (int16_t)size.y;
-	out_scale[0] = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
-	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
+	out_scale[0] = (float)sprite->size.x * tfxSPRITE_SIZE_SSCALE;
+	out_scale[1] = (float)sprite->size.y * tfxSPRITE_SIZE_SSCALE;
 }
 
 tfxAPI tfx_effect_descriptor tfx_CreateEffectDescriptor(tfx_effect_descriptor_type type) {
@@ -17855,6 +17865,14 @@ void tfx_SetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index, tfxU32 key) {
 tfxU32 tfx_GetEffectGPUKey(tfx_stage pm, tfxEffectID effect_index) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, tfxINVALID);
 	return pm->effects[tfx__effect_slot(effect_index)].gpu_key;
+}
+
+void tfx_ClearEffectGPUKey(tfx_stage pm, tfxEffectID effect_index) {
+	tfx_SetEffectGPUKey(pm, effect_index, tfxINVALID);
+}
+
+bool tfx_GPUKeyIsValid(tfxU32 key) {
+	return key != tfxINVALID;
 }
 
 void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed) {
@@ -25845,8 +25863,7 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 	for (tfx_library library : libraries) {
 		tfx_str512_t names;
 		if (tfx__error_flag_names(library->error_flags, &names)) {
-			const char *library_name = library->library_file_path.data && library->library_file_path.data[0] ? library->library_file_path.data : "loaded from memory";
-			tfx__write_line(&writer, "Library \"%s\" has these tfxErrorCode_ flags set: %s", library_name, names.c_str());
+			tfx__write_line(&writer, "Library \"%s\" has these tfxErrorCode_ flags set: %s", tfx__library_name(library), names.c_str());
 		}
 	}
 	waiting_effects.free();
@@ -26888,6 +26905,13 @@ void tfx_EndTimelineFX() {
 		return;
 	}
 	if (!tfxCurrentContext->suspended) tfx_SuspendTimelineFX();
+	tfxU32 freed_counts[8] = {};
+	freed_counts[tfx_struct_type_stage >> 16] = tfxStore->stages.Size();
+	freed_counts[tfx_struct_type_animation_manager >> 16] = tfxStore->animation_managers.Size();
+	freed_counts[tfx_struct_type_effect_library >> 16] = tfxStore->libraries.Size();
+	for (tfx_library library : tfxStore->libraries.data) {
+		freed_counts[tfx_struct_type_effect_template >> 16] += library->effect_templates.current_size;
+	}
 	while (tfxStore->stages.Size()) {
 		tfx_stage stage = tfxStore->stages.data.back();
 		tfx_FreeStage(stage);
@@ -26918,7 +26942,24 @@ void tfx_EndTimelineFX() {
 	tfx_allocator *memory_allocator = tfxCurrentContext->memory_allocator;
 	tfx__unlock_thread_access(memory_allocator);
 	for (tfxU32 i = 0; i != 6; ++i) tfxIcospherePoints[i].free();
-	tfx__scan_memory_and_free_resources();
+	tfx__scan_memory_and_free_resources(freed_counts);
+#ifndef TFX_DISABLE_TIPS
+	tfx_str512_t freed;
+	for (tfxU32 type_index = 0; type_index != 8; ++type_index) {
+		if (!freed_counts[type_index]) {
+			continue;
+		}
+		const char *type_name = tfx__struct_type_to_string((tfx_struct_type)(type_index << 16));
+		if (freed.Length()) {
+			freed.Appendf(", %s: %u", type_name, freed_counts[type_index]);
+		} else {
+			freed.Setf("%s: %u", type_name, freed_counts[type_index]);
+		}
+	}
+	if (freed.Length()) {
+		tfxTIP("tfx_EndTimelineFX freed these for you: %s. That isn't a leak, but you can free them yourself before ending.", freed.c_str());
+	}
+#endif
 	tfx_Free(memory_allocator, tfxCurrentContext);
 	tfx_pool_stats_t stats = tfx_CreateMemorySnapshot(tfx_GetPool(memory_allocator));
 	if (stats.used_blocks > 0) {
@@ -26934,8 +26975,20 @@ void tfx_EndTimelineFX() {
 	allocation_callbacks.deallocate(allocation_callbacks.user_data, memory_allocator, initial_pool_size, 16);
 }
 
-void tfx_SetColorRampFormat(tfx_color_format color_format) {
-	tfxStore->color_ramp_format = color_format;
+void tfx_GetMemoryInUse(size_t *bytes, tfxU32 *blocks) {
+	TFX_ASSERT(tfxCurrentContext);	//Call tfx_BeginTimelineFX first
+	tfx_allocator *allocator = tfxMemoryAllocator;
+	size_t used_size = 0;
+	tfxU32 used_blocks = 0;
+	tfx__lock_thread_access(allocator);
+	for (tfxU32 pool_index = 0; pool_index != tfxStore->memory_pool_count; pool_index++) {
+		tfx_pool_stats_t stats = tfx_CreateMemorySnapshot(pool_index == 0 ? tfx_GetPool(allocator) : (const tfx_pool *)tfxStore->memory_pools[pool_index]);
+		used_size += stats.used_size;
+		used_blocks += (tfxU32)stats.used_blocks;
+	}
+	tfx__unlock_thread_access(allocator);
+	if (bytes) *bytes = used_size;
+	if (blocks) *blocks = used_blocks;
 }
 
 tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block) {

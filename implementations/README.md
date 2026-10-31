@@ -228,7 +228,7 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips, and a clamped linear sampler with mip filtering.
 - [ ] The color ramps as a texture array, one layer per `tfx_GetColorRampBitmap`, in the format of its bytes per
-      pixel (RGBA16F unless the game called `tfx_SetColorRampFormat`). It's read with an integer load, never sampled.
+      pixel (always RGBA16F). It's read with an integer load, never sampled.
 - [ ] The shape frames and emitter properties as read only buffers.
 - [ ] Two instance buffers that swap on every update, sized for the instance count and copied across when they grow.
 - [ ] One instanced draw of 6 vertices per layer. If the API's instance id doesn't include the draw's first instance

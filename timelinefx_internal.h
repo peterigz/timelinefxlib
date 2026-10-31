@@ -1592,7 +1592,7 @@ void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
 tfxINTERNAL void tfx__free_handle(tfx_allocator *allocator, void *handle);
-tfxINTERNAL void tfx__scan_memory_and_free_resources();
+tfxINTERNAL void tfx__scan_memory_and_free_resources(tfxU32 *freed_counts);
 tfxINTERNAL void tfx__reset_object_callbacks();
 tfxINTERNAL void tfx__print_block_info(tfx_allocator *allocator, void *allocation, tfx_header *current_block);
 tfxAPI void tfxPrintMemoryBlocks(tfx_allocator *allocator, tfx_header *first_block, bool output_all);
@@ -3478,7 +3478,7 @@ typedef tfxU64 tfxAddress;
 #else
 typedef tfxU32 tfxAddress;
 #endif
-#define tfxSPRITE_SIZE_SSCALE	0.25000762962736f
+#define tfxSPRITE_SIZE_SSCALE	(64.f / 32767.f)
 
 #define tfxMAX_PATH_NODES 1024
 
@@ -5022,7 +5022,6 @@ typedef struct tfx_storage_s {
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
 	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
 	tfx_data_types_dictionary_t data_types;
-	tfx_color_format color_ramp_format;
 	tfx_queue_processor_t thread_queues;
 	tfx_hasher_t hasher;
 #ifdef __cplusplus
