@@ -67,7 +67,8 @@ The library and the renderer have to be set up in this order (`example_scene_Loa
 
 1. `tfx_LoadEffectLibrary(path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &shapes)`. The shape loader decodes every shape
    to RGBA8 frames and hands the library a pointer to each one.
-2. `tfx_CreateEffectTemplate` for each effect you'll play, so that everything the templates add is in the upload.
+2. `tfx_CreateEffectTemplate` for each effect you'll play. Templates can be made at any time: they share the library's
+   GPU data until a template customises a graph the GPU reads.
 3. For baked playback, `tfx_CreateAnimationManager` and `tfx_LoadSpriteData(path, manager, tfx_impl_ShapeLoader,
    &shapes)`. The sprite data carries its own shapes, and loading them into the same shape list puts them in the same
    atlas.
@@ -80,6 +81,9 @@ The library and the renderer have to be set up in this order (`example_scene_Loa
    (`tfx_GetGPUGraphLookupsBuffer`, which ribbons and the GPU kernel read). The animation manager has its own color
    ramps, shape frames, emitter properties, baked sprites and ribbons, uploaded once
    (`tfx_impl_dx11_UploadSpriteData`). Only the atlas is shared.
+7. A host that loads another library or customises templates after this upload must compare `tfx_GetColorRampsVersion`,
+   `tfx_GetParticlePropertiesVersion` and `tfx_GetGPUGraphLookupsVersion` each frame with the values from its last
+   upload, and upload again whatever changed. The example scene does neither, so the D3D11 backend uploads once.
 
 Free the stage before the library, and the shapes after the library, because the library holds pointers to them
 (`example_scene_Shutdown` does all three). Call `tfx_EndTimelineFX` after that.

@@ -3093,6 +3093,7 @@ typedef enum {
 	tfxEffectCloningFlags_clone_graphs                          = 1 << 1,
 	tfxEffectCloningFlags_history                               = 1 << 2,
 	tfxEffectCloningFlags_clone_camera_settings                 = 1 << 3,
+	tfxEffectCloningFlags_share_gpu_data                        = 1 << 4,		//Templates: use the source's ramp rows, GPU property entries and graph lookups until an override changes them
 	tfxEffectCloningFlags_camera_and_graphs		                = tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_clone_camera_settings 
 } tfx_effect_cloning_flag_bits;
 
@@ -3249,6 +3250,8 @@ typedef enum {
 	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//The effect was updated after a library refresh
 	tfxEffectPropertyFlags_user_spawn_locations                 = 1 << 10,		//The effect and it's emitters spawns at locations provided by the user
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
+	tfxEffectPropertyFlags_shares_color_ramp				    = 1 << 13,		//Template emitter: its ramp row and GPU property entry belong to the library emitter it was cloned from
+	tfxEffectPropertyFlags_shares_graph_lookups				    = 1 << 14,		//Template emitter: gpu_lookup_offset belongs to the library emitter it was cloned from
 	tfxEffectPropertyFlags_is_ordered						    = tfxEffectPropertyFlags_depth_draw_order | tfxEffectPropertyFlags_age_order,
 } tfx_effect_property_flag_bits;
 
@@ -5033,6 +5036,12 @@ typedef struct tfx_storage_s {
 	tfx_storage_map_t graph_indexes;
 #endif
 	tfx_buffer_t gpu_graph_data;
+#ifdef __cplusplus
+	tfx_vector_t<tfxU32> free_graph_lookup_blocks;		//Offsets of blocks released by freed template emitters, emptied by every rebuild
+#else
+	tfx_vector_t free_graph_lookup_blocks;
+#endif
+	tfxU32 gpu_graph_lookups_version;					//tfx_GetGPUGraphLookupsVersion
 	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
 	void *threads[tfxMAX_THREADS];
@@ -7619,9 +7628,12 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_paths;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
+	tfx_vector_t<tfxU32> free_color_ramp_rows;		//Only ever filled by freed template emitters, which own their rows exclusively
 
 	tfx_gpu_shapes gpu_shapes;
 	tfx_color_ramp_bitmap_data_t color_ramps;
+	tfxU32 particle_properties_version;		//tfx_GetParticlePropertiesVersion
+	tfxU32 color_ramps_version;				//tfx_GetColorRampsVersion
 	//Get an effect from the library by index
 	tfx_str256_t name;
 	bool open_library;
@@ -7699,6 +7711,7 @@ typedef struct tfx_data_entry_s {
 #define tfxColorRampIndex(id) (id & 0x0000FFFF)
 #define tfxColorRampLayer(id) ((id & 0x7FFF0000) >> 16)
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
+#define tfxColorRampIDWithoutEdited(id) (id & 0x7FFFFFFF)
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
 #define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count
 //A stage keeps a separate bucket per effect sort key, so ribbons from differently keyed effects are never dispatched together
@@ -8195,6 +8208,11 @@ tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor in_effect, tfx_
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_emitter(tfx_effect_descriptor emitter_to_clone, tfx_library library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst);
+tfxINTERNAL void tfx__overwrite_effect_with_flags(tfx_effect_descriptor src, tfx_effect_descriptor *dst, tfxEffectCloningFlags extra_flags);
+//Call before freeing or overwriting a template's clone, so the ramp rows and lookup blocks it owns can be reused
+tfxINTERNAL void tfx__release_template_gpu_data(tfx_effect_descriptor template_effect);
+tfxINTERNAL void tfx__unshare_template_color_ramp(tfx_effect_descriptor emitter);
+tfxINTERNAL void tfx__unshare_template_graph_lookups(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR void tfx__enable_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__render_all_emitters(tfx_effect_descriptor effect);
 tfxAPI_EDITOR void tfx__do_not_render_all_emitters_except(tfx_effect_descriptor effect, tfx_effect_descriptor emitter);

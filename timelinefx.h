@@ -1782,6 +1782,14 @@ Get a pointer to a color ramp bitmap in a library. You can use this data to uplo
 tfxAPI tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library library, tfxU32 index);
 
 /*
+A number that changes whenever the library's color ramp bitmaps change. Keep the value from when you last uploaded the ramps
+and compare it each frame: if it differs, upload them again from tfx_GetColorRampBitmapCount/tfx_GetColorRampBitmap. Loading,
+refreshing and customising a template's color graphs with tfx_ScaleTemplateEmitterGraph change it. Creating templates doesn't.
+* @param library        A handle to a tfx_library
+*/
+tfxAPI tfxU32 tfx_GetColorRampsVersion(tfx_library library);
+
+/*
 Get a count of the number of color ramp bitmaps in an animation manager.
 * @param animation_manager        A handle to a tfx_animation_manager
 */
@@ -1822,6 +1830,14 @@ single shared buffer in tfxStore, so it takes no library argument.
 * @returns tfxU32                   The size of the shared gpu graph lookup data in bytes.
 */
 tfxAPI tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes(void);
+
+/*
+A number that changes whenever the shared gpu graph lookup data changes. Keep the value from when you last uploaded it and
+compare it each frame: if it differs, upload tfx_GetGPUGraphLookupsBuffer again. Loading or refreshing any library changes
+it, because that rebuilds the lookups of every library, and so does tfx_ScaleTemplateEmitterGraph on a graph the GPU reads.
+Creating templates doesn't.
+*/
+tfxAPI tfxU32 tfx_GetGPUGraphLookupsVersion(void);
 
 /*
 Get buffer info for ribbons based on the tessellation value. Returns a tfx_ribbon_buffer_info_t object with
@@ -2203,6 +2219,15 @@ tfx_GetParticlePropertiesBufferSizeInBytes.
 * @param library                  A handle to a tfx_library.
 */
 tfxAPI void *tfx_GetParticlePropertiesBuffer(tfx_library library);
+
+/*
+A number that changes whenever the library's particle properties buffer changes. Keep the value from when you last uploaded
+the buffer and compare it each frame: if it differs, upload tfx_GetParticlePropertiesBuffer again, sized by
+tfx_GetParticlePropertiesBufferSizeInBytes since it can grow. Loading, refreshing, rebuilding the shape data and customising a
+template's color graphs with tfx_ScaleTemplateEmitterGraph change it. Creating templates doesn't.
+* @param library                  A handle to a tfx_library.
+*/
+tfxAPI tfxU32 tfx_GetParticlePropertiesVersion(tfx_library library);
 
 /*
 Get the total worst-case buffer sizes across all registered stages, for creating a single shared set of ribbon GPU
@@ -3957,7 +3982,9 @@ Only affects effects added after the call. Ribbons are ignored.
 tfxAPI void tfx_SetTemplateEmitterGPUKey(tfx_effect_template t, const char *emitter_path, tfxU32 key);
 
 /*
-Scale all nodes on an emitter graph
+Scale all nodes on an emitter graph. Scaling a color graph gives the emitter a color ramp row and particle properties entry of its
+own, and scaling an overtime graph the GPU reads gives it its own graph lookups, so tfx_GetColorRampsVersion,
+tfx_GetParticlePropertiesVersion or tfx_GetGPUGraphLookupsVersion will tell you to upload them again.
 * @param tfx_effect_template	  Handle to a valid effect template
 * @param emitter_path			  "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called

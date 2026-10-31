@@ -3299,13 +3299,18 @@ void tfx__remap_paired_emitters(tfx_effect_descriptor effect_cloned, tfx_effect_
 void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor clone, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
 	clone->children.init();
+	clone->effect_flags &= ~(tfxEffectPropertyFlags_shares_color_ramp | tfxEffectPropertyFlags_shares_graph_lookups);
+	//Only with its own graph lists, or clearing the edited bit below would change the source's
+	bool share_gpu_data = (flags & tfxEffectCloningFlags_share_gpu_data) && (flags & tfxEffectCloningFlags_clone_graphs) && destination_library == effect_to_clone->library;
 	if (effect_to_clone->state_properties.shared_index != tfxINVALID) {
 		clone->state_properties.shared_index = tfx__clone_library_shared_properties(clone->library, effect_to_clone->state_properties.shared_index, destination_library);
 	}
 	switch (clone->type) {
 	case tfxEmitterType:
 		clone->state_properties.property_index = tfx__clone_library_particle_emitter_properties(clone->library, effect_to_clone->state_properties.property_index, destination_library);
-		clone->state_properties.gpu_property_index = tfx__clone_library_gpu_particle_properties(clone->library, effect_to_clone->state_properties.gpu_property_index, destination_library);
+		if (!share_gpu_data) {
+			clone->state_properties.gpu_property_index = tfx__clone_library_gpu_particle_properties(clone->library, effect_to_clone->state_properties.gpu_property_index, destination_library);
+		}
 		break;
 	case tfxRibbonType:
 		clone->state_properties.property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, effect_to_clone->state_properties.property_index, destination_library);
@@ -3335,11 +3340,18 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 		clone->state_properties.transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_transform_graph_list(library, effect_to_clone->state_properties.transform_index, destination_library) : effect_to_clone->state_properties.transform_index;
 		tfx__update_emitter_max_life(clone);
 		tfx__update_lerp_graphs_of_effect(clone, false);
-		tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
-		if (destination_library != effect_to_clone->library) {
-			tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->state_properties.graph_list_index]);
+		if (share_gpu_data) {
+			tfxU32 source_ramp_id = library->graphs[effect_to_clone->state_properties.graph_list_index].color_ramp_bitmap_indexes;
+			//Without the edited bit, so customising the clone's colours gives it a row of its own rather than replotting the source's
+			destination_library->graphs[clone->state_properties.graph_list_index].color_ramp_bitmap_indexes = tfxColorRampIDWithoutEdited(source_ramp_id);
+			clone->effect_flags |= tfxEffectPropertyFlags_shares_color_ramp | tfxEffectPropertyFlags_shares_graph_lookups;
+		} else {
+			tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
+			if (destination_library != effect_to_clone->library) {
+				tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->state_properties.graph_list_index]);
+			}
+			tfx__update_emitter_gpu_properties(clone);
 		}
-		tfx__update_emitter_gpu_properties(clone);
 		if (clone->state_properties.path_attributes != tfxINVALID) {
 			tfxU32 path_index = tfx__allocate_library_path(destination_library);
 			tfx__copy_path(&library->paths[clone->state_properties.path_attributes], "", &destination_library->paths[path_index]);
@@ -3369,6 +3381,10 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 }
 
 void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst) {
+	tfx__overwrite_effect_with_flags(src, dst, tfxEffectCloningFlags_none);
+}
+
+void tfx__overwrite_effect_with_flags(tfx_effect_descriptor src, tfx_effect_descriptor *dst, tfxEffectCloningFlags extra_flags) {
 	TFX_ASSERT_HANDLE(src);	//source effect is not a valid handle
 	//The destination keeps its own library. A refresh clones out of the library just read from disk and
 	//every slot the clone takes has to be allocated in the library that is actually live, otherwise the
@@ -3384,8 +3400,35 @@ void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst
 	}
 	bool is_root_effect = tfx__is_root_effect(*dst);
 	TFX_ASSERT(is_root_effect);		//The destination effect must be a root effect
-	tfx__clone_effect(src, *dst, destination_library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs);
+	tfx__clone_effect(src, *dst, destination_library, tfxEffectCloningFlags_keep_user_data | tfxEffectCloningFlags_clone_graphs | extra_flags);
 	tfx__remap_paired_emitters(src, *dst);
+}
+
+void tfx__release_template_gpu_data(tfx_effect_descriptor template_effect) {
+	if (!TFX_VALID_HANDLE(template_effect, tfx_struct_type_effect_descriptor) || !TFX_VALID_HANDLE(template_effect->library, tfx_struct_type_effect_library)) {
+		return;
+	}
+	tfx_library library = template_effect->library;
+	tmpStack(tfx_effect_descriptor, stack);
+	stack.push_back(template_effect);
+	while (stack.size()) {
+		tfx_effect_descriptor current = stack.pop_back();
+		if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
+			tfxU32 ramp_id = library->graphs[current->state_properties.graph_list_index].color_ramp_bitmap_indexes;
+			//A ramp rebuild clears the edited bit and hands out deduplicated rows, which are no longer this emitter's alone
+			if (!(current->effect_flags & tfxEffectPropertyFlags_shares_color_ramp) && tfxColorRampIsEdited(ramp_id)) {
+				library->free_color_ramp_rows.push_back(tfxColorRampIDWithoutEdited(ramp_id));
+			}
+			//Entries are packed by graph count, so only a particle emitter's block fits the next particle emitter
+			if (current->type == tfxEmitterType && !(current->effect_flags & tfxEffectPropertyFlags_shares_graph_lookups)) {
+				tfxStore->free_graph_lookup_blocks.push_back(current->gpu_lookup_offset);
+			}
+		}
+		for (tfx_effect_descriptor sub : current->children) {
+			stack.push_back(sub);
+		}
+	}
+	stack.free();
 }
 
 tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
@@ -4030,6 +4073,7 @@ void tfx__update_emitter_image_index(tfx_effect_descriptor emitter) {
 	}
 	tfx_gpu_particle_properties_t *gpu_properties = &emitter->library->particle_gpu_properties[emitter->state_properties.gpu_property_index];
 	gpu_properties->start_frame_index = emitter->state_properties.image ? emitter->state_properties.image->compute_shape_index : 0;
+	emitter->library->particle_properties_version++;
 }
 
 void tfx__update_library_image_indexes(tfx_library library) {
@@ -4326,9 +4370,10 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect = effect;
 	if (TFX_VALID_HANDLE(effect_template->effect, tfx_struct_type_effect_descriptor) && TFX_VALID_HANDLE(effect_template->effect->library, tfx_struct_type_effect_library)) {
+		tfx__release_template_gpu_data(effect_template->effect);
 		tfx__free_effect(effect_template->effect);
 	}
-	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs);
+	effect_template->effect = tfx__clone_effect_into_library(effect, effect_template->effect, library, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_share_gpu_data);
 	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
 }
 
@@ -4337,7 +4382,8 @@ void tfx__update_effect_template(tfx_effect_template effect_template, tfx_effect
 	//No clear here: tfx__overwrite_effect clears the destination itself, and clearing twice returns the
 	//same graph list and property slots to the library's free lists twice, which hands one slot out to two
 	//emitters on the next allocation.
-	tfx__overwrite_effect(latest_effect, &effect_template->effect);
+	tfx__release_template_gpu_data(effect_template->effect);
+	tfx__overwrite_effect_with_flags(latest_effect, &effect_template->effect, tfxEffectCloningFlags_share_gpu_data);
 	effect_template->paths.Clear();
 	tfx__add_template_path(effect_template, effect_template->effect, effect_template->effect->name.c_str());
 	effect_template->flags |= tfxEffectTemplateFlags_needs_updating;
@@ -4500,6 +4546,20 @@ tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes() {
 	return tfxStore->gpu_graph_data.size_in_bytes();
 }
 
+tfxU32 tfx_GetGPUGraphLookupsVersion() {
+	return tfxStore->gpu_graph_lookups_version;
+}
+
+tfxU32 tfx_GetColorRampsVersion(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	return library->color_ramps_version;
+}
+
+tfxU32 tfx_GetParticlePropertiesVersion(tfx_library library) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	return library->particle_properties_version;
+}
+
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, tfx_uv_lookup uv_lookup) {
 	TFX_ASSERT_HANDLE(shapes);				//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
 	TFX_ASSERT_HANDLE(animation_manager);	//animation_manager handle not initialised! Use tfx_CreateAnimationManagerFor2d/3d and load or record sprite data into it.
@@ -4623,7 +4683,11 @@ tfxINTERNAL void tfx__free_library_property_slots(tfx_library library, tfx_effec
 
 void tfx__free_library_properties(tfx_effect_descriptor descriptor) {
 	TFX_ASSERT_HANDLE(descriptor);
-	tfx__free_library_property_slots(descriptor->library, descriptor->type, &descriptor->state_properties);
+	tfx_common_state_properties_t state_properties = descriptor->state_properties;
+	if (descriptor->effect_flags & tfxEffectPropertyFlags_shares_color_ramp) {
+		state_properties.gpu_property_index = tfxINVALID;
+	}
+	tfx__free_library_property_slots(descriptor->library, descriptor->type, &state_properties);
 }
 
 void tfx__free_library_state_slots(tfx_library library, tfx_effect_descriptor_type type, tfx_common_state_properties_t *state_properties) {
@@ -4888,6 +4952,7 @@ void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index
 
 tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	library->particle_properties_version++;
 	if (library->free_particle_gpu_properties.size()) {
 		return library->free_particle_gpu_properties.pop_back();
 	}
@@ -5343,9 +5408,13 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	library->free_keyframes.free();
 	library->free_particle_gpu_properties.free();
 	library->free_paths.free();
+	library->free_color_ramp_rows.free();
 
 	library->uid = 0;
 	library->color_ramps.color_ramp_count = 0;
+	//Not reset: a reload into the same handle must still look changed to a host comparing against its last upload
+	library->color_ramps_version++;
+	library->particle_properties_version++;
 }
 
 void tfx_FreeLibrary(tfx_library library) {
@@ -5396,10 +5465,11 @@ void tfx__update_library_compute_nodes() {
 	tmpStack(tfx_effect_descriptor, stack);
 	//tfxStore->all_graph_nodes.clear();
 	tfxStore->gpu_graph_data.clear();
+	tfxStore->free_graph_lookup_blocks.clear();
+	tfxStore->gpu_graph_lookups_version++;
 	tfxU32 index = 0;
-	//A clone starts out sharing the original's offset because cloning copies the field, which only holds
-	//until this table is rebuilt. Giving it an entry of its own is what makes a rebuild safe for a host
-	//spawning from a template. Library effects come first so their offsets do not move when none exist.
+	//A template emitter still sharing its original's lookups is pointed at the original's new offset, which is
+	//why library effects come first. One that was customised gets an entry of its own.
 	tfx_vector_t<tfx_effect_descriptor> roots;
 	for (tfx_library library : tfxStore->libraries.data) {
 		roots.clear();
@@ -5417,7 +5487,17 @@ void tfx__update_library_compute_nodes() {
 					}
 					continue;
 				}
-				if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
+				tfx_effect_descriptor original = nullptr;
+				if (current->effect_flags & tfxEffectPropertyFlags_shares_graph_lookups) {
+					original = tfx_GetLibraryDescriptor(library, current->path.c_str());
+					if (original && original != current && original->type == current->type) {
+						current->gpu_lookup_offset = original->gpu_lookup_offset;
+					} else {
+						original = nullptr;
+						current->effect_flags &= ~tfxEffectPropertyFlags_shares_graph_lookups;
+					}
+				}
+				if (!original && (current->type == tfxEmitterType || current->type == tfxRibbonType)) {
 
 					current->gpu_lookup_offset = index;
 
@@ -5453,10 +5533,11 @@ void tfx__update_library_emitter_compute_nodes(tfx_effect_descriptor_t *emitter)
 
 	tfxU32 graph_count = tfxGPU_lookup_end - tfxGPU_lookup_start;
 
-	if (emitter->gpu_lookup_offset + graph_count >= tfxStore->gpu_graph_data.current_size) {
+	if (emitter->gpu_lookup_offset + graph_count > tfxStore->gpu_graph_data.current_size) {
 		tfx__update_library_compute_nodes();
 		return;
 	}
+	tfxStore->gpu_graph_lookups_version++;
 
 	tfxU32 index = 0;
 	tfx_gpu_graph_data_t *gpu_graph_data = tfxCastBufferRef(tfx_gpu_graph_data_t, tfxStore->gpu_graph_data);
@@ -5500,6 +5581,32 @@ void tfx__update_emitter_gpu_properties(tfx_effect_descriptor emitter) {
 		gpu_properties->color_ramp_indexes = (layer << 8) | index;
 		tfx__update_emitter_image_index(emitter);
 	}
+}
+
+void tfx__unshare_template_color_ramp(tfx_effect_descriptor emitter) {
+	if (!(emitter->effect_flags & tfxEffectPropertyFlags_shares_color_ramp)) {
+		return;
+	}
+	tfx_library library = emitter->library;
+	tfxU32 shared_index = emitter->state_properties.gpu_property_index;
+	tfxU32 own_index = tfx__allocate_library_particle_gpu_properties(library);
+	library->particle_gpu_properties[own_index] = library->particle_gpu_properties[shared_index];
+	emitter->state_properties.gpu_property_index = own_index;
+	emitter->effect_flags &= ~tfxEffectPropertyFlags_shares_color_ramp;
+}
+
+void tfx__unshare_template_graph_lookups(tfx_effect_descriptor emitter) {
+	if (!(emitter->effect_flags & tfxEffectPropertyFlags_shares_graph_lookups)) {
+		return;
+	}
+	if (tfxStore->free_graph_lookup_blocks.size()) {
+		emitter->gpu_lookup_offset = tfxStore->free_graph_lookup_blocks.pop_back();
+	} else {
+		//Appended so that no other emitter's offset moves
+		emitter->gpu_lookup_offset = tfxStore->gpu_graph_data.current_size;
+		tfxStore->gpu_graph_data.add_space(tfxGPU_lookup_end - tfxGPU_lookup_start);
+	}
+	emitter->effect_flags &= ~tfxEffectPropertyFlags_shares_graph_lookups;
 }
 
 void tfx__update_effect_gpu_properties(tfx_effect_descriptor effect) {
@@ -9352,6 +9459,8 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 	library->color_ramps.color_ramp_bitmaps.clear();
 	library->color_ramps.color_ramp_ids.Clear();
 	library->color_ramps.color_ramp_count = 0;
+	library->free_color_ramp_rows.clear();
+	library->color_ramps_version++;
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		//A freed slot keeps the type it had but has no graphs left, and hashing the colour graphs of one
 		//indexes an empty list. Freed slots stay in library->graphs to be reused, so they are met here.
@@ -9371,8 +9480,15 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 }
 
 bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
+	library->color_ramps_version++;
 	if (!tfxColorRampIsEdited(graph_list->color_ramp_bitmap_indexes)) {
-		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
+		if (library->free_color_ramp_rows.size()) {
+			tfxU32 ramp_id = library->free_color_ramp_rows.pop_back();
+			tfx__plot_color_ramp(graph_list, &library->color_ramps.color_ramp_bitmaps[tfxColorRampLayer(ramp_id)], tfxColorRampIndex(ramp_id));
+			graph_list->color_ramp_bitmap_indexes = ramp_id;
+		} else {
+			graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
+		}
 		tfxFlagColorRampIDAsEdited(graph_list->color_ramp_bitmap_indexes);
 		return true;
 	}
@@ -9392,6 +9508,7 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *
 	} else {
 		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
 		library->color_ramps.color_ramp_ids.Insert(hash, graph_list->color_ramp_bitmap_indexes);
+		library->color_ramps_version++;
 	}
 }
 
@@ -13174,6 +13291,14 @@ void tfx__apply_template_override(tfx_effect_template effect_template, tfx_templ
 		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
 		tfx_graph_t *original_graph = &library->graphs[original_emitter->state_properties.graph_list_index].graphs[template_override->graph_index];
 		tfx__scale_template_graph(original_graph, graph, template_override->amount);
+		if (tfx__is_color_graph_type(graph->type)) {
+			tfx__unshare_template_color_ramp(descriptor);
+			tfx__edit_color_ramp_bitmap(library, &library->graphs[descriptor->state_properties.graph_list_index]);
+			tfx__update_emitter_gpu_properties(descriptor);
+		} else if (tfx__gpu_overtime_graph(graph)) {
+			tfx__unshare_template_graph_lookups(descriptor);
+			tfx__update_library_emitter_compute_nodes(descriptor);
+		}
 		break;
 	}
 	}
@@ -13478,6 +13603,7 @@ size_t tfx_CalculateAnimationOffsetsBufferSize(size_t instance_count) {
 void tfx_ResetTemplate(tfx_effect_template t) {
 	if (t->paths.Size()) {
 		t->paths.FreeAll();
+		tfx__release_template_gpu_data(t->effect);
 		tfx__free_effect(t->effect);
 		//Cleared because the library goes on holding this template until it is freed, and a refresh walks
 		//every registered clone. tfx__free_effect leaves the magic number intact in released memory, so a
@@ -26719,6 +26845,7 @@ void tfx_EndTimelineFX() {
 	tfxStore->graph_indexes.FreeAll();
 	tfxStore->data_types.names_and_types.FreeAll();
 	tfxStore->gpu_graph_data.free();
+	tfxStore->free_graph_lookup_blocks.free();
 	tfxFREE(tfxStore->ribbon_buffer_requirements);
 	int pool_count = tfxStore->memory_pool_count;
 	void *memory_pools[tfxMAX_MEMORY_POOLS]{};
