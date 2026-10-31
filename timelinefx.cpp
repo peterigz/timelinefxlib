@@ -14376,7 +14376,8 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 	tfxU32 sort_key = effect.sort_key;
 	tfxU32 gpu_key = effect.gpu_key;
 	tfxEmitterStateFlags overrides = effect.state_flags & (tfxEffectStateFlags_override_overall_scale
-		| tfxEffectStateFlags_override_orientiation | tfxEffectStateFlags_override_size_multiplier);
+		| tfxEffectStateFlags_override_orientiation | tfxEffectStateFlags_override_width_multiplier
+		| tfxEffectStateFlags_override_height_multiplier | tfxEffectStateFlags_override_depth_multiplier);
 
 	tfx__release_stage_effect_emitters(pm, effect_slot);
 	tfx__reset_effect_state(pm, effect_slot, source_effect);
@@ -24503,9 +24504,13 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	spawn_controls.splatter *= spawn_multipliers.splatter;
 	spawn_controls.weight *= spawn_multipliers.weight;
 	noise = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_noise_index], age, oscillator_time);
-	if (!(state_flags & tfxEffectStateFlags_override_size_multiplier)) {
+	if (!(state_flags & tfxEffectStateFlags_override_width_multiplier)) {
 		emitter_size.x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_width_index], age, oscillator_time);
+	}
+	if (!(state_flags & tfxEffectStateFlags_override_height_multiplier)) {
 		emitter_size.y = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_height_index], age, oscillator_time);
+	}
+	if (!(state_flags & tfxEffectStateFlags_override_depth_multiplier)) {
 		emitter_size.z = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_depth_index], age, oscillator_time);
 	}
 	//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
@@ -28266,21 +28271,21 @@ void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float 
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.emitter_size.x = width;
-	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	effect.state_flags |= tfxEffectStateFlags_override_width_multiplier;
 }
 
 void tfx_SetEffectHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.emitter_size.y = height;
-	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	effect.state_flags |= tfxEffectStateFlags_override_height_multiplier;
 }
 
 void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float depth) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.emitter_size.z = depth;
-	effect.state_flags |= tfxEffectStateFlags_override_size_multiplier;
+	effect.state_flags |= tfxEffectStateFlags_override_depth_multiplier;
 }
 
 void tfx_SetEffectLifeMultiplier(tfx_stage pm, tfxEffectID effect_index, float life) {

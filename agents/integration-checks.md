@@ -13,7 +13,8 @@ once per template when you add locations straight after. Act on every other one.
 Run the scene for a few seconds at the update rate the game will use, then print `tfx_DescribeStage` straight after a
 frame's `tfx_GetGPUParticleFrame` (see gpu-particles.md for the call). Done when it has only its counts and GPU lines: no `Blocked:`, `Dropping spawns:`,
 `Unfetched:` or `Library ...` lines. A `No spawn locations right now` line is fine only if that effect is meant to be
-idle at that moment.
+idle at that moment. A library saved by an older editor loads and plays fine but shows a `Library ...` line with
+`file_version_out_of_date` until it's re-saved in the editor.
 
 ## 2. The GPU matches the CPU
 
@@ -25,7 +26,8 @@ and once with `tfx_SetStageGPUSimulation(stage, false)` set before the effects a
 
 Done when the two are within 10% (they're usually within 3%). Never compare against `slots_in_use`, which counts dead
 particles still holding their slots. A big gap with no dropped spawns or blocked emitters means the GPU integration is
-losing particles: check that every fetch is dispatched exactly once, and that each layer draws its GPU range.
+losing particles: check that every fetch is dispatched exactly once, and that every GPU range is drawn: one per layer,
+or one per key from `tfx_GetNextInstanceKeyRange` when you use sort keys.
 
 ## 3. No drops at the real update rate
 
@@ -43,5 +45,6 @@ across frames. If it climbs, the host is updating the stage on frames it doesn't
 Run at 20 and at 400 updates a second. Particles should move and look the same as at 60 (the vertex shader
 interpolates between updates). If they stutter or jump, the instance buffers aren't swapping exactly once per update,
 or a host that double buffers its own instances is breaking a rule in "Engines with their own instance buffers" in
-implementations/README.md. At 20 updates a second, GPU rings sized for 60 drop spawns, so check 3 only applies at the
-real rate.
+implementations/README.md. At 20 updates a second, the rings of continuous GPU emitters sized for 60 can drop spawns:
+each update spawns three times as many, and an update's slots are held until its longest lived particle dies. Single
+shot bursts spawn in one update at any rate. So check 3 only applies at the real rate.

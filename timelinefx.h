@@ -62,7 +62,12 @@
 	user-spawn-locations.md, integration-checks.md), and route the library's messages with tfx_SetPrintCallback so you can
 	read its "TimelineFX tip:" lines.
 
-	Currently tested on Windows and MacOS, Intel and Mac based ARM processors.
+	Scale: effects are authored in the editor's world units, +Y up. The editor's default preview camera (artists can move it
+	per effect) has a 60 degree vertical field of view and sits at (0, 3.5, 7.5), pitched down 30 degrees towards the effect at
+	the origin, so about 8 units away. Start your camera that far from an effect to see it at the size the artist did, then
+	scale your camera distance, or the effect with tfx_SetEffectOverallScale, to fit your world.
+
+	Currently tested on Windows, Linux and MacOS, Intel and Mac based ARM processors.
 
 	Table of contents
 	Sections in this header file, you can search for the following keywords to jump to that section:
@@ -1389,6 +1394,9 @@ tfxAPI int tfx_ValidateEffectPackage(const char *filename);
 * @param filename         A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
 * @param shape_loader     A pointer to a function that will be used to load image data into the effect library package.
 *                         The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
+* @param uv_lookup        A function that fills in a shape frame's uvs for the GPU, called for every frame of every shape when the GPU shape data is built:
+*                         void uv_lookup(void *ptr, tfx_gpu_image_data_t *image_data, int offset), where ptr is what your shape_loader set with
+*                         tfx_SetImagePointer and offset is the animation frame. Called again by tfx_UpdateLibraryGPUImageData.
 * @param user_data        A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
 * @return tfx_library	  A handle to a library object
 */
@@ -1772,8 +1780,8 @@ Free all the memory used by a library
 tfxAPI void tfx_FreeLibrary(tfx_library library);
 
 /*
-Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
-and upload it to the gpu.
+Build the GPU shape data, one tfx_gpu_image_data_t per shape frame with its uvs from uv_lookup. Upload it with tfx_GetGPUShapesArray and
+tfx_GetGPUShapesSizeInBytes.
 * @param library                  A pointer to a tfx_library_t object
 * @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
@@ -1781,7 +1789,7 @@ and upload it to the gpu.
 tfxAPI void tfx_BuildLibraryGPUShapeData(tfx_library library, tfx_gpu_shapes shapes, tfx_uv_lookup uv_lookup);
 
 /*
-Get a pointer to the particle shapes data in a library. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
+Get the particle shapes in a library, the list the GPU shape data is built from (see tfx_UpdateLibraryGPUImageData)
 * @param library        A pointer to a tfx_library_t
 * @param count			A pointer to an int that will be filled with the nubmer of images in the image data array that's returned
 */
@@ -2087,8 +2095,8 @@ The dispatch iterator advances an internal cursor on the stage, so if you need t
 once in a frame (compute pass, then render pass) call tfx_ResetRibbonDispatchIterator(pm) between passes.
 tfx_NextRibbonDispatch / tfx_GetRibbonBufferRequirements / tfx_CopyRibbonDataToStagingBuffers all implicitly
 complete any in-flight stage update work first (see the threading contract above), so they are safe to call
-straight after tfx_UpdateStage. See the RibbonComputeFunction / RenderRibbons functions in the editor for a
-complete worked example.
+straight after tfx_UpdateStage. For a complete worked example see tfx_impl_dx11__build_ribbon_geometry and
+tfx_impl_dx11__render_ribbons in implementations/tfx_impl_dx11.cpp.
 */
 
 /*
@@ -2430,7 +2438,7 @@ tfxAPI tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter);
 
 /*
 Size the ring of every Run on GPU emitter in a template for a number of spawn locations playing at once, replacing any
-capacity set before. Use tfx_GetEffectLifetime divided by how often you add a location, plus 1, to estimate how many
+capacity set before, including tfx_SetTemplateEmitterGPUCapacity: call that after this to size one emitter differently. Use tfx_GetEffectLifetime divided by how often you add a location, plus 1, to estimate how many
 overlap. Add the return value of every template you'll play into gpu_particle_capacity. Only affects effects added
 after the call.
 * @param t                         A handle to an effect template
@@ -2504,7 +2512,7 @@ tfxAPI tfxU32 tfx_GetParticleCount(tfx_stage pm);
 /*
 Get the current ribbon count for a effect manager
 * @param pm                        A pointer to an tfx_stage_t
-* @returns tfxU32                  The total number of particles currently being updated
+* @returns tfxU32                  The total number of ribbons currently being updated
 */
 tfxAPI tfxU32 tfx_GetRibbonCount(tfx_stage pm);
 
@@ -2689,17 +2697,18 @@ without rendering those frame then you can use this function.
 tfxAPI void tfx_AdvanceEffectTime(tfx_stage pm, tfxEffectID effect_id, float time);
 
 /*
-Update a stage which manages effects. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.
-That means that if your fixed loop has to run twice to catch up (because of low frame rates) then you should still only call this function once but you can multiply the elapsed time
-by the number of ticks. The ellapsed time should be the amount of time that has passed since the last frame so in a fixed step loop this will simply be the update rate in millisecs.
-For example if you're updating 60 frames per second then elapsed time would be 16.666667. Psuedo code would look something like this:
+Update a stage which manages effects, ideally from a fixed step loop. elapsed is in milliseconds: at 60 updates a second it's 16.666667.
+If you interpolate particles in the vertex shader, the previous instance buffer has to be the one you drew last, so when the fixed loop has to
+run more than once to catch up, call this once with the elapsed time multiplied by the number of ticks rather than once per tick, or use
+tfx_UpdateStageSubSteps, which runs every tick at its own length and writes the instances once.
+In pseudo code, where the Timer functions are your own:
 
 	TimerAccumulate(game->timer);
 	int pending_ticks = TimerPendingTicks(game->timer);	//The number of times the update loop will run this frame.
 
-	while (tfx_TimerDoUpdate(game->timer)) {
+	while (TimerDoUpdate(game->timer)) {
 		if (pending_ticks > 0) {
-			tfx_UpdateStage(&game->pm, FrameLength * pending_ticks);
+			tfx_UpdateStage(game->stage, FrameLength * pending_ticks);
 			//Set the pending ticks to 0 so we don't run the update again this frame.
 			pending_ticks = 0;
 		}
@@ -2708,15 +2717,13 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 	}
 	TimerSet(game->timer);	//Set the timer and calculate the interpolation value. You can pass that to a uniform or push constant for the shader
 
-	//Only upload the sprite/billboard buffer to the gpu if the effect manager was updated.
+	//Only upload the instance buffer to the gpu if the stage was updated.
 	if (TimerUpdateWasRun(game->timer)) {
-		RenderParticles(game->pm, game);
+		RenderParticles(game->stage, game);
 	}
 
-If you'd prefer to keep a higher timeline resolution and call the stage update multiple times then see tfx_UpdateStageSubSteps.
-
 * @param pm                    A pointer to an initialised tfx_stage_t.
-* @param double                the amount of time that elapsed since the last frame
+* @param elapsed               The time to advance the stage by, in milliseconds
 */
 tfxAPI void tfx_UpdateStage(tfx_stage pm, double elapsed);
 
@@ -2769,6 +2776,7 @@ Clear all particles, instance_data and effects in a effect manager. If you don't
 free all the memory associated with the effect manager.
 * @param pm                        A pointer to an initialised tfx_stage_t.
 * @param free_particle_banks    Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
+* @param free_sprite_buffers    Unused, pass false
 */
 tfxAPI void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buffers);
 
@@ -3216,29 +3224,28 @@ This shares its loop index with tfx_GetNextInstanceBuffer, so don't interleave t
 tfxAPI bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfx_instance_key_range_t *range);
 
 /*
-Set the roll of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. 
-*                        set in the TimelineFX editor.
+Set the roll of an effect in radians. Setting any of roll, pitch or yaw replaces the effect's three rotation graphs from the next tfx_UpdateStage
+for the rest of its life, and the two angles you didn't set keep the value they had (0 before the first update). Like the other effect setters,
+call it before tfx_UpdateStage, or once the update has completed (see the threading contract).
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param roll            A float of the amount that you want to set the roll too
+* @param roll            The roll in radians
 */
 tfxAPI void tfx_SetEffectRoll(tfx_stage pm, tfxEffectID effect_index, float roll);
 
 /*
-Set the pitch of a effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. 
-*                        set in the TimelineFX editor.
+Set the pitch of an effect in radians. See tfx_SetEffectRoll, the same rules apply.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param pitch            A float of the amount that you want to set the pitch too
+* @param pitch           The pitch in radians
 */
 tfxAPI void tfx_SetEffectPitch(tfx_stage pm, tfxEffectID effect_index, float pitch);
 
 /*
-Set the yaw of a effect
-* @param pm              A pointer to a tfx_stage_t where the effect is being managed. 
-*                        set in the TimelineFX editor.
+Set the yaw of an effect in radians. See tfx_SetEffectRoll, the same rules apply.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param yaw             A float of the amount that you want to set the yaw too
+* @param yaw             The yaw in radians
 */
 tfxAPI void tfx_SetEffectYaw(tfx_stage pm, tfxEffectID effect_index, float yaw);
 
@@ -3252,9 +3259,8 @@ and tfx_PointEffectAt replace it rather than adjust it, they work from their own
 tfxAPI void tfx_SetEffectRotation(tfx_stage pm, tfxEffectID effect_index, float rotation[4]);
 
 /*
-Orient an effect towards a specific point
-* @param tfx_stage       A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current yaw of the effect that was
-*                        set in the TimelineFX editor.
+Orient an effect towards a specific point. Call it before tfx_UpdateStage, or once the update has completed (see the threading contract).
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
 * @param x, y, z         The coordinates that you want to point the effect at
 * @param face            The local axis of the effect that should end up aiming at those coordinates. Use tfxEffectFace_up
@@ -3269,32 +3275,28 @@ Orient an effect towards a specific point
 tfxAPI void tfx_PointEffectAt(tfx_stage pm, tfxEffectID effect_index, float x, float y, float z, tfx_effect_face face);
 
 /*
-Set the width of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current width of the effect that was
-*                        set in the TimelineFX editor.
+Set the emitter width multiplier of an effect. It multiplies the width of every emitter in the effect, an easy way to resize area, line, ellipse
+etc. emitters. It replaces the effect's own emitter width graph from the next tfx_UpdateStage for the rest of the effect's life, and leaves height
+and depth to their graphs. Like the other effect setters, call it before tfx_UpdateStage, or once the update has completed (see the threading contract).
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param width            A float of the amount that you want to set the width multiplier too. The width multiplier will multiply all widths of emitters within the effect so it can be an easy way to alter the size
-						of area, line, ellipse etc., emitters.
+* @param width           The width multiplier, in place of the graph's value (1 unless the effect animates it)
 */
 tfxAPI void tfx_SetEffectWidthMultiplier(tfx_stage pm, tfxEffectID effect_index, float width);
 
 /*
-Set the height of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current height of the effect that was
-*                        set in the TimelineFX editor.
+Set the emitter height multiplier of an effect. The same as tfx_SetEffectWidthMultiplier for heights.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param height            A float of the amount that you want to set the height multiplier too. The height multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
-						of area, line, ellipse etc., emitters.
+* @param height          The height multiplier, in place of the graph's value (1 unless the effect animates it)
 */
 tfxAPI void tfx_SetEffectHeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float height);
 
 /*
-Set the depth of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current depth of the effect that was
-*                        set in the TimelineFX editor.
+Set the emitter depth multiplier of an effect. The same as tfx_SetEffectWidthMultiplier for depths.
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param depth            A float of the amount that you want to set the depth multiplier too. The depth multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
-						of area, line, ellipse etc., emitters.
+* @param depth           The depth multiplier, in place of the graph's value (1 unless the effect animates it)
 */
 tfxAPI void tfx_SetEffectDepthMultiplier(tfx_stage pm, tfxEffectID effect_index, float depth);
 
@@ -3371,11 +3373,11 @@ stays until you change it. 1 is no change.
 tfxAPI void tfx_SetEffectWeightMultiplier(tfx_stage pm, tfxEffectID effect_index, float weight);
 
 /*
-Set the overal scale of an effect
-* @param pm                A pointer to a tfx_stage_t where the effect is being managed. Note that this must be called after tfx_UpdateStage in order to override the current weight of the effect that was
-*                        set in the TimelineFX editor.
+Set the overall scale of an effect, a simple way to change its size. It replaces the effect's own overall scale graph from the next
+tfx_UpdateStage for the rest of the effect's life. Call it before tfx_UpdateStage, or once the update has completed (see the threading contract).
+* @param pm              A pointer to a tfx_stage_t where the effect is being managed.
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param overall_scale    A float of the amount that you want to set the overal scale to. The overal scale is an simply way to change the size of an effect
+* @param overall_scale   The overall scale, in place of the graph's value (1 unless the effect animates it)
 */
 tfxAPI void tfx_SetEffectOverallScale(tfx_stage pm, tfxEffectID effect_index, float overall_scale);
 
@@ -3594,8 +3596,8 @@ the instances being rendered if some are being culled in your custom callback if
 tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager animation_manager);
 
 /*
-Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
-and upload it to the gpu.
+Build the GPU shape data for an animation manager's sprite data, one tfx_gpu_image_data_t per shape frame with its uvs from uv_lookup. Upload it
+with tfx_GetGPUShapesArray and tfx_GetGPUShapesSizeInBytes.
 * @param animation_manager		  A pointer to an tfx_animation_manager_t object
 * @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
@@ -3603,7 +3605,7 @@ and upload it to the gpu.
 tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, tfx_uv_lookup uv_lookup);
 
 /*
-Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
+Get the particle shapes in an animation manager, the list tfx_BuildAnimationManagerGPUShapeData builds from
 * @param animation_manager        A pointer the tfx_animation_manager_t
 */
 tfxAPI tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager animation_manager, int *count);
@@ -3870,7 +3872,6 @@ tfxAPI tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const c
 /*
 Delete an effect template and free all memory associated with it
 * @param effect_template            A handle to the effect template to be deleted
-//Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
 */
 tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
 
@@ -3992,7 +3993,9 @@ tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *
 /*
 Set the ring capacity of a Run on GPU emitter, replacing the authored one from tfx_GetEmitterGPUCapacity. Use it to
 make room for many spawn locations or a large spawn multiplier. Only affects effects added after the call. Ribbons are ignored,
-so every child of tfx_GetEffectFromTemplate can be passed without checking its type.
+so every child of tfx_GetEffectFromTemplate can be passed without checking its type. tfx_SetTemplateGPUCapacityForLocations replaces
+what this set on every emitter, so to size one emitter differently from the rest call this after it, then take the template's pool
+slots from tfx_GetTemplateGPUPoolSlots rather than the earlier return value.
 * @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity.
 */
@@ -4066,7 +4069,7 @@ Get a pointer to the GPU shapes array which you can use in a memcpy to a staging
 tfxAPI tfx_gpu_image_data_t *tfx_GetGPUShapesArray(tfx_gpu_shapes shapes);
 
 /*
-Get the number of shapes in the GPU Shape Data buffer contained within a library. Make sure you call tfx_BuildGPUShapeData first or they'll be nothing to return
+Get the number of shapes in the GPU Shape Data buffer contained within a library. It's empty until the shape data is built (tfx_UpdateLibraryGPUImageData or tfx_BuildAnimationManagerGPUShapeData)
 * @param shapes                 A tfx_gpu_shapes handle
 * @returns tfxU32               The number of shapes in the buffer
 */

@@ -3392,7 +3392,9 @@ typedef enum {
 	tfxEffectStateFlags_no_tween_this_update                    = 1 << 7,       //Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEffectStateFlags_override_overall_scale                   = 1 << 8,       //Flagged when the over scale is overridden with tfx_SetEffectOverallScale
 	tfxEffectStateFlags_override_orientiation                   = 1 << 9,       //Flagged when any of the effect angles are overridden
-	tfxEffectStateFlags_override_size_multiplier                = 1 << 10,      //Flagged when any of the effect size multipliers are overridden
+	tfxEffectStateFlags_override_width_multiplier               = 1 << 10,      //Set by tfx_SetEffectWidthMultiplier, which replaces the effect's emitter width graph
+	tfxEffectStateFlags_override_height_multiplier              = 1 << 14,
+	tfxEffectStateFlags_override_depth_multiplier               = 1 << 19,
 	tfxEffectStateFlags_warming_up                              = 1 << 11,      //Set on each effect currently being warmed up so shared ribbon-bucket walkers can filter to just the warming subset
 	tfxEffectStateFlags_pending_warmup                          = 1 << 12,      //Set when an effect has a queued entry in pm->warmup_effects[0]; used by tfx__add_warmup_effect to coalesce duplicate adds
 	tfxEffectStateFlags_user_spawn_locations                    = 1 << 13,      //Point emitters spawn at the locations added with tfx_AddSpawnLocation, other shapes don't spawn
