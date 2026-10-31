@@ -174,8 +174,10 @@ Rules the loop depends on:
   - The kernel writes after the CPU instances, so the instance buffers are sized for `gpu_instance_start +
     gpu_instance_count` and each layer is drawn as two ranges, its CPU instances then its GPU instances.
   - Every Run on GPU emitter gets a ring sized for one spawn location, so an effect bursting at several locations at
-    once needs `tfx_SetTemplateEmitterGPUCapacity`, and the stage's `gpu_particle_capacity` has to hold every ring.
-    `example_scene.cpp` works both out. The capacities assume about 60 updates a second; at 20 the rings drop spawns.
+    once needs `tfx_SetTemplateGPUCapacityForLocations`, and the stage's `gpu_particle_capacity` has to hold every ring.
+    That function returns the pool slots the template's rings take, rounded the way the pool hands them out, so adding
+    up its returns gives a pool that fits exactly. `example_scene.cpp` does both. The capacities assume about 60
+    updates a second; at 20 the rings drop spawns.
 - **Baked playback:**
   - Each frame the offsets and animation instances go up.
   - `tfx_sprite_playback` interpolates every visible baked sprite into a billboard instance.
@@ -253,6 +255,9 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
 - [ ] Each layer drawn as its CPU range then its GPU range.
 - [ ] Check: `tfx_GetGPUParticleStats` reports no dropped spawns at 60 updates a second, and the leaves and the GPU
       Simulated fountain both draw.
+- [ ] If they don't, print `tfx_DescribeStage` and read the `TimelineFX tip:` lines in the log. Then turn the GPU
+      simulation off with `tfx_SetStageGPUSimulation(stage, false)`, clear the stage and add the effects again. Still
+      missing means the effects aren't spawning; appearing means the bug is in your upload, dispatch or draw ranges.
 
 **4. Baked playback** (`example_scene_feature_baked`)
 - [ ] The animation manager's own color ramps, shape frames, emitter properties and sprites uploaded once.
@@ -263,3 +268,22 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
 - [ ] Check: the Bursts at the back of the scene play their billboards and their electricity ribbon.
 
 **Done when** the new example looks the same as the D3D11 one side by side, with a silent validation layer.
+
+## Engines with their own instance buffers
+
+The checklist assumes the backend owns its two instance buffers. An engine that already double buffers its instances,
+or records its passes in a cached render graph, has to keep these rules itself:
+
+- **One buffer holds both.** The GPU instances go straight after the CPU ones. Upload only `[0, gpu_instance_start)`
+  from the CPU, and make room for `gpu_instance_start + gpu_instance_count` instances before the compute writes.
+- **Swap only on update frames.** `captured_index` points into the buffer drawn last, for CPU and GPU instances alike,
+  so the buffers swap once per stage update and never on the frames in between.
+- **Carry the GPU instances if the buffer turns over without a dispatch.** If the engine resets or swaps the instance
+  buffer on a frame with no GPU dispatch, for example to redraw while paused, copy
+  `[gpu_instance_start, + gpu_instance_count)` from the buffer the kernel last wrote into the new one. Otherwise the
+  GPU particles vanish for that frame.
+- **Dispatch each fetch exactly once.** A host that replays dispatches from a cached graph must set its pending
+  dispatch count to zero once it has dispatched. Otherwise a frame with no update runs the same ticks again, and the
+  particles jump ahead.
+- **Idle frames are idle.** On frames without a stage update the upload and simulate passes have nothing to do. If the
+  engine has a GPU profiler, mark them idle rather than timing them as empty, or the averages come out too low.

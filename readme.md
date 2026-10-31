@@ -29,6 +29,10 @@ The basic flow is:
 
 Every function is documented in timelinefx.h, and there's a table of contents at the top so you can jump to each section.
 
+The library prints one line tips, starting `TimelineFX tip:`, when it sees a likely mistake, for example an effect that spawns at user spawn locations being added to a stage, or a GPU emitter whose ring is full. Each prints once, at the moment it happens. If your particles don't appear, check your log for them first. `tfx_SetPrintCallback` sends them (and every other message the library prints) to your own log, and defining `TFX_DISABLE_TIPS` compiles them out.
+
+`tfx_DescribeStage` reports a stage's health as text, and `tfx_PrintLibrary` lists what a library contains, so you can check an integration without looking at the screen. If you integrate with a coding agent, point it at the `agents` folder: short notes on GPU particles, user spawn locations and the checks to run after porting.
+
 ## Features
 * Simple C compatible API which is easy to use.
 * Fast. Utilises multithreading and SIMD intrinsics (SSE4.1 minimum, optional AVX and FMA, NEON on ARM) to simulate particles as fast as possible. Work is always on going to make things faster.

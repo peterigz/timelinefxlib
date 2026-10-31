@@ -195,7 +195,7 @@ static void UpdateWindowTitle(example_t *state, UINT frames_per_second) {
 	char title[256];
 	tfx_gpu_particle_stats_t gpu_stats = tfx_GetGPUParticleStats(state->scene.stage);
 	snprintf(title, sizeof(title), "TimelineFX D3D11 Example - %s %i.%i - %u fps - %u CPU particles - %u GPU particles - %llu dropped GPU spawns",
-		version.name, version.major, version.minor, frames_per_second, tfx_GetParticleCount(state->scene.stage), gpu_stats.live_particles,
+		version.name, version.major, version.minor, frames_per_second, tfx_GetParticleCount(state->scene.stage), gpu_stats.estimated_live_particles,
 		(unsigned long long)gpu_stats.dropped_spawns);
 	SetWindowTextA(state->window, title);
 }

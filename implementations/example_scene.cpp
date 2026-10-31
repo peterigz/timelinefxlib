@@ -22,24 +22,12 @@ static tfx_effect_template example_scene__create_template(tfx_library library, c
 	return tfx_CreateEffectTemplate(library, path);
 }
 
-static tfxU32 example_scene__emitter_gpu_capacity(tfx_effect_template effect_template, const char *emitter_path) {
-	tfx_effect_descriptor emitter = tfx_GetEmitterFromTemplate(effect_template, emitter_path);
-	if (!emitter) {
-		printf("There's no emitter called \"%s\" in the library\n", emitter_path);
-		return 0;
-	}
-	return tfx_GetEmitterGPUCapacity(emitter);
-}
-
 //Every Run on GPU emitter gets a ring sized for one spawn location, and the stage's pool has to hold every ring
 static tfxU32 example_scene__set_gpu_capacities(example_scene_t *scene) {
-	//Leaf bursts overlap, so the ring needs room for every location that can be alive at once
+	//Leaf bursts overlap, so the leaves need room for every location that can be alive at once
 	float leaves_lifetime = tfx_GetEffectLifetime(scene->leaves.effect_template);
 	tfxU32 overlapping_locations = (tfxU32)(leaves_lifetime / EXAMPLE_SCENE_LEAVES_INTERVAL) + 1;
-	tfxU32 leaves_capacity = example_scene__emitter_gpu_capacity(scene->leaves.effect_template, "Leaf Explosion/Leaves") * overlapping_locations;
-	tfx_SetTemplateEmitterGPUCapacity(scene->leaves.effect_template, "Leaf Explosion/Leaves", leaves_capacity);
-	tfxU32 fountain_capacity = example_scene__emitter_gpu_capacity(scene->gpu_template, "GPU Simulated/Point");
-	return leaves_capacity + fountain_capacity;
+	return tfx_SetTemplateGPUCapacityForLocations(scene->leaves.effect_template, overlapping_locations) + tfx_GetTemplateGPUPoolSlots(scene->gpu_template);
 }
 
 bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *sprite_data_path, tfxU32 features, tfx_impl_atlas_t *atlas) {

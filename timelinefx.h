@@ -605,7 +605,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
-	tfxU32 gpu_particle_capacity;			//Particles across every run_on_gpu emitter on the stage, fixed for the stage's life. 0 runs those emitters on the CPU. See tfx_GetGPUParticleFrame.
+	tfxU32 gpu_particle_capacity;			//Particles across every run_on_gpu emitter on the stage, fixed for the stage's life. 0 runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each template that plays at once. That exact sum fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
@@ -1005,11 +1005,24 @@ typedef struct tfx_gpu_particle_push_s {	//64 bytes
 typedef struct tfx_gpu_particle_stats_s {
 	tfxU32 capacity;						//Pool slots, tfx_stage_info_t gpu_particle_capacity
 	tfxU32 allocated;						//Pool slots held by rings
-	tfxU32 live_particles;					//Particles in every ring, including expired ones the head hasn't passed yet
+	tfxU32 slots_in_use;					//Ring slots in use. Includes particles that died but whose batch hasn't expired, which are still drawn as zero size billboards
+	tfxU32 estimated_live_particles;		//Particles still alive, assuming each spawn's particles die evenly over its range of lives. Compare this with tfx_GetParticleCount
 	tfxU32 ring_count;
 	tfxU32 blocked_emitters;				//GPU emitters that got no ring because the pool was full, raise gpu_particle_capacity
-	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, raise the capacity with tfx_SetTemplateEmitterGPUCapacity
+	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, raise the capacity with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
 } tfx_gpu_particle_stats_t;
+
+//A stage's health in one place, see tfx_GetStageDiagnostics and tfx_DescribeStage
+typedef struct tfx_stage_diagnostics_s {
+	tfxU32 effect_count;
+	tfxU32 emitter_count;
+	tfxU32 cpu_particles;					//tfx_GetParticleCount
+	tfx_gpu_particle_stats_t gpu;
+	tfxU32 effects_without_locations;		//Effects that spawn at user spawn locations and have none right now, which can be deliberate
+	tfxU32 unfetched_gpu_updates;			//Updates that simulated GPU particles since the last tfx_GetGPUParticleFrame
+	tfxErrorFlags library_error_flags;		//Every library a running effect came from, combined, without tfxErrorCode_shapes_changed_on_disk
+	bool gpu_simulation_on;					//tfx_StageGPUSimulationIsOn
+} tfx_stage_diagnostics_t;
 
 //The particle pool's hot, cold and noise sections. Each offset is a multiple of 256 bytes, so a host can put all three in one
 //buffer and bind each as its own view or range, or give each a buffer of its own
@@ -1141,6 +1154,7 @@ typedef void(*tfx_shape_loader)(const char *filename, tfx_image_data_t *image_da
 typedef void(*tfx_shape_remover)(tfx_image_data_t *image_data, void *user_data);
 typedef void(*tfx_uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 typedef bool(*tfx_maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_float32x3_t position, float radius, void *user_data);
+typedef void(*tfx_print_callback)(const char *message, void *user_data);
 
 //One location's share, or part of it, of the particles a User emitter spawned this tick, see tfx_SetStageSpawnCallback
 typedef struct tfx_spawn_callback_info_s {
@@ -1271,6 +1285,17 @@ tfxAPI tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size,
 Cleanup up all threads and memory used by timelinefx
 */
 tfxAPI void tfx_EndTimelineFX(void);
+
+/*
+Send every message TimelineFX prints, errors and tips included, to your own log instead of stdout. Tips are one line messages
+starting "TimelineFX tip:" that point out a likely mistake once, at the moment the library sees it, for example an effect
+that spawns at user spawn locations being added to a stage. Define TFX_DISABLE_TIPS to compile them out.
+Can be set before or after tfx_BeginTimelineFX. It can be called from the stage update thread and worker threads, so it
+must be thread safe.
+* @param callback           Receives each message without a trailing newline, or NULL to go back to printing to stdout
+* @param user_data          Passed to the callback
+*/
+tfxAPI void tfx_SetPrintCallback(tfx_print_callback callback, void *user_data);
 
 /*
 Get the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
@@ -1408,6 +1433,7 @@ typedef enum {
 	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
 	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
 	tfxEffectTemplateFlags_deletion_reported					= 1 << 2,		//The block on adding it to a stage has been reported once
+	tfxEffectTemplateFlags_user_location_tip_shown				= 1 << 3,
 } tfx_effect_template_flag_bits;
 
 typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
@@ -1457,6 +1483,24 @@ Get the error flags from a library. When you load a library from file or memory,
 	tfxErrorCode_shapes_changed_on_disk
 */
 tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
+
+/*
+What a library contains, as text: its error flags, then a line for each effect (how long it plays and whether it spawns at
+user spawn locations) followed by a line for each of its emitters (emission type, which emitter an Other Emitter spawns
+from, and whether it runs on the GPU, with its ring capacity, or on the CPU and why). Emitters are named by the path the
+tfx_SetTemplate functions take.
+* @param library                   A handle to a loaded library
+* @param buffer                    Filled with as many whole lines as fit, always null terminated. Can be NULL with a size of 0
+* @param buffer_size               The size of buffer in bytes
+* @returns tfxU32                  The buffer size the whole text needs, terminator included
+*/
+tfxAPI tfxU32 tfx_DescribeLibrary(tfx_library library, char *buffer, tfxU32 buffer_size);
+
+/*
+tfx_DescribeLibrary printed a line at a time, through tfx_SetPrintCallback if one is set.
+* @param library                   A handle to a loaded library
+*/
+tfxAPI void tfx_PrintLibrary(tfx_library library);
 
 /*
 Get the file format version that the library was loaded from. A library that was created rather than
@@ -2224,7 +2268,10 @@ simulate without it.
 
 Every emitter instance gets a ring of fixed size in a pool of gpu_particle_capacity slots: the authored capacity from
 tfx_GetEmitterGPUCapacity, or whatever tfx_SetTemplateEmitterGPUCapacity set. A full ring drops spawns and a full pool
-leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats.
+leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats and reported once per emitter with a tip (see
+tfx_SetPrintCallback). A particle that dies keeps its slot, and is drawn as a zero size billboard, until the rest of the
+particles spawned in the same tick have died. So an emitter with a wide life variation costs more vertex work than its
+live particle count suggests, and its ring needs room for those slots too.
 
 The current setup (subject to change, this is all WIP)
 
@@ -2259,6 +2306,12 @@ by the next fetch, so the GPU never misses a tick. The flip side is that every f
 ticks carry on from the particle state this one leaves in the pool. If you won't dispatch this frame,
 don't fetch. But don't keep updating without fetching either: unfetched ticks and their spawn rows build up in memory,
 and the next dispatch runs every one of them. A stage you stop drawing should stop updating too.
+
+GPU particles missing or looking wrong? Print tfx_DescribeStage first: it names blocked emitters, emitters dropping
+spawns, effects with no spawn locations and updates you haven't fetched. Then turn the GPU simulation off with
+tfx_SetStageGPUSimulation(stage, false), clear the stage and add the effects again. If they're still missing on the CPU,
+the effect isn't spawning, which the description usually explains. If they appear, the problem is in the host's GPU
+integration: the upload, the dispatches or the instance ranges.
 */
 
 /*
@@ -2286,16 +2339,19 @@ staging memory. The gaps between sections are left as they are.
 tfxAPI void tfx_CopyGPUParticleUpload(const tfx_gpu_particle_frame_t *frame, void *destination);
 
 /*
-Pool use, live particle count and the counters that say a capacity needs raising. Implicitly completes any in-flight
-stage update.
+Pool use, ring slots in use, an estimate of the live particles and the counters that say a capacity needs raising. The
+slots in use are always more than the live particles: a particle that dies keeps its slot until every particle spawned
+in the same tick has died, because only then can the ring move past them. Implicitly completes any in-flight stage update.
 * @param pm                        A handle to an initialised tfx_stage_t.
 */
 tfxAPI tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm);
 
 /*
 Turn a stage's GPU simulation off or back on, for comparing it with the CPU simulation or falling back to the CPU.
+It's the first thing to try when GPU particles look wrong, see the end of the GPU particle simulation notes above.
 Effects added while it's off run their Run on GPU emitters on the CPU. Effects already running keep the simulation
-they started with, so restart them to switch. Implicitly completes any in-flight stage update.
+they started with, so clear the stage (tfx_ClearStage) and add your effects again after switching. Implicitly completes
+any in-flight stage update.
 * @param pm                        A handle to an initialised tfx_stage_t.
 * @param enabled                   false runs Run on GPU emitters of newly added effects on the CPU.
 */
@@ -2315,6 +2371,24 @@ and every location adds its own amount, so an effect at N locations needs about 
 * @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.
 */
 tfxAPI tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter);
+
+/*
+Size the ring of every Run on GPU emitter in a template for a number of spawn locations playing at once, replacing any
+capacity set before. Use tfx_GetEffectLifetime divided by how often you add a location, plus 1, to estimate how many
+overlap. Add the return value of every template you'll play into gpu_particle_capacity. Only affects effects added
+after the call.
+* @param t                         A handle to an effect template
+* @param location_count            Spawn locations the effect will play at, at the same time, at most
+* @returns tfxU32                  The pool slots the template's rings take, rounded the way the pool hands them out
+*/
+tfxAPI tfxU32 tfx_SetTemplateGPUCapacityForLocations(tfx_effect_template t, tfxU32 location_count);
+
+/*
+The pool slots the template's Run on GPU emitters take with their current capacities, rounded the way the pool hands
+them out. Add it into gpu_particle_capacity for every instance of the template that will play at once.
+* @param t                         A handle to an effect template
+*/
+tfxAPI tfxU32 tfx_GetTemplateGPUPoolSlots(tfx_effect_template t);
 
 /*
 When a effect manager updates particles it creates work queues to handle the work. By default these each have room for max_emitters entries which should be
@@ -2393,6 +2467,25 @@ Get the current number of emitters that are currently being updated by a effect 
 tfxAPI tfxU32 tfx_GetEmitterCount(tfx_stage pm);
 
 /*
+Everything that says whether a stage is healthy: counts, GPU pool use, blocked GPU emitters, dropped spawns, effects
+waiting for spawn locations, GPU updates that haven't been fetched and the error flags of the libraries in use.
+Implicitly completes any in-flight stage update.
+* @param pm                        A handle to an initialised tfx_stage_t
+*/
+tfxAPI tfx_stage_diagnostics_t tfx_GetStageDiagnostics(tfx_stage pm);
+
+/*
+tfx_GetStageDiagnostics as text: a line of counts, a line for the GPU pool, then a line for each problem naming the
+emitter or effect it's about, with emitters named by the path the tfx_SetTemplate functions take. Print it or compare it
+between runs to check an integration without looking at the screen. Implicitly completes any in-flight stage update.
+* @param pm                        A handle to an initialised tfx_stage_t
+* @param buffer                    Filled with as many whole lines as fit, always null terminated. Can be NULL with a size of 0
+* @param buffer_size               The size of buffer in bytes
+* @returns tfxU32                  The buffer size the whole text needs, terminator included
+*/
+tfxAPI tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size);
+
+/*
 Get the current number of free effects in the stage that are ready to be re-used
 * @param pm                        A pointer to an tfx_stage_t
 * @returns tfxU32                  The total number of free effects in the stage
@@ -2409,12 +2502,12 @@ tfxAPI void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed);
 
 /*
 Add an effect to a tfx_stage_t from an effect template. If the stage is part way through an update this waits for it to finish first,
-see the threading contract above tfx_CreateStageInfo.
+see the threading contract above tfx_CreateStageInfo. An effect that spawns at user spawn locations (see
+tfx_EffectTemplateSpawnsAtUserLocations) spawns nothing until you give it one with tfx_AddSpawnLocation.
 * @param pm                         A pointer to an initialised tfx_stage_t.
 * @param effect_template			The tfx_effect_template_t object that you want to add to the effect manager. It must have already been prepared by calling tfx_CreateEffectTemplate
-* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the effect manager. This index can then be used to manipulate the effect in the effect manager as it's update
-									For example by calling tfx_SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the effect manager if it's out of space and reached it's effect limit.
-  @returns							True if the effect was succesfully added.
+* @returns tfxEffectID				The id to manipulate the effect with, for example with tfx_SetEffectPosition, or tfxINVALID if the stage is
+									out of room for it
 */
 tfxAPI tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effect);
 
@@ -2449,9 +2542,26 @@ Returns true if the effect template is an effect that will spawn particles that 
 tfxAPI bool tfx_IsFiniteEffect(tfx_effect_template effect);
 
 /*
+Whether the effect spawns at the user spawn locations you add with tfx_AddSpawnLocation. Such an effect spawns nothing
+until it has one.
+* @param tfx_effect_template		A handle to the effect template
+*/
+tfxAPI bool tfx_EffectTemplateSpawnsAtUserLocations(tfx_effect_template effect);
+
+/*
+Whether an effect descriptor spawns at user spawn locations, for walking a library without making templates.
+* @param effect						A handle to an effect descriptor
+*/
+tfxAPI bool tfx_EffectSpawnsAtUserLocations(tfx_effect_descriptor effect);
+
+/*
 Returns the maximum possible lifetime of an effect taking into account particle lifetime and lifetime variation.
 If the effect is not finite then it returns 0. You should not use this effect in realtime as it can be expensive
 depending on the effect, so use it ahead of time after creating the effect template.
+For an effect that spawns at user spawn locations the effect itself keeps running, so this is how long one location
+plays, from when it's added until its last particle dies. It's also when a location is removed automatically, unless
+it was added with tfxSpawnLocationAdd_no_auto_remove. Divide it by how often you add locations to estimate how many
+overlap, for tfx_SetTemplateGPUCapacityForLocations.
 * @param tfx_effect_template		A handle to the effect template
 * @returns float					The time in milliseconds	
 */
@@ -2873,7 +2983,8 @@ Life: how long particles and ribbons spawned here last. A location that's counti
 expiring with a time worked out for you, has its countdown lengthened to cover a larger multiplier, but a smaller one never shortens it.
 Particle width and height: the base size of particles spawned here, and width is also the width of ribbons. If the effect is set to a uniform
 particle size then width scales both and height does nothing, as it does for the effect.
-Velocity, spin and weight: the base velocity, spin (all three axes) and weight of particles spawned here.
+Velocity, spin and weight: the base velocity, spin (all three axes) and weight of particles spawned here. Velocity never scales the
+emitter's spawn impulse, so it barely changes a burst that gets its speed from the impulse.
 Intensity: the intensity of particles spawned here.
 Splatter: the random offset given to particles and ribbons spawned here.
 * @param pm                A pointer to a tfx_stage_t where the effect is being managed
@@ -3164,7 +3275,7 @@ Set the velocity multiplier of an effect. Multiplies on top of the effect's own 
 stays until you change it. 1 is no change.
 * @param pm              A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_index    The index of the effect. This is the index returned when calling tfx_AddEffectTemplateToStage
-* @param velocity        The base velocity of particles spawned from now on.
+* @param velocity        The base velocity of particles spawned from now on. Spawn impulse isn't scaled.
 */
 tfxAPI void tfx_SetEffectVelocityMultiplier(tfx_stage pm, tfxEffectID effect_index, float velocity);
 
@@ -3735,8 +3846,8 @@ tfxAPI tfx_effect_descriptor tfx_GetEffectFromTemplate(tfx_effect_template t);
 /*
 Get an emitter or sub effect from an effect template.
 * @param t                        A pointer to a tfx_effect_template_t
-* @param path                     A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
-* @returns                        A pointer to the root effect
+* @param path                     A path to the emitter: "Explosion/Smoke", or the emitter's tfx_GetDescriptorPath
+* @returns                        The template's copy of the emitter, or nullptr when the path isn't in the template
 */
 tfxAPI tfx_effect_descriptor tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path);
 
@@ -3751,7 +3862,7 @@ tfxAPI tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_descriptor e);
 /*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
 * @param t                        A pointer to a tfx_effect_template_t
-* @param path                     A path to the effect or emitter in the effect template
+* @param path                     A path to the effect or emitter in the effect template: "Effect/Emitter", or its tfx_GetDescriptorPath
 * @param data                     A pointer to the user data
 */
 tfxAPI void tfx_SetTemplateUserData(tfx_effect_template t, const char *path, void *data);
@@ -3797,13 +3908,13 @@ tfxAPI void tfx_RecordEffect(tfx_effect_descriptor e, tfx_sprite_data_settings_t
 
 /*
 Disable an emitter within an effect. Disabling an emitter will stop it being added to the effect manager when calling tfx_AddEffectTemplateToStage
-* @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+* @param path					  const *char of a path to the emitter in the effect, "My Effect/My Emitter" or the emitter's tfx_GetDescriptorPath
 */
 tfxAPI void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path);
 
 /*
 Enable an emitter within an effect so that it is added to the effect manager when calling tfx_AddEffectTemplateToStage. Emitters are enabled by default.
-* @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+* @param path					  const *char of a path to the emitter in the effect, "My Effect/My Emitter" or the emitter's tfx_GetDescriptorPath
 */
 tfxAPI void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path);
 
@@ -3817,15 +3928,16 @@ tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
-* @param emitter_path			 const *char of the emitter path
+* @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param amount					 A float of the amount that you want to set the single spawn amount to.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
 
 /*
 Set the ring capacity of a Run on GPU emitter, replacing the authored one from tfx_GetEmitterGPUCapacity. Use it to
-make room for many spawn locations or a large spawn multiplier. Only affects effects added after the call.
-* @param emitter_path			 const *char of the emitter path
+make room for many spawn locations or a large spawn multiplier. Only affects effects added after the call. Ribbons are ignored,
+so every child of tfx_GetEffectFromTemplate can be passed without checking its type.
+* @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity.
 */
 tfxAPI void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char *emitter_path, tfxU32 capacity);
@@ -3834,8 +3946,8 @@ tfxAPI void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char 
 Give a Run on GPU emitter a key that its dispatches carry in tfx_gpu_particle_dispatch_t key, so a host can choose which kernel runs them,
 for example to give one emitter a custom update or spawn hook and leave the rest on the reference kernel. The library never reads it.
 Two templates made from the same effect can key the same emitter differently. tfx_SetEffectGPUKey overrides it for one effect.
-Only affects effects added after the call.
-* @param emitter_path			 const *char of the emitter path
+Only affects effects added after the call. Ribbons are ignored.
+* @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param key					 Any value the host chooses, 0 by default.
 */
 tfxAPI void tfx_SetTemplateEmitterGPUKey(tfx_effect_template t, const char *emitter_path, tfxU32 key);
@@ -3843,7 +3955,7 @@ tfxAPI void tfx_SetTemplateEmitterGPUKey(tfx_effect_template t, const char *emit
 /*
 Scale all nodes on an emitter graph
 * @param tfx_effect_template	  Handle to a valid effect template
-* @param emitter_path			  const *char of the emitter path
+* @param emitter_path			  "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
 * @param scale amount             A float of the amount that you want to scale the graph by.
 */

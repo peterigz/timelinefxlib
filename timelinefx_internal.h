@@ -1437,7 +1437,11 @@ void tfx_SetBlockExtensionSize(tfx_allocator *allocator, tfx_size size) {
 tfx_size tfx_CalculateRemoteBlockPoolSize(tfx_allocator *allocator, tfx_size remote_pool_size) {
 	TFX_ASSERT(allocator->block_extension_size);	//You must set the block extension size first
 	TFX_ASSERT(allocator->minimum_allocation_size);		//You must set the number of bytes per block
-	return (sizeof(tfx_header) + allocator->block_extension_size) * (remote_pool_size / allocator->minimum_allocation_size) + tfx__BLOCK_POINTER_OFFSET;
+	//Every remote unit could be an allocation of its own: its local block, the overhead of splitting it off and the smallest
+	//remainder a split leaves. With less, the local pool runs out first and the last remote block can't be split off
+	const tfx_size per_unit = tfx__adjust_size(allocator->block_extension_size + tfx__BLOCK_POINTER_OFFSET, tfx__MINIMUM_BLOCK_SIZE, tfx__MEMORY_ALIGNMENT)
+		+ tfx__BLOCK_POINTER_OFFSET + allocator->block_extension_size + tfx__MINIMUM_BLOCK_SIZE;
+	return per_unit * (remote_pool_size / allocator->minimum_allocation_size) + tfx__BLOCK_POINTER_OFFSET + tfx__BLOCK_SIZE_OVERHEAD + tfx__MEMORY_ALIGNMENT;
 }
 
 void tfx_AddRemotePool(tfx_allocator *allocator, void *block_memory, tfx_size block_memory_size, tfx_size remote_pool_size) {
@@ -1627,7 +1631,19 @@ tfx_allocator *tfxGetAllocator();
 #define tfxOSCILLATOR_WIDE_APPLY(value, t, oscillator) tfxWideMul(value, tfxWideAdd(tfxOSCILLATOR_WIDE_SIN(tfxWideAdd(t, (oscillator).offset_x), (oscillator).frequency, (oscillator).amplitude), (oscillator).offset_y))
 #define tfxMIN_SEGMENT_COUNT 32 
 #define tfxMAX_SEGMENT_COUNT 1024 
-#define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
+#if defined(__MINGW32__) && !defined(__clang__)
+tfxAPI_EDITOR void tfx__print(const char *format, ...) __attribute__((format(gnu_printf, 1, 2)));
+#elif defined(__GNUC__) || defined(__clang__)
+tfxAPI_EDITOR void tfx__print(const char *format, ...) __attribute__((format(printf, 1, 2)));
+#else
+tfxAPI_EDITOR void tfx__print(const char *format, ...);
+#endif
+#define tfxPrint(message, ...) tfx__print(message, ##__VA_ARGS__)
+#ifdef TFX_DISABLE_TIPS
+#define tfxTIP(message, ...)
+#else
+#define tfxTIP(message, ...) tfxPrint("TimelineFX tip: " message, ##__VA_ARGS__)
+#endif
 
 #define tfxMAX_FRAME 20000.f
 #define tfxCOLOR_RAMP_WIDTH 256
@@ -3163,6 +3179,8 @@ typedef enum {
 	tfxStageFlags_instances_not_written             	= 1 << 26,		//The last tick skipped instance writes, so the instance buffer doesn't match the simulation
 	tfxStageFlags_gpu_frame_fetched                 	= 1 << 27,		//tfx_GetGPUParticleFrame has handed the frame out, so the next tick starts a new one
 	tfxStageFlags_gpu_simulation_off                	= 1 << 28,		//tfx_SetStageGPUSimulation turned it off, so effects added now run their GPU emitters on the CPU
+	tfxStageFlags_no_gpu_pool_tip_shown             	= 1 << 29,
+	tfxStageFlags_unfetched_tip_shown               	= 1 << 30,
 } tfx_stage_flag_bits;
 
 //These values must stay the same
@@ -6430,13 +6448,21 @@ tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_
 typedef struct tfx_gpu_spawn_tracking_s {
 	double expire_ms;		//Once the ring time before a tick reaches this, every particle in the batch died in the tick before it
 	tfxU32 particle_count;
+	float life_spread_ms;	//Longest minus shortest remaining life, so the first particle dies at expire_ms - life_spread_ms
 } tfx_gpu_spawn_tracking_t;
+
+typedef enum {
+	tfxEmitterTip_no_gpu_ring = 1 << 0,
+	tfxEmitterTip_dropped_spawns = 1 << 1,
+	tfxEmitterTip_gpu_on_cpu = 1 << 2,
+} tfx_emitter_tip_bits;
 
 typedef enum {
 	tfxGPUGroupFlags_none = 0,
 	tfxGPUGroupFlags_has_written = 1 << 0,			//Written into the instance buffer of a previous fetch, so it can interpolate
 	tfxGPUGroupFlags_updated_this_tick = 1 << 1,
 	tfxGPUGroupFlags_warmed_bank = 1 << 2,			//The bank still held the warmup's particles when the tick started
+	tfxGPUGroupFlags_drop_tip_checked = 1 << 3,		//So later drops skip the stage's tip lookup
 } tfx_gpu_group_flag_bits;
 
 typedef tfxU32 tfxGPUGroupFlags;
@@ -6465,6 +6491,7 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  upload_offset;				//This tick's rows in the stage's spawn upload arrays
 	tfxU32  upload_count;
 	tfxU32  removed_spawn_count;		//This tick's spawns the spawner flagged removed, so the bank's live count needs no walk
+	tfxU64  dropped_spawns;				//Spawns refused because the ring was full
 	struct tfx_spawn_work_entry_s *generated_spawn;	//Set for a tick whose spawns the kernel generates, until tfx__record_gpu_groups writes their block
 	tfxGPUGroupFlags flags;
 	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
@@ -7387,6 +7414,9 @@ typedef struct tfx_stage_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 	tfxU64 gpu_dropped_spawns;
+	tfxU32 unfetched_gpu_updates;			//Updates that recorded GPU ticks since the last tfx_GetGPUParticleFrame
+	//tfx_emitter_tip_bits already shown, by emitter path hash. Kept under TFX_DISABLE_TIPS so the layout doesn't depend on it
+	tfx_storage_map_t<tfxU32> tips_shown;
 
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
