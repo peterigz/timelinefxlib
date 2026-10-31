@@ -6934,15 +6934,24 @@ tfxINTERNAL inline bool tfx__property_string(tfx_property_value_t *out_value, co
 	return true;
 }
 
-tfxINTERNAL inline bool tfx__property_is(const char *property_name, const char *name) {
-	return !strcmp(property_name, name);
+//With name null it lists instead: the list_index'th name checked matches and is returned in listed_name
+typedef struct tfx_property_query_s {
+	const char *name;
+	tfxU32 list_index;
+	tfxU32 checked;
+	const char *listed_name;
+} tfx_property_query_t;
+
+tfxINTERNAL inline bool tfx__property_is(tfx_property_query_t *query, const char *name) {
+	if (query->name) return !strcmp(query->name, name);
+	if (query->checked++ != query->list_index) return false;
+	query->listed_name = name;
+	return true;
 }
 
 //The one place that maps a saved property name to its field. Undo snapshots go through it via tfx__get_property_as_string.
-bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *property_name, tfx_property_value_t *out_value) {
-	TFX_ASSERT_HANDLE(effect);	//Not a valid descriptor handle
-	TFX_ASSERT(property_name && out_value);
-	if (tfx__property_is(property_name, "name")) return tfx__property_string(out_value, effect->name.c_str());
+tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_property_query_t *query, tfx_property_value_t *out_value) {
+	if (tfx__property_is(query, "name")) return tfx__property_string(out_value, effect->name.c_str());
 	if (effect->type == tfxFolder) return false;
 
 	tfx_library library = effect->library;
@@ -6959,165 +6968,165 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 	}
 
 	//Descriptor fields
-	if (tfx__property_is(property_name, "sort_passes")) return tfx__property_u32(out_value, effect->sort_passes);
-	if (tfx__property_is(property_name, "warmup_time")) return tfx__property_float(out_value, effect->warmup_time);
-	if (tfx__property_is(property_name, "noise_base_offset_range")) return tfx__property_float(out_value, effect->noise_base_offset_range);
-	if (tfx__property_is(property_name, "emitter_handle_x")) return tfx__property_float(out_value, effect->emitter_handle.x);
-	if (tfx__property_is(property_name, "emitter_handle_y")) return tfx__property_float(out_value, effect->emitter_handle.y);
-	if (tfx__property_is(property_name, "emitter_handle_z")) return tfx__property_float(out_value, effect->emitter_handle.z);
-	if (tfx__property_is(property_name, "delay_spawning")) return tfx__property_float(out_value, state_properties.delay_spawning);
-	if (tfx__property_is(property_name, "loop_length")) return tfx__property_float(out_value, state_properties.loop_length);
-	if (tfx__property_is(property_name, "image_end_frame")) return tfx__property_float(out_value, state_properties.end_frame);
-	if (tfx__property_is(property_name, "color_interpolation_mode")) {
+	if (tfx__property_is(query, "sort_passes")) return tfx__property_u32(out_value, effect->sort_passes);
+	if (tfx__property_is(query, "warmup_time")) return tfx__property_float(out_value, effect->warmup_time);
+	if (tfx__property_is(query, "noise_base_offset_range")) return tfx__property_float(out_value, effect->noise_base_offset_range);
+	if (tfx__property_is(query, "emitter_handle_x")) return tfx__property_float(out_value, effect->emitter_handle.x);
+	if (tfx__property_is(query, "emitter_handle_y")) return tfx__property_float(out_value, effect->emitter_handle.y);
+	if (tfx__property_is(query, "emitter_handle_z")) return tfx__property_float(out_value, effect->emitter_handle.z);
+	if (tfx__property_is(query, "delay_spawning")) return tfx__property_float(out_value, state_properties.delay_spawning);
+	if (tfx__property_is(query, "loop_length")) return tfx__property_float(out_value, state_properties.loop_length);
+	if (tfx__property_is(query, "image_end_frame")) return tfx__property_float(out_value, state_properties.end_frame);
+	if (tfx__property_is(query, "color_interpolation_mode")) {
 		if (state_properties.graph_list_index == tfxINVALID) return false;
 		return tfx__property_int(out_value, library->graphs[state_properties.graph_list_index].color_ramps.interpolation_mode);
 	}
 
-	if (tfx__property_is(property_name, "global_uniform_size")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size);
-	if (tfx__property_is(property_name, "draw_order_by_age")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_age_order);
-	if (tfx__property_is(property_name, "draw_order_by_depth")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
-	if (tfx__property_is(property_name, "guaranteed_draw_order")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
-	if (tfx__property_is(property_name, "include_in_sprite_data_export")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
-	if (tfx__property_is(property_name, "user_spawn_locations")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
+	if (tfx__property_is(query, "global_uniform_size")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size);
+	if (tfx__property_is(query, "draw_order_by_age")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_age_order);
+	if (tfx__property_is(query, "draw_order_by_depth")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
+	if (tfx__property_is(query, "guaranteed_draw_order")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
+	if (tfx__property_is(query, "include_in_sprite_data_export")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
+	if (tfx__property_is(query, "user_spawn_locations")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
 
-	if (tfx__property_is(property_name, "random_color")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color);
-	if (tfx__property_is(property_name, "exclude_from_global_hue")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
-	if (tfx__property_is(property_name, "relative_position")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
-	if (tfx__property_is(property_name, "hidden")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden);
-	if (tfx__property_is(property_name, "single")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single);
-	if (tfx__property_is(property_name, "spawn_on_grid")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
-	if (tfx__property_is(property_name, "grid_spawn_clockwise")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise);
-	if (tfx__property_is(property_name, "fill_area")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area);
-	if (tfx__property_is(property_name, "grid_spawn_random")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
-	if (tfx__property_is(property_name, "uniform_distribution")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution);
-	if (tfx__property_is(property_name, "emitter_handle_auto_center")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center);
-	if (tfx__property_is(property_name, "image_reverse_animation")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation);
-	if (tfx__property_is(property_name, "image_play_once")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once);
-	if (tfx__property_is(property_name, "image_animate")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate);
-	if (tfx__property_is(property_name, "image_random_start_frame")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame);
-	if (tfx__property_is(property_name, "spawn_location_source")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
-	if (tfx__property_is(property_name, "use_color_hint")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
+	if (tfx__property_is(query, "random_color")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color);
+	if (tfx__property_is(query, "exclude_from_global_hue")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
+	if (tfx__property_is(query, "relative_position")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position);
+	if (tfx__property_is(query, "hidden")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_hidden);
+	if (tfx__property_is(query, "single")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single);
+	if (tfx__property_is(query, "spawn_on_grid")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
+	if (tfx__property_is(query, "grid_spawn_clockwise")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise);
+	if (tfx__property_is(query, "fill_area")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_fill_area);
+	if (tfx__property_is(query, "grid_spawn_random")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random);
+	if (tfx__property_is(query, "uniform_distribution")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_uniform_distribution);
+	if (tfx__property_is(query, "emitter_handle_auto_center")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center);
+	if (tfx__property_is(query, "image_reverse_animation")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation);
+	if (tfx__property_is(query, "image_play_once")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once);
+	if (tfx__property_is(query, "image_animate")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_animate);
+	if (tfx__property_is(query, "image_random_start_frame")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame);
+	if (tfx__property_is(query, "spawn_location_source")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source);
+	if (tfx__property_is(query, "use_color_hint")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint);
 
-	if (tfx__property_is(property_name, "run_on_gpu")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu);
-	if (tfx__property_is(property_name, "relative_angle")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
-	if (tfx__property_is(property_name, "match_amount_to_grid_points")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
-	if (tfx__property_is(property_name, "wrap_single_sprite")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite);
-	if (tfx__property_is(property_name, "area_open_ends")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends);
-	if (tfx__property_is(property_name, "edge_traversal")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal);
-	if (tfx__property_is(property_name, "base_uniform_size")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_base_uniform_size);
-	if (tfx__property_is(property_name, "lifetime_uniform_size")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size);
-	if (tfx__property_is(property_name, "use_spawn_ratio")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio);
-	if (tfx__property_is(property_name, "alt_velocity_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling);
-	if (tfx__property_is(property_name, "alt_color_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
-	if (tfx__property_is(property_name, "alt_size_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
-	if (tfx__property_is(property_name, "use_path_as_trajectory")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory);
-	if (tfx__property_is(property_name, "orient_to_camera")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera);
+	if (tfx__property_is(query, "run_on_gpu")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu);
+	if (tfx__property_is(query, "relative_angle")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_relative_angle);
+	if (tfx__property_is(query, "match_amount_to_grid_points")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points);
+	if (tfx__property_is(query, "wrap_single_sprite")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite);
+	if (tfx__property_is(query, "area_open_ends")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_area_open_ends);
+	if (tfx__property_is(query, "edge_traversal")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_edge_traversal);
+	if (tfx__property_is(query, "base_uniform_size")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_base_uniform_size);
+	if (tfx__property_is(query, "lifetime_uniform_size")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size);
+	if (tfx__property_is(query, "use_spawn_ratio")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio);
+	if (tfx__property_is(query, "alt_velocity_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling);
+	if (tfx__property_is(query, "alt_color_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling);
+	if (tfx__property_is(query, "alt_size_lifetime_sampling")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling);
+	if (tfx__property_is(query, "use_path_as_trajectory")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_use_path_as_trajectory);
+	if (tfx__property_is(query, "orient_to_camera")) return tfx__property_bool(out_value, state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera);
 
-	if (tfx__property_is(property_name, "static_ribbon")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_static);
-	if (tfx__property_is(property_name, "ribbon_path_morph")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_morph);
-	if (tfx__property_is(property_name, "ribbon_noise")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise);
-	if (tfx__property_is(property_name, "ribbon_lag")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_lag);
-	if (tfx__property_is(property_name, "ribbon_orient_to_surface_normal")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_orient_to_surface_normal);
+	if (tfx__property_is(query, "static_ribbon")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_static);
+	if (tfx__property_is(query, "ribbon_path_morph")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_morph);
+	if (tfx__property_is(query, "ribbon_noise")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise);
+	if (tfx__property_is(query, "ribbon_lag")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_enable_lag);
+	if (tfx__property_is(query, "ribbon_orient_to_surface_normal")) return tfx__property_bool(out_value, effect->ribbon_flags & tfxRibbonPropertyFlags_orient_to_surface_normal);
 
 	if (shared_properties) {
-		if (tfx__property_is(property_name, "spawn_amount")) return tfx__property_u32(out_value, shared_properties->spawn_amount);
-		if (tfx__property_is(property_name, "spawn_amount_variation")) return tfx__property_u32(out_value, shared_properties->spawn_amount_variation);
-		if (tfx__property_is(property_name, "layer")) return tfx__property_u32(out_value, shared_properties->layer);
-		if (tfx__property_is(property_name, "single_shot_limit")) return tfx__property_u32(out_value, shared_properties->single_shot_limit);
-		if (tfx__property_is(property_name, "single_decay_amount")) return tfx__property_u32(out_value, shared_properties->single_decay_amount);
-		if (tfx__property_is(property_name, "single_decay_time")) return tfx__property_float(out_value, shared_properties->single_decay_time);
-		if (tfx__property_is(property_name, "single_decay_shape")) return tfx__property_float(out_value, shared_properties->single_decay_shape);
-		if (tfx__property_is(property_name, "emission_type")) return tfx__property_int(out_value, shared_properties->emission_type);
-		if (tfx__property_is(property_name, "grid_rows")) return tfx__property_float(out_value, shared_properties->grid_points.x);
-		if (tfx__property_is(property_name, "grid_columns")) return tfx__property_float(out_value, shared_properties->grid_points.y);
-		if (tfx__property_is(property_name, "grid_depth")) return tfx__property_float(out_value, shared_properties->grid_points.z);
-		if (tfx__property_is(property_name, "base_noise_step_x")) return tfx__property_float(out_value, shared_properties->base_noise_step.x);
-		if (tfx__property_is(property_name, "base_noise_step_y")) return tfx__property_float(out_value, shared_properties->base_noise_step.y);
-		if (tfx__property_is(property_name, "base_noise_step_z")) return tfx__property_float(out_value, shared_properties->base_noise_step.z);
-		if (tfx__property_is(property_name, "noise_offset_variation")) return tfx__property_float(out_value, shared_properties->noise_offset_variation);
-		if (tfx__property_is(property_name, "image_start_frame")) return tfx__property_float(out_value, shared_properties->start_frame);
-		if (tfx__property_is(property_name, "image_frame_rate")) return tfx__property_float(out_value, shared_properties->frame_rate);
-		if (tfx__property_is(property_name, "image_hash")) return tfx__property_u64(out_value, shared_properties->image_hash);
-		if (tfx__property_is(property_name, "spawn_map_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_hash);
-		if (tfx__property_is(property_name, "spawn_map_source_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_source_hash);
-		if (tfx__property_is(property_name, "spawn_map_source_frame")) return tfx__property_u32(out_value, shared_properties->spawn_map_source_frame);
-		if (tfx__property_is(property_name, "spawn_map_resolution")) return tfx__property_u32(out_value, shared_properties->spawn_map_resolution);
-		if (tfx__property_is(property_name, "spawn_map_threshold")) return tfx__property_u32(out_value, shared_properties->spawn_map_threshold);
-		if (tfx__property_is(property_name, "spawn_map_channel")) return tfx__property_u32(out_value, shared_properties->spawn_map_channel);
-		if (tfx__property_is(property_name, "paired_emitter_hash")) return tfx__property_u64(out_value, shared_properties->paired_emitter_hash);
+		if (tfx__property_is(query, "spawn_amount")) return tfx__property_u32(out_value, shared_properties->spawn_amount);
+		if (tfx__property_is(query, "spawn_amount_variation")) return tfx__property_u32(out_value, shared_properties->spawn_amount_variation);
+		if (tfx__property_is(query, "layer")) return tfx__property_u32(out_value, shared_properties->layer);
+		if (tfx__property_is(query, "single_shot_limit")) return tfx__property_u32(out_value, shared_properties->single_shot_limit);
+		if (tfx__property_is(query, "single_decay_amount")) return tfx__property_u32(out_value, shared_properties->single_decay_amount);
+		if (tfx__property_is(query, "single_decay_time")) return tfx__property_float(out_value, shared_properties->single_decay_time);
+		if (tfx__property_is(query, "single_decay_shape")) return tfx__property_float(out_value, shared_properties->single_decay_shape);
+		if (tfx__property_is(query, "emission_type")) return tfx__property_int(out_value, shared_properties->emission_type);
+		if (tfx__property_is(query, "grid_rows")) return tfx__property_float(out_value, shared_properties->grid_points.x);
+		if (tfx__property_is(query, "grid_columns")) return tfx__property_float(out_value, shared_properties->grid_points.y);
+		if (tfx__property_is(query, "grid_depth")) return tfx__property_float(out_value, shared_properties->grid_points.z);
+		if (tfx__property_is(query, "base_noise_step_x")) return tfx__property_float(out_value, shared_properties->base_noise_step.x);
+		if (tfx__property_is(query, "base_noise_step_y")) return tfx__property_float(out_value, shared_properties->base_noise_step.y);
+		if (tfx__property_is(query, "base_noise_step_z")) return tfx__property_float(out_value, shared_properties->base_noise_step.z);
+		if (tfx__property_is(query, "noise_offset_variation")) return tfx__property_float(out_value, shared_properties->noise_offset_variation);
+		if (tfx__property_is(query, "image_start_frame")) return tfx__property_float(out_value, shared_properties->start_frame);
+		if (tfx__property_is(query, "image_frame_rate")) return tfx__property_float(out_value, shared_properties->frame_rate);
+		if (tfx__property_is(query, "image_hash")) return tfx__property_u64(out_value, shared_properties->image_hash);
+		if (tfx__property_is(query, "spawn_map_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_hash);
+		if (tfx__property_is(query, "spawn_map_source_hash")) return tfx__property_u64(out_value, shared_properties->spawn_map_source_hash);
+		if (tfx__property_is(query, "spawn_map_source_frame")) return tfx__property_u32(out_value, shared_properties->spawn_map_source_frame);
+		if (tfx__property_is(query, "spawn_map_resolution")) return tfx__property_u32(out_value, shared_properties->spawn_map_resolution);
+		if (tfx__property_is(query, "spawn_map_threshold")) return tfx__property_u32(out_value, shared_properties->spawn_map_threshold);
+		if (tfx__property_is(query, "spawn_map_channel")) return tfx__property_u32(out_value, shared_properties->spawn_map_channel);
+		if (tfx__property_is(query, "paired_emitter_hash")) return tfx__property_u64(out_value, shared_properties->paired_emitter_hash);
 	}
 
 	if (emitter_properties) {
-		if (tfx__property_is(property_name, "emission_divisions")) return tfx__property_u32(out_value, emitter_properties->emission_steps.divisions);
-		if (tfx__property_is(property_name, "roll_divisions")) return tfx__property_u32(out_value, emitter_properties->roll_steps.divisions);
-		if (tfx__property_is(property_name, "vector_align_type")) return tfx__property_u32(out_value, (tfxU32)emitter_properties->vector_align_type);
-		if (tfx__property_is(property_name, "angle_setting")) return tfx__property_u32(out_value, (tfxU32)emitter_properties->angle_settings);
-		if (tfx__property_is(property_name, "emission_direction")) return tfx__property_int(out_value, emitter_properties->emission_direction);
-		if (tfx__property_is(property_name, "noise_algorithm")) return tfx__property_int(out_value, emitter_properties->noise_algorithm);
-		if (tfx__property_is(property_name, "end_behaviour")) return tfx__property_int(out_value, emitter_properties->end_behaviour);
-		if (tfx__property_is(property_name, "emission_distribution")) return tfx__property_int(out_value, emitter_properties->emission_steps.distribution);
-		if (tfx__property_is(property_name, "emission_layout")) return tfx__property_int(out_value, tfx__get_emission_step_layout(&emitter_properties->emission_steps));
-		if (tfx__property_is(property_name, "roll_distribution")) return tfx__property_int(out_value, emitter_properties->roll_steps.distribution);
-		if (tfx__property_is(property_name, "drag_half_life")) return tfx__property_float(out_value, emitter_properties->drag_half_life);
-		if (tfx__property_is(property_name, "noise_speed_bias")) return tfx__property_float(out_value, emitter_properties->noise_speed_bias);
-		if (tfx__property_is(property_name, "spawn_impulse")) return tfx__property_float(out_value, emitter_properties->spawn_impulse);
-		if (tfx__property_is(property_name, "spawn_impulse_variation")) return tfx__property_float(out_value, emitter_properties->spawn_impulse_variation);
-		if (tfx__property_is(property_name, "spawn_distance_spacing")) return tfx__property_float(out_value, emitter_properties->spawn_distance_spacing);
-		if (tfx__property_is(property_name, "spawn_distance_max_rate")) return tfx__property_float(out_value, emitter_properties->spawn_distance_max_rate);
-		if (tfx__property_is(property_name, "drag_variation")) return tfx__property_float(out_value, emitter_properties->drag_variation);
-		if (tfx__property_is(property_name, "emission_jitter")) return tfx__property_float(out_value, emitter_properties->emission_steps.jitter);
-		if (tfx__property_is(property_name, "roll_jitter")) return tfx__property_float(out_value, emitter_properties->roll_steps.jitter);
-		if (tfx__property_is(property_name, "emission_steps_restart")) return tfx__property_bool(out_value, emitter_properties->emission_steps.flags & tfxAngleStepFlags_restart_each_spawn);
-		if (tfx__property_is(property_name, "emission_ring")) return tfx__property_bool(out_value, emitter_properties->emission_steps.flags & tfxAngleStepFlags_ring);
-		if (tfx__property_is(property_name, "roll_steps_restart")) return tfx__property_bool(out_value, emitter_properties->roll_steps.flags & tfxAngleStepFlags_restart_each_spawn);
-		if (tfx__property_is(property_name, "angle_offset")) return tfx__property_float(out_value, state_properties.angle_offsets.roll);
-		if (tfx__property_is(property_name, "angle_offset_pitch")) return tfx__property_float(out_value, state_properties.angle_offsets.pitch);
-		if (tfx__property_is(property_name, "angle_offset_yaw")) return tfx__property_float(out_value, state_properties.angle_offsets.yaw);
+		if (tfx__property_is(query, "emission_divisions")) return tfx__property_u32(out_value, emitter_properties->emission_steps.divisions);
+		if (tfx__property_is(query, "roll_divisions")) return tfx__property_u32(out_value, emitter_properties->roll_steps.divisions);
+		if (tfx__property_is(query, "vector_align_type")) return tfx__property_u32(out_value, (tfxU32)emitter_properties->vector_align_type);
+		if (tfx__property_is(query, "angle_setting")) return tfx__property_u32(out_value, (tfxU32)emitter_properties->angle_settings);
+		if (tfx__property_is(query, "emission_direction")) return tfx__property_int(out_value, emitter_properties->emission_direction);
+		if (tfx__property_is(query, "noise_algorithm")) return tfx__property_int(out_value, emitter_properties->noise_algorithm);
+		if (tfx__property_is(query, "end_behaviour")) return tfx__property_int(out_value, emitter_properties->end_behaviour);
+		if (tfx__property_is(query, "emission_distribution")) return tfx__property_int(out_value, emitter_properties->emission_steps.distribution);
+		if (tfx__property_is(query, "emission_layout")) return tfx__property_int(out_value, tfx__get_emission_step_layout(&emitter_properties->emission_steps));
+		if (tfx__property_is(query, "roll_distribution")) return tfx__property_int(out_value, emitter_properties->roll_steps.distribution);
+		if (tfx__property_is(query, "drag_half_life")) return tfx__property_float(out_value, emitter_properties->drag_half_life);
+		if (tfx__property_is(query, "noise_speed_bias")) return tfx__property_float(out_value, emitter_properties->noise_speed_bias);
+		if (tfx__property_is(query, "spawn_impulse")) return tfx__property_float(out_value, emitter_properties->spawn_impulse);
+		if (tfx__property_is(query, "spawn_impulse_variation")) return tfx__property_float(out_value, emitter_properties->spawn_impulse_variation);
+		if (tfx__property_is(query, "spawn_distance_spacing")) return tfx__property_float(out_value, emitter_properties->spawn_distance_spacing);
+		if (tfx__property_is(query, "spawn_distance_max_rate")) return tfx__property_float(out_value, emitter_properties->spawn_distance_max_rate);
+		if (tfx__property_is(query, "drag_variation")) return tfx__property_float(out_value, emitter_properties->drag_variation);
+		if (tfx__property_is(query, "emission_jitter")) return tfx__property_float(out_value, emitter_properties->emission_steps.jitter);
+		if (tfx__property_is(query, "roll_jitter")) return tfx__property_float(out_value, emitter_properties->roll_steps.jitter);
+		if (tfx__property_is(query, "emission_steps_restart")) return tfx__property_bool(out_value, emitter_properties->emission_steps.flags & tfxAngleStepFlags_restart_each_spawn);
+		if (tfx__property_is(query, "emission_ring")) return tfx__property_bool(out_value, emitter_properties->emission_steps.flags & tfxAngleStepFlags_ring);
+		if (tfx__property_is(query, "roll_steps_restart")) return tfx__property_bool(out_value, emitter_properties->roll_steps.flags & tfxAngleStepFlags_restart_each_spawn);
+		if (tfx__property_is(query, "angle_offset")) return tfx__property_float(out_value, state_properties.angle_offsets.roll);
+		if (tfx__property_is(query, "angle_offset_pitch")) return tfx__property_float(out_value, state_properties.angle_offsets.pitch);
+		if (tfx__property_is(query, "angle_offset_yaw")) return tfx__property_float(out_value, state_properties.angle_offsets.yaw);
 	}
 
 	if (gpu_properties) {
-		if (tfx__property_is(property_name, "billboard_option")) return tfx__property_u32(out_value, gpu_properties->flags & 0x3);
-		if (tfx__property_is(property_name, "image_handle_x")) return tfx__property_float(out_value, gpu_properties->image_handle.x);
-		if (tfx__property_is(property_name, "image_handle_y")) return tfx__property_float(out_value, gpu_properties->image_handle.y);
+		if (tfx__property_is(query, "billboard_option")) return tfx__property_u32(out_value, gpu_properties->flags & 0x3);
+		if (tfx__property_is(query, "image_handle_x")) return tfx__property_float(out_value, gpu_properties->image_handle.x);
+		if (tfx__property_is(query, "image_handle_y")) return tfx__property_float(out_value, gpu_properties->image_handle.y);
 	}
 
 	if (ribbon_properties) {
-		if (tfx__property_is(property_name, "ribbon_segment_count")) return tfx__property_u32(out_value, ribbon_properties->bucket_info.segment_count);
-		if (tfx__property_is(property_name, "ribbon_shader_type")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->angle_type);
-		if (tfx__property_is(property_name, "ribbon_noise_algorithm")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->noise_algorithm);
-		if (tfx__property_is(property_name, "ribbon_noise_octaves")) return tfx__property_u32(out_value, ribbon_properties->noise_octaves);
-		if (tfx__property_is(property_name, "ribbon_noise_frequency")) return tfx__property_float(out_value, ribbon_properties->noise_frequency);
-		if (tfx__property_is(property_name, "ribbon_noise_speed")) return tfx__property_float(out_value, ribbon_properties->noise_speed);
-		if (tfx__property_is(property_name, "ribbon_noise_phase_range")) return tfx__property_float(out_value, ribbon_properties->noise_phase_range);
-		if (tfx__property_is(property_name, "ribbon_noise_lock_rate")) return tfx__property_float(out_value, ribbon_properties->noise_lock_rate);
-		if (tfx__property_is(property_name, "ribbon_lag_time")) return tfx__property_float(out_value, ribbon_properties->lag_time);
-		if (tfx__property_is(property_name, "ribbon_fixed_angle_normal_x")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.x);
-		if (tfx__property_is(property_name, "ribbon_fixed_angle_normal_y")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.y);
-		if (tfx__property_is(property_name, "ribbon_fixed_angle_normal_z")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.z);
+		if (tfx__property_is(query, "ribbon_segment_count")) return tfx__property_u32(out_value, ribbon_properties->bucket_info.segment_count);
+		if (tfx__property_is(query, "ribbon_shader_type")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->angle_type);
+		if (tfx__property_is(query, "ribbon_noise_algorithm")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->noise_algorithm);
+		if (tfx__property_is(query, "ribbon_noise_octaves")) return tfx__property_u32(out_value, ribbon_properties->noise_octaves);
+		if (tfx__property_is(query, "ribbon_noise_frequency")) return tfx__property_float(out_value, ribbon_properties->noise_frequency);
+		if (tfx__property_is(query, "ribbon_noise_speed")) return tfx__property_float(out_value, ribbon_properties->noise_speed);
+		if (tfx__property_is(query, "ribbon_noise_phase_range")) return tfx__property_float(out_value, ribbon_properties->noise_phase_range);
+		if (tfx__property_is(query, "ribbon_noise_lock_rate")) return tfx__property_float(out_value, ribbon_properties->noise_lock_rate);
+		if (tfx__property_is(query, "ribbon_lag_time")) return tfx__property_float(out_value, ribbon_properties->lag_time);
+		if (tfx__property_is(query, "ribbon_fixed_angle_normal_x")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.x);
+		if (tfx__property_is(query, "ribbon_fixed_angle_normal_y")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.y);
+		if (tfx__property_is(query, "ribbon_fixed_angle_normal_z")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.z);
 	}
 
 	if (state_properties.path_attributes != tfxINVALID) {
 		tfx_path_settings_t &path_settings = library->paths[state_properties.path_attributes].settings;
-		if (tfx__property_is(property_name, "maximum_active_paths")) return tfx__property_u32(out_value, path_settings.maximum_active_paths);
-		if (tfx__property_is(property_name, "maximum_path_cycles")) return tfx__property_u32(out_value, path_settings.maximum_paths);
-		if (tfx__property_is(property_name, "path_node_count")) return tfx__property_u32(out_value, path_settings.node_count);
-		if (tfx__property_is(property_name, "path_rotation_divisions")) return tfx__property_u32(out_value, path_settings.rotation_steps.divisions);
-		if (tfx__property_is(property_name, "path_extrusion_type")) return tfx__property_int(out_value, path_settings.extrusion_type);
-		if (tfx__property_is(property_name, "path_rotation_distribution")) return tfx__property_int(out_value, path_settings.rotation_steps.distribution);
-		if (tfx__property_is(property_name, "path_rotation_range")) return tfx__property_float(out_value, path_settings.rotation_range);
-		if (tfx__property_is(property_name, "path_rotation_pitch")) return tfx__property_float(out_value, path_settings.rotation_pitch);
-		if (tfx__property_is(property_name, "path_rotation_yaw")) return tfx__property_float(out_value, path_settings.rotation_yaw);
-		if (tfx__property_is(property_name, "path_rotation_lifetime")) return tfx__property_float(out_value, path_settings.rotation_cycle_length);
-		if (tfx__property_is(property_name, "path_rotation_stagger")) return tfx__property_float(out_value, path_settings.rotation_stagger);
-		if (tfx__property_is(property_name, "path_rotation_jitter")) return tfx__property_float(out_value, path_settings.rotation_steps.jitter);
-		if (tfx__property_is(property_name, "path_handle_x")) return tfx__property_float(out_value, path_settings.offset.x);
-		if (tfx__property_is(property_name, "path_handle_y")) return tfx__property_float(out_value, path_settings.offset.y);
-		if (tfx__property_is(property_name, "path_handle_z")) return tfx__property_float(out_value, path_settings.offset.z);
-		if (tfx__property_is(property_name, "path_mode_origin")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_mode_origin);
-		if (tfx__property_is(property_name, "path_mode_node")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_mode_node);
-		if (tfx__property_is(property_name, "path_rotation_range_yaw_only")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_rotation_range_yaw_only);
-		if (tfx__property_is(property_name, "path_rotation_steps_restart")) return tfx__property_bool(out_value, path_settings.rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn);
-		if (tfx__property_is(property_name, "path_reverse_direction")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_reverse_direction);
+		if (tfx__property_is(query, "maximum_active_paths")) return tfx__property_u32(out_value, path_settings.maximum_active_paths);
+		if (tfx__property_is(query, "maximum_path_cycles")) return tfx__property_u32(out_value, path_settings.maximum_paths);
+		if (tfx__property_is(query, "path_node_count")) return tfx__property_u32(out_value, path_settings.node_count);
+		if (tfx__property_is(query, "path_rotation_divisions")) return tfx__property_u32(out_value, path_settings.rotation_steps.divisions);
+		if (tfx__property_is(query, "path_extrusion_type")) return tfx__property_int(out_value, path_settings.extrusion_type);
+		if (tfx__property_is(query, "path_rotation_distribution")) return tfx__property_int(out_value, path_settings.rotation_steps.distribution);
+		if (tfx__property_is(query, "path_rotation_range")) return tfx__property_float(out_value, path_settings.rotation_range);
+		if (tfx__property_is(query, "path_rotation_pitch")) return tfx__property_float(out_value, path_settings.rotation_pitch);
+		if (tfx__property_is(query, "path_rotation_yaw")) return tfx__property_float(out_value, path_settings.rotation_yaw);
+		if (tfx__property_is(query, "path_rotation_lifetime")) return tfx__property_float(out_value, path_settings.rotation_cycle_length);
+		if (tfx__property_is(query, "path_rotation_stagger")) return tfx__property_float(out_value, path_settings.rotation_stagger);
+		if (tfx__property_is(query, "path_rotation_jitter")) return tfx__property_float(out_value, path_settings.rotation_steps.jitter);
+		if (tfx__property_is(query, "path_handle_x")) return tfx__property_float(out_value, path_settings.offset.x);
+		if (tfx__property_is(query, "path_handle_y")) return tfx__property_float(out_value, path_settings.offset.y);
+		if (tfx__property_is(query, "path_handle_z")) return tfx__property_float(out_value, path_settings.offset.z);
+		if (tfx__property_is(query, "path_mode_origin")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_mode_origin);
+		if (tfx__property_is(query, "path_mode_node")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_mode_node);
+		if (tfx__property_is(query, "path_rotation_range_yaw_only")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_rotation_range_yaw_only);
+		if (tfx__property_is(query, "path_rotation_steps_restart")) return tfx__property_bool(out_value, path_settings.rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn);
+		if (tfx__property_is(query, "path_reverse_direction")) return tfx__property_bool(out_value, path_settings.flags & tfxPathFlags_reverse_direction);
 	}
 
 	//Only effects own sprite data and preview camera settings
@@ -7125,31 +7134,51 @@ bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *propert
 
 
 	tfx_sprite_data_settings_t &sprite_data = library->sprite_data_settings[effect->sprite_data_settings_index];
-	if (tfx__property_is(property_name, "sprite_data_flags")) return tfx__property_u32(out_value, sprite_data.animation_flags & tfxAnimationFlags_needs_recording);
-	if (tfx__property_is(property_name, "sprite_data_seed")) return tfx__property_u32(out_value, sprite_data.seed);
-	if (tfx__property_is(property_name, "sprite_data_frame_offset")) return tfx__property_u32(out_value, (tfxU32)sprite_data.frame_offset);
-	if (tfx__property_is(property_name, "sprite_data_frames")) return tfx__property_u32(out_value, sprite_data.real_frames);
-	if (tfx__property_is(property_name, "sprite_data_extra_frames_count")) return tfx__property_u32(out_value, (tfxU32)sprite_data.extra_frames_count);
-	if (tfx__property_is(property_name, "sprite_data_playback_speed")) return tfx__property_float(out_value, sprite_data.playback_speed);
-	if (tfx__property_is(property_name, "sprite_data_recording_frame_rate")) return tfx__property_float(out_value, sprite_data.recording_frame_rate);
+	if (tfx__property_is(query, "sprite_data_flags")) return tfx__property_u32(out_value, sprite_data.animation_flags & tfxAnimationFlags_needs_recording);
+	if (tfx__property_is(query, "sprite_data_seed")) return tfx__property_u32(out_value, sprite_data.seed);
+	if (tfx__property_is(query, "sprite_data_frame_offset")) return tfx__property_u32(out_value, (tfxU32)sprite_data.frame_offset);
+	if (tfx__property_is(query, "sprite_data_frames")) return tfx__property_u32(out_value, sprite_data.real_frames);
+	if (tfx__property_is(query, "sprite_data_extra_frames_count")) return tfx__property_u32(out_value, (tfxU32)sprite_data.extra_frames_count);
+	if (tfx__property_is(query, "sprite_data_playback_speed")) return tfx__property_float(out_value, sprite_data.playback_speed);
+	if (tfx__property_is(query, "sprite_data_recording_frame_rate")) return tfx__property_float(out_value, sprite_data.recording_frame_rate);
 
 	tfx_preview_camera_settings_t &preview_camera = library->preview_camera_settings[effect->preview_camera_settings];
-	if (tfx__property_is(property_name, "preview_camera_position_x")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.x);
-	if (tfx__property_is(property_name, "preview_camera_position_y")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.y);
-	if (tfx__property_is(property_name, "preview_camera_position_z")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.z);
-	if (tfx__property_is(property_name, "preview_camera_pitch")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_pitch);
-	if (tfx__property_is(property_name, "preview_camera_yaw")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_yaw);
-	if (tfx__property_is(property_name, "preview_camera_fov")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_fov);
-	if (tfx__property_is(property_name, "preview_camera_floor_height")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_floor_height);
-	if (tfx__property_is(property_name, "preview_camera_isometric_scale")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_isometric_scale);
-	if (tfx__property_is(property_name, "preview_effect_z_offset")) return tfx__property_float(out_value, preview_camera.effect_z_offset);
-	if (tfx__property_is(property_name, "preview_camera_speed")) return tfx__property_float(out_value, preview_camera.camera_speed);
-	if (tfx__property_is(property_name, "preview_camera_view_mode")) return tfx__property_int(out_value, preview_camera.view_mode);
-	if (tfx__property_is(property_name, "preview_attach_effect_to_camera")) return tfx__property_bool(out_value, preview_camera.attach_effect_to_camera);
-	if (tfx__property_is(property_name, "preview_camera_hide_floor")) return tfx__property_bool(out_value, preview_camera.camera_settings.camera_hide_floor);
-	if (tfx__property_is(property_name, "preview_camera_isometric")) return tfx__property_bool(out_value, preview_camera.camera_settings.camera_isometric);
+	if (tfx__property_is(query, "preview_camera_position_x")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.x);
+	if (tfx__property_is(query, "preview_camera_position_y")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.y);
+	if (tfx__property_is(query, "preview_camera_position_z")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_position.z);
+	if (tfx__property_is(query, "preview_camera_pitch")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_pitch);
+	if (tfx__property_is(query, "preview_camera_yaw")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_yaw);
+	if (tfx__property_is(query, "preview_camera_fov")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_fov);
+	if (tfx__property_is(query, "preview_camera_floor_height")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_floor_height);
+	if (tfx__property_is(query, "preview_camera_isometric_scale")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_isometric_scale);
+	if (tfx__property_is(query, "preview_effect_z_offset")) return tfx__property_float(out_value, preview_camera.effect_z_offset);
+	if (tfx__property_is(query, "preview_camera_speed")) return tfx__property_float(out_value, preview_camera.camera_speed);
+	if (tfx__property_is(query, "preview_camera_view_mode")) return tfx__property_int(out_value, preview_camera.view_mode);
+	if (tfx__property_is(query, "preview_attach_effect_to_camera")) return tfx__property_bool(out_value, preview_camera.attach_effect_to_camera);
+	if (tfx__property_is(query, "preview_camera_hide_floor")) return tfx__property_bool(out_value, preview_camera.camera_settings.camera_hide_floor);
+	if (tfx__property_is(query, "preview_camera_isometric")) return tfx__property_bool(out_value, preview_camera.camera_settings.camera_isometric);
 
 	return false;
+}
+
+bool tfx_GetDescriptorProperty(tfx_effect_descriptor effect, const char *property_name, tfx_property_value_t *out_value) {
+	TFX_ASSERT_HANDLE(effect);	//Not a valid descriptor handle
+	TFX_ASSERT(property_name && out_value);
+	tfx_property_query_t query = { property_name, 0, 0, nullptr };
+	return tfx__descriptor_property(effect, &query, out_value);
+}
+
+//Returns the tfx_property_value_t member that holds the value
+tfxINTERNAL const char *tfx__format_property_value(const tfx_property_value_t *property_value, tfx_str256_t *value) {
+	switch (property_value->type) {
+		case tfxUInt: value->Setf("%u", property_value->uint_value); return "uint_value";
+		case tfxSInt: value->Setf("%i", property_value->int_value); return "int_value";
+		case tfxFloat: value->Setf("%f", property_value->float_value); return "float_value";
+		case tfxBool: value->Setf("%i", (int)property_value->bool_value); return "bool_value";
+		case tfxUInt64: value->Setf("%llu", property_value->uint64_value); return "uint64_value";
+		case tfxString: value->Setf("%s", property_value->string_value); return "string_value";
+		default: return "";
+	}
 }
 
 tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name) {
@@ -7159,16 +7188,34 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 		TFX_ASSERT(false);	//Property name not found or it doesn't apply to this descriptor type
 		return value;
 	}
-	switch (property_value.type) {
-		case tfxUInt: value.Setf("%u", property_value.uint_value); break;
-		case tfxSInt: value.Setf("%i", property_value.int_value); break;
-		case tfxFloat: value.Setf("%f", property_value.float_value); break;
-		case tfxBool: value.Setf("%i", (int)property_value.bool_value); break;
-		case tfxUInt64: value.Setf("%llu", property_value.uint64_value); break;
-		case tfxString: value.Setf("%s", property_value.string_value); break;
-		default: break;
-	}
+	tfx__format_property_value(&property_value, &value);
 	return value;
+}
+
+void tfx_PrintDescriptorProperties(tfx_library library, const char *path) {
+	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
+	TFX_ASSERT(path);
+	if (!library->effect_paths.ValidName(path)) {
+		tfxTIP("No folder, effect or emitter \"%s\" in library \"%s\". tfx_PrintLibrary lists them.", path, tfx__library_name(library));
+		return;
+	}
+	tfx_effect_descriptor descriptor = library->effect_paths.At(path);
+	static const char *type_names[] = { "Effect", "Emitter", "Ribbon", "Folder" };
+	const char *type_name = descriptor->type <= tfxFolder ? type_names[descriptor->type] : "Descriptor";
+	tfxPrint("%s \"%s\", the names tfx_GetDescriptorProperty takes:", type_name, tfx_GetDescriptorPath(descriptor));
+	for (tfxU32 list_index = 0;; ++list_index) {
+		tfx_property_query_t query = { nullptr, list_index, 0, nullptr };
+		tfx_property_value_t property_value;
+		const bool applies = tfx__descriptor_property(descriptor, &query, &property_value);
+		if (!query.listed_name) {
+			break;
+		}
+		if (applies) {
+			tfx_str256_t value;
+			const char *member = tfx__format_property_value(&property_value, &value);
+			tfxPrint("  %s = %s (%s)", query.listed_name, value.c_str(), member);
+		}
+	}
 }
 
 void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t property_name, const char *value) {
@@ -25886,22 +25933,32 @@ tfxINTERNAL void tfx__describe_library_emitter(tfx_text_writer_t *writer, tfx_ef
 		return;
 	}
 	const tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
-	tfx_str256_t emission;
-	emission.Setf("%s", tfx__emission_type_name(shared_properties->emission_type));
+	const tfxSharedEmitterFlags shared_flags = emitter->state_properties.shared_flags;
+	tfx_str256_t details;
+	details.Setf("layer %u, %s", shared_properties->layer, tfx__emission_type_name(shared_properties->emission_type));
 	if ((shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon) && shared_properties->paired_emitter_hash
 		&& emitter->library->effect_paths.ValidKey(shared_properties->paired_emitter_hash)) {
 		tfx_str256_t source_path;
 		tfx__template_path(emitter->library->effect_paths.At(shared_properties->paired_emitter_hash), &source_path);
-		emission.Appendf(" from \"%s\"", source_path.c_str());
+		details.Appendf(" from \"%s\"", source_path.c_str());
 	}
-	const tfxSharedEmitterFlags shared_flags = emitter->state_properties.shared_flags;
+	if (shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		if (shared_properties->spawn_amount_variation) {
+			details.Appendf(", single shot of %u to %u", shared_properties->spawn_amount, shared_properties->spawn_amount + shared_properties->spawn_amount_variation);
+		} else {
+			details.Appendf(", single shot of %u", shared_properties->spawn_amount);
+		}
+	}
+	if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
+		details.Appendf(", relative");
+	}
 	if (!(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu)) {
-		tfx__write_line(writer, "  %s: particles, %s, CPU%s", path.c_str(), emission.c_str(), shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? ", other emitters spawn from it" : "");
+		tfx__write_line(writer, "  %s: particles, %s, CPU%s", path.c_str(), details.c_str(), shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? ", other emitters spawn from it" : "");
 	} else if (tfx__descriptor_takes_gpu_ring(emitter)) {
 		const tfxU32 capacity = tfx_GetEmitterGPUCapacity(emitter);
-		tfx__write_line(writer, "  %s: particles, %s, GPU, ring of %u per instance, %u pool slots", path.c_str(), emission.c_str(), capacity, tfx__round_up_gpu_ring_capacity(capacity));
+		tfx__write_line(writer, "  %s: particles, %s, GPU, ring of %u per instance, %u pool slots", path.c_str(), details.c_str(), capacity, tfx__round_up_gpu_ring_capacity(capacity));
 	} else {
-		tfx__write_line(writer, "  %s: particles, %s, Run on GPU but runs on the CPU because %s", path.c_str(), emission.c_str(),
+		tfx__write_line(writer, "  %s: particles, %s, Run on GPU but runs on the CPU because %s", path.c_str(), details.c_str(),
 			shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? "other emitters spawn from it" : "its particles are relative and its effect doesn't spawn at user spawn locations");
 	}
 }

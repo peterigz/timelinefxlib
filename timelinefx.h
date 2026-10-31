@@ -1497,8 +1497,9 @@ tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
 /*
 What a library contains, as text: its error flags, then a line for each effect (how long it plays and whether it spawns at
-user spawn locations) followed by a line for each of its emitters (emission type, which emitter an Other Emitter spawns
-from, and whether it runs on the GPU, with its ring capacity, or on the CPU and why). Emitters are named by the path the
+user spawn locations) followed by a line for each of its emitters (layer, emission type, which emitter an Other Emitter
+spawns from, how many particles a single shot emitter spawns, whether its particles are relative, and whether it runs on
+the GPU, with its ring capacity, or on the CPU and why). Emitters are named by the path the
 tfx_SetTemplate functions take.
 * @param library                   A handle to a loaded library
 * @param buffer                    Filled with as many whole lines as fit, always null terminated. Can be NULL with a size of 0
@@ -1742,6 +1743,7 @@ tfxAPI tfx_effect_descriptor tfx_GetDescriptorChild(tfx_effect_descriptor descri
 /*
 Read a property of an effect, emitter or ribbon by the same name it's saved under in the library file, for example "spawn_amount",
 "emission_type", "relative_position" or "warmup_time". Graphs are not properties, use the graph functions for those.
+tfx_PrintDescriptorProperties lists every name that applies to a folder, effect or emitter, with its value.
 	tfx_property_value_t value;
 	if (tfx_GetDescriptorProperty(emitter, "spawn_amount", &value)) {
 		printf("%u\n", value.uint_value);
@@ -1753,6 +1755,15 @@ Read a property of an effect, emitter or ribbon by the same name it's saved unde
 								an effect for example), in which case out_value is left untouched
 */
 tfxAPI bool tfx_GetDescriptorProperty(tfx_effect_descriptor descriptor, const char *property_name, tfx_property_value_t *out_value);
+
+/*
+Print every property name tfx_GetDescriptorProperty takes for a folder, effect or emitter, with its current value and the
+tfx_property_value_t member that holds it, a line at a time through tfx_SetPrintCallback if one is set.
+	tfx_PrintDescriptorProperties(library, "Explosion/Sparks");
+* @param library                A valid pointer to a tfx_library_t
+* @param path                   Path to the folder, effect or emitter, as tfx_PrintLibrary lists them
+*/
+tfxAPI void tfx_PrintDescriptorProperties(tfx_library library, const char *path);
 
 /*
 Free all the memory used by a library

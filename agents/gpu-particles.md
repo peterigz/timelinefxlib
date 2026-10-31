@@ -20,8 +20,8 @@ free(text);
 ```
 
 `tfx_GetStageDiagnostics` returns the same as a struct, and `tfx_GetGPUParticleStats` just the GPU numbers. To see
-what a library contains (which emitters are GPU, ring sizes, which effects need spawn locations) call
-`tfx_PrintLibrary(library)`.
+what a library contains (which emitters are GPU, ring sizes, layers, single shot amounts, which effects need spawn
+locations) call `tfx_PrintLibrary(library)`.
 
 ## Reading it
 
