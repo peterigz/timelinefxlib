@@ -15392,6 +15392,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
 	pm->flags |= write_instances ? 0 : tfxStageFlags_instances_not_written;
+	pm->unwritten_update_time = write_instances ? 0.0 : pm->unwritten_update_time + pm->update_time;
 }
 
 void tfx__update_stage(void *data) {
@@ -15507,8 +15508,7 @@ void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 step_count
 	if (step_count == 0) {
 		return;
 	}
-	//The last step is drawn and the one before it is what its captured_index interpolates from
-	tfx__do_stage_update(pm, step_length, step_count, 2);
+	tfx__do_stage_update(pm, step_length, step_count, 1);
 }
 
 void tfx_UpdateStageSubStep(tfx_stage pm, double step_length, tfxUpdateStepFlags flags) {
@@ -16830,8 +16830,9 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->handle_y = tfxWideSetSingle(handle.y);
 	pass->handle_z = tfxWideSetSingle(handle.z);
 	pass->overall_scale = tfxWideSetSingle(work_entry->overall_scale);
-	//The vertex shader multiplies stretch by the distance moved this update, so take the update length back out of it
-	pass->global_stretch = tfxWideSetSingle(pm.update_time > 0.0 ? work_entry->global_stretch * tfxSTRETCH_REFERENCE_TIME / (float)pm.update_time : work_entry->global_stretch);
+	//The vertex shader multiplies stretch by the distance moved since the last write, so take the time since then back out of it
+	const double written_update_time = pm.update_time + pm.unwritten_update_time;
+	pass->global_stretch = tfxWideSetSingle(written_update_time > 0.0 ? work_entry->global_stretch * tfxSTRETCH_REFERENCE_TIME / (float)written_update_time : work_entry->global_stretch);
 	pass->stretch_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_stretch_index);
 	pass->vector_align_type = work_entry->properties->vector_align_type;
 	pass->transform_relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter && emission_type != tfxSpawnOnRibbon) || (emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative) != 0;
@@ -18343,6 +18344,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
 	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
+	pm->unwritten_update_time = 0.0;
 	pm->instance_buffer.clear();
 	pm->previous_instance_buffer.clear();
 	for (tfxEachLayer) {

@@ -125,10 +125,10 @@ tfx_impl_dx11_Render(&renderer, &uniforms);		//Every frame, interpolating with u
 ```
 
 The backend keeps two instance buffers and swaps them on every update, so the other buffer always holds what was drawn
-last, which is what `captured_index` points into. That's true for CPU and GPU instances alike, as long as there's one
-stage update per frame. `tfx_UpdateStageSubSteps` would put CPU instances on a previous layout of their own, which can
-overlap the GPU instances the kernel interpolates from. On the frames between updates nothing is uploaded or
-dispatched for the stage, and the GPU keeps drawing the same two buffers with a growing lerp.
+last, which is what `captured_index` points into. That's true for CPU and GPU instances alike, as long as each frame
+makes one `tfx_UpdateStage` or `tfx_UpdateStageSubSteps` call, which both write instances once. On the frames between
+updates nothing is uploaded or dispatched for the stage, and the GPU keeps drawing the same two buffers with a growing
+lerp.
 
 Rules the loop depends on:
 - **Threading.** `tfx_UpdateStage` runs on its own thread. Add effects, move them and set the camera before it, and

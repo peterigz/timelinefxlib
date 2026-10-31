@@ -7552,6 +7552,7 @@ typedef struct tfx_stage_s {
 	tfxWideFloat frame_length_wide;
 	double update_time;
 	tfxWideFloat update_time_wide;
+	double unwritten_update_time;		//Seconds of ticks since the last one that wrote instances, which the next write's captured positions span
 	double tick_time;					//Milliseconds of ticks the stage has run, stamps freed particle arrays for tfx_TrimParticleArrays
 } tfx_stage_t;
 #endif

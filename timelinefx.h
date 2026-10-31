@@ -1452,7 +1452,7 @@ typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bi
 
 typedef enum {
 	tfxUpdateStepFlags_none = 0,
-	tfxUpdateStepFlags_write_instances			= 1 << 0,		//Write the instance buffer this step. Set it on the last two steps before you draw
+	tfxUpdateStepFlags_write_instances			= 1 << 0,		//Write the instance buffer this step. Set it on the last step before you draw
 } tfx_update_step_flag_bits;
 
 typedef tfxU32 tfxUpdateStepFlags;              //tfx_update_step_flag_bits
@@ -1985,8 +1985,9 @@ Get the number of instances within the instance buffer of a effect manager
 tfxAPI int tfx_GetInstanceCount(tfx_stage pm);
 
 /*
-Get the instances written by the update step before the one in tfx_GetInstanceBuffer. This is the buffer that each instance's captured_index points
-into, so upload it alongside the current buffer to interpolate between the last two steps, rather than relying on whatever you drew last frame.
+Get the instances from the write before the one in tfx_GetInstanceBuffer. This is the buffer that each instance's
+captured_index points into. When every update writes, which tfx_UpdateStage and tfx_UpdateStageSubSteps always do, it's the buffer you uploaded
+last update, so you only need it if you don't keep that yourself, or you write instances on more than one tfx_UpdateStageSubStep call per frame.
 It's only kept when the stage was created with double_buffer_sprites set (the default).
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
@@ -2698,9 +2699,9 @@ tfxAPI void tfx_UpdateStage(tfx_stage pm, double elapsed);
 /*
 Update a stage in a number of fixed size steps with one call. All of the steps run on the stage's update thread, so like tfx_UpdateStage this returns
 without waiting for them, whereas calling tfx_UpdateStage once per step makes each call wait for the step before it. Use this when you simulate at a
-fixed rate and run more than one step in a frame. Only the last two steps write instances: the last is the one to draw and the one before it is what
-captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. The steps before those only simulate, which makes them cheaper.
-Positions you set on effects since the last update are spread evenly across the steps. tfx_UpdateStage(pm, elapsed) is the same as
+fixed rate and run more than one step in a frame. Only the last step writes instances, the steps before it only simulate, which makes them cheaper.
+captured_index points into what the last update wrote, the buffer you uploaded then, so the vertex shader interpolates across all of this update's
+steps. Positions you set on effects since the last update are spread evenly across the steps. tfx_UpdateStage(pm, elapsed) is the same as
 tfx_UpdateStageSubSteps(pm, elapsed, 1).
 * @param pm                    A pointer to an initialised tfx_stage_t.
 * @param step_length           The length of each step in milliseconds
@@ -2712,10 +2713,11 @@ tfxAPI void tfx_UpdateStageSubSteps(tfx_stage pm, double step_length, tfxU32 ste
 Update a stage by a single step, choosing whether the step writes instances. Use this instead of tfx_UpdateStageSubSteps when you need to change
 things in the stage between steps, like moving an effect along with something in your own fixed step simulation. Each call waits for the step
 before it to finish, so do your own work for the next step before calling it again and the two will overlap. Steps that don't write instances
-are cheaper. Pass tfxUpdateStepFlags_write_instances on the last two steps before you draw: the last is the buffer to draw and the one before
-it is what captured_index points into, which you can get with tfx_GetPreviousInstanceBuffer. If only the last step writes, the previous buffer
-is whatever the last write before it was, so you interpolate across all the steps since then. Don't read the instance buffer after a step that
-didn't write instances, it doesn't describe the particles until the next step that does.
+are cheaper. Pass tfxUpdateStepFlags_write_instances on the last step before you draw, which is what tfx_UpdateStageSubSteps does: captured_index
+then points into the buffer you uploaded last frame, so you interpolate across all the steps since then. To interpolate across only the last step,
+write on the last two steps instead and upload tfx_GetPreviousInstanceBuffer alongside the current buffer. Don't do that with Run on GPU emitters:
+their captured indexes point into the layout of the last tfx_GetGPUParticleFrame, which the previous buffer's CPU instances can overlap. Don't read
+the instance buffer after a step that didn't write instances, it doesn't describe the particles until the next step that does.
 * @param pm                    A pointer to an initialised tfx_stage_t.
 * @param step_length           The length of the step in milliseconds
 * @param flags                 tfxUpdateStepFlags_write_instances to write the instance buffer, or tfxUpdateStepFlags_none
