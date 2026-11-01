@@ -25988,6 +25988,34 @@ tfxINTERNAL const char *tfx__emission_type_name(tfx_emission_type emission_type)
 	return emission_type < tfxEmissionTypeMax && emission_type_names[emission_type] ? emission_type_names[emission_type] : "Unknown";
 }
 
+//Every node and bezier handle is 0, so no easing, curve or oscillator can lift it
+tfxINTERNAL bool tfx__graph_is_always_zero(tfx_graph_t *graph) {
+	if (!graph->nodes.size()) {
+		return false;
+	}
+	for (tfxBucketLoop(graph->nodes, index)) {
+		const tfx_attribute_node_t &node = graph->nodes[index];
+		if (node.value != 0.f || node.left.y != 0.f || node.right.y != 0.f) {
+			return false;
+		}
+	}
+	return true;
+}
+
+tfxINTERNAL const char *tfx__emitter_draws_nothing_reason(tfx_effect_descriptor emitter) {
+	if (emitter->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_do_not_render) {
+		return "Do Not Render is set";
+	}
+	if ((tfx__graph_is_always_zero(tfx__get_descriptor_graph(emitter, tfxEmitter_base_width_index)) && tfx__graph_is_always_zero(tfx__get_descriptor_graph(emitter, tfxEmitter_variation_width_index)))
+		|| tfx__graph_is_always_zero(tfx__get_descriptor_graph(emitter, tfxEmitter_overtime_width_index))) {
+		return "its width is always 0";
+	}
+	if (tfx__graph_is_always_zero(tfx__get_descriptor_graph(emitter, tfxEmitter_overtime_intensity_index))) {
+		return "its intensity is always 0";
+	}
+	return nullptr;
+}
+
 tfxINTERNAL void tfx__describe_library_emitter(tfx_text_writer_t *writer, tfx_effect_descriptor emitter) {
 	tfx_str256_t path;
 	tfx__template_path(emitter, &path);
@@ -26014,6 +26042,10 @@ tfxINTERNAL void tfx__describe_library_emitter(tfx_text_writer_t *writer, tfx_ef
 	}
 	if (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		details.Appendf(", relative");
+	}
+	const char *draws_nothing_reason = tfx__emitter_draws_nothing_reason(emitter);
+	if (draws_nothing_reason) {
+		details.Appendf(", draws nothing because %s", draws_nothing_reason);
 	}
 	if (!(emitter->state_properties.property_flags & tfxEmitterPropertyFlags_run_on_gpu)) {
 		tfx__write_line(writer, "  %s: particles, %s, CPU%s", path.c_str(), details.c_str(), shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? ", other emitters spawn from it" : "");
@@ -27458,10 +27490,10 @@ bool tfx__valid_animation_id(tfx_animation_manager animation_manager, tfxAnimati
 tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	tfx_stage_info_t info = { 0 };
 	info.warmup_delta_time = 1000.0 / 60.0;
-	info.max_particles = 10000;
+	info.max_particles = 5000;
 	info.max_effects = 1000;
 	info.max_emitters = 0;
-	info.max_ribbon_segments = 32678;
+	info.max_ribbon_segments = 32768;
 	info.max_ribbons = 1000;
 	info.max_ribbon_emitters = 0;
 	info.ribbon_tessellation = 1;
@@ -27471,7 +27503,6 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	info.dynamic_sprite_allocation = true;
 	info.auto_order_effects = false;
 	info.grow_staging_buffer_callback = nullptr;
-	info.max_particles = 5000;
 	switch (setup) {
 	case tfxStageSetup_auto_order_effects:
 		info.auto_order_effects = true;
