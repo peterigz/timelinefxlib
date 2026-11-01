@@ -19,7 +19,8 @@ printf("%s", text);
 free(text);
 ```
 
-`tfx_GetStageDiagnostics` returns the same as a struct, and `tfx_GetGPUParticleStats` just the GPU numbers. To see
+`tfx_GetStageDiagnostics` returns the same as a struct, and `tfx_GetGPUParticleStats` just the GPU numbers.
+`tfx_GetEffectGPUParticleStats(stage, effect)` gives the same numbers for one effect's rings. To see
 what a library contains (which emitters are GPU, ring sizes, layers, single shot amounts, which effects need spawn
 locations) call `tfx_PrintLibrary(library)`.
 

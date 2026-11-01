@@ -25734,6 +25734,28 @@ bool tfx_StageGPUSimulationIsOn(tfx_stage pm) {
 	return pm->gpu_pool_allocator && !(pm->flags & tfxStageFlags_gpu_simulation_off);
 }
 
+tfxINTERNAL void tfx__add_gpu_group_stats(tfx_stage pm, const tfx_gpu_particle_group_t &group, tfx_gpu_particle_stats_t *stats) {
+	if (group.capacity == 0) {
+		stats->blocked_emitters++;
+		return;
+	}
+	stats->allocated += group.capacity;
+	stats->slots_in_use += group.current_size;
+	stats->ring_count++;
+	//On the same clock the batches were pushed with, so a batch pushed on the last tick counts as all alive
+	const double now_ms = tfx__gpu_batch_start_ms(pm, group);
+	double estimated_live = 0.0;
+	for (tfxU32 batch_index = 0; batch_index != group.tracking_count; ++batch_index) {
+		const tfx_gpu_spawn_tracking_t &batch = group.tracking[(group.tracking_head + batch_index) % group.tracking.current_size];
+		const double remaining_ms = batch.expire_ms - now_ms;
+		if (remaining_ms <= 0.0) {
+			continue;
+		}
+		estimated_live += remaining_ms >= batch.life_spread_ms ? (double)batch.particle_count : batch.particle_count * remaining_ms / batch.life_spread_ms;
+	}
+	stats->estimated_live_particles += (tfxU32)(estimated_live + 0.5);
+}
+
 tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);
 	tfx__wait_for_stage_update(pm);
@@ -25742,28 +25764,28 @@ tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm) {
 	stats.capacity = pm->info.gpu_particle_capacity;
 	stats.dropped_spawns = pm->gpu_dropped_spawns;
 	for (tfx_gpu_particle_group_t &group : pm->gpu_groups) {
-		if (group.emitter_index == tfxINVALID) {
-			continue;
+		if (group.emitter_index != tfxINVALID) {
+			tfx__add_gpu_group_stats(pm, group, &stats);
 		}
-		if (group.capacity == 0) {
-			stats.blocked_emitters++;
-			continue;
+	}
+	return stats;
+}
+
+tfx_gpu_particle_stats_t tfx_GetEffectGPUParticleStats(tfx_stage pm, tfxEffectID effect_id) {
+	TFX_ASSERT_HANDLE(pm);
+	tfx__wait_for_stage_update(pm);
+	tfx_gpu_particle_stats_t stats;
+	memset(&stats, 0, sizeof(tfx_gpu_particle_stats_t));
+	stats.capacity = pm->info.gpu_particle_capacity;
+	TFX_VALIDATE_EFFECT(pm, effect_id, stats);
+	const tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_id)];
+	for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+		const tfxU32 group_index = pm->emitters[emitter_index].state_properties.gpu_group_index;
+		if (group_index != tfxINVALID) {
+			const tfx_gpu_particle_group_t &group = pm->gpu_groups[group_index];
+			tfx__add_gpu_group_stats(pm, group, &stats);
+			stats.dropped_spawns += group.dropped_spawns;
 		}
-		stats.allocated += group.capacity;
-		stats.slots_in_use += group.current_size;
-		stats.ring_count++;
-		//On the same clock the batches were pushed with, so a batch pushed on the last tick counts as all alive
-		const double now_ms = tfx__gpu_batch_start_ms(pm, group);
-		double estimated_live = 0.0;
-		for (tfxU32 batch_index = 0; batch_index != group.tracking_count; ++batch_index) {
-			const tfx_gpu_spawn_tracking_t &batch = group.tracking[(group.tracking_head + batch_index) % group.tracking.current_size];
-			const double remaining_ms = batch.expire_ms - now_ms;
-			if (remaining_ms <= 0.0) {
-				continue;
-			}
-			estimated_live += remaining_ms >= batch.life_spread_ms ? (double)batch.particle_count : batch.particle_count * remaining_ms / batch.life_spread_ms;
-		}
-		stats.estimated_live_particles += (tfxU32)(estimated_live + 0.5);
 	}
 	return stats;
 }
@@ -26083,6 +26105,7 @@ void tfx__clear_gpu_groups(tfx_stage pm) {
 	pm->gpu_frame_locations.clear();
 	pm->gpu_instance_count = 0;
 	pm->unfetched_gpu_updates = 0;
+	pm->gpu_dropped_spawns = 0;
 	memset(pm->gpu_layer_count, 0, sizeof(tfxU32) * tfxLAYERS);
 }
 

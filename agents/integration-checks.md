@@ -26,15 +26,17 @@ and once with `tfx_SetStageGPUSimulation(stage, false)` set before the effects a
 - GPU run: `tfx_GetParticleCount` (the emitters still on the CPU) + `tfx_GetGPUParticleStats(stage).estimated_live_particles`.
 
 Done when the two are within 10% (they're usually within 3%). Never compare against `slots_in_use`, which counts dead
-particles still holding their slots. A big gap with no dropped spawns or blocked emitters means the GPU integration is
-losing particles: check that every fetch is dispatched exactly once, and that every GPU range is drawn: one per layer,
-or one per key from `tfx_GetNextInstanceKeyRange` when you use sort keys.
+particles still holding their slots. To find which effect a gap comes from, play one at a time, or read
+`tfx_GetEffectGPUParticleStats(stage, effect).estimated_live_particles` for each. A big gap with no dropped spawns or
+blocked emitters means the GPU integration is losing particles: check that every fetch is dispatched exactly once, and
+that every GPU range is drawn: one per layer, or one per key from `tfx_GetNextInstanceKeyRange` when you use sort keys.
 
 ## 3. No drops at the real update rate
 
 `tfx_GetGPUParticleStats(stage).dropped_spawns` stays 0 and `blocked_emitters` stays 0 at the game's update rate, with
 the most locations the game will ever have playing at once. Ring sizes assume about 60 updates a second, so test at the
-real rate. Size with `tfx_SetTemplateGPUCapacityForLocations` (gpu-particles.md).
+real rate. Size with `tfx_SetTemplateGPUCapacityForLocations` (gpu-particles.md). The count is since the stage was
+created or last cleared, so `tfx_ClearStage` between test runs. `tfx_GetEffectGPUParticleStats` shows which effect drops.
 
 ## 4. Fetches keep up
 

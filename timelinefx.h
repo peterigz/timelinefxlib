@@ -1027,7 +1027,7 @@ typedef struct tfx_gpu_particle_stats_s {
 	tfxU32 estimated_live_particles;		//Particles still alive, assuming each spawn's particles die evenly over its range of lives. Compare this with tfx_GetParticleCount
 	tfxU32 ring_count;
 	tfxU32 blocked_emitters;				//GPU emitters that got no ring because the pool was full, raise gpu_particle_capacity
-	tfxU64 dropped_spawns;					//Spawns refused because a ring was full. For overlapping spawn locations size the template with tfx_SetTemplateGPUCapacityForLocations, otherwise raise the ring with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
+	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, since the stage was created or last cleared. For overlapping spawn locations size the template with tfx_SetTemplateGPUCapacityForLocations, otherwise raise the ring with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
 } tfx_gpu_particle_stats_t;
 
 //A stage's health in one place, see tfx_GetStageDiagnostics and tfx_DescribeStage
@@ -1305,8 +1305,11 @@ Cleanup up all threads and memory used by timelinefx. Anything you didn't free i
 tfxAPI void tfx_EndTimelineFX(void);
 
 /*
-Get how much of TimelineFX's memory pools is allocated, across every pool. Call it when no stage is updating, for example
-before tfx_EndTimelineFX to find out what you haven't freed yet.
+Get how much of TimelineFX's memory pools is allocated, across every pool. Call it when no stage is updating. It won't
+go back to the figure after tfx_BeginTimelineFX once a library has been loaded, because some tables shared by every library
+(GPU graph lookups, graph indexes and so on) are kept until tfx_EndTimelineFX. To look for leaks, compare calls taken at
+the same point in a load/free cycle: growth from one cycle to the next is a leak. tfx_EndTimelineFX lists anything you
+didn't free.
 * @param bytes                    Set to the bytes in use, can be NULL
 * @param blocks                   Set to the number of allocations, can be NULL
 */
@@ -1895,7 +1898,7 @@ Two ways to synchronise before you read that data:
         tfx_GetInstanceBuffer, tfx_GetInstanceBufferByLayer, tfx_GetInstanceCount, tfx_GetInstanceCountByLayer,
         tfx_GetNextInstanceBuffer, tfx_GetNextInstanceKeyRange, tfx_GetRibbonBuffers, tfx_HasRibbonsToDraw, tfx_NextRibbonDispatch,
         tfx_GetRibbonBufferRequirements, tfx_CopyRibbonDataToStagingBuffers, tfx_GetGPUParticleFrame,
-        tfx_GetGPUParticleStats, tfx_SetStageGPUSimulation, tfx_ClearStage and tfx_FreeStage.
+        tfx_GetGPUParticleStats, tfx_GetEffectGPUParticleStats, tfx_SetStageGPUSimulation, tfx_ClearStage and tfx_FreeStage.
 
 Anything that reads stage state through a path NOT in that list (for example reading the instance buffer pointer
 you cached last frame, or touching the raw buffers directly) must be preceded by tfx_CompleteStageWork, otherwise
@@ -2421,6 +2424,15 @@ in the same tick has died, because only then can the ring move past them. Implic
 tfxAPI tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm);
 
 /*
+tfx_GetGPUParticleStats for one effect's rings, to see which effect is using the pool or dropping spawns. capacity is
+still the whole pool. dropped_spawns only counts the rings the effect has now, so an emitter that has finished takes its
+drops with it. Implicitly completes any in-flight stage update.
+* @param pm                        A handle to an initialised tfx_stage_t.
+* @param effect_id                 The effect from tfx_AddEffectTemplateToStage. An expired one returns zeros apart from capacity.
+*/
+tfxAPI tfx_gpu_particle_stats_t tfx_GetEffectGPUParticleStats(tfx_stage pm, tfxEffectID effect_id);
+
+/*
 Turn a stage's GPU simulation off or back on, for comparing it with the CPU simulation or falling back to the CPU.
 It's the first thing to try when GPU particles look wrong, see the end of the GPU particle simulation notes above.
 Effects added while it's off run their Run on GPU emitters on the CPU. Effects already running keep the simulation
@@ -2791,7 +2803,7 @@ Get the total number of instances ready for rendering in the effect manager.
 tfxAPI tfxU32 tfx_TotalSpriteCount(tfx_stage pm);
 
 /*
-Clear all particles, instance_data and effects in a effect manager. If you don't need to use the effect manager again then call tfx_FreeStage to also
+Clear all particles, instance_data and effects in a effect manager, and reset the stage's GPU dropped spawn count. If you don't need to use the effect manager again then call tfx_FreeStage to also
 free all the memory associated with the effect manager.
 * @param pm                        A pointer to an initialised tfx_stage_t.
 * @param free_particle_banks    Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
