@@ -5632,7 +5632,8 @@ void tfx_FreeLibrary(tfx_library library) {
 		tfx__release_global_ramp_layers(library, 0, tfxStore->global_color_ramps_version);
 	}
 	library->global_ramp_layers.free();
-	if (library->global_placed) {
+	//Freeing room can let a library that didn't fit be placed
+	if (library->global_placed || !tfxStore->global_layout_complete) {
 		tfxStore->global_layout_changed = true;
 	}
 	tfx__free_library_contents(library, false);
