@@ -233,8 +233,8 @@ struct tfx_instance {
 	uint alignment;
 	uint intensity_gradient_map;
 	uint curved_alpha_life;
-	uint indexes;						//[gpu property index << 16, capture flag << 15, image frame]
-	uint captured_index;
+	uint indexes;						//[gpu property index << 16, capture flag << 15, image frame in the low 13 bits]
+	uint captured_index;				//Low 28 bits, only read when the capture flag is set
 };
 
 //Mirrors tfx_gpu_particle_push_t
@@ -3309,7 +3309,7 @@ struct tfx_billboard_input {
 	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8_snorm
 	[[vk::location(4)]] float2 intensity_gradient_map : INTENSITY;			//r16g16_sscaled
 	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8_unorm
-	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame]
+	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame in the low 13 bits]
 	[[vk::location(7)]] uint captured_index : CAPTURED_INDEX;
 };
 

@@ -215,8 +215,8 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_int16x2_t intensity_gradient_map;			//Intensity in x and gradient map in y, scaled by 32767/128: multiply by 128/32767 to unpack
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
-	tfxU32 indexes;									//[gpu property index, capture flag (1 bit << 15), image data index max 8191 images]
-	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	tfxU32 indexes;									//GPU property index << 16 | capture flag << 15 | animation frame in the low 13 bits (max 8191), which the shader adds to the emitter's start_frame_index. Bits 13 and 14 are unused
+	tfxU32 captured_index;							//Only meaningful when the capture flag in indexes is set: mask with 0x0FFFFFFF for this instance's index in the previous instance buffer. Bit 30 is which buffer, bit 31 is internal. Without the capture flag the reference shaders draw the instance at zero size that frame
 } tfx_instance_t;
 
 typedef struct tfx_ribbon_vertex_s {
