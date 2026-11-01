@@ -16951,6 +16951,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->gradient_mapper_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_gradient_mapper_index);
 
 	//----Image frame
+	TFX_ASSERT(emitter.state_properties.end_frame < tfxMAX_ANIMATION_FRAMES);	//The emitter's shape has more animation frames than an instance can index
 	pass->image_frame_rate = tfxWideMul(tfxWideSetSingle(emitter.state_properties.image_frame_rate), pm.update_time_wide);
 	pass->end_frame = tfxWideSetSingle(emitter.state_properties.end_frame);
 	pass->frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
@@ -23829,6 +23830,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 				ribbon.position += splat * location_splatter;
 			}
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
+			TFX_ASSERT(image_frame < tfxMAX_ANIMATION_FRAMES);	//The ribbon's shape has more animation frames than a ribbon can index
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | tfxU32(image_frame);
 			tfx_quaternion_t q;
 			if (stepped_rotation) {
@@ -25615,6 +25617,7 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		//The vertex shader multiplies stretch by the distance moved over every tick since the last write, so take their length back out of it
 		dispatch.global_stretch = written_update_time > 0.f ? effect.stretch * tfxSTRETCH_REFERENCE_TIME / written_update_time : effect.stretch;
 		dispatch.image_frame_rate = emitter.state_properties.image_frame_rate;
+		TFX_ASSERT(emitter.state_properties.end_frame < tfxMAX_ANIMATION_FRAMES);	//The emitter's shape has more animation frames than an instance can index
 		dispatch.end_frame = emitter.state_properties.end_frame;
 		const bool roll_only = !(emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw);
 		dispatch.emitter_roll = roll_only && emitter.state_flags & tfxEmitterStateFlags_relative_angle ?2.f * atan2f(emitter.rotation.x, emitter.rotation.w) : 0.f;

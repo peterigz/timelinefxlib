@@ -3108,6 +3108,9 @@ typedef enum {
 //Seconds of travel a stretch of 1 streaks a particle over, whatever the update rate
 #define tfxSTRETCH_REFERENCE_TIME (1.f / 60.f)
 
+//Instances and ribbons keep the animation frame in the low 13 bits of their indexes
+#define tfxMAX_ANIMATION_FRAMES 8192
+
 typedef enum {
 	tfxEmitterControlProfile_basic                              = 0,
 	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,
