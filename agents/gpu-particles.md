@@ -36,15 +36,26 @@ locations) call `tfx_PrintLibrary(library)`.
 
 ## Sizing the pool
 
+Three quantities, in particles:
+- **Ring capacity:** what one emitter instance can hold. Every spawn location of that effect shares it.
+- **Pool slots:** a ring capacity rounded up the way the pool hands it out.
+- **`gpu_particle_capacity`:** the pool, in slots.
+
 Every Run on GPU emitter instance gets a fixed ring, sized by default for one spawn location. For an effect that plays
-at several locations at once:
+at several locations at once, in this order:
 
 ```c
-//How many locations play at once: one location's play time over how often you add one
+//1. Create the templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest)
+//2. Size for how many locations play at once: one location's play time over how often you add one
 tfxU32 overlap = (tfxU32)(tfx_GetEffectLifetime(effect_template) / milliseconds_between_locations) + 1;
 stage_info.gpu_particle_capacity += tfx_SetTemplateGPUCapacityForLocations(effect_template, overlap);
-//...the same for every template, then tfx_CreateStage(stage_info)
+//3. Then tfx_SetTemplateEmitterGPUCapacity for any one emitter that needs a different ring
+//4. ...the same for every template, then tfx_CreateStage(stage_info)
 ```
+
+`tfx_SetTemplateGPUCapacityForLocations` stores the location count, so an amount you change after it is still followed.
+Rings are fixed when an effect is added, so change amounts before adding the effect. If you set a capacity on one emitter
+in step 3, take the template's slots from `tfx_GetTemplateGPUPoolSlots` afterwards instead of the earlier return.
 
 The return is already rounded the way the pool hands out rings, so the sum fits exactly. Don't add up
 `tfx_GetEmitterGPUCapacity` yourself, which misses the rounding. Capacities assume about 60 updates a second. Fewer

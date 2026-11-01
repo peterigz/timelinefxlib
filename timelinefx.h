@@ -614,7 +614,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
-	tfxU32 gpu_particle_capacity;			//Particles across every run_on_gpu emitter on the stage, fixed for the stage's life. 0 runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each template that plays at once. That exact sum fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
+	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0 runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera.
@@ -1027,7 +1027,7 @@ typedef struct tfx_gpu_particle_stats_s {
 	tfxU32 estimated_live_particles;		//Particles still alive, assuming each spawn's particles die evenly over its range of lives. Compare this with tfx_GetParticleCount
 	tfxU32 ring_count;
 	tfxU32 blocked_emitters;				//GPU emitters that got no ring because the pool was full, raise gpu_particle_capacity
-	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, raise the capacity with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
+	tfxU64 dropped_spawns;					//Spawns refused because a ring was full. For overlapping spawn locations size the template with tfx_SetTemplateGPUCapacityForLocations, otherwise raise the ring with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
 } tfx_gpu_particle_stats_t;
 
 //A stage's health in one place, see tfx_GetStageDiagnostics and tfx_DescribeStage
@@ -2330,9 +2330,18 @@ entry point in your own Slang module:
 Your update only runs on the GPU: Run on GPU emitters that fall back to the CPU, for any of the reasons above,
 simulate without it.
 
-Every emitter instance gets a ring of fixed size in a pool of gpu_particle_capacity slots: the authored capacity from
-tfx_GetEmitterGPUCapacity, or whatever tfx_SetTemplateEmitterGPUCapacity set. A full ring drops spawns and a full pool
-leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats and reported once per emitter with a tip (see
+Three quantities, all in particles: the ring capacity is what one emitter instance can hold, and every spawn location of
+that effect shares it. Pool slots are a ring capacity rounded up the way the pool hands it out. gpu_particle_capacity is
+the pool, in slots.
+Every emitter instance gets a ring of fixed size in the pool when its effect is added: tfx_GetEmitterGPUCapacity, which
+is the authored estimate times any location count from tfx_SetTemplateGPUCapacityForLocations, or whatever
+tfx_SetTemplateEmitterGPUCapacity set. Size the pool in this order:
+  1. Create the effect templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest).
+  2. tfx_SetTemplateGPUCapacityForLocations on templates that play at several spawn locations at once.
+  3. tfx_SetTemplateEmitterGPUCapacity for any one emitter that needs a different ring.
+  4. Add tfx_GetTemplateGPUPoolSlots for every template instance that plays at once into gpu_particle_capacity, then
+     tfx_CreateStage.
+A full ring drops spawns and a full pool leaves the emitter without a ring, both counted by tfx_GetGPUParticleStats and reported once per emitter with a tip (see
 tfx_SetPrintCallback). A particle that dies keeps its slot, and is drawn as a zero size billboard, until the rest of the
 particles spawned in the same tick have died. So an emitter with a wide life variation costs more vertex work than its
 live particle count suggests, and its ring needs room for those slots too.
@@ -2430,17 +2439,23 @@ tfx_SetStageGPUSimulation hasn't turned it off.
 tfxAPI bool tfx_StageGPUSimulationIsOn(tfx_stage pm);
 
 /*
-The ring capacity an instance of a Run on GPU emitter gets. Without an override this is what one spawn location needs,
-and every location adds its own amount, so an effect at N locations needs about N times it.
+The ring capacity an instance of a Run on GPU emitter gets, in particles. Without an override this is what one spawn
+location needs, times the location count tfx_SetTemplateGPUCapacityForLocations set on its template. Every location
+adds its own amount, so an effect at N locations needs about N times the one location figure. It's worked out from the
+emitter's amounts each call, so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
+fixes it.
 * @param emitter                   A handle to an emitter descriptor.
 * @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.
 */
 tfxAPI tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter);
 
 /*
-Size the ring of every Run on GPU emitter in a template for a number of spawn locations playing at once, replacing any
-capacity set before, including tfx_SetTemplateEmitterGPUCapacity: call that after this to size one emitter differently. Use tfx_GetEffectLifetime divided by how often you add a location, plus 1, to estimate how many
-overlap. Add the return value of every template you'll play into gpu_particle_capacity. Only affects effects added
+Sets the ring capacities of every Run on GPU emitter in a template for a number of spawn locations playing at once, and
+returns the pool slots they take. It stores the location count rather than fixed capacities, so amounts you change
+later with tfx_SetTemplateSingleSpawnAmount are still followed. It replaces any capacity set before, including
+tfx_SetTemplateEmitterGPUCapacity: call that after this to size one emitter differently, then take the slots from
+tfx_GetTemplateGPUPoolSlots. Use tfx_GetEffectLifetime divided by how often you add a location, plus 1, to estimate how
+many overlap. Add the return value of every template you'll play into gpu_particle_capacity. Only affects effects added
 after the call.
 * @param t                         A handle to an effect template
 * @param location_count            Spawn locations the effect will play at, at the same time, at most
@@ -3993,7 +4008,10 @@ tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_
 
 /*
 Set how many particles a single shot emitter spawns. Single shot emitters ignore the amount graphs, so this is how you change
-how many they spawn. Only affects emitters that have the single spawn flag set.
+how many they spawn. Only affects emitters that have the single spawn flag set. A Run on GPU emitter's ring follows the
+new amount, times any location count from tfx_SetTemplateGPUCapacityForLocations, unless tfx_SetTemplateEmitterGPUCapacity
+fixed its capacity. Rings are sized when an effect is added, so set it before adding the template and before summing
+gpu_particle_capacity.
 * @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param amount					 The number of particles to spawn.
 */
@@ -4006,7 +4024,7 @@ so every child of tfx_GetEffectFromTemplate can be passed without checking its t
 what this set on every emitter, so to size one emitter differently from the rest call this after it, then take the template's pool
 slots from tfx_GetTemplateGPUPoolSlots rather than the earlier return value.
 * @param emitter_path			 "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
-* @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity.
+* @param capacity				 Particles the ring can hold, 0 to go back to the authored capacity times any location count.
 */
 tfxAPI void tfx_SetTemplateEmitterGPUCapacity(tfx_effect_template t, const char *emitter_path, tfxU32 capacity);
 

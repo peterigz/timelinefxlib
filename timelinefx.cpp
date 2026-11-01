@@ -13332,6 +13332,9 @@ void tfx__apply_template_override(tfx_effect_template effect_template, tfx_templ
 			descriptor->state_properties.gpu_key = template_override->count;
 		}
 		break;
+	case tfx_template_override_gpu_location_count:
+		descriptor->gpu_location_count = template_override->count;
+		break;
 	case tfx_template_override_global_graph_scale: {
 		tfx_effect_descriptor original_effect = effect_template->original_effect;
 		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
@@ -20332,7 +20335,13 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 				if (tfx__first_emitter_tip(pm, emitter.source_emitter, tfxEmitterTip_dropped_spawns)) {
 					tfx_str256_t path;
 					tfx__template_path(emitter.source_emitter, &path);
-					tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full. Raise it with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity);
+					//Every location of an effect shares the ring, so overlapping locations are the usual cause
+					const tfxU32 location_count = work_entry->user_spawn_locations ? work_entry->user_spawn_locations->active_slots.current_size : 0;
+					if (location_count > 1) {
+						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more.", path.c_str(), group.capacity, location_count, location_count);
+					} else {
+						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full. Raise it with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity);
+					}
 				}
 			}
 #endif
@@ -24783,27 +24792,37 @@ tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter) {
 	if (emitter->state_properties.gpu_capacity_override) {
 		return emitter->state_properties.gpu_capacity_override;
 	}
-	//Not cached: an other emitter's estimate follows its source, which a load can't resolve yet and an edit to the source changes
-	return tfx__compute_max_gpu_particles(emitter);
+	//Not cached: an other emitter's estimate follows its source, which a load can't resolve yet and an edit to the source changes,
+	//and the location count multiplies it here so a later amount override is still picked up
+	const tfxU32 location_count = emitter->parent && emitter->parent->gpu_location_count ? emitter->parent->gpu_location_count : 1;
+	const tfxU64 capacity = (tfxU64)tfx__compute_max_gpu_particles(emitter) * location_count;
+	TFX_ASSERT(capacity < 0xFFFFFFFF - tfxGPU_BUFFER_GRANULARITY);	//More particles than a ring can address
+	return (tfxU32)capacity;
 }
 
 tfxU32 tfx_SetTemplateGPUCapacityForLocations(tfx_effect_template t, tfxU32 location_count) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
 	TFX_ASSERT(location_count > 0);
-	tfxU32 pool_slots = 0;
-	for (tfx_effect_descriptor emitter : t->effect->children) {
-		if (!tfx__descriptor_takes_gpu_ring(emitter)) {
-			continue;
+	//Replaces every per emitter capacity, so those overrides must not be replayed after it either
+	tmpStack(tfxKey, capacity_keys);
+	for (tfxU32 index = 0; index != t->overrides.map.current_size; ++index) {
+		if (t->overrides.data[t->overrides.map[index].index].type == tfx_template_override_gpu_capacity) {
+			capacity_keys.push_back(t->overrides.map[index].key);
 		}
-		//The authored estimate is for one location, whatever override was set before
-		const tfxU64 capacity = (tfxU64)tfx__compute_max_gpu_particles(emitter) * location_count;
-		TFX_ASSERT(capacity < 0xFFFFFFFF - tfxGPU_BUFFER_GRANULARITY);	//More particles than a ring can address
-		tfx_str256_t path;
-		tfx__template_path(emitter, &path);
-		tfx_SetTemplateEmitterGPUCapacity(t, path.c_str(), (tfxU32)capacity);
-		pool_slots += tfx__round_up_gpu_ring_capacity((tfxU32)capacity);
 	}
-	return pool_slots;
+	for (tfxKey key : capacity_keys) {
+		t->overrides.Remove(key);
+	}
+	capacity_keys.free();
+	for (tfx_effect_descriptor emitter : t->effect->children) {
+		emitter->state_properties.gpu_capacity_override = 0;
+	}
+	tfx_template_override_t template_override = {};
+	template_override.type = tfx_template_override_gpu_location_count;
+	template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+	template_override.count = location_count;
+	tfx__set_template_override(t, &template_override);
+	return tfx_GetTemplateGPUPoolSlots(t);
 }
 
 tfxU32 tfx_GetTemplateGPUPoolSlots(tfx_effect_template t) {
@@ -25818,6 +25837,7 @@ typedef struct tfx_emitter_problem_s {
 	tfx_effect_descriptor emitter;
 	tfxU32 blocked_instances;
 	tfxU32 ring_capacity;
+	tfxU32 location_count;				//The most spawn locations any of its dropping instances has right now
 	tfxU64 dropped_spawns;
 } tfx_emitter_problem_t;
 
@@ -25868,6 +25888,10 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 		} else {
 			problem->dropped_spawns += group.dropped_spawns;
 			problem->ring_capacity = tfx__Max(problem->ring_capacity, group.capacity);
+			const tfx_user_spawn_locations_t *location_list = pm->effects[pm->emitters[group.emitter_index].parent_index].user_spawn_locations;
+			if (location_list) {
+				problem->location_count = tfx__Max(problem->location_count, location_list->active_slots.current_size);
+			}
 		}
 	}
 	for (const tfx_emitter_problem_t &problem : emitter_problems) {
@@ -25877,7 +25901,10 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 			tfx__write_line(&writer, "Blocked: GPU emitter \"%s\" got no ring in %u instances, so it spawns nothing. It needs %u slots and %u of the pool's %u are free. Raise gpu_particle_capacity",
 				path.c_str(), problem.blocked_instances, tfx__round_up_gpu_ring_capacity(tfx_GetEmitterGPUCapacity(problem.emitter)), gpu.capacity - gpu.allocated, gpu.capacity);
 		}
-		if (problem.dropped_spawns) {
+		if (problem.dropped_spawns && problem.location_count > 1) {
+			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more",
+				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, problem.location_count);
+		} else if (problem.dropped_spawns) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full. Raise it with tfx_SetTemplateEmitterGPUCapacity",
 				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity);
 		}
