@@ -9,6 +9,7 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point the example uses to a `.cso`. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
+| `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
 | `example.tfxsd` | Burst, recorded from `example.tfx` in the editor, for baked playback. |
 | `example_win32_dx11/main.cpp` | A Win32 window, a D3D11 device and swap chain, and the main loop that calls the scene and the backend. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
@@ -57,33 +58,46 @@ any rate.
 | Space Weed | Ribbons |
 | GPU Simulated | 100,000 particles simulated on the GPU, spawning at one location the scene moves around |
 | Burst | Baked sprite data playback, billboards and a ribbon: an animation instance every 250 ms at a random spot at the back, each one interpolated by a compute shader with no simulation at all |
+| Fireflies | From `example_second.tfx`. It shares the stage, the draw ranges and the buffers with the effects from `example.tfx`, see [Setting up a library](#setting-up-a-library) |
 
 A backend tells the scene what it can draw with `example_scene_features`, and the scene leaves out the effects it
 can't draw yet. With no features at all it plays the first three, which only need billboards.
 
 ## Setting up a library
 
-The library and the renderer have to be set up in this order (`example_scene_Load`, then the backend's uploads):
+The libraries and the renderer have to be set up in this order (`example_scene_Load`, then the backend's uploads):
 
-1. `tfx_LoadEffectLibrary(path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &shapes)`. The shape loader decodes every shape
-   to RGBA8 frames and hands the library a pointer to each one.
+1. `tfx_LoadEffectLibrary(path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &shapes)` for each library. The shape loader
+   decodes every shape to RGBA8 frames and hands the library a pointer to each one. Every library loads into the same
+   shape list, so their shapes share one atlas.
 2. `tfx_CreateEffectTemplate` for each effect you'll play. Templates can be made at any time: they share the library's
    GPU data until a template customises a graph the GPU reads.
 3. For baked playback, `tfx_CreateAnimationManager` and `tfx_LoadSpriteData(path, manager, tfx_impl_ShapeLoader,
    &shapes)`. The sprite data carries its own shapes, and loading them into the same shape list puts them in the same
    atlas.
 4. `tfx_impl_BuildShapeAtlas` packs every frame into the layers of one texture array.
-5. `tfx_UpdateLibraryGPUImageData`. The library calls the uv lookup again now that the atlas exists. The first call,
-   during the load, happens before the atlas exists. For baked playback, `tfx_BuildAnimationManagerGPUShapeData` with
-   `tfx_impl_GetUV` does the same for the sprite data's own `tfx_gpu_shapes` list.
-6. The backend uploads the atlas, the color ramps (`tfx_GetColorRampBitmap`), the shape frame data
-   (`tfx_GetLibraryGPUShapes`), the emitter properties (`tfx_GetParticlePropertiesBuffer`) and the graph lookups
-   (`tfx_GetGPUGraphLookupsBuffer`, which ribbons and the GPU kernel read). The animation manager has its own color
-   ramps, shape frames, emitter properties, baked sprites and ribbons, uploaded once
-   (`tfx_impl_dx11_UploadSpriteData`). Only the atlas is shared.
-7. A host that loads another library or customises templates after this upload must compare `tfx_GetColorRampsVersion`,
-   `tfx_GetParticlePropertiesVersion` and `tfx_GetGPUGraphLookupsVersion` each frame with the values from its last
-   upload, and upload again whatever changed. The example scene does neither, so the D3D11 backend uploads once.
+5. `tfx_UpdateLibraryGPUImageData` for each library. The library calls the uv lookup again now that the atlas exists.
+   The first call, during the load, happens before the atlas exists. For baked playback,
+   `tfx_BuildAnimationManagerGPUShapeData` with `tfx_impl_GetUV` does the same for the sprite data's own
+   `tfx_gpu_shapes` list.
+6. `tfx_UpdateGlobalGPUData` lays every library out in one set of global buffers, and the stage is created with
+   `global_library_indexes` on, so the indexes it writes point into them. It returns false if the libraries need more
+   room than the global buffers have. Effects can only be added from libraries it has placed.
+7. The backend uploads the atlas once (`tfx_impl_dx11_UploadAtlas`). Everything else goes up on update frames, whenever
+   its version has changed since the last upload: the emitter properties (`tfx_GetGlobalParticlePropertiesBuffer`), the
+   shape frame data (`tfx_GetGlobalGPUShapes`), the color ramps one layer at a time (`tfx_GetGlobalColorRampLayer`) and
+   the graph lookups (`tfx_GetGPUGraphLookupsBuffer`, which ribbons and the GPU kernel read). So loading a library or
+   customising a template later needs no extra code. The animation manager has its own color ramps, shape frames,
+   emitter properties, baked sprites and ribbons, uploaded once (`tfx_impl_dx11_UploadSpriteData`). Only the atlas is
+   shared.
+
+The section "Drawing effects from more than one library" in `timelinefx.h` has the whole contract.
+
+**One library only.** A game that only ever has one library loaded can leave `global_library_indexes` off, skip
+`tfx_UpdateGlobalGPUData` and upload that library's own data instead: `tfx_GetColorRampBitmap`,
+`tfx_GetLibraryGPUShapes` and `tfx_GetParticlePropertiesBuffer`, again when `tfx_GetColorRampsVersion` or
+`tfx_GetParticlePropertiesVersion` change. With more libraries that way, each draw range can only hold effects from one
+library, so use a sort key per library (`tfx_SetEffectSortKey`) and bind that library's buffers for its ranges.
 
 Free the stage before the library, and the shapes after the library, because the library holds pointers to them
 (`example_scene_Shutdown` does all three). Call `tfx_EndTimelineFX` after that.
@@ -109,6 +123,8 @@ tfx_SetStageCamera(stage, camera_front, camera_position);
 
 tfxU32 ticks = tfx_impl_AdvanceTimer(&timer, elapsed_milliseconds);
 if (ticks > 0) {
+	//Lays out any library or template change in the global buffers, free when nothing changed
+	tfx_UpdateGlobalGPUData();
 	//One update however many ticks are due, so the previous instance buffer is always the one drawn last
 	tfx_UpdateStage(stage, timer.update_length * ticks);
 }
@@ -119,7 +135,7 @@ tfx_UpdateAnimationManager(animation_manager, (float)elapsed_milliseconds);
 tfx_impl_GatherBakedFrame(animation_manager, &frame.baked);
 tfx_impl_SetUniforms(&uniforms, &camera, screen_width, screen_height, &timer);
 
-tfx_impl_dx11_UploadFrame(&renderer, &frame);	//Baked data every frame, instances and ribbons only when ticks > 0
+tfx_impl_dx11_UploadFrame(&renderer, &frame);	//Baked data every frame, instances, ribbons and changed library data only when ticks > 0
 tfx_impl_dx11_Compute(&renderer, &uniforms);	//GPU particles on update frames, baked playback and ribbon geometry every frame
 tfx_impl_dx11_Render(&renderer, &uniforms);		//Every frame, interpolating with uniforms.timer_lerp
 ```
@@ -138,6 +154,9 @@ Rules the loop depends on:
   the pool, so never call `tfx_GetGPUParticleFrame` on a frame you won't dispatch.
 - **Effect ids are generational.** Keep the id `tfx_AddEffectTemplateToStage` returns and check it with
   `tfx_EffectIDIsValid`. A fire and forget effect's id goes stale once it frees itself.
+- **Sync before updating stages.** Call `tfx_UpdateGlobalGPUData` before `tfx_UpdateStage`, on the thread that loads
+  and frees libraries, and never while another thread is loading one. Upload the global data on the frames you upload
+  instances, because the instances drawn between updates were written with the layout you uploaded last.
 
 ## Direct3D 11 notes
 
@@ -152,6 +171,11 @@ Rules the loop depends on:
   lists every register.
 - **Struct layouts are checked.** `timelinefx.slang` mirrors the library's GPU structs by hand, so `tfx_impl_dx11.cpp`
   static_asserts their sizes and names the struct to fix when one changes.
+- **Library data** goes up in `tfx_impl_dx11_UploadFrame` on update frames, each part only when its global version has
+  changed. The properties, shape frames and graph lookups are `DEFAULT` buffers that grow by half again and are
+  written with `UpdateSubresource`. The color ramps are a `DEFAULT` texture array with room for half as many layers
+  again, and only the layers whose `tfx_GetGlobalColorRampLayerVersion` changed are written. It's recreated with every
+  layer when the count outgrows it.
 - **Instance buffers** are `DEFAULT` raw buffers, with UAVs when the GPU kernel writes them. The CPU instances go up in
   one `UpdateSubresource`, because the library lays the buffer out layer by layer. Each layer is then one
   `DrawInstanced(6, count)`. When the buffers grow, both copy their old contents across, since the previous buffer is
@@ -212,7 +236,7 @@ Use the D3D11 backend as the template: keep its function names with your API's p
 - [ ] Add `example_<platform>_<api>/main.cpp`: a window, a device, a swap chain and the loop. It calls
       `example_scene_Load`, your upload functions, `example_scene_Start`, then `example_scene_Update` and your upload,
       compute and render calls each frame, with the clip space flags from the table above.
-- [ ] Add `tfx_impl_<api>.h/.cpp` with the same functions as `tfx_impl_dx11.h`: `Init`, `UploadLibrary`,
+- [ ] Add `tfx_impl_<api>.h/.cpp` with the same functions as `tfx_impl_dx11.h`: `Init`, `UploadAtlas`,
       `UploadSpriteData`, `UploadFrame`, `Compute`, `Render` and `Shutdown`. The backend draws into whatever target
       `main.cpp` has bound, so it never owns the swap chain.
 - [ ] Add a target to `CMakeLists.txt`, with a slangc build of each entry point your backend uses.
@@ -227,9 +251,11 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips, and a clamped linear sampler with mip filtering.
-- [ ] The color ramps as a texture array, one layer per `tfx_GetColorRampBitmap`, in the format of its bytes per
-      pixel (always RGBA16F). It's read with an integer load, never sampled.
-- [ ] The shape frames and emitter properties as read only buffers.
+- [ ] The color ramps as a texture array, one layer per `tfx_GetGlobalColorRampLayer`, in the format of its bytes per
+      pixel (always RGBA16F). It's read with an integer load, never sampled. Upload only the layers whose version
+      changed, and recreate it with headroom when `tfx_GetGlobalColorRampLayerCount` outgrows it.
+- [ ] The shape frames (`tfx_GetGlobalGPUShapes`) and emitter properties (`tfx_GetGlobalParticlePropertiesBuffer`) as
+      read only buffers, uploaded on update frames when their versions change.
 - [ ] Two instance buffers that swap on every update, sized for the instance count and copied across when they grow.
 - [ ] One instanced draw of 6 vertices per layer. If the API's instance id doesn't include the draw's first instance
       (D3D11, D3D12 and OpenGL's `gl_InstanceID`), pass the first instance in yourself. Vulkan's `gl_InstanceIndex`
@@ -242,6 +268,8 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
 - [ ] Premultiplied blending (ONE / ONE_MINUS_SRC_ALPHA), depth test on, depth write off.
 - [ ] Check: the torch circles with its smoke trailing behind, the sparks stretch along their motion, the leaves tumble,
       and running at 20 and 400 updates a second looks the same as 60.
+- [ ] Check: the Fireflies from the second library have their own shapes and colors. Swap the order the two libraries
+      load in and they should look the same, because that moves every library's place in the global buffers.
 
 **2. Ribbons** (`example_scene_feature_ribbons`)
 - [ ] Read only segment, ribbon and emitter buffers, uploaded on update frames.

@@ -215,7 +215,7 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
 	tfx_int16x2_t intensity_gradient_map;			//Intensity in x and gradient map in y, scaled by 32767/128: multiply by 128/32767 to unpack
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
-	tfxU32 indexes;									//GPU property index << 16 | capture flag << 15 | animation frame in the low 13 bits (max 8191), which the shader adds to the emitter's start_frame_index. Bits 13 and 14 are unused
+	tfxU32 indexes;									//GPU property index << 16 | capture flag << 15 | animation frame in the low 13 bits (max 8191), which the shader adds to the emitter's start_frame_index. Bits 13 and 14 are unused. The property index is into tfx_GetGlobalParticlePropertiesBuffer on a stage with global_library_indexes, otherwise into the effect's library
 	tfxU32 captured_index;							//Only meaningful when the capture flag in indexes is set: mask with 0x0FFFFFFF for this instance's index in the previous instance buffer. Bit 30 is which buffer, bit 31 is internal. Without the capture flag the reference shaders draw the instance at zero size that frame
 } tfx_instance_t;
 
@@ -229,9 +229,9 @@ typedef struct tfx_ribbon_vertex_s {
 
 typedef struct tfx_gpu_particle_properties_s {
 	tfx_float32x2_t image_handle;			
-	tfxU32 color_ramp_indexes;			//[Row of color ramp bitmap, texture array]
+	tfxU32 color_ramp_indexes;			//Color ramp layer << 8 | row. The layer is a global layer in tfx_GetGlobalParticlePropertiesBuffer
 	tfxU32 flags;						//Flags like billboard alignment type
-	tfxU32 start_frame_index;
+	tfxU32 start_frame_index;			//First shape frame, an index into tfx_GetGlobalGPUShapes in tfx_GetGlobalParticlePropertiesBuffer
 	float animation_frames;
 	int padding[2];
 } tfx_gpu_particle_properties_t;
@@ -618,6 +618,7 @@ typedef struct tfx_stage_info_s {
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations. Default true.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Default true.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera. Default false, true with tfxStageSetup_auto_order_effects.
+	bool global_library_indexes;			//Set to true to write indexes into the global buffers that tfx_UpdateGlobalGPUData builds, so one stage can draw effects from any number of libraries with one set of GPU resources. Call tfx_UpdateGlobalGPUData before updating the stage, and only add effects from libraries it placed. See "Drawing effects from more than one library". Default false.
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer. Default NULL.
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise. Default NULL.
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_stage stage, void *user_data);
@@ -814,7 +815,7 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	tfxU32 slot_count;
 	tfxU32 flags;							//tfxGPUParticleDispatchFlags
 	tfxU32 graph_offset;					//Into the graph lookups from tfx_GetGPUGraphLookupsBuffer
-	tfxU32 property_index;					//gpu property index << 16, as tfx_instance_t indexes expects it
+	tfxU32 property_index;					//gpu property index << 16, as tfx_instance_t indexes expects it, so global on a stage with global_library_indexes
 	tfxU32 instance_start;					//Ring position i on the last tick writes instance instance_start + i
 	tfxU32 previous_instance_start;			//Where ring position 0 was written in the previous instance buffer
 	tfxU32 bumped_since_write;				//Particles that left the ring since the previous write
@@ -1870,6 +1871,111 @@ Creating templates doesn't.
 tfxAPI tfxU32 tfx_GetGPUGraphLookupsVersion(void);
 
 /*
+Drawing effects from more than one library
+------------------------------------------
+By default every index a stage writes for the shaders is relative to the effect's own library: the GPU property index in
+tfx_instance_t indexes, the color ramp layer in a property and in a ribbon's texture_indexes, and the shape frames. So each
+draw binds one library's properties, shapes and color ramps, and a range you draw can only hold effects from one library.
+
+To draw effects from any number of libraries with one set of resources:
+  1. Set global_library_indexes in the stage's tfx_stage_info_t. Stages without it are unaffected, and both kinds can run
+     side by side.
+  2. Call tfx_UpdateGlobalGPUData once per frame before updating your stages. It returns straight away when no library
+     changed.
+  3. Compare the global versions with the ones you last uploaded and upload what changed:
+       - tfx_GetGlobalParticlePropertiesVersion: upload tfx_GetGlobalParticlePropertiesBuffer, sized by
+         tfx_GetGlobalParticlePropertiesBufferSizeInBytes since it can grow and shrink.
+       - tfx_GetGlobalGPUShapesVersion: upload tfx_GetGlobalGPUShapes with tfx_GetGPUShapesArray and
+         tfx_GetGPUShapesSizeInBytes.
+       - tfx_GetGlobalColorRampsVersion: check tfx_GetGlobalColorRampLayerVersion for each layer below
+         tfx_GetGlobalColorRampLayerCount and upload only the layers that changed, from tfx_GetGlobalColorRampLayer. If
+         the count grows past your texture array, recreate it and upload every layer.
+     The graph lookups are already global, so keep uploading tfx_GetGPUGraphLookupsBuffer as before.
+  4. Bind those buffers for every draw of the stage, whichever libraries its effects came from.
+  5. Every library's shape texture_array_index values, whatever your uv_lookup wrote, must address the one texture
+     binding your shaders sample. Use one atlas or one bindless table for every library.
+
+Rules:
+- Don't sync while another thread is loading, freeing or refreshing a library. A library is registered as soon as it's
+  created, so the sync would read it half built. Sync on the thread that loads, or after the load call has returned.
+- A library is only placed once a sync has run after it was loaded. Adding an effect from an unplaced library to an
+  opted-in stage asserts in debug, and in release the effect isn't added (see tfx_EffectIDIsValid).
+- Color ramp layers never move while their library is loaded, because live ribbons keep the layer they spawned with.
+  Properties and shapes can move on any sync that changes something, so always upload on a version change.
+- If you draw between updates, upload on the frames you upload the stage's instances. The instances you keep drawing
+  until the next update were written with the layout you uploaded last.
+- Limits: 65536 GPU property slots and 256 color ramp layers across every library. If the loaded libraries need more,
+  the sync asserts in debug and returns false, and the libraries that didn't fit get no placement. tfx_DescribeStage
+  reports it.
+- The per-library getters (tfx_GetParticlePropertiesBuffer, tfx_GetLibraryGPUShapes, tfx_GetColorRampBitmap) are
+  unchanged and keep each library's own numbering.
+*/
+
+/*
+Lay out every loaded library in the global GPU buffers so one stage can draw effects from any of them. Call it once per
+frame before updating your stages, and after loading, freeing or refreshing a library. It returns straight away when no
+library changed. When something did change it waits for any opted-in stage update still in flight before moving anything.
+Never call it while another thread is loading, freeing or refreshing a library. See "Drawing effects from more than one library".
+* @returns bool                     false if a library didn't fit in the global buffers and has no placement
+*/
+tfxAPI bool tfx_UpdateGlobalGPUData(void);
+
+/*
+Get the particle properties of every placed library, for a stage with global_library_indexes. Each library's properties
+are one contiguous run, with color ramp layers and shape frames rewritten to global ones. Valid until the next
+tfx_UpdateGlobalGPUData.
+*/
+tfxAPI void *tfx_GetGlobalParticlePropertiesBuffer(void);
+
+/*
+Get the size in bytes of tfx_GetGlobalParticlePropertiesBuffer. It can grow and shrink with each tfx_UpdateGlobalGPUData.
+*/
+tfxAPI size_t tfx_GetGlobalParticlePropertiesBufferSizeInBytes(void);
+
+/*
+A number that changes whenever tfx_UpdateGlobalGPUData changes the global particle properties. Keep the value from when you
+last uploaded them and upload them again when it differs.
+*/
+tfxAPI tfxU32 tfx_GetGlobalParticlePropertiesVersion(void);
+
+/*
+Get the number of global color ramp layers, including free ones. Size your color ramp texture array to at least this.
+*/
+tfxAPI tfxU32 tfx_GetGlobalColorRampLayerCount(void);
+
+/*
+Get the bitmap in a global color ramp layer, or NULL if the layer is free. Nothing draws from a free layer, so you can leave
+whatever your texture array holds there.
+* @param index                  The global layer, below tfx_GetGlobalColorRampLayerCount
+*/
+tfxAPI tfx_bitmap_t *tfx_GetGlobalColorRampLayer(tfxU32 index);
+
+/*
+A number that changes whenever tfx_UpdateGlobalGPUData changes any global color ramp layer. When it differs from the value you
+last saw, check tfx_GetGlobalColorRampLayerVersion for each layer.
+*/
+tfxAPI tfxU32 tfx_GetGlobalColorRampsVersion(void);
+
+/*
+A number that changes whenever a global color ramp layer changes, is taken by a library or is freed. Keep one per layer from
+when you last uploaded it, and upload the layer again when it differs.
+* @param index                  The global layer, below tfx_GetGlobalColorRampLayerCount
+*/
+tfxAPI tfxU32 tfx_GetGlobalColorRampLayerVersion(tfxU32 index);
+
+/*
+Get the shape frames of every placed library as one list, for a stage with global_library_indexes. Use it with
+tfx_GetGPUShapesArray, tfx_GetGPUShapesCount and tfx_GetGPUShapesSizeInBytes. Valid until the next tfx_UpdateGlobalGPUData.
+*/
+tfxAPI tfx_gpu_shapes tfx_GetGlobalGPUShapes(void);
+
+/*
+A number that changes whenever tfx_UpdateGlobalGPUData changes the global shape list. Keep the value from when you last
+uploaded it and upload it again when it differs.
+*/
+tfxAPI tfxU32 tfx_GetGlobalGPUShapesVersion(void);
+
+/*
 Get buffer info for ribbons based on the tessellation value. Returns a tfx_ribbon_buffer_info_t object with
 vertices per segment, triangles per segment and indices per segment requirements.
 * @param tfxU32        					The number of tessellations for the ribbons
@@ -1954,7 +2060,8 @@ tfxAPI void tfx_ToggleStageOrderEffects(tfx_stage stage, bool yesno);
 
 /*
 Give an effect a sort key. Within each layer of the instance buffer effects are ordered by sort key (lowest first) and then by depth if tfx_ToggleStageOrderEffects
-is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library. Use
+is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library (or see
+"Drawing effects from more than one library" to let libraries share a range). Use
 tfx_GetNextInstanceKeyRange to get those ranges. Run on GPU emitters are ordered by key too, in a second range per key after the CPU instances, but
 not by depth. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
 Set the key straight after adding the effect. Live ribbons are stored in their bucket, so the key of an effect can't change while any of its ribbons are

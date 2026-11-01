@@ -4100,6 +4100,7 @@ void tfx__update_library_image_indexes(tfx_library library) {
 void tfx_UpdateLibraryGPUImageData(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	library->gpu_shapes->list.free();
+	library->gpu_shapes_version++;
     if(library->particle_shapes.Size() > 0) {
         tfx_BuildLibraryGPUShapeData(library, library->gpu_shapes, library->uv_lookup);
     }
@@ -4511,6 +4512,9 @@ void tfx_BuildLibraryGPUShapeData(tfx_library library, tfx_gpu_shapes shapes, tf
 	TFX_ASSERT_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT_HANDLE(shapes);	//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
 	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
+	if (shapes == library->gpu_shapes) {
+		library->gpu_shapes_version++;
+	}
 }
 
 tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library library, int *count) {
@@ -4555,6 +4559,202 @@ tfxU32 tfx_GetGPUGraphLookupsBufferSizeInBytes() {
 
 tfxU32 tfx_GetGPUGraphLookupsVersion() {
 	return tfxStore->gpu_graph_lookups_version;
+}
+
+void tfx__release_global_ramp_layers(tfx_library library, tfxU32 keep_count, tfxU32 version) {
+	while (library->global_ramp_layers.current_size > keep_count) {
+		tfxU32 slot = library->global_ramp_layers.pop_back();
+		tfx_global_ramp_layer_t &layer = tfxStore->global_ramp_layers[slot];
+		layer.library = nullptr;
+		layer.local_layer = 0;
+		layer.library_layer_version = 0;
+		layer.version = version;
+		tfxStore->free_global_ramp_layers.push_back(slot);
+	}
+}
+
+//The ribbon's texture indexes with its ramp layer back in its library's numbering
+tfxU32 tfx__library_ribbon_texture_indexes(tfx_stage pm, tfxU32 texture_indexes) {
+	if (!pm->info.global_library_indexes) {
+		return texture_indexes;
+	}
+	tfxU32 global_layer = (texture_indexes >> 16) & 0xFF;
+	tfxU32 local_layer = global_layer < tfxStore->global_ramp_layers.current_size ? tfxStore->global_ramp_layers[global_layer].local_layer : 0;
+	return (texture_indexes & 0xFF00FFFF) | (local_layer << 16);
+}
+
+bool tfx_UpdateGlobalGPUData() {
+	tfx_storage_t *store = tfxStore;
+	bool changed = store->global_layout_changed;
+	for (tfxU32 library_index = 0; !changed && library_index != store->libraries.data.current_size; ++library_index) {
+		tfx_library library = store->libraries.data[library_index];
+		changed = library->particle_properties_version != library->global_synced_properties_version
+			|| library->color_ramps_version != library->global_synced_color_ramps_version
+			|| library->gpu_shapes_version != library->global_synced_gpu_shapes_version;
+	}
+	if (!changed) {
+		return store->global_layout_complete;
+	}
+	//Stage updates read the bases from worker threads
+	for (tfx_stage stage : store->stages.data) {
+		if (stage->info.global_library_indexes) {
+			tfx__wait_for_stage_update(stage);
+		}
+	}
+	store->global_layout_changed = false;
+
+	tfxU32 total_property_count = 0;
+	tfxU32 total_shape_count = 0;
+	for (tfx_library library : store->libraries.data) {
+		total_property_count += library->particle_gpu_properties.current_size;
+		total_shape_count += library->gpu_shapes->list.current_size;
+	}
+	tfxU32 previous_property_count = store->global_particle_properties.current_size;
+	tfxU32 previous_shape_count = store->global_gpu_shapes->list.current_size;
+	store->global_particle_properties.resize(total_property_count);
+	store->global_gpu_shapes->list.resize(total_shape_count);
+
+	tfxU32 ramps_version = store->global_color_ramps_version + 1;
+	bool ramps_changed = false;
+	bool properties_changed = false;
+	bool shapes_changed = false;
+	bool complete = true;
+	tfxU32 property_base = 0;
+	tfxU32 shape_base = 0;
+	for (tfx_library library : store->libraries.data) {
+		library->global_synced_properties_version = library->particle_properties_version;
+		library->global_synced_color_ramps_version = library->color_ramps_version;
+		library->global_synced_gpu_shapes_version = library->gpu_shapes_version;
+
+		tfxU32 layer_count = library->color_ramps.color_ramp_bitmaps.current_size;
+		if (library->global_ramp_layers.current_size > layer_count) {
+			tfx__release_global_ramp_layers(library, layer_count, ramps_version);
+			ramps_changed = true;
+		}
+		bool layers_fit = true;
+		while (library->global_ramp_layers.current_size < layer_count) {
+			tfxU32 slot = 0;
+			if (store->free_global_ramp_layers.current_size) {
+				slot = store->free_global_ramp_layers.pop_back();
+			} else if (store->global_ramp_layers.current_size < tfxMAX_GLOBAL_COLOR_RAMP_LAYERS) {
+				slot = store->global_ramp_layers.current_size;
+				store->global_ramp_layers.push_back(tfx_global_ramp_layer_t{});
+			} else {
+				layers_fit = false;
+				break;
+			}
+			tfx_global_ramp_layer_t &layer = store->global_ramp_layers[slot];
+			layer.library = library;
+			layer.local_layer = library->global_ramp_layers.current_size;
+			layer.library_layer_version = 0;
+			layer.version = ramps_version;
+			library->global_ramp_layers.push_back(slot);
+			ramps_changed = true;
+		}
+		for (tfxU32 local_layer = 0; local_layer != library->global_ramp_layers.current_size; ++local_layer) {
+			tfx_global_ramp_layer_t &layer = store->global_ramp_layers[library->global_ramp_layers[local_layer]];
+			tfxU32 layer_version = local_layer < library->color_ramp_layer_versions.current_size ? library->color_ramp_layer_versions[local_layer] : 0;
+			if (layer.library_layer_version != layer_version) {
+				layer.library_layer_version = layer_version;
+				layer.version = ramps_version;
+				ramps_changed = true;
+			}
+		}
+
+		tfxU32 property_count = library->particle_gpu_properties.current_size;
+		tfxU32 shape_count = library->gpu_shapes->list.current_size;
+		bool fits = layers_fit && property_base + property_count <= tfxMAX_GLOBAL_PARTICLE_PROPERTIES;
+		TFX_ASSERT(fits);	//The loaded libraries need more GPU property slots or color ramp layers than the global buffers can index
+		if (!fits) {
+			library->global_placed = false;
+			library->global_property_base = 0;
+			library->global_shape_base = 0;
+			complete = false;
+			continue;
+		}
+		library->global_placed = true;
+		library->global_property_base = property_base;
+		library->global_shape_base = shape_base;
+
+		for (tfxU32 property_index = 0; property_index != property_count; ++property_index) {
+			tfx_gpu_particle_properties_t property = library->particle_gpu_properties[property_index];
+			tfxU32 local_layer = property.color_ramp_indexes >> 8;
+			if (local_layer < library->global_ramp_layers.current_size) {
+				property.color_ramp_indexes = (library->global_ramp_layers[local_layer] << 8) | (property.color_ramp_indexes & 0xFF);
+			}
+			property.start_frame_index += shape_base;
+			tfxU32 global_index = property_base + property_index;
+			if (global_index >= previous_property_count || memcmp(&store->global_particle_properties[global_index], &property, sizeof(property)) != 0) {
+				store->global_particle_properties[global_index] = property;
+				properties_changed = true;
+			}
+		}
+		for (tfxU32 shape_index = 0; shape_index != shape_count; ++shape_index) {
+			const tfx_gpu_image_data_t &shape = library->gpu_shapes->list[shape_index];
+			tfxU32 global_index = shape_base + shape_index;
+			if (global_index >= previous_shape_count || memcmp(&store->global_gpu_shapes->list[global_index], &shape, sizeof(shape)) != 0) {
+				store->global_gpu_shapes->list[global_index] = shape;
+				shapes_changed = true;
+			}
+		}
+		property_base += property_count;
+		shape_base += shape_count;
+	}
+	store->global_particle_properties.resize(property_base);
+	store->global_gpu_shapes->list.resize(shape_base);
+	if (properties_changed || property_base != previous_property_count) {
+		store->global_particle_properties_version++;
+	}
+	if (shapes_changed || shape_base != previous_shape_count) {
+		store->global_gpu_shapes_version++;
+	}
+	if (ramps_changed) {
+		store->global_color_ramps_version = ramps_version;
+	}
+	store->global_layout_complete = complete;
+	return complete;
+}
+
+void *tfx_GetGlobalParticlePropertiesBuffer() {
+	return tfxStore->global_particle_properties.data;
+}
+
+size_t tfx_GetGlobalParticlePropertiesBufferSizeInBytes() {
+	return tfxStore->global_particle_properties.current_size * sizeof(tfx_gpu_particle_properties_t);
+}
+
+tfxU32 tfx_GetGlobalParticlePropertiesVersion() {
+	return tfxStore->global_particle_properties_version;
+}
+
+tfxU32 tfx_GetGlobalColorRampLayerCount() {
+	return tfxStore->global_ramp_layers.current_size;
+}
+
+tfx_bitmap_t *tfx_GetGlobalColorRampLayer(tfxU32 index) {
+	TFX_ASSERT(index < tfxStore->global_ramp_layers.current_size);	//index is out of bounds
+	const tfx_global_ramp_layer_t &layer = tfxStore->global_ramp_layers[index];
+	if (!layer.library || layer.local_layer >= layer.library->color_ramps.color_ramp_bitmaps.current_size) {
+		return nullptr;
+	}
+	return &layer.library->color_ramps.color_ramp_bitmaps[layer.local_layer];
+}
+
+tfxU32 tfx_GetGlobalColorRampsVersion() {
+	return tfxStore->global_color_ramps_version;
+}
+
+tfxU32 tfx_GetGlobalColorRampLayerVersion(tfxU32 index) {
+	TFX_ASSERT(index < tfxStore->global_ramp_layers.current_size);	//index is out of bounds
+	return tfxStore->global_ramp_layers[index].version;
+}
+
+tfx_gpu_shapes tfx_GetGlobalGPUShapes() {
+	return tfxStore->global_gpu_shapes;
+}
+
+tfxU32 tfx_GetGlobalGPUShapesVersion() {
+	return tfxStore->global_gpu_shapes_version;
 }
 
 tfxU32 tfx_GetColorRampsVersion(tfx_library library) {
@@ -5416,6 +5616,7 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 	library->free_particle_gpu_properties.free();
 	library->free_paths.free();
 	library->free_color_ramp_rows.free();
+	library->color_ramp_layer_versions.free();
 
 	library->uid = 0;
 	library->color_ramps.color_ramp_count = 0;
@@ -5426,6 +5627,14 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 
 void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	if (library->global_ramp_layers.current_size) {
+		tfxStore->global_color_ramps_version++;
+		tfx__release_global_ramp_layers(library, 0, tfxStore->global_color_ramps_version);
+	}
+	library->global_ramp_layers.free();
+	if (library->global_placed) {
+		tfxStore->global_layout_changed = true;
+	}
 	tfx__free_library_contents(library, false);
 	library->library_file_path.Free();
 	//Remove on a missing key erases whichever entry it lands on, and tfx_RefreshLibrary's disk library is never registered
@@ -9462,6 +9671,14 @@ tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tf
 	return ramp_id;
 }
 
+void tfx__color_ramp_layer_changed(tfx_library library, tfxU32 layer) {
+	library->color_ramps_version++;
+	if (library->color_ramp_layer_versions.current_size <= layer) {
+		library->color_ramp_layer_versions.resize(layer + 1, 0u);
+	}
+	library->color_ramp_layer_versions[layer] = library->color_ramps_version;
+}
+
 tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
 	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
@@ -9531,10 +9748,14 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 			}
 		}
 	}
+	library->color_ramp_layer_versions.resize(library->color_ramps.color_ramp_bitmaps.current_size);
+	for (tfxU32 &layer_version : library->color_ramp_layer_versions) {
+		layer_version = library->color_ramps_version;
+	}
 }
 
 bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
-	library->color_ramps_version++;
+	bool added = false;
 	if (!tfxColorRampIsEdited(graph_list->color_ramp_bitmap_indexes)) {
 		if (library->free_color_ramp_rows.size()) {
 			tfxU32 ramp_id = library->free_color_ramp_rows.pop_back();
@@ -9544,7 +9765,7 @@ bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_li
 			graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
 		}
 		tfxFlagColorRampIDAsEdited(graph_list->color_ramp_bitmap_indexes);
-		return true;
+		added = true;
 	}
 	else {
 		tfxU32 layer = tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes);
@@ -9552,7 +9773,8 @@ bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_li
 		tfx_bitmap_t &bitmap = library->color_ramps.color_ramp_bitmaps[layer];
 		tfx__plot_color_ramp(graph_list, &bitmap, index);
 	}
-	return false;
+	tfx__color_ramp_layer_changed(library, tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes));
+	return added;
 }
 
 void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
@@ -9562,7 +9784,7 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *
 	} else {
 		graph_list->color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, graph_list);
 		library->color_ramps.color_ramp_ids.Insert(hash, graph_list->color_ramp_bitmap_indexes);
-		library->color_ramps_version++;
+		tfx__color_ramp_layer_changed(library, tfxColorRampLayer(graph_list->color_ramp_bitmap_indexes));
 	}
 }
 
@@ -11015,6 +11237,7 @@ tfx_library tfx_CreateLibrary() {
 	library->path_cache_id = tfx_AtomicAdd32(&tfxCurrentContext->library_path_cache_counter, 1);
 	tfx__init_library(library);
 	tfxStore->libraries.Insert((tfxKey)library, library);
+	tfxStore->global_layout_changed = true;
 	return library;
 }
 
@@ -12177,7 +12400,7 @@ TFX_ENABLE_COMPILER_WARNING()
 							recorded.captured_index = bucket.ribbons.age[ribbon_index] == 0 ? tfxINVALID : ribbon_write_index;
 							recorded.quaternion = ribbon.quaternion;
 							tfx__unpack_half_pair(ribbon.scale, &recorded.scale, &unused_high);
-							recorded.texture_indexes = ribbon.texture_indexes;
+							recorded.texture_indexes = tfx__library_ribbon_texture_indexes(pm, ribbon.texture_indexes);
 							recorded.intensity_gradient_map = ribbon.intensity_gradient_map;
 							recorded.curved_alpha = ribbon.curved_alpha;
 							recorded.additional = 0;
@@ -14260,6 +14483,10 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 	}
 	if (tfx__is_recording_on_another_thread(pm)) {
 		TFX_ASSERT(0 && "Effects can't be added to a stage while it's recording sprite data");
+		return tfxINVALID;
+	}
+	if (pm->info.global_library_indexes && !effect->library->global_placed) {
+		TFX_ASSERT(0 && "The effect's library has no place in the global buffers. Call tfx_UpdateGlobalGPUData after loading it, and check it returned true");
 		return tfxINVALID;
 	}
 	//The update rotates the in-use lists and walks the emitter and ribbon bucket lists that building the effect pushes into
@@ -16956,7 +17183,7 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->end_frame = tfxWideSetSingle(emitter.state_properties.end_frame);
 	pass->frames = tfxWideSetSingle(emitter.state_properties.end_frame + 1);
 	pass->capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	pass->particle_gpu_properties_index = tfxWideSetSinglei(emitter.state_properties.gpu_property_index << 16);
+	pass->particle_gpu_properties_index = tfxWideSetSinglei((emitter.state_properties.gpu_property_index + tfx__stage_property_base(&pm, library)) << 16);
 	pass->reverse_animation = (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) != 0;
 	pass->play_once = (shared_flags & tfxSharedEmitterPropertyFlags_play_once) != 0;
 
@@ -19428,7 +19655,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	ribbon_work_entry->new_ribbons = tfx__new_ribbons_needed(pm, ribbon_work_entry, ribbon_emitter_index, &parent_effect, ribbon_work_entry->shared_properties);
 
 	tfx_gpu_ribbon_emitter_t &gpu_emitter = pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index];
-	gpu_emitter.start_frame_index = ribbon_emitter.state_properties.image ? ribbon_emitter.state_properties.image->compute_shape_index : 0;
+	gpu_emitter.start_frame_index = (ribbon_emitter.state_properties.image ? ribbon_emitter.state_properties.image->compute_shape_index : 0) + tfx__stage_shape_base(pm, ribbon_emitter.library);
 	if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		gpu_emitter.position = ribbon_emitter.world_position;
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
@@ -23764,6 +23991,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		const tfxU32 ribbon_flags = relative_ribbons ? tfxRibbonFlags_active | tfxRibbonFlags_relative : tfxRibbonFlags_active;
 		const tfxU32 emitter_index = ribbon_emitter.state_properties.gpu_property_index;
 		TFX_ASSERT(emitter_index <= 0xFFFF);
+		const tfxU32 ramp_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfx__stage_ramp_layer(&pm, ribbon_emitter.library, tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes)) << 16);
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 ribbon_index = tfx__grab_ribbon(&pm, ribbon_bucket, &ribbon_emitter);
 			if (ribbon_index == tfxINVALID) {
@@ -23831,7 +24059,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			}
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			TFX_ASSERT(image_frame < tfxMAX_ANIMATION_FRAMES);	//The ribbon's shape has more animation frames than a ribbon can index
-			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | tfxU32(image_frame);
+			tfxU32 texture_indexes = ramp_indexes | tfxU32(image_frame);
 			tfx_quaternion_t q;
 			if (stepped_rotation) {
 				q = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&rotation_step_iterator, &random)) * stepped_pitch_quaternion;
@@ -25604,7 +25832,7 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		dispatch.slot_count = tfx__Min(group.bumped_total + group.current_size - group.window_bumped_total, group.capacity);
 		dispatch.flags = tfx__gpu_dispatch_flags(emitter, properties);
 		dispatch.graph_offset = emitter.source_emitter->gpu_lookup_offset;
-		dispatch.property_index = emitter.state_properties.gpu_property_index << 16;
+		dispatch.property_index = (emitter.state_properties.gpu_property_index + tfx__stage_property_base(pm, emitter.library)) << 16;
 		dispatch.instance_start = group.instance_start;
 		if (can_capture && group.flags & tfxGPUGroupFlags_has_written) {
 			dispatch.flags |= tfxGPUParticleDispatchFlags_capture;
@@ -25888,6 +26116,12 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 		tfx__write_line(&writer, "GPU simulation: %s. Pool of %u slots, %u allocated to %u rings. %u slots in use, about %u particles alive. %u blocked emitters, %llu dropped spawns, %u updates since the last tfx_GetGPUParticleFrame",
 			diagnostics.gpu_simulation_on ? "on" : "off with tfx_SetStageGPUSimulation, so effects added now run on the CPU", gpu.capacity, gpu.allocated, gpu.ring_count, gpu.slots_in_use,
 			gpu.estimated_live_particles, gpu.blocked_emitters, (unsigned long long)gpu.dropped_spawns, diagnostics.unfetched_gpu_updates);
+	}
+	if (pm->info.global_library_indexes) {
+		tfx__write_line(&writer, "Library indexes: global. Draw with the global properties, shapes and color ramps that tfx_UpdateGlobalGPUData builds%s",
+			tfxStore->global_layout_complete ? "" : ". Some libraries didn't fit in the global buffers, so their effects can't be added");
+	} else {
+		tfx__write_line(&writer, "Library indexes: per library. Draw each effect with its own library's properties, shapes and color ramps");
 	}
 
 	tfx_vector_t<tfx_emitter_problem_t> emitter_problems;
@@ -26785,6 +27019,7 @@ tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_al
 	tfxStore->stages.init();
 	tfxStore->animation_managers.init();
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
+	tfxStore->global_gpu_shapes = tfx_CreateGPUShapesList();
 	tfx__hash_initialise(&tfxStore->hasher, 0);
 	return context;
 }
@@ -27085,6 +27320,11 @@ void tfx_EndTimelineFX() {
 	tfxStore->data_types.names_and_types.FreeAll();
 	tfxStore->gpu_graph_data.free();
 	tfxStore->free_graph_lookup_blocks.free();
+	tfxStore->global_particle_properties.free();
+	tfxStore->global_ramp_layers.free();
+	tfxStore->free_global_ramp_layers.free();
+	tfx_FreeGPUShapesList(tfxStore->global_gpu_shapes);
+	tfxStore->global_gpu_shapes = nullptr;
 	tfxFREE(tfxStore->ribbon_buffer_requirements);
 	int pool_count = tfxStore->memory_pool_count;
 	void *memory_pools[tfxMAX_MEMORY_POOLS]{};

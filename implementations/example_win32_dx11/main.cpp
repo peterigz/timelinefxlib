@@ -19,6 +19,7 @@
 #define TFX_EXAMPLE_ROOT "."
 #endif
 #define EXAMPLE_LIBRARY_PATH TFX_EXAMPLE_ROOT "/example.tfx"
+#define EXAMPLE_SECOND_LIBRARY_PATH TFX_EXAMPLE_ROOT "/example_second.tfx"
 #define EXAMPLE_SPRITE_DATA_PATH TFX_EXAMPLE_ROOT "/example.tfxsd"
 //TFX_EXAMPLE_SHADER_FOLDER is where the CMake project has slangc build the shaders
 #ifndef TFX_EXAMPLE_SHADER_FOLDER
@@ -230,8 +231,8 @@ int main(int argc, char **argv) {
 	tfx_BeginTimelineFX(tfx_GetDefaultThreadCount(), EXAMPLE_MEMORY_POOL_SIZE);
 	tfx_impl_atlas_t atlas = {};
 	bool ready = tfx_impl_dx11_Init(&example.renderer, example.device, example.device_context, TFX_EXAMPLE_SHADER_FOLDER)
-		&& example_scene_Load(&example.scene, EXAMPLE_LIBRARY_PATH, EXAMPLE_SPRITE_DATA_PATH, EXAMPLE_FEATURES, &atlas)
-		&& tfx_impl_dx11_UploadLibrary(&example.renderer, example.scene.library, &atlas)
+		&& example_scene_Load(&example.scene, EXAMPLE_LIBRARY_PATH, EXAMPLE_SECOND_LIBRARY_PATH, EXAMPLE_SPRITE_DATA_PATH, EXAMPLE_FEATURES, &atlas)
+		&& tfx_impl_dx11_UploadAtlas(&example.renderer, &atlas)
 		&& (!example.scene.animation_manager || tfx_impl_dx11_UploadSpriteData(&example.renderer, example.scene.animation_manager, example.scene.baked_shapes));
 	tfx_impl_FreeAtlasPixels(&atlas);
 	if (ready) {

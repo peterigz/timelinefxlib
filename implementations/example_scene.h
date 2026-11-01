@@ -41,6 +41,7 @@ typedef struct example_scene_s {
 	tfx_impl_shapes_t shapes;
 	tfx_impl_ribbon_staging_t ribbon_staging;
 	tfx_library library;
+	tfx_library second_library;		//Drawn with the same buffers as the first, because the stage writes global library indexes
 	tfx_stage stage;
 	tfx_random_t random;
 	tfx_impl_timer_t timer;
@@ -65,6 +66,9 @@ typedef struct example_scene_s {
 	tfx_effect_template gpu_template;
 	tfxEffectID gpu_id;
 	tfxSpawnLocationID gpu_location;
+	//From the second library, in the same draw ranges as the effects from the first
+	tfx_effect_template second_library_template;
+	tfxEffectID second_library_id;
 	//Baked sprite data, played back by a compute shader. Each burst is a cheap animation instance at a random spot
 	tfx_animation_manager animation_manager;
 	tfx_gpu_shapes baked_shapes;
@@ -73,9 +77,9 @@ typedef struct example_scene_s {
 
 //--- Scene_functions
 
-//Loads the library (and the baked sprite data with example_scene_feature_baked), creates the templates and builds the shape atlas,
+//Loads both libraries (and the baked sprite data with example_scene_feature_baked), creates the templates and builds the shape atlas,
 //which the backend uploads before calling example_scene_Start
-bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *sprite_data_path, tfxU32 features, tfx_impl_atlas_t *atlas);
+bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *second_library_path, const char *sprite_data_path, tfxU32 features, tfx_impl_atlas_t *atlas);
 //Creates the stage and adds the effects
 void example_scene_Start(example_scene_t *scene);
 //Moves things, updates the stage and gathers what the backend needs to upload and draw this frame

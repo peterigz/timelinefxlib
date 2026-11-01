@@ -51,3 +51,21 @@ or a host that double buffers its own instances is breaking a rule in "Engines w
 implementations/README.md. At 20 updates a second, the rings of continuous GPU emitters sized for 60 can drop spawns:
 each update spawns three times as many, and an update's slots are held until its longest lived particle dies. Single
 shot bursts spawn in one update at any rate. So check 3 only applies at the real rate.
+
+## 6. Libraries share one set of buffers
+
+With more than one library on a stage that has `global_library_indexes` on (see "Drawing effects from more than one
+library" in timelinefx.h):
+
+- `tfx_UpdateGlobalGPUData` returns true after every load, and `tfx_DescribeStage` shows `Library indexes: global`
+  with no line saying libraries didn't fit.
+- Every effect added from each library gets a valid id (`tfx_EffectIDIsValid`). An invalid one means it was added before
+  a sync placed its library.
+- Print the four versions the backend uploads against (`tfx_GetGlobalParticlePropertiesVersion`,
+  `tfx_GetGlobalGPUShapesVersion`, `tfx_GetGlobalColorRampsVersion`, `tfx_GetGPUGraphLookupsVersion`) each time it
+  uploads. They change after a load, a free or a template customisation, then hold still. One that changes every frame
+  means something is re-laying the libraries out each frame.
+- Capture a frame, swap the order the libraries load in, and capture the same frame again with the same
+  `tfx_SetStageSeed` and schedule. Swapping moves every library's place in the global buffers, so the two must match.
+  Effects from one library drawing with another's shapes or colors means the backend is binding a library's own data
+  (`tfx_GetParticlePropertiesBuffer`, `tfx_GetColorRampBitmap`, `tfx_GetLibraryGPUShapes`) instead of the global data.

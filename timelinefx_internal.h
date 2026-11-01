@@ -3111,6 +3111,10 @@ typedef enum {
 //Instances and ribbons keep the animation frame in the low 13 bits of their indexes
 #define tfxMAX_ANIMATION_FRAMES 8192
 
+//Instance indexes keep the property index in 16 bits, ribbon texture_indexes keep the ramp layer in 8
+#define tfxMAX_GLOBAL_PARTICLE_PROPERTIES 65536
+#define tfxMAX_GLOBAL_COLOR_RAMP_LAYERS 256
+
 typedef enum {
 	tfxEmitterControlProfile_basic                              = 0,
 	tfxEmitterControlProfile_simplex_noise                      = 1 << 0,
@@ -5020,6 +5024,14 @@ typedef struct tfx_data_types_dictionary_s {
 #endif
 } tfx_data_types_dictionary_t;
 
+//A slot keeps its library and local layer while that library is loaded, because a ribbon bakes its slot in at spawn
+typedef struct tfx_global_ramp_layer_s {
+	tfx_library library;				//NULL while the slot is free
+	tfxU32 local_layer;
+	tfxU32 library_layer_version;		//The library's color_ramp_layer_versions entry when the slot was last synced
+	tfxU32 version;						//tfx_GetGlobalColorRampLayerVersion
+} tfx_global_ramp_layer_t;
+
 //Global variables
 typedef struct tfx_storage_s {
 	tfx_thread_access volatile pool_growth_access;
@@ -5048,6 +5060,22 @@ typedef struct tfx_storage_s {
 	tfx_vector_t free_graph_lookup_blocks;
 #endif
 	tfxU32 gpu_graph_lookups_version;					//tfx_GetGPUGraphLookupsVersion
+	//Filled by tfx_UpdateGlobalGPUData from every placed library, in tfxStore->libraries order
+#ifdef __cplusplus
+	tfx_vector_t<tfx_gpu_particle_properties_t> global_particle_properties;
+	tfx_vector_t<tfx_global_ramp_layer_t> global_ramp_layers;
+	tfx_vector_t<tfxU32> free_global_ramp_layers;
+#else
+	tfx_vector_t global_particle_properties;
+	tfx_vector_t global_ramp_layers;
+	tfx_vector_t free_global_ramp_layers;
+#endif
+	tfx_gpu_shapes global_gpu_shapes;
+	tfxU32 global_particle_properties_version;
+	tfxU32 global_color_ramps_version;
+	tfxU32 global_gpu_shapes_version;
+	bool global_layout_changed;							//A library was created or freed since the last sync
+	bool global_layout_complete;						//Every library was placed by the last sync
 	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
 	void *threads[tfxMAX_THREADS];
@@ -7662,6 +7690,16 @@ typedef struct tfx_library_s {
 	tfx_color_ramp_bitmap_data_t color_ramps;
 	tfxU32 particle_properties_version;		//tfx_GetParticlePropertiesVersion
 	tfxU32 color_ramps_version;				//tfx_GetColorRampsVersion
+	tfxU32 gpu_shapes_version;
+	tfx_vector_t<tfxU32> color_ramp_layer_versions;	//color_ramps_version when each layer was last plotted
+	//Placement in the global buffers, set by tfx_UpdateGlobalGPUData
+	tfx_vector_t<tfxU32> global_ramp_layers;		//Global slot of each local ramp layer
+	tfxU32 global_property_base;
+	tfxU32 global_shape_base;
+	tfxU32 global_synced_properties_version;
+	tfxU32 global_synced_color_ramps_version;
+	tfxU32 global_synced_gpu_shapes_version;
+	bool global_placed;
 	//Get an effect from the library by index
 	tfx_str256_t name;
 	bool open_library;
@@ -8053,6 +8091,18 @@ tfxINTERNAL void tfx__plot_color_ramp(tfx_graph_list_t *graph_list, tfx_bitmap_t
 tfxINTERNAL void tfx__create_color_ramp_bitmaps(tfx_library library);
 tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *list);
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_graph_list_t *graph_list);
+tfxINTERNAL void tfx__color_ramp_layer_changed(tfx_library library, tfxU32 layer);
+tfxINTERNAL void tfx__release_global_ramp_layers(tfx_library library, tfxU32 keep_count, tfxU32 version);
+tfxINTERNAL inline tfxU32 tfx__stage_property_base(tfx_stage pm, tfx_library library) { return pm->info.global_library_indexes ? library->global_property_base : 0; }
+tfxINTERNAL inline tfxU32 tfx__stage_shape_base(tfx_stage pm, tfx_library library) { return pm->info.global_library_indexes ? library->global_shape_base : 0; }
+tfxINTERNAL inline tfxU32 tfx__stage_ramp_layer(tfx_stage pm, tfx_library library, tfxU32 local_layer) {
+	if (!pm->info.global_library_indexes) {
+		return local_layer;
+	}
+	TFX_ASSERT(local_layer < library->global_ramp_layers.current_size);	//The layer has no global slot, call tfx_UpdateGlobalGPUData after changing a library and before updating the stage
+	return local_layer < library->global_ramp_layers.current_size ? library->global_ramp_layers[local_layer] : 0;
+}
+tfxINTERNAL tfxU32 tfx__library_ribbon_texture_indexes(tfx_stage pm, tfxU32 texture_indexes);
 tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);

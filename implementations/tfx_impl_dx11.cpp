@@ -4,6 +4,8 @@
 #include <string.h>
 
 #define TFX_IMPL_DX11_INITIAL_INSTANCE_CAPACITY 10000
+//tfx_GetGlobalColorRampLayerCount never goes past this
+#define TFX_IMPL_DX11_MAX_COLOR_RAMP_LAYERS 256
 //Matches tfx_ribbon_group_size in timelinefx.slang
 #define TFX_IMPL_DX11_RIBBON_GROUP_SIZE 256
 #define TFX_IMPL_DX11_RELEASE(object) if (object) { (object)->Release(); (object) = NULL; }
@@ -348,7 +350,7 @@ bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11D
 	return true;
 }
 
-bool tfx_impl_dx11_UploadLibrary(tfx_impl_dx11_t *renderer, tfx_library library, const tfx_impl_atlas_t *atlas) {
+bool tfx_impl_dx11_UploadAtlas(tfx_impl_dx11_t *renderer, const tfx_impl_atlas_t *atlas) {
 	ID3D11Device *device = renderer->device;
 
 	//The atlas makes its own mip chain, so it's created empty, its top level uploaded and the rest generated
@@ -376,40 +378,6 @@ bool tfx_impl_dx11_UploadLibrary(tfx_impl_dx11_t *renderer, tfx_library library,
 		renderer->device_context->UpdateSubresource(renderer->shape_atlas, subresource, NULL, atlas->pixels + layer * layer_bytes, atlas->layer_size * 4, 0);
 	}
 	renderer->device_context->GenerateMips(renderer->shape_atlas_view);
-
-	tfxU32 bitmap_count = tfx_GetColorRampBitmapCount(library);
-	tfx_bitmap_t **bitmaps = (tfx_bitmap_t **)malloc(sizeof(tfx_bitmap_t *) * (bitmap_count ? bitmap_count : 1));
-	for (tfxU32 index = 0; bitmaps && index != bitmap_count; ++index) {
-		bitmaps[index] = tfx_GetColorRampBitmap(library, index);
-	}
-	bool ramps_created = bitmaps && tfx_impl_dx11__create_color_ramps(device, bitmaps, bitmap_count, &renderer->color_ramps, &renderer->color_ramps_view);
-	free(bitmaps);
-	if (!ramps_created) {
-		return false;
-	}
-
-	tfx_gpu_shapes gpu_shapes = tfx_GetLibraryGPUShapes(library);
-	tfxU32 shape_count = tfx_GetGPUShapesCount(gpu_shapes);
-	tfx_gpu_image_data_t empty_shape = {};
-	if (!tfx_impl_dx11__create_structured_buffer(device, shape_count ? (const void *)tfx_GetGPUShapesArray(gpu_shapes) : (const void *)&empty_shape,
-		sizeof(tfx_gpu_image_data_t), shape_count ? shape_count : 1, false, &renderer->image_data)) {
-		return false;
-	}
-
-	tfxU32 property_count = (tfxU32)(tfx_GetParticlePropertiesBufferSizeInBytes(library) / sizeof(tfx_gpu_particle_properties_t));
-	tfx_gpu_particle_properties_t empty_properties = {};
-	if (!tfx_impl_dx11__create_structured_buffer(device, property_count ? tfx_GetParticlePropertiesBuffer(library) : (const void *)&empty_properties,
-		sizeof(tfx_gpu_particle_properties_t), property_count ? property_count : 1, false, &renderer->emitter_properties)) {
-		return false;
-	}
-
-	//The graph lookups are shared by every library and read by the ribbon shaders
-	tfxU32 graph_bytes = tfx_GetGPUGraphLookupsBufferSizeInBytes();
-	tfx_gpu_graph_data_t empty_graph = {};
-	if (!tfx_impl_dx11__create_raw_buffer(device, graph_bytes ? (const void *)tfx_GetGPUGraphLookupsBuffer() : (const void *)&empty_graph,
-		graph_bytes ? graph_bytes : sizeof(tfx_gpu_graph_data_t), D3D11_BIND_SHADER_RESOURCE, &renderer->graph_lookups)) {
-		return false;
-	}
 	return true;
 }
 
@@ -616,12 +584,121 @@ static bool tfx_impl_dx11__upload_gpu_particles(tfx_impl_dx11_t *renderer, const
 	return true;
 }
 
+//Never empty, so the shaders always have a buffer bound
+static bool tfx_impl_dx11__upload_structured_buffer(tfx_impl_dx11_t *renderer, const void *data, tfxU32 element_size, tfxU32 element_count, tfx_impl_dx11_buffer_t *buffer) {
+	if (!tfx_impl_dx11__ensure_structured_buffer(renderer->device, element_size, element_count ? element_count : 1, false, buffer)) {
+		return false;
+	}
+	tfx_impl_dx11__update_buffer_bytes(renderer->device_context, buffer->buffer, data, element_size * element_count);
+	return true;
+}
+
+//Global layers never move, so only the layers whose version changed go up, unless the texture array has to grow
+static bool tfx_impl_dx11__upload_color_ramps(tfx_impl_dx11_t *renderer) {
+	tfxU32 layer_count = tfx_GetGlobalColorRampLayerCount();
+	tfx_bitmap_t *first_bitmap = NULL;
+	for (tfxU32 layer = 0; layer != layer_count && !first_bitmap; ++layer) {
+		first_bitmap = tfx_GetGlobalColorRampLayer(layer);
+	}
+	if (!first_bitmap) {
+		return true;
+	}
+	tfxU32 width = (tfxU32)tfx_GetBitmapWidth(first_bitmap);
+	tfxU32 height = (tfxU32)tfx_GetBitmapHeight(first_bitmap);
+	tfxU32 bytes_per_pixel = (tfxU32)(tfx_GetBitmapSize(first_bitmap) / ((size_t)width * height));
+	bool recreate = layer_count > renderer->color_ramp_layer_capacity;
+	if (recreate) {
+		//Headroom so that loading another library doesn't always recreate it
+		tfxU32 capacity = layer_count + layer_count / 2 + 1;
+		capacity = capacity < TFX_IMPL_DX11_MAX_COLOR_RAMP_LAYERS ? capacity : TFX_IMPL_DX11_MAX_COLOR_RAMP_LAYERS;
+		tfxU32 *layer_versions = (tfxU32 *)realloc(renderer->color_ramp_layer_versions, sizeof(tfxU32) * capacity);
+		if (!layer_versions) {
+			return false;
+		}
+		renderer->color_ramp_layer_versions = layer_versions;
+		TFX_IMPL_DX11_RELEASE(renderer->color_ramps_view);
+		TFX_IMPL_DX11_RELEASE(renderer->color_ramps);
+		renderer->color_ramp_layer_capacity = 0;
+		D3D11_TEXTURE2D_DESC ramp_description = {};
+		ramp_description.Width = width;
+		ramp_description.Height = height;
+		ramp_description.MipLevels = 1;
+		ramp_description.ArraySize = capacity;
+		ramp_description.Format = tfx_impl_dx11__color_ramp_format(bytes_per_pixel);
+		ramp_description.SampleDesc.Count = 1;
+		ramp_description.Usage = D3D11_USAGE_DEFAULT;
+		ramp_description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		HRESULT result = renderer->device->CreateTexture2D(&ramp_description, NULL, &renderer->color_ramps);
+		if (FAILED(result) || FAILED(renderer->device->CreateShaderResourceView(renderer->color_ramps, NULL, &renderer->color_ramps_view))) {
+			printf("Could not create a color ramp texture of %u layers (0x%08lx)\n", capacity, result);
+			return false;
+		}
+		renderer->color_ramp_layer_capacity = capacity;
+	}
+	for (tfxU32 layer = 0; layer != layer_count; ++layer) {
+		tfxU32 version = tfx_GetGlobalColorRampLayerVersion(layer);
+		if (!recreate && version == renderer->color_ramp_layer_versions[layer]) {
+			continue;
+		}
+		renderer->color_ramp_layer_versions[layer] = version;
+		//A free layer isn't drawn from, so whatever it holds can stay
+		tfx_bitmap_t *bitmap = tfx_GetGlobalColorRampLayer(layer);
+		if (bitmap) {
+			renderer->device_context->UpdateSubresource(renderer->color_ramps, D3D11CalcSubresource(0, layer, 1), NULL, tfx_GetBitmapData(bitmap), width * bytes_per_pixel, 0);
+		}
+	}
+	return true;
+}
+
+//Only on update frames: the instances drawn until then were written with the layout the last upload holds
+static bool tfx_impl_dx11__upload_library_data(tfx_impl_dx11_t *renderer) {
+	tfxU32 properties_version = tfx_GetGlobalParticlePropertiesVersion();
+	if (!renderer->emitter_properties.buffer || properties_version != renderer->properties_version) {
+		tfxU32 property_count = (tfxU32)(tfx_GetGlobalParticlePropertiesBufferSizeInBytes() / sizeof(tfx_gpu_particle_properties_t));
+		if (!tfx_impl_dx11__upload_structured_buffer(renderer, tfx_GetGlobalParticlePropertiesBuffer(), sizeof(tfx_gpu_particle_properties_t), property_count, &renderer->emitter_properties)) {
+			return false;
+		}
+		renderer->properties_version = properties_version;
+	}
+	tfxU32 shapes_version = tfx_GetGlobalGPUShapesVersion();
+	if (!renderer->image_data.buffer || shapes_version != renderer->shapes_version) {
+		tfx_gpu_shapes shapes = tfx_GetGlobalGPUShapes();
+		if (!tfx_impl_dx11__upload_structured_buffer(renderer, tfx_GetGPUShapesArray(shapes), sizeof(tfx_gpu_image_data_t), tfx_GetGPUShapesCount(shapes), &renderer->image_data)) {
+			return false;
+		}
+		renderer->shapes_version = shapes_version;
+	}
+	//Shared by every library already, read by the ribbon shaders and the GPU kernel
+	tfxU32 graph_lookups_version = tfx_GetGPUGraphLookupsVersion();
+	if (!renderer->graph_lookups.buffer || graph_lookups_version != renderer->graph_lookups_version) {
+		tfxU32 graph_bytes = tfx_GetGPUGraphLookupsBufferSizeInBytes();
+		if (!tfx_impl_dx11__ensure_raw_buffer(renderer->device, graph_bytes ? graph_bytes : sizeof(tfx_gpu_graph_data_t), D3D11_BIND_SHADER_RESOURCE, &renderer->graph_lookups)) {
+			return false;
+		}
+		if (graph_bytes) {
+			tfx_impl_dx11__update_buffer_bytes(renderer->device_context, renderer->graph_lookups.buffer, tfx_GetGPUGraphLookupsBuffer(), graph_bytes);
+		}
+		renderer->graph_lookups_version = graph_lookups_version;
+	}
+	tfxU32 color_ramps_version = tfx_GetGlobalColorRampsVersion();
+	if (!renderer->color_ramps || color_ramps_version != renderer->color_ramps_version) {
+		if (!tfx_impl_dx11__upload_color_ramps(renderer)) {
+			return false;
+		}
+		renderer->color_ramps_version = color_ramps_version;
+	}
+	return true;
+}
+
 bool tfx_impl_dx11_UploadFrame(tfx_impl_dx11_t *renderer, const tfx_impl_frame_t *frame) {
 	if (!tfx_impl_dx11__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
 	if (frame->ticks == 0) {
 		return true;
+	}
+	if (!tfx_impl_dx11__upload_library_data(renderer)) {
+		return false;
 	}
 	bool gpu_particles = frame->has_gpu_particles && renderer->particle_kernel;
 	tfxU32 needed = gpu_particles ? frame->gpu_particles.gpu_instance_start + frame->gpu_particles.gpu_instance_count : frame->instance_count;
@@ -814,7 +891,7 @@ static void tfx_impl_dx11__draw_instance_range(tfx_impl_dx11_t *renderer, tfxU32
 }
 
 void tfx_impl_dx11_Render(tfx_impl_dx11_t *renderer, const tfx_impl_uniforms_t *uniforms) {
-	if (!renderer->color_ramps_view || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
+	if (!renderer->shape_atlas_view || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_dx11__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_dx11__ribbon_set_active(&renderer->baked_ribbons))) {
 		return;
 	}
@@ -911,6 +988,9 @@ void tfx_impl_dx11_Shutdown(tfx_impl_dx11_t *renderer) {
 	TFX_IMPL_DX11_RELEASE(renderer->sprite_playback_shader);
 	TFX_IMPL_DX11_RELEASE(renderer->color_ramps_view);
 	TFX_IMPL_DX11_RELEASE(renderer->color_ramps);
+	free(renderer->color_ramp_layer_versions);
+	renderer->color_ramp_layer_versions = NULL;
+	renderer->color_ramp_layer_capacity = 0;
 	TFX_IMPL_DX11_RELEASE(renderer->shape_atlas_view);
 	TFX_IMPL_DX11_RELEASE(renderer->shape_atlas);
 	TFX_IMPL_DX11_RELEASE(renderer->ribbon_constants);

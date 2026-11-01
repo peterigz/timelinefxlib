@@ -30,20 +30,34 @@ static tfxU32 example_scene__set_gpu_capacities(example_scene_t *scene) {
 	return tfx_SetTemplateGPUCapacityForLocations(scene->leaves.effect_template, overlapping_locations) + tfx_GetTemplateGPUPoolSlots(scene->gpu_template);
 }
 
-bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *sprite_data_path, tfxU32 features, tfx_impl_atlas_t *atlas) {
-	memset(scene, 0, sizeof(example_scene_t));
-	scene->features = features;
-	scene->library = tfx_LoadEffectLibrary(library_path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &scene->shapes);
-	tfxErrorFlags status = scene->library ? tfx_GetLibraryErrorStatus(scene->library) : tfxErrorCode_library_object_could_not_be_created;
+//Every library loads its shapes into the same list, so they all end up in the one atlas
+static tfx_library example_scene__load_library(example_scene_t *scene, const char *path) {
+	tfx_library library = tfx_LoadEffectLibrary(path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &scene->shapes);
+	tfxErrorFlags status = library ? tfx_GetLibraryErrorStatus(library) : tfxErrorCode_library_object_could_not_be_created;
 	//These two still leave a fully loaded library
 	if (status & tfxErrorCode_file_version_out_of_date) {
-		printf("%s was saved in file format %u, resave it in the editor to update it\n", library_path, tfx_GetLibraryFileVersion(scene->library));
+		printf("%s was saved in file format %u, resave it in the editor to update it\n", path, tfx_GetLibraryFileVersion(library));
 	}
 	status &= ~(tfxErrorCode_file_version_out_of_date | tfxErrorCode_shapes_changed_on_disk);
 	if (status != 0) {
-		printf("Could not load %s (error flags 0x%x)\n", library_path, (unsigned)status);
+		printf("Could not load %s (error flags 0x%x)\n", path, (unsigned)status);
+		if (library) {
+			tfx_FreeLibrary(library);
+		}
+		return NULL;
+	}
+	return library;
+}
+
+bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *second_library_path, const char *sprite_data_path, tfxU32 features, tfx_impl_atlas_t *atlas) {
+	memset(scene, 0, sizeof(example_scene_t));
+	scene->features = features;
+	scene->library = example_scene__load_library(scene, library_path);
+	if (!scene->library) {
 		return false;
 	}
+	//The scene still plays without it, with every effect from the one library
+	scene->second_library = example_scene__load_library(scene, second_library_path);
 
 	//Templates are made before the atlas and the GPU data so that everything they add is in the upload
 	scene->torch_template = example_scene__create_template(scene->library, "Spitting Torch");
@@ -57,6 +71,9 @@ bool example_scene_Load(example_scene_t *scene, const char *library_path, const 
 	}
 	if (!scene->torch_template || !scene->sparks.effect_template || !scene->leaves.effect_template) {
 		return false;
+	}
+	if (scene->second_library) {
+		scene->second_library_template = example_scene__create_template(scene->second_library, "Fireflies");
 	}
 
 	//The sprite data carries its own shapes, which go through the same shape loader so they end up in the same atlas
@@ -75,15 +92,25 @@ bool example_scene_Load(example_scene_t *scene, const char *library_path, const 
 		return false;
 	}
 	tfx_UpdateLibraryGPUImageData(scene->library);
+	if (scene->second_library) {
+		tfx_UpdateLibraryGPUImageData(scene->second_library);
+	}
 	if (scene->animation_manager) {
 		scene->baked_shapes = tfx_CreateGPUShapesList();
 		tfx_BuildAnimationManagerGPUShapeData(scene->animation_manager, scene->baked_shapes, tfx_impl_GetUV);
+	}
+	//Lays every library out in the global buffers the backend uploads. Effects can only be added from libraries it placed
+	if (!tfx_UpdateGlobalGPUData()) {
+		printf("The libraries need more room than the global GPU buffers have\n");
+		return false;
 	}
 	return true;
 }
 
 void example_scene_Start(example_scene_t *scene) {
 	tfx_stage_info_t stage_info = tfx_CreateStageInfo(tfxStageSetup_none);
+	//Effects from both libraries share one set of buffers and every draw range
+	stage_info.global_library_indexes = true;
 	if (scene->gpu_template) {
 		stage_info.gpu_particle_capacity = example_scene__set_gpu_capacities(scene);
 	}
@@ -112,6 +139,10 @@ void example_scene_Start(example_scene_t *scene) {
 		scene->gpu_id = tfx_AddEffectTemplateToStage(scene->stage, scene->gpu_template);
 		float position[3] = { 0.f, 0.f, 4.f };
 		scene->gpu_location = tfx_AddSpawnLocation(scene->stage, scene->gpu_id, position, tfxSpawnLocationAdd_none);
+	}
+	if (scene->second_library_template) {
+		scene->second_library_id = tfx_AddEffectTemplateToStage(scene->stage, scene->second_library_template);
+		tfx_SetEffectPosition(scene->stage, scene->second_library_id, 4.f, 1.f, -4.f);
 	}
 }
 
@@ -159,6 +190,8 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 
 	tfxU32 ticks = tfx_impl_AdvanceTimer(&scene->timer, elapsed_milliseconds);
 	if (ticks > 0) {
+		//Picks up any library or template change before the update writes its indexes, and returns straight away when there's none
+		tfx_UpdateGlobalGPUData();
 		//One update per frame, however many ticks it covers, so the previous instance buffer is always the one drawn last
 		tfx_UpdateStage(scene->stage, scene->timer.update_length * ticks);
 	}
@@ -198,13 +231,16 @@ void example_scene_Zoom(example_scene_t *scene, float steps) {
 	scene->camera_distance *= powf(0.9f, steps);
 }
 
-//A stage goes before the library it plays, and the library (which owns the templates) before the shapes it points to
+//A stage goes before the libraries it plays, and the libraries (which own the templates) before the shapes they point to
 void example_scene_Shutdown(example_scene_t *scene) {
 	if (scene->stage) {
 		tfx_FreeStage(scene->stage);
 	}
 	if (scene->library) {
 		tfx_FreeLibrary(scene->library);
+	}
+	if (scene->second_library) {
+		tfx_FreeLibrary(scene->second_library);
 	}
 	if (scene->animation_manager) {
 		tfx_FreeAnimationManager(scene->animation_manager);
@@ -214,5 +250,6 @@ void example_scene_Shutdown(example_scene_t *scene) {
 	tfx_impl_FreeRibbonStaging(&scene->ribbon_staging);
 	scene->stage = NULL;
 	scene->library = NULL;
+	scene->second_library = NULL;
 	scene->animation_manager = NULL;
 }

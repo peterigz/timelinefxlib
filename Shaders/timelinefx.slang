@@ -2181,7 +2181,7 @@ struct tfx_no_particle_update : ITfxParticleUpdate {
 //What a spawn hook sees of the particle's ring, tick and spawn location
 struct tfx_spawn_context {
 	tfx_gpu_particle_push push;
-	tfx_gpu_particle_dispatch dispatch;	//key and property_index tell a host's User emitters apart
+	tfx_gpu_particle_dispatch dispatch;	//key and property_index tell a host's User emitters apart. property_index is global on a stage with global_library_indexes
 	tfx_gpu_particle_tick tick;
 	uint location_id;					//slot | generation, the low 32 bits of the tfxSpawnLocationID
 	uint user_data;						//tfx_SetSpawnLocationUserData

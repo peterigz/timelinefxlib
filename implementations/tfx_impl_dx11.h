@@ -55,10 +55,17 @@ typedef struct tfx_impl_dx11_s {
 
 	ID3D11Texture2D *shape_atlas;
 	ID3D11ShaderResourceView *shape_atlas_view;
+	//Every loaded library's data, from the global getters, so one set of buffers draws effects from any library
 	ID3D11Texture2D *color_ramps;
 	ID3D11ShaderResourceView *color_ramps_view;
+	tfxU32 color_ramp_layer_capacity;
+	tfxU32 *color_ramp_layer_versions;			//The global layer versions last uploaded, one per layer of color_ramps
 	tfx_impl_dx11_buffer_t image_data;			//tfx_gpu_image_data_t per shape frame
 	tfx_impl_dx11_buffer_t emitter_properties;	//tfx_gpu_particle_properties_t per emitter
+	tfxU32 properties_version;
+	tfxU32 shapes_version;
+	tfxU32 color_ramps_version;
+	tfxU32 graph_lookups_version;
 
 	//Two instance buffers that swap on every update: the latest instances and the ones captured_index points into
 	tfx_impl_dx11_buffer_t instance_buffers[2];
@@ -115,11 +122,11 @@ typedef struct tfx_impl_dx11_s {
 
 //Loads the shaders and creates the states. shader_folder holds each entry point of timelinefx.slang compiled to <entry point>.cso with TFX_FIXED_BINDINGS
 bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_folder);
-//Uploads the shape atlas, color ramps, shape frame data and emitter properties. Call after tfx_UpdateLibraryGPUImageData and creating your effect templates
-bool tfx_impl_dx11_UploadLibrary(tfx_impl_dx11_t *renderer, tfx_library library, const tfx_impl_atlas_t *atlas);
+//Uploads the shape atlas that every library and the sprite data share. The rest of the library data goes up with each frame in tfx_impl_dx11_UploadFrame
+bool tfx_impl_dx11_UploadAtlas(tfx_impl_dx11_t *renderer, const tfx_impl_atlas_t *atlas);
 //Uploads an animation manager's baked sprite data, color ramps, shape frames and emitter properties, after tfx_BuildAnimationManagerGPUShapeData
 bool tfx_impl_dx11_UploadSpriteData(tfx_impl_dx11_t *renderer, tfx_animation_manager animation_manager, tfx_gpu_shapes shapes);
-//Uploads the baked playback every frame, and the instances and ribbon data when the frame ran an update
+//Uploads the baked playback every frame, and on update frames the instances, the ribbon data and any library data tfx_UpdateGlobalGPUData changed
 bool tfx_impl_dx11_UploadFrame(tfx_impl_dx11_t *renderer, const tfx_impl_frame_t *frame);
 //Runs the GPU particle kernel, the baked playback and builds the ribbon geometry, every frame before tfx_impl_dx11_Render
 void tfx_impl_dx11_Compute(tfx_impl_dx11_t *renderer, const tfx_impl_uniforms_t *uniforms);
