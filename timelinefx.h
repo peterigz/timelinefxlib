@@ -1459,7 +1459,8 @@ typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
 typedef enum {
 	tfxSpawnLocationAdd_none = 0,
 	tfxSpawnLocationAdd_transient				= 1 << 0,		//Removed automatically after the next update, for one off bursts
-	tfxSpawnLocationAdd_no_auto_remove			= 1 << 1,		//Keep the location after a finite effect has played out, instead of removing it
+	tfxSpawnLocationAdd_no_auto_remove			= 1 << 1,		//Keep the location after a finite effect has played out, instead of removing it. A kept location never lets tfxSpawnLocationAdd_expire_effect fire
+	tfxSpawnLocationAdd_expire_effect			= 1 << 2,		//Soft expire the effect once it has no locations left, so one effect per burst ends like any finite effect
 } tfx_spawn_location_add_flag_bits;
 
 typedef tfxU32 tfxSpawnLocationAddFlags;        //tfx_spawn_location_add_flag_bits
@@ -2598,6 +2599,8 @@ tfxAPI void tfx_SetEffectTemplateWarmupTime(tfx_effect_template effect, float mi
 
 /*
 Returns true if the effect template is an effect that will spawn particles that eventually expire.
+For an effect that spawns at user spawn locations, true means each location plays out. The effect itself keeps running
+with no locations until you expire it, unless its locations were added with tfxSpawnLocationAdd_expire_effect.
 * @param tfx_effect_template		A handle to the effect template
 * @returns bool						True if effect will expire on it's own, false if it spawns particles forever.
 */
@@ -2623,7 +2626,8 @@ depending on the effect, so use it ahead of time after creating the effect templ
 For an effect that spawns at user spawn locations the effect itself keeps running, so this is how long one location
 plays, from when it's added until its last particle dies. It's also when a location is removed automatically, unless
 it was added with tfxSpawnLocationAdd_no_auto_remove. Divide it by how often you add locations to estimate how many
-overlap, for tfx_SetTemplateGPUCapacityForLocations.
+overlap, for tfx_SetTemplateGPUCapacityForLocations. To have the effect end after its locations, add them with
+tfxSpawnLocationAdd_expire_effect.
 * @param tfx_effect_template		A handle to the effect template
 * @returns float					The time in milliseconds	
 */
@@ -3000,6 +3004,11 @@ best left flat here.
                            tfxSpawnLocationAdd_no_auto_remove to keep it instead. You need that if you change the effect's life with
                            tfx_SetEffectLifeMultiplier after adding the location, because the time is worked out from the effect as authored
                            and a longer life would outlive it. An effect that never ends is never auto removed either way.
+                           The effect itself keeps running when it has no locations, so one shared effect can spawn burst after burst.
+                           tfxSpawnLocationAdd_expire_effect soft expires the effect once it has no locations left instead, for when
+                           you add one effect per burst: tfx_IsEffectExpired then turns true after the last location's particles have
+                           gone, as it would for any finite effect. A location kept with tfxSpawnLocationAdd_no_auto_remove never goes,
+                           so it never lets the effect expire.
 * @returns                 A tfxSpawnLocationID to use with tfx_UpdateSpawnLocation and tfx_RemoveSpawnLocation. It includes the effect so
                            you don't need to keep the effect index with it. tfxINVALID_SPAWN_LOCATION if the effect doesn't spawn at user locations,
                            with a tip the first time on each stage

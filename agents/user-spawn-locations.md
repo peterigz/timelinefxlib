@@ -36,6 +36,12 @@ with a tip the first time.
   shot: `tfx_PrintLibrary` reads `each location plays until removed` for those.
 - A finite effect's location removes itself once the effect has played out there. `tfx_GetEffectLifetime(template)` is
   how long that takes for one location, not for the whole effect. Pass `tfxSpawnLocationAdd_no_auto_remove` to keep it.
+- The effect itself keeps running after its locations have gone, and `tfx_IsEffectExpired` stays false. For one-shot
+  bursts, either:
+  - add the effect once and give it a location per burst (best, one effect for all of them), or
+  - add an effect per burst and pass `tfxSpawnLocationAdd_expire_effect`, which soft expires the effect once it has no
+    locations left, so it ends like any finite effect.
+  A location kept with `tfxSpawnLocationAdd_no_auto_remove` never goes, so it never lets `_expire_effect` fire.
 - `tfxSpawnLocationAdd_transient` removes the location after the next update, for one-off bursts where you don't keep
   the id.
 - Ids are generational, so setters called with the id of a removed location do nothing.

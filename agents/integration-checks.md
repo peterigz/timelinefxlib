@@ -13,7 +13,8 @@ once per template when you add locations straight after. Act on every other one.
 Run the scene for a few seconds at the update rate the game will use, then print `tfx_DescribeStage` straight after a
 frame's `tfx_GetGPUParticleFrame` (see gpu-particles.md for the call). Done when it has only its counts and GPU lines: no `Blocked:`, `Dropping spawns:`,
 `Unfetched:` or `Library ...` lines. A `No spawn locations right now` line is fine only if that effect is meant to be
-idle at that moment. A library saved by an older editor loads and plays fine but shows a `Library ...` line with
+idle at that moment. A `No spawn locations left` line means effects that have finished their bursts are piling up:
+expire them, or add their locations with `tfxSpawnLocationAdd_expire_effect`. A library saved by an older editor loads and plays fine but shows a `Library ...` line with
 `file_version_out_of_date` until it's re-saved in the editor.
 
 ## 2. The GPU matches the CPU

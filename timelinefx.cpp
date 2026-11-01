@@ -14281,6 +14281,7 @@ tfxEffectID tfx__add_effect_to_stage(tfx_stage pm, tfx_effect_descriptor effect)
 	//A recycled slot still holds the locations of the effect that used it last
 	if (pm->effects[parent_index.index].user_spawn_locations) {
 		tfx__clear_user_spawn_locations(pm->effects[parent_index.index].user_spawn_locations);
+		pm->effects[parent_index.index].user_spawn_locations->flags &= ~(tfxUserSpawnLocationListFlags_expire_when_empty | tfxUserSpawnLocationListFlags_has_had_location);
 	}
 	tfx__reset_effect_state(pm, parent_index.index, effect);
 	tfx__build_stage_effect_emitters(pm, parent_index.index, effect);
@@ -25749,7 +25750,8 @@ tfx_gpu_particle_stats_t tfx_GetGPUParticleStats(tfx_stage pm) {
 }
 
 tfxINTERNAL bool tfx__effect_has_no_locations(const tfx_effect_state_t &effect) {
-	if (!(effect.state_flags & tfxEffectStateFlags_user_spawn_locations)) {
+	//An expired effect is on its way out, so it isn't waiting for anything
+	if (!(effect.state_flags & tfxEffectStateFlags_user_spawn_locations) || effect.state_flags & tfxEmitterStateFlags_stop_spawning) {
 		return false;
 	}
 	const tfx_user_spawn_locations_t *location_list = effect.user_spawn_locations;
@@ -25822,6 +25824,7 @@ typedef struct tfx_emitter_problem_s {
 typedef struct tfx_effect_instances_s {
 	tfx_effect_descriptor effect;
 	tfxU32 instances;
+	bool played_out;			//Had locations and they've all gone, rather than never having had one
 } tfx_effect_instances_t;
 
 tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
@@ -25895,9 +25898,10 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 		if (!tfx__effect_has_no_locations(effect) || !TFX_VALID_HANDLE(effect.source_effect, tfx_struct_type_effect_descriptor)) {
 			continue;
 		}
+		const bool played_out = effect.user_spawn_locations && effect.user_spawn_locations->flags & tfxUserSpawnLocationListFlags_has_had_location;
 		tfx_effect_instances_t *waiting = nullptr;
 		for (tfx_effect_instances_t &existing : waiting_effects) {
-			if (existing.effect == effect.source_effect) {
+			if (existing.effect == effect.source_effect && existing.played_out == played_out) {
 				waiting = &existing;
 				break;
 			}
@@ -25906,11 +25910,16 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 			waiting = &waiting_effects.next();
 			waiting->effect = effect.source_effect;
 			waiting->instances = 0;
+			waiting->played_out = played_out;
 		}
 		waiting->instances++;
 	}
 	for (const tfx_effect_instances_t &waiting : waiting_effects) {
-		tfx__write_line(&writer, "No spawn locations right now: \"%s\" (%u instances) spawns nothing until it has one, see tfx_AddSpawnLocation", waiting.effect->name.c_str(), waiting.instances);
+		if (waiting.played_out) {
+			tfx__write_line(&writer, "No spawn locations left: \"%s\" (%u instances) had spawn locations and they've all gone, but the effect keeps running until it's expired. Soft expire it, add the next location, or add locations with tfxSpawnLocationAdd_expire_effect so it ends when they do", waiting.effect->name.c_str(), waiting.instances);
+		} else {
+			tfx__write_line(&writer, "No spawn locations right now: \"%s\" (%u instances) spawns nothing until it has one, see tfx_AddSpawnLocation", waiting.effect->name.c_str(), waiting.instances);
+		}
 	}
 	for (tfx_library library : libraries) {
 		tfx_str512_t names;
@@ -27828,12 +27837,22 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				location.flags |= tfxUserSpawnLocationFlags_counting_down;
 			}
 			location.generation = request.generation;
+			user_location_list->flags |= tfxUserSpawnLocationListFlags_has_had_location;
+			if (request.flags & tfxUserSpawnLocationRequestFlags_expire_effect) {
+				user_location_list->flags |= tfxUserSpawnLocationListFlags_expire_when_empty;
+			}
 			tfx__apply_user_spawn_location_request(pm, user_location_list, slot);
 			user_location_list->active_slots.push_back(slot);
 			combined_flags |= location.flags;
 			has_rotation |= location.packed_rotation != tfxPACKED_W_QUATERNION;
 		}
 		user_location_list->added_slots.clear();
+
+		if (user_location_list->active_slots.current_size == 0 && user_location_list->flags & tfxUserSpawnLocationListFlags_expire_when_empty) {
+			tfx_effect_state_t &effect = pm->effects[user_location_list->effect_slot];
+			//Soft rather than hard, so a location the host removed early still lets its particles finish
+			effect.state_flags |= tfxEmitterStateFlags_stop_spawning;
+		}
 
 		user_location_list->flags &= ~(tfxUserSpawnLocationListFlags_has_rotation | tfxUserSpawnLocationListFlags_has_factors | tfxUserSpawnLocationListFlags_has_shape_scale);
 		if (has_rotation) {
@@ -27903,6 +27922,9 @@ tfxSpawnLocationID tfx_AddSpawnLocation(tfx_stage pm, tfxEffectID effect_index, 
 	}
 	if (flags & tfxSpawnLocationAdd_no_auto_remove) {
 		request.flags |= tfxUserSpawnLocationRequestFlags_no_auto_remove;
+	}
+	if (flags & tfxSpawnLocationAdd_expire_effect) {
+		request.flags |= tfxUserSpawnLocationRequestFlags_expire_effect;
 	}
 	tfx_user_spawn_requested_tweaks_t &requested_tweaks = user_location_list->requested_tweaks[slot];
 	requested_tweaks.packed_rotation = tfxPACKED_W_QUATERNION;

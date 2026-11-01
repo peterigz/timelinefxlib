@@ -7317,6 +7317,7 @@ typedef enum {
 	tfxUserSpawnLocationRequestFlags_tweaks_changed = 1 << 4,	//Cleared once applied
 	tfxUserSpawnLocationRequestFlags_paused = 1 << 5,
 	tfxUserSpawnLocationRequestFlags_expiring = 1 << 6,			//Never cleared, a soft expire can't be taken back
+	tfxUserSpawnLocationRequestFlags_expire_effect = 1 << 7,
 } tfx_user_spawn_location_request_flag_bits;
 
 typedef enum {
@@ -7324,6 +7325,8 @@ typedef enum {
 	tfxUserSpawnLocationListFlags_has_factors = 1 << 1,
 	tfxUserSpawnLocationListFlags_restart_pending = 1 << 2,	//The effect restarted in place, the next apply step starts every location over as if it was just added
 	tfxUserSpawnLocationListFlags_has_shape_scale = 1 << 3,
+	tfxUserSpawnLocationListFlags_expire_when_empty = 1 << 4,	//A location was added with tfxSpawnLocationAdd_expire_effect, so the effect soft expires when the list empties
+	tfxUserSpawnLocationListFlags_has_had_location = 1 << 5,	//So diagnostics can tell an effect that played out from one that never started
 } tfx_user_spawn_location_list_flag_bits;
 
 //Ordered so everything the per particle gather reads comes first: position and captured_position for the transform, flags and generation
