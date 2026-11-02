@@ -58,7 +58,7 @@ typedef struct tfx_impl_timer_s {
 	double update_frequency;		//Updates per second
 	double update_length;			//Milliseconds per update
 	double accumulator;				//Milliseconds not yet simulated
-	float lerp;						//How far between the previous and the latest update the frame is, 0 to 1
+	float lerp;						//How far the accumulator is into the next update, 0 to 1. Not the shader's lerp, see tfx_GetStageInterpolation
 	tfxU32 max_ticks_per_frame;		//Time beyond this many updates is dropped so a long stall doesn't snowball
 	tfxU32 ticks_this_frame;
 } tfx_impl_timer_t;
@@ -199,7 +199,8 @@ void tfx_impl_GatherFrame(tfx_stage stage, tfxU32 ticks, tfx_impl_ribbon_staging
 void tfx_impl_FreeRibbonStaging(tfx_impl_ribbon_staging_t *ribbon_staging);
 //Call every frame after tfx_UpdateAnimationManager
 void tfx_impl_GatherBakedFrame(tfx_animation_manager animation_manager, tfx_impl_baked_frame_t *baked);
-void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t *camera, float screen_width, float screen_height, const tfx_impl_timer_t *timer);
+//Call every frame from the thread that updates the stage, timer_lerp comes from tfx_GetStageInterpolation
+void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t *camera, float screen_width, float screen_height, const tfx_impl_timer_t *timer, tfx_stage stage);
 
 #ifdef __cplusplus
 }

@@ -419,6 +419,13 @@ static bool tfx__string_to_int(const char *str, int *result) {
 	return true;
 }
 
+tfxINTERNAL tfxU64 tfx__split_mix64(tfxU64 value) {
+	value += 0x9E3779B97F4A7C15ull;
+	value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
+	value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
+	return value ^ (value >> 31);
+}
+
 tfx_random_t tfx_CreateRandom(tfxU32 seed) {
 	tfx_random_t random;
 	memset(random.seeds, 0, sizeof(tfxU64) * 2);
@@ -435,8 +442,7 @@ void tfx_AdvanceRandom(tfx_random_t *random) {
 }
 
 void tfx_RandomReseedTime(tfx_random_t *random) {
-	random->seeds[0] = tfx_Millisecs(); random->seeds[1] = (tfxU64)tfx_Millisecs() * 2;
-	tfx_AdvanceRandom(random);
+	tfx_RandomReseed(random, tfx_Millisecs());
 }
 
 void tfx_RandomReseed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
@@ -445,10 +451,10 @@ void tfx_RandomReseed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
 	tfx_AdvanceRandom(random);
 }
 
+//The first two outputs of a split mix 64 stream started at seed. Never both 0, since the mix is a bijection of two different inputs
 void tfx_RandomReseed(tfx_random_t *random, tfxU64 seed) {
-	random->seeds[0] = seed;
-	random->seeds[1] = seed * 2;
-	tfx_AdvanceRandom(random);
+	random->seeds[0] = tfx__split_mix64(seed);
+	random->seeds[1] = tfx__split_mix64(seed + 0x9E3779B97F4A7C15ull);
 }
 
 float tfx_GenerateRandom(tfx_random_t *random) {
@@ -2719,13 +2725,6 @@ tfx_quaternion_t tfx__get_stepped_path_rotation(const tfx_path_settings_t *setti
 	tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&iterator, random));
 	tfx_quaternion_t pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, settings->rotation_pitch);
 	return yaw_quaternion * pitch_quaternion;
-}
-
-tfxINTERNAL tfxU64 tfx__split_mix64(tfxU64 value) {
-	value += 0x9E3779B97F4A7C15ull;
-	value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
-	value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
-	return value ^ (value >> 31);
 }
 
 //A path's rotation comes from its set's seed and its instance alone, so a slot moving on to its next path is all it takes to pick one.
@@ -5627,6 +5626,20 @@ tfxINTERNAL void tfx__free_library_contents(tfx_library library, bool keep_shape
 
 void tfx_FreeLibrary(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	//Before anything is freed, since the teardown reads emitter state that points into the library
+	for (tfx_stage pm : tfxStore->stages.data) {
+		tfx_CompleteStageWork(pm);
+		bool has_library_effects = false;
+		for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
+			if (pm->effects[effect_index.index].library == library) {
+				tfx_HardExpireEffect(pm, tfx__effect_id(pm, effect_index.index));
+				has_library_effects = true;
+			}
+		}
+		if (has_library_effects) {
+			tfx__purge_expired_effects(pm);
+		}
+	}
 	if (library->global_ramp_layers.current_size) {
 		tfxStore->global_color_ramps_version++;
 		tfx__release_global_ramp_layers(library, 0, tfxStore->global_color_ramps_version);
@@ -11290,6 +11303,17 @@ tfxINTERNAL bool tfx__error_flag_names(tfxErrorFlags error_flags, tfx_str512_t *
 
 #ifndef TFX_DISABLE_TIPS
 
+//True the first time any stage or template shows a once per process tip for this path, so recreated templates don't repeat it
+tfxINTERNAL bool tfx__first_process_tip(tfxKey path_hash) {
+	tfx__sync_lock(&tfxStore->tips_mutex);
+	const bool first = !tfxStore->tips_shown.ValidKey(path_hash);
+	if (first) {
+		tfxStore->tips_shown.Insert(path_hash, 1);
+	}
+	tfx__sync_unlock(&tfxStore->tips_mutex);
+	return first;
+}
+
 //True the first time the stage shows this tip for the emitter, in any effect or template made from it
 tfxINTERNAL bool tfx__first_emitter_tip(tfx_stage pm, tfx_effect_descriptor emitter, tfxU32 tip) {
 	tfxU32 &shown = pm->tips_shown.ValidKey(emitter->path_hash) ? pm->tips_shown.At(emitter->path_hash) : pm->tips_shown.Insert(emitter->path_hash, 0);
@@ -13963,9 +13987,11 @@ tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effec
 		return tfxINVALID;
 	}
 #ifndef TFX_DISABLE_TIPS
-	if (effect_template->effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations && !(effect_template->flags & tfxEffectTemplateFlags_user_location_tip_shown)) {
-		effect_template->flags |= tfxEffectTemplateFlags_user_location_tip_shown;
-		tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation (shown once per template).", effect_template->effect->name.c_str());
+	if (effect_template->effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations && !(effect_template->flags & tfxEffectTemplateFlags_user_location_tip_checked)) {
+		effect_template->flags |= tfxEffectTemplateFlags_user_location_tip_checked;
+		if (tfx__first_process_tip(effect_template->effect->path_hash)) {
+			tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation (shown once per effect).", effect_template->effect->name.c_str());
+		}
 	}
 #endif
 	return tfx__add_effect_to_stage(pm, effect_template->effect);
@@ -14172,6 +14198,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	effect_state->emitter_indexes[1].clear();
 	effect_state->emitter_start_size = 0;
 	effect_state->active_emitters = 0;
+	effect_state->spawning_emitters = 0;
 
 	//Copied rather than read back through source_effect each frame, and reset here rather than at the add
 	//site so a recycled effect slot cannot inherit the previous occupant's bookmarks or crossed bits.
@@ -14557,6 +14584,18 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 		effect.effect_flags &= ~tfxEffectPropertyFlags_user_spawn_locations;
 		tfx__free_effect_slot(pm, effect_index);
 	}
+
+	//A queued warmup would otherwise simulate a freed slot whose source effect may be gone
+	tfxU32 kept_warmups = 0;
+	for (tfx_warmup_entry_t &entry : pm->warmup_effects[0]) {
+		tfx_effect_state_t &effect = pm->effects[entry.effect_index];
+		if ((effect.state_flags & expired_flags) == expired_flags) {
+			effect.state_flags &= ~tfxEffectStateFlags_pending_warmup;
+			continue;
+		}
+		pm->warmup_effects[0][kept_warmups++] = entry;
+	}
+	pm->warmup_effects[0].current_size = kept_warmups;
 
 	//Ribbon emitters are owned by the buckets rather than the effect so they need walking separately.
 	tfx_ribbon_dispatch_t ribbon_dispatch{};
@@ -14988,7 +15027,10 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
 	tfx_effect_state_t &effect = pm->effects[effect_index.index];
 	if (effect.state_flags & tfxEffectStateFlags_user_spawn_locations && effect.user_spawn_locations) {
-		tfx__age_user_spawn_locations(effect.user_spawn_locations, pm->frame_length);
+		//A zero length update spawns nothing, so a fresh location must still be fresh for the next one
+		if (pm->frame_length > 0.0) {
+			tfx__age_user_spawn_locations(effect.user_spawn_locations, pm->frame_length);
+		}
 	}
 	float &timeout_counter = effect.timeout_counter;
 	//During warmup the ebuff is held constant so we mustn't clear or push to next_buffer's lists. If
@@ -15034,6 +15076,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 	}
 
 	effect.active_emitters = 0;
+	effect.spawning_emitters = 0;
 
 	//Read once: a removing emitter must not be updated, since that can queue spawn work against the particle bank freed below
 	const bool removing = (effect.state_flags & tfxEmitterStateFlags_remove) > 0;
@@ -15201,8 +15244,9 @@ void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index) {
 
 void tfx__set_stage_timings(tfx_stage pm, double elapsed_time, double max_frame_length) {
 	pm->frame_length = tfx__Min(elapsed_time, max_frame_length);
-	pm->frame_length_wide = tfxWideSetSingle((float)pm->frame_length);
-	pm->update_time = elapsed_time / 1000.0;
+	//Particle ages are divided by this, and on NEON a zero length update's 0 / 0 would survive the min that clamps it
+	pm->frame_length_wide = tfxWideSetSingle(tfx__Max((float)pm->frame_length, FLT_MIN));
+	pm->update_time = pm->frame_length / 1000.0;
 	pm->update_time_wide = tfxWideSetSingle((float)pm->update_time);
 }
 
@@ -15808,10 +15852,28 @@ void tfx_UpdateStageSubStep(tfx_stage pm, double step_length, tfxUpdateStepFlags
 	tfx__do_stage_update(pm, step_length, 1, (flags & tfxUpdateStepFlags_write_instances) ? 1 : 0);
 }
 
+float tfx_GetStageInterpolation(tfx_stage pm, float alpha, float tick_length) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	if (pm->last_write_span <= 0.0) {
+		return 1.f;
+	}
+	float lerp = 1.f - (1.f - alpha) * tick_length / (float)pm->last_write_span;
+	return tfx__Clamp(0.f, 1.f, lerp);
+}
+
+tfxINTERNAL void tfx__track_write_span(tfx_stage pm, double step_length, tfxU32 step_count, tfxU32 write_step_count) {
+	pm->pending_write_span += tfx__Min(step_length, (double)pm->max_frame_length) * step_count;
+	if (write_step_count > 0) {
+		pm->last_write_span = pm->pending_write_span;
+		pm->pending_write_span = 0.0;
+	}
+}
+
 tfxINTERNAL void tfx__do_stage_update(tfx_stage pm, double step_length, tfxU32 step_count, tfxU32 write_step_count) {
 	//This zone measures what the CALLER pays, not what the update costs - tfx__wait_for_stage_update_locked
 	//is the only place the caller blocks. If this bar is wide the update is no longer overlapping the caller's frame.
 	tfxPROFILE;
+	TFX_ASSERT(step_length >= 0.0);		//Time can't run backwards. 0 is fine, it rewrites the instances without advancing anything
 	//Don't drain pm->work_queue here: an update can still be in flight and only its own thread may complete that queue
 	if ((pm->flags & tfxStageFlags_single_threaded) || tfxNumberOfThreadsInAdditionToMain == 0) {
 		tfx__sync_lock(&pm->update_thread_mutex);
@@ -15827,6 +15889,7 @@ tfxINTERNAL void tfx__do_stage_update(tfx_stage pm, double step_length, tfxU32 s
 		pm->manager_work.step_count = step_count;
 		pm->manager_work.write_step_count = write_step_count;
 		pm->manager_work.pm = pm;
+		tfx__track_write_span(pm, step_length, step_count, write_step_count);
 		tfx__sync_unlock(&pm->update_thread_mutex);
 		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		tfx__update_stage(pm);
@@ -15846,6 +15909,7 @@ tfxINTERNAL void tfx__do_stage_update(tfx_stage pm, double step_length, tfxU32 s
 		pm->manager_work.step_count = step_count;
 		pm->manager_work.write_step_count = write_step_count;
 		pm->manager_work.pm = pm;
+		tfx__track_write_span(pm, step_length, step_count, write_step_count);
 		//No update is running now so this is the one point where the update's view of the locations can change
 		tfx__apply_user_spawn_locations(pm, (float)(tfx__Min(step_length, (double)pm->max_frame_length) * step_count));
 		bool spawned = tfx__ensure_update_thread_locked(pm);
@@ -15891,6 +15955,11 @@ bool tfx_IsEffectExpired(tfx_stage pm, tfxEffectID effect_index) {
 		return true;
 	}
 	return (pm->effects[tfx__effect_slot(effect_index)].state_flags & tfxEffectStateFlags_remove) > 0;
+}
+
+bool tfx_IsEffectOnStage(tfx_stage pm, tfxEffectID effect_id) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	return tfx__valid_effect_id(pm, effect_id);
 }
 
 void *tfx_GetEffectUserData(tfx_stage pm, tfxEffectID effect_index) {
@@ -18157,8 +18226,9 @@ bool tfx_GPUKeyIsValid(tfxU32 key) {
 }
 
 void tfx_SetStageSeed(tfx_stage pm, tfxU64 seed) {
-	tfx_RandomReseed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
-	tfx_RandomReseed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
+	tfx_RandomReseed(&pm->random, seed);
+	//The seed's split mix 64 stream continues into the threaded stream, so the two never match
+	tfx_RandomReseed(&pm->threaded_random, seed + 2 * 0x9E3779B97F4A7C15ull);
 }
 
 tfxU32 tfx_TotalSpriteCount(tfx_stage pm) {
@@ -18650,6 +18720,8 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buf
 	pm->warmup_effects[1].clear();
 	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
 	pm->unwritten_update_time = 0.0;
+	pm->pending_write_span = 0.0;
+	pm->last_write_span = 0.0;
 	pm->instance_buffer.clear();
 	pm->previous_instance_buffer.clear();
 	for (tfxEachLayer) {
@@ -19269,7 +19341,8 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	//Having no locations doesn't finish a user spawn effect, only expiring it does
 	bool waiting_for_locations = effect.state_flags & tfxEffectStateFlags_user_spawn_locations && !(effect.state_flags & tfxEmitterStateFlags_stop_spawning);
 	if (effect.active_emitters == 0 && !waiting_for_locations) {
-		effect.timeout_counter += (float)pm->frame_length;
+		//The timeout only waits out spawn gaps, so an effect that can't spawn again goes now
+		effect.timeout_counter = effect.spawning_emitters == 0 ? effect.timeout + 1.f : effect.timeout_counter + (float)pm->frame_length;
 	}
 	else {
 		effect.timeout_counter = 0;
@@ -19316,6 +19389,21 @@ tfxINTERNAL float tfx__spawn_distance_density(const tfx_particle_emitter_state_t
 		return 0.f;
 	}
 	return 1.f / properties->spawn_distance_spacing;
+}
+
+tfxINTERNAL bool tfx__amount_graph_finished(tfx_graph_t *graph, double age) {
+	return graph->nodes.size() == 0 || (age >= graph->nodes.back().frame && graph->nodes.back().value <= 0.f);
+}
+
+//An emitter with nothing alive that can never spawn again. Paired emitters only spawn from a source that is counted itself
+tfxINTERNAL bool tfx__emitter_spawning_finished(tfxU32 state_flags, tfxSharedEmitterFlags shared_flags, tfx_emission_type emission_type, float loop_length, float distance_density, double age, tfx_graph_t *base_amount, tfx_graph_t *variation_amount) {
+	if (state_flags & (tfxEmitterStateFlags_stop_spawning | tfxEmitterStateFlags_single_shot_done) || emission_type == tfxOtherEmitter || emission_type == tfxSpawnOnRibbon) {
+		return true;
+	}
+	if (shared_flags & tfxSharedEmitterPropertyFlags_single || loop_length > 0.f || distance_density > 0.f) {
+		return false;
+	}
+	return tfx__amount_graph_finished(base_amount, age) && tfx__amount_graph_finished(variation_amount, age);
 }
 
 //The amount multiplier the spawn ratio gives an emitter of this size. Distance spawns never take it, so their spacing holds
@@ -19688,32 +19776,38 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);
 	gpu_emitter.quaternion = tfx__pack16bit_quaternion_for_gpu(ribbon_emitter.rotation);
 
-	double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
-	double tween = 0;
-	if (step_size == ribbon_emitter.qty_step_size || ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
-		tween = ribbon_emitter.amount_remainder;
-	} else {
-		tween = ribbon_emitter.amount_remainder - (ribbon_emitter.qty_step_size - step_size);
-	}
-	ribbon_emitter.qty_step_size = step_size;
-
-	ribbon_work_entry->tween = tween;
-	ribbon_work_entry->qty_step_size = step_size;
 	ribbon_work_entry->amount_to_spawn = 0;
-
-	if (tween >= 1) {
-		ribbon_emitter.amount_remainder = tween - 1.0;
-	} else if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
-		double amount_that_will_spawn = step_size > 0 ? (1.0 - tween) / step_size : 0;
-		ribbon_work_entry->amount_to_spawn = (tfxU32)ceil(amount_that_will_spawn);
-		if (ribbon_work_entry->amount_to_spawn > ribbon_work_entry->new_ribbons) {
-			ribbon_work_entry->amount_to_spawn = ribbon_work_entry->new_ribbons;
-			ribbon_emitter.amount_remainder = 0.0;
+	//A zero length update keeps the spawn timing as it is for the next update
+	if (pm->frame_length > 0.0) {
+		double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
+		double tween = 0;
+		if (step_size == ribbon_emitter.qty_step_size || ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+			tween = ribbon_emitter.amount_remainder;
 		} else {
-			ribbon_emitter.amount_remainder = step_size > 0 ? tween + ribbon_work_entry->amount_to_spawn * step_size - 1.0 : 0.0;
+			tween = ribbon_emitter.amount_remainder - (ribbon_emitter.qty_step_size - step_size);
+		}
+		ribbon_emitter.qty_step_size = step_size;
+
+		ribbon_work_entry->tween = tween;
+		ribbon_work_entry->qty_step_size = step_size;
+
+		if (tween >= 1) {
+			ribbon_emitter.amount_remainder = tween - 1.0;
+		} else if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
+			double amount_that_will_spawn = step_size > 0 ? (1.0 - tween) / step_size : 0;
+			ribbon_work_entry->amount_to_spawn = (tfxU32)ceil(amount_that_will_spawn);
+			if (ribbon_work_entry->amount_to_spawn > ribbon_work_entry->new_ribbons) {
+				ribbon_work_entry->amount_to_spawn = ribbon_work_entry->new_ribbons;
+				ribbon_emitter.amount_remainder = 0.0;
+			} else {
+				ribbon_emitter.amount_remainder = step_size > 0 ? tween + ribbon_work_entry->amount_to_spawn * step_size - 1.0 : 0.0;
+			}
+		} else {
+			ribbon_work_entry->amount_to_spawn = (tfxU32)ribbon_emitter.spawn_quantity;
 		}
 	} else {
-		ribbon_work_entry->amount_to_spawn = (tfxU32)ribbon_emitter.spawn_quantity;
+		ribbon_work_entry->tween = ribbon_emitter.amount_remainder;
+		ribbon_work_entry->qty_step_size = ribbon_emitter.qty_step_size;
 	}
 
 	if (ribbon_work_entry->user_spawn_locations) {
@@ -19740,6 +19834,9 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0 || single_decay_pending) {
 		parent_effect.active_emitters++;
 		return;
+	}
+	if (!tfx__emitter_spawning_finished(ribbon_emitter.state_flags, ribbon_emitter.state_properties.shared_flags, ribbon_work_entry->shared_properties->emission_type, ribbon_emitter.source_ribbon->state_properties.loop_length, 0.f, ribbon_emitter.age, &ribbon_work_entry->graphs->graphs[tfxRibbon_base_amount_index], &ribbon_work_entry->graphs->graphs[tfxRibbon_variation_amount_index])) {
+		parent_effect.spawning_emitters++;
 	}
 }
 
@@ -19941,6 +20038,13 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	bool ring_has_particles = emitter.state_properties.gpu_group_index != tfxINVALID && pm->gpu_groups[emitter.state_properties.gpu_group_index].current_size != 0;
 	if (particle_buffer.current_size != 0 || single_decay_pending || ring_has_particles) {
 		parent_effect.active_emitters++;
+	} else {
+		tfx_graph_list_t &graph_list = emitter.library->graphs[emitter.state_properties.graph_list_index];
+		const float distance_density = tfx__spawn_distance_density(emitter, spawn_work_entry->properties, &shared_properties);
+		//A GPU ring only takes this update's spawns after the emitters have run
+		if (spawn_work_entry->amount_to_spawn != 0 || !tfx__emitter_spawning_finished(emitter.state_flags, emitter.state_properties.shared_flags, shared_properties.emission_type, emitter.source_emitter->state_properties.loop_length, distance_density, emitter.age, &graph_list.graphs[tfxEmitter_base_amount_index], &graph_list.graphs[tfxEmitter_variation_amount_index])) {
+			parent_effect.spawning_emitters++;
+		}
 	}
 
 	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
@@ -20280,6 +20384,11 @@ tfxINTERNAL tfx_path_slot_t *tfx__next_path_slot(tfx_path_set_t *set, tfx_path_s
 
 tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
 	tfx_particle_emitter_state_t &emitter = pm->emitters[index];
+	//A zero length update only rewrites the instances. Cleared because the spawn reads the quantity, not this return
+	if (pm->frame_length == 0.0) {
+		emitter.spawn_quantity = 0;
+		return 0;
+	}
 	tfx_random_t *random = &entry->random;
 	tfx_library library = emitter.library;
 	//With no map, or nothing on the side it spawns from, there's nowhere to put a particle
@@ -20425,6 +20534,10 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	tfxPROFILE;
 	tfx_random_t *random = &entry->random;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
+	if (pm->frame_length == 0.0) {
+		ribbon_emitter.spawn_quantity = 0;
+		return 0;
+	}
 	tfx_library library = ribbon_emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + ribbon_emitter.seed_index);
 	if (!(ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
@@ -20483,6 +20596,18 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 
 void tfx_CompleteStageWork(tfx_stage pm) {
 	tfx__wait_for_stage_update(pm);
+}
+
+tfxINTERNAL tfxU32 tfx__gpu_ring_sized_locations(tfx_effect_descriptor emitter) {
+	return emitter->parent && emitter->parent->gpu_location_count ? emitter->parent->gpu_location_count : 1;
+}
+
+//A ring sized from the estimate that drops with no more locations than it was sized for was short because the update was longer
+tfxINTERNAL bool tfx__gpu_drop_from_update_length(tfx_effect_descriptor emitter, tfxU32 location_count, double update_length) {
+	if (emitter->state_properties.gpu_capacity_override || location_count > tfx__gpu_ring_sized_locations(emitter)) {
+		return false;
+	}
+	return update_length > 1000.0 / tfxStore->gpu_sizing_update_rate + 0.5;
 }
 
 void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
@@ -20558,6 +20683,8 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		if (group.capacity) {
 			pm->gpu_dropped_spawns += dropped;
 			group.dropped_spawns += dropped;
+			const float update_length = (float)pm->frame_length;
+			group.dropped_update_length = tfx__Max(group.dropped_update_length, update_length);
 #ifndef TFX_DISABLE_TIPS
 			if (!(group.flags & tfxGPUGroupFlags_drop_tip_checked)) {
 				group.flags |= tfxGPUGroupFlags_drop_tip_checked;
@@ -20566,7 +20693,10 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 					tfx__template_path(emitter.source_emitter, &path);
 					//Every location of an effect shares the ring, so overlapping locations are the usual cause
 					const tfxU32 location_count = work_entry->user_spawn_locations ? work_entry->user_spawn_locations->active_slots.current_size : 0;
-					if (location_count > 1) {
+					const tfxU32 sized_locations = tfx__gpu_ring_sized_locations(emitter.source_emitter);
+					if (tfx__gpu_drop_from_update_length(emitter.source_emitter, location_count, update_length)) {
+						tfxTIP("GPU emitter \"%s\" is dropping spawns: its ring of %u is sized for %u locations at %.3g updates a second, but this update was %.1f ms. Set tfx_SetGPUSizingUpdateRate to your slowest update rate before you size the pool, or catch up with tfx_UpdateStageSubSteps, or raise the ring with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity, sized_locations, tfxStore->gpu_sizing_update_rate, update_length);
+					} else if (location_count > 1) {
 						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more.", path.c_str(), group.capacity, location_count, location_count);
 					} else {
 						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full. Raise it with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity);
@@ -24910,7 +25040,9 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 		if (per_source_particle && !spawns_on_ribbon) {
 			//Every source particle spawns the burst once, and the sources turn over every source life while the burst outlives them
 			float source_life_ms = tfx__Max(tfx__estimate_max_life(source), 1.f);
-			return tfx__Max((tfxU32)ceilf(total * source_particles * (max_life_ms / source_life_ms + 1.f)), (tfxU32)1);
+			//A burst's slots are held up to an update past its life, the + 1 covers a 60Hz update
+			const float extra_hold_ms = tfx__Max(1000.f / tfxStore->gpu_sizing_update_rate - 1000.f / 60.f, 0.f);
+			return tfx__Max((tfxU32)ceilf(total * source_particles * ((max_life_ms + extra_hold_ms) / source_life_ms + 1.f)), (tfxU32)1);
 		}
 		//A single spawn on ribbon bursts once, times the ribbons alive at that moment with the spawn ratio
 		return tfx__Max((tfxU32)ceilf(total * source_particles), (tfxU32)1);
@@ -24942,7 +25074,8 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 	//multiplied by update_time during spawning to produce per-frame counts).
 	float max_life_sec = max_life_ms / 1000.f;
 	tfxU32 result = (tfxU32)ceilf(max_amount_per_sec * max_life_sec);
-	result += (tfxU32)ceilf(max_amount_per_sec * 2.f / 60.f);	//2-frame timing slop
+	//Slots are held up to an update past their life and an update's spawns arrive at once
+	result += (tfxU32)ceilf(max_amount_per_sec * 2.f / tfxStore->gpu_sizing_update_rate);
 	return tfx__Max(result, (tfxU32)1);
 }
 
@@ -25013,6 +25146,12 @@ tfxINTERNAL bool tfx__descriptor_takes_gpu_ring(tfx_effect_descriptor emitter) {
 		return false;
 	}
 	return tfx__gpu_kernel_supports_flags(shared_flags, emitter->parent && emitter->parent->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
+}
+
+void tfx_SetGPUSizingUpdateRate(float updates_per_second) {
+	TFX_ASSERT(tfxCurrentContext);		//Call tfx_BeginTimelineFX first
+	TFX_ASSERT(updates_per_second > 0.f);
+	tfxStore->gpu_sizing_update_rate = updates_per_second;
 }
 
 tfxU32 tfx_GetEmitterGPUCapacity(tfx_effect_descriptor emitter) {
@@ -26092,6 +26231,7 @@ typedef struct tfx_emitter_problem_s {
 	tfxU32 blocked_instances;
 	tfxU32 ring_capacity;
 	tfxU32 location_count;				//The most spawn locations any of its dropping instances has right now
+	float dropped_update_length;
 	tfxU64 dropped_spawns;
 } tfx_emitter_problem_t;
 
@@ -26148,6 +26288,7 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 		} else {
 			problem->dropped_spawns += group.dropped_spawns;
 			problem->ring_capacity = tfx__Max(problem->ring_capacity, group.capacity);
+			problem->dropped_update_length = tfx__Max(problem->dropped_update_length, group.dropped_update_length);
 			const tfx_user_spawn_locations_t *location_list = pm->effects[pm->emitters[group.emitter_index].parent_index].user_spawn_locations;
 			if (location_list) {
 				problem->location_count = tfx__Max(problem->location_count, location_list->active_slots.current_size);
@@ -26161,7 +26302,10 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 			tfx__write_line(&writer, "Blocked: GPU emitter \"%s\" got no ring in %u instances, so it spawns nothing. It needs %u slots and %u of the pool's %u are free. Raise gpu_particle_capacity",
 				path.c_str(), problem.blocked_instances, tfx__round_up_gpu_ring_capacity(tfx_GetEmitterGPUCapacity(problem.emitter)), gpu.capacity - gpu.allocated, gpu.capacity);
 		}
-		if (problem.dropped_spawns && problem.location_count > 1) {
+		if (problem.dropped_spawns && tfx__gpu_drop_from_update_length(problem.emitter, problem.location_count, problem.dropped_update_length)) {
+			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns: its ring of %u is sized for %u locations at %.3g updates a second, but updates of up to %.1f ms dropped them. Set tfx_SetGPUSizingUpdateRate to your slowest update rate before you size the pool, or catch up with tfx_UpdateStageSubSteps, or raise the ring with tfx_SetTemplateEmitterGPUCapacity",
+				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, tfx__gpu_ring_sized_locations(problem.emitter), tfxStore->gpu_sizing_update_rate, problem.dropped_update_length);
+		} else if (problem.dropped_spawns && problem.location_count > 1) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more",
 				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, problem.location_count);
 		} else if (problem.dropped_spawns) {
@@ -27015,10 +27159,13 @@ tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_al
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
 	tfxStore->memory_pool_sizes[0] = memory_pool_size;
 	tfxStore->memory_pool_count = 1;
+	tfxStore->gpu_sizing_update_rate = 60.f;
 	tfxStore->ribbon_buffer_requirements = (tfx_ribbon_buffer_requirements)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_buffer_requirements_t));
 	//tfxStore->last_ribbon_dispatch = (tfx_ribbon_dispatch)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_ribbon_dispatch_t));
 	tfxStore->stages.init();
 	tfxStore->animation_managers.init();
+	tfxStore->tips_shown.init();
+	tfx__sync_init(&tfxStore->tips_mutex);
 	tfxStore->gpu_graph_data = tfxCreateBuffer(sizeof(tfx_gpu_graph_data_t), 16);
 	tfxStore->global_gpu_shapes = tfx_CreateGPUShapesList();
 	tfx__hash_initialise(&tfxStore->hasher, 0);
@@ -27318,6 +27465,8 @@ void tfx_EndTimelineFX() {
 	}
 	tfxStore->libraries.FreeAll();
 	tfxStore->graph_indexes.FreeAll();
+	tfxStore->tips_shown.FreeAll();
+	tfx__sync_cleanup(&tfxStore->tips_mutex);
 	tfxStore->data_types.names_and_types.FreeAll();
 	tfxStore->gpu_graph_data.free();
 	tfxStore->free_graph_lookup_blocks.free();
@@ -27766,8 +27915,7 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 	pm->unique_particle_id = 0;
 	pm->unique_ribbon_id = 0;
 
-	pm->random = tfx_CreateRandom(tfx_Millisecs());
-	pm->threaded_random = tfx_CreateRandom(tfx_Millisecs());
+	tfx_SetStageSeed(pm, tfx_Millisecs());
 	pm->max_effects = effects_limit;
 	pm->mt_batch_size = mt_batch_size;
 	pm->work_queue = { 0 };

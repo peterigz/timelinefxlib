@@ -125,15 +125,16 @@ tfxU32 ticks = tfx_impl_AdvanceTimer(&timer, elapsed_milliseconds);
 if (ticks > 0) {
 	//Lays out any library or template change in the global buffers, free when nothing changed
 	tfx_UpdateGlobalGPUData();
-	//One update however many ticks are due, so the previous instance buffer is always the one drawn last
-	tfx_UpdateStage(stage, timer.update_length * ticks);
+	//Every due tick at its own length, writing the instances once, so the previous instance buffer is always the one drawn last
+	tfx_UpdateStageSubSteps(stage, timer.update_length, ticks);
 }
 //Waits for the update and does nothing when ticks is 0. Only fetch GPU particles if the backend dispatches them
 tfx_impl_GatherFrame(stage, ticks, &ribbon_staging, fetch_gpu_particles, &frame);
 //Baked playback runs on the real frame time rather than the stage's ticks
 tfx_UpdateAnimationManager(animation_manager, (float)elapsed_milliseconds);
 tfx_impl_GatherBakedFrame(animation_manager, &frame.baked);
-tfx_impl_SetUniforms(&uniforms, &camera, screen_width, screen_height, &timer);
+//timer_lerp comes from tfx_GetStageInterpolation, every frame
+tfx_impl_SetUniforms(&uniforms, &camera, screen_width, screen_height, &timer, stage);
 
 tfx_impl_dx11_UploadFrame(&renderer, &frame);	//Baked data every frame, instances, ribbons and changed library data only when ticks > 0
 tfx_impl_dx11_Compute(&renderer, &uniforms);	//GPU particles on update frames, baked playback and ribbon geometry every frame
@@ -145,6 +146,12 @@ last, which is what `captured_index` points into. That's true for CPU and GPU in
 makes one `tfx_UpdateStage` or `tfx_UpdateStageSubSteps` call, which both write instances once. On the frames between
 updates nothing is uploaded or dispatched for the stage, and the GPU keeps drawing the same two buffers with a growing
 lerp.
+
+After an update that covers several ticks the previous buffer is all of them behind, so the timer's own `lerp` (how far
+its accumulator is into the next tick) isn't the factor to draw with. `tfx_GetStageInterpolation(stage, timer.lerp,
+timer.update_length)` turns it into the one that is, from the time the stage's last write actually covered, which
+also allows for `max_frame_length` clamping a long frame. `tfx_impl_SetUniforms` does this. Without it, particles
+stutter at high update rates and jump after a catch-up frame.
 
 Rules the loop depends on:
 - **Threading.** `tfx_UpdateStage` runs on its own thread. Add effects, move them and set the camera before it, and
@@ -204,8 +211,9 @@ Rules the loop depends on:
   - Every Run on GPU emitter gets a ring sized for one spawn location, so an effect bursting at several locations at
     once needs `tfx_SetTemplateGPUCapacityForLocations`, and the stage's `gpu_particle_capacity` has to hold every ring.
     That function returns the pool slots the template's rings take, rounded the way the pool hands them out, so adding
-    up its returns gives a pool that fits exactly. `example_scene.cpp` does both. The capacities assume about 60
-    updates a second; at 20 the rings drop spawns.
+    up its returns gives a pool that fits exactly. `example_scene.cpp` does both. The capacities assume 60
+    updates a second. At 20, or when one `tfx_UpdateStage` call catches up several ticks, rings drop spawns unless
+    `tfx_SetGPUSizingUpdateRate` was set to the slowest rate first.
 - **Baked playback:**
   - Each frame the offsets and animation instances go up.
   - `tfx_sprite_playback` interpolates every visible baked sprite into a billboard instance.

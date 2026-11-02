@@ -40,7 +40,7 @@ with a tip the first time.
   bursts, either:
   - add the effect once and give it a location per burst (best, one effect for all of them), or
   - add an effect per burst and pass `tfxSpawnLocationAdd_expire_effect`, which soft expires the effect once it has no
-    locations left, so it ends like any finite effect.
+    locations left, so it ends with its last particle like any finite effect.
   A location kept with `tfxSpawnLocationAdd_no_auto_remove` never goes, so it never lets `_expire_effect` fire.
 - `tfxSpawnLocationAdd_transient` removes the location after the next update, for one-off bursts where you don't keep
   the id.

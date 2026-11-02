@@ -5047,12 +5047,15 @@ typedef struct tfx_storage_s {
 	tfx_storage_map_t<tfx_library> libraries;
 	tfx_storage_map_t<tfx_animation_manager> animation_managers;
 	tfx_storage_map_t<tfxU32> graph_indexes;
+	tfx_storage_map_t<tfxU32> tips_shown;				//Path hashes of effects whose once per process tips have been shown
 #else
 	tfx_storage_map_t stages;
 	tfx_storage_map_t libraries;
 	tfx_storage_map_t animation_managers;
 	tfx_storage_map_t graph_indexes;
+	tfx_storage_map_t tips_shown;
 #endif
+	tfx_sync_t tips_mutex;
 	tfx_buffer_t gpu_graph_data;
 #ifdef __cplusplus
 	tfx_vector_t<tfxU32> free_graph_lookup_blocks;		//Offsets of blocks released by freed template emitters, emptied by every rebuild
@@ -5076,6 +5079,7 @@ typedef struct tfx_storage_s {
 	tfxU32 global_gpu_shapes_version;
 	bool global_layout_changed;							//A library was created or freed since the last sync
 	bool global_layout_complete;						//Every library was placed by the last sync
+	float gpu_sizing_update_rate;						//tfx_SetGPUSizingUpdateRate
 	tfx_ribbon_buffer_requirements ribbon_buffer_requirements;
 #ifdef _WIN32
 	void *threads[tfxMAX_THREADS];
@@ -6398,6 +6402,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	float noise_base_offset;
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
+	tfxU32 spawning_emitters;			//Emitters with nothing alive that could still spawn. None means an effect with nothing alive is finished
 	tfxU32 sort_key;
 	tfxU32 gpu_key;						//tfx_SetEffectGPUKey, tfxINVALID uses each emitter's template key
 
@@ -6536,6 +6541,7 @@ typedef struct tfx_gpu_particle_group_s {
 	tfxU32  upload_count;
 	tfxU32  removed_spawn_count;		//This tick's spawns the spawner flagged removed, so the bank's live count needs no walk
 	tfxU64  dropped_spawns;				//Spawns refused because the ring was full
+	float   dropped_update_length;		//The longest update, in milliseconds, that dropped spawns
 	struct tfx_spawn_work_entry_s *generated_spawn;	//Set for a tick whose spawns the kernel generates, until tfx__record_gpu_groups writes their block
 	tfxGPUGroupFlags flags;
 	//Tracking ring: one entry per update tick that spawned anything, grows if it fills
@@ -7609,6 +7615,8 @@ typedef struct tfx_stage_s {
 	tfxWideFloat update_time_wide;
 	double unwritten_update_time;		//Seconds of ticks since the last one that wrote instances, which the next write's captured positions span
 	double tick_time;					//Milliseconds of ticks the stage has run, stamps freed particle arrays for tfx_TrimParticleArrays
+	double pending_write_span;			//Milliseconds simulated since the last update that wrote instances, kept on the caller's thread
+	double last_write_span;				//Milliseconds between the instances the last write captured and the ones it wrote, for tfx_GetStageInterpolation
 } tfx_stage_t;
 #endif
 

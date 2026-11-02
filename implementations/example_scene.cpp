@@ -192,8 +192,8 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 	if (ticks > 0) {
 		//Picks up any library or template change before the update writes its indexes, and returns straight away when there's none
 		tfx_UpdateGlobalGPUData();
-		//One update per frame, however many ticks it covers, so the previous instance buffer is always the one drawn last
-		tfx_UpdateStage(scene->stage, scene->timer.update_length * ticks);
+		//One call per frame that writes the instances once, so the previous instance buffer is always the one drawn last
+		tfx_UpdateStageSubSteps(scene->stage, scene->timer.update_length, ticks);
 	}
 	tfx_impl_GatherFrame(scene->stage, ticks, (scene->features & example_scene_feature_ribbons) ? &scene->ribbon_staging : NULL,
 		(scene->features & example_scene_feature_gpu_simulation) != 0, frame);
@@ -216,7 +216,7 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 		tfx_UpdateAnimationManager(scene->animation_manager, (float)elapsed_milliseconds);
 		tfx_impl_GatherBakedFrame(scene->animation_manager, &frame->baked);
 	}
-	tfx_impl_SetUniforms(uniforms, &scene->camera, screen_width, screen_height, &scene->timer);
+	tfx_impl_SetUniforms(uniforms, &scene->camera, screen_width, screen_height, &scene->timer, scene->stage);
 }
 
 void example_scene_Burst(example_scene_t *scene) {

@@ -30,7 +30,7 @@ locations) call `tfx_PrintLibrary(library)`.
 | --- | --- | --- |
 | Rings allocated but `estimated_live_particles` 0, or a `No spawn locations right now` line | The effect isn't spawning. Usually it spawns at user spawn locations and has none | `tfx_AddSpawnLocation` (see user-spawn-locations.md) |
 | `blocked_emitters` > 0, or a `Blocked:` line | The pool was too full to give the emitter a ring, so it spawns nothing | Size the pool from `tfx_SetTemplateGPUCapacityForLocations`, below |
-| `dropped_spawns` > 0, or a `Dropping spawns:` line | The emitter's ring is too small for how many locations overlap | A larger location count in `tfx_SetTemplateGPUCapacityForLocations`, or `tfx_SetTemplateEmitterGPUCapacity` for one emitter |
+| `dropped_spawns` > 0, or a `Dropping spawns:` line | The emitter's ring is too small for how many locations overlap, or for how long the updates are when the line names an update length | A larger location count in `tfx_SetTemplateGPUCapacityForLocations`, `tfx_SetGPUSizingUpdateRate` for slow or single call catch-up updates, or `tfx_SetTemplateEmitterGPUCapacity` for one emitter |
 | An `Unfetched:` line, or `unfetched_gpu_updates` climbing | The host updates the stage without calling `tfx_GetGPUParticleFrame` | Fetch and dispatch on every frame the stage updated |
 | `slots_in_use` well above `estimated_live_particles` | Normal: a dead particle keeps its slot until every particle spawned in the same tick has died | Nothing. Compare `estimated_live_particles` with the CPU, never `slots_in_use` |
 | A `Library ... tfxErrorCode_` line | The library loaded with problems. `file_version_out_of_date` alone isn't one: the library loaded fine | Re-save it in the editor |
@@ -46,6 +46,8 @@ Every Run on GPU emitter instance gets a fixed ring, sized by default for one sp
 at several locations at once, in this order:
 
 ```c
+//0. If the game updates slower than 60 times a second, or catches up in one tfx_UpdateStage call
+tfx_SetGPUSizingUpdateRate(20.f);
 //1. Create the templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest)
 //2. Size for how many locations play at once: one location's play time over how often you add one
 tfxU32 overlap = (tfxU32)(tfx_GetEffectLifetime(effect_template) / milliseconds_between_locations) + 1;
@@ -59,8 +61,14 @@ Rings are fixed when an effect is added, so change amounts before adding the eff
 in step 3, take the template's slots from `tfx_GetTemplateGPUPoolSlots` afterwards instead of the earlier return.
 
 The return is already rounded the way the pool hands out rings, so the sum fits exactly. Don't add up
-`tfx_GetEmitterGPUCapacity` yourself, which misses the rounding. Capacities assume about 60 updates a second. Fewer
-updates means bigger ticks and drops.
+`tfx_GetEmitterGPUCapacity` yourself, which misses the rounding.
+
+Capacities are sized for 60 updates a second unless `tfx_SetGPUSizingUpdateRate` says otherwise. A slot is held for its
+particle's life plus up to one update, and an update's spawns all arrive at once, so slower updates need bigger rings. A
+catch-up done as one `tfx_UpdateStage(stage, tick * 3)` call counts as a 20 updates a second update for this, at any
+length up to `max_frame_length` (240 ms), which cuts every update for spawning and motion alike.
+`tfx_UpdateStageSubSteps` steps are an update each, so catching up that way needs no extra room. Set the rate to the
+slowest you'll see before step 2.
 
 ## Template paths
 

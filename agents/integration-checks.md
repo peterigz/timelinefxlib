@@ -6,7 +6,7 @@ this says how to tell it works.
 
 **First:** route the library's messages to a log you can read with `tfx_SetPrintCallback`, if the host has no console,
 and read every line starting `TimelineFX tip:`. The tip saying an effect "spawns at user spawn locations" is expected
-once per template when you add locations straight after. Act on every other one.
+once per effect when you add locations straight after. Act on every other one.
 
 ## 1. The stage is healthy
 
@@ -25,17 +25,21 @@ and once with `tfx_SetStageGPUSimulation(stage, false)` set before the effects a
 - CPU run: `tfx_GetParticleCount`.
 - GPU run: `tfx_GetParticleCount` (the emitters still on the CPU) + `tfx_GetGPUParticleStats(stage).estimated_live_particles`.
 
-Done when the two are within 10% (they're usually within 3%). Never compare against `slots_in_use`, which counts dead
-particles still holding their slots. To find which effect a gap comes from, play one at a time, or read
-`tfx_GetEffectGPUParticleStats(stage, effect).estimated_live_particles` for each. A big gap with no dropped spawns or
-blocked emitters means the GPU integration is losing particles: check that every fetch is dispatched exactly once, and
-that every GPU range is drawn: one per layer, or one per key from `tfx_GetNextInstanceKeyRange` when you use sort keys.
+Done when the two are within 10%. The CPU count reads high on emitters whose lives vary: `tfx_GetParticleCount` includes
+particles that died but still hold their place until the oldest in their emitter dies, and the estimate counts only the
+living, so a gap of about half the life variation over the average life is expected (6% for lives of 2000 to 2250 ms).
+Never compare against `slots_in_use`, which counts dead particles still holding their slots. To find which effect a gap
+comes from, play one at a time, or read `tfx_GetEffectGPUParticleStats(stage, effect).estimated_live_particles` for
+each. A big gap with no dropped spawns or blocked emitters means the GPU integration is losing particles: check that
+every fetch is dispatched exactly once, and that every GPU range is drawn: one per layer, or one per key from
+`tfx_GetNextInstanceKeyRange` when you use sort keys.
 
 ## 3. No drops at the real update rate
 
 `tfx_GetGPUParticleStats(stage).dropped_spawns` stays 0 and `blocked_emitters` stays 0 at the game's update rate, with
-the most locations the game will ever have playing at once. Ring sizes assume about 60 updates a second, so test at the
-real rate. Size with `tfx_SetTemplateGPUCapacityForLocations` (gpu-particles.md). The count is since the stage was
+the most locations the game will ever have playing at once, and through the catch-up frames a slow frame causes. Ring
+sizes assume 60 updates a second unless `tfx_SetGPUSizingUpdateRate` was set, so test at the real rate. Size with
+`tfx_SetTemplateGPUCapacityForLocations` and `tfx_SetGPUSizingUpdateRate` (gpu-particles.md). The count is since the stage was
 created or last cleared, so `tfx_ClearStage` between test runs. `tfx_GetEffectGPUParticleStats` shows which effect drops.
 
 ## 4. Fetches keep up
@@ -50,7 +54,8 @@ interpolates between updates). If they stutter or jump, the instance buffers are
 or a host that double buffers its own instances is breaking a rule in "Engines with their own instance buffers" in
 implementations/README.md. At 20 updates a second, the rings of continuous GPU emitters sized for 60 can drop spawns:
 each update spawns three times as many, and an update's slots are held until its longest lived particle dies. Single
-shot bursts spawn in one update at any rate. So check 3 only applies at the real rate.
+shot bursts spawn in one update at any rate. So check 3 only applies at the real rate, unless
+`tfx_SetGPUSizingUpdateRate(20)` was set first, in which case 20 must not drop either.
 
 ## 6. Libraries share one set of buffers
 
@@ -69,3 +74,7 @@ library" in timelinefx.h):
   `tfx_SetStageSeed` and schedule. Swapping moves every library's place in the global buffers, so the two must match.
   Effects from one library drawing with another's shapes or colors means the backend is binding a library's own data
   (`tfx_GetParticlePropertiesBuffer`, `tfx_GetColorRampBitmap`, `tfx_GetLibraryGPUShapes`) instead of the global data.
+- Free a library while another's effects keep playing, on a frame where the timer doesn't tick (pause first).
+  Call `tfx_UpdateStage(stage, 0)` and upload the instances before drawing. The freed library's effects must be gone
+  and the remaining effects must draw with their own library's data on that frame too. Drawing without the update shows
+  them with the moved layout until the next real update.

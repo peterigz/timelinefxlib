@@ -653,13 +653,13 @@ void tfx_impl_FreeRibbonStaging(tfx_impl_ribbon_staging_t *ribbon_staging) {
 	memset(ribbon_staging, 0, sizeof(tfx_impl_ribbon_staging_t));
 }
 
-void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t *camera, float screen_width, float screen_height, const tfx_impl_timer_t *timer) {
+void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t *camera, float screen_width, float screen_height, const tfx_impl_timer_t *timer, tfx_stage stage) {
 	memset(uniforms, 0, sizeof(tfx_impl_uniforms_t));
 	uniforms->view = camera->view;
 	uniforms->projection = camera->projection;
 	uniforms->screen_size[0] = screen_width;
 	uniforms->screen_size[1] = screen_height;
-	uniforms->timer_lerp = timer->lerp;
+	uniforms->timer_lerp = tfx_GetStageInterpolation(stage, timer->lerp, (float)timer->update_length);
 	uniforms->update_time = (float)timer->update_length;
 	uniforms->camera_position[0] = camera->position.x;
 	uniforms->camera_position[1] = camera->position.y;

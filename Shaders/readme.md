@@ -144,7 +144,7 @@ Draw 6 vertices per instance with no index buffer: `tfx_billboard_vertex` makes 
 * the previous update's instance buffer, so that it can interpolate the position, size and rotation of each sprite using its `captured_index`. A sprite without the capture flag set (the first frame of a particle, or one that has just looped back to the start of a path) isn't drawn that frame.
 * the emitter properties buffer from `tfx_GetParticlePropertiesBuffer` for the image handle, the billboard alignment, the color ramp row and the start frame of the emitter's image.
 * the image data buffer for the uvs and the image index.
-* the view, with `timer_lerp`, how far the current frame is between the previous update and the current one.
+* the view, with `timer_lerp`, how far the current frame is between the previous update and the current one. Get it from `tfx_GetStageInterpolation`, not straight from your timer.
 
 It's an all-in-one shader that handles every billboard alignment mode (camera facing, align to a vector, and camera facing that rolls to a vector) plus the stretch along the direction of travel, so an effect whose emitters mix alignment modes still draws in a single draw call.
 

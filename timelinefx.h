@@ -62,10 +62,10 @@
 	user-spawn-locations.md, integration-checks.md), and route the library's messages with tfx_SetPrintCallback so you can
 	read its "TimelineFX tip:" lines.
 
-	Scale: effects are authored in the editor's world units, +Y up. The editor's default preview camera (artists can move it
-	per effect) has a 60 degree vertical field of view and sits at (0, 3.5, 7.5), pitched down 30 degrees towards the effect at
-	the origin, so about 8 units away. Start your camera that far from an effect to see it at the size the artist did, then
-	scale your camera distance, or the effect with tfx_SetEffectOverallScale, to fit your world.
+	Scale: effects are authored in the editor's world units, +Y up. The editor's default preview camera has a 60 degree
+	vertical field of view, sits at (0, 3.5, 7.5) pitched down 30 degrees, and plays the effect 5 units in front of it, but
+	artists move it, so treat that as a rough guide only. The right size depends on your game: scale your camera distance,
+	or the effect with tfx_SetEffectOverallScale, to fit your world.
 
 	Currently tested on Windows, Linux and MacOS, Intel and Mac based ARM processors.
 
@@ -216,7 +216,7 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfx_int16x2_t intensity_gradient_map;			//Intensity in x and gradient map in y, scaled by 32767/128: multiply by 128/32767 to unpack
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
 	tfxU32 indexes;									//GPU property index << 16 | capture flag << 15 | animation frame in the low 13 bits (max 8191), which the shader adds to the emitter's start_frame_index. Bits 13 and 14 are unused. The property index is into tfx_GetGlobalParticlePropertiesBuffer on a stage with global_library_indexes, otherwise into the effect's library
-	tfxU32 captured_index;							//Only meaningful when the capture flag in indexes is set: mask with 0x0FFFFFFF for this instance's index in the previous instance buffer. Bit 30 is which buffer, bit 31 is internal. Without the capture flag the reference shaders draw the instance at zero size that frame
+	tfxU32 captured_index;							//Only meaningful when the capture flag in indexes is set: mask with 0x0FFFFFFF for this instance's index in the previous instance buffer. Bit 30 is which buffer, bit 31 is internal. Without the capture flag the instance is a spawn from this update or a particle that died but still holds its slot, and the reference shaders draw it at zero size that frame
 } tfx_instance_t;
 
 typedef struct tfx_ribbon_vertex_s {
@@ -614,7 +614,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases. Default 1.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater. Default 4096.
 	tfxU32 sort_passes;                     //Unused: each effect's depth sort passes are set on the effect in the editor. Default 3.
-	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
+	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits at a steady 60 updates a second, slower rates and single call catch-up updates need tfx_SetGPUSizingUpdateRate. It fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations. Default true.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Default true.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera. Default false, true with tfxStageSetup_auto_order_effects.
@@ -1025,10 +1025,10 @@ typedef struct tfx_gpu_particle_stats_s {
 	tfxU32 capacity;						//Pool slots, tfx_stage_info_t gpu_particle_capacity
 	tfxU32 allocated;						//Pool slots held by rings
 	tfxU32 slots_in_use;					//Ring slots in use. Includes particles that died but whose batch hasn't expired, which are still drawn as zero size billboards
-	tfxU32 estimated_live_particles;		//Particles still alive, assuming each spawn's particles die evenly over its range of lives. Compare this with tfx_GetParticleCount
+	tfxU32 estimated_live_particles;		//Particles still alive, assuming each spawn's particles die evenly over its range of lives. Compare this with tfx_GetParticleCount, which reads higher by the dead particles still holding their place
 	tfxU32 ring_count;
 	tfxU32 blocked_emitters;				//GPU emitters that got no ring because the pool was full, raise gpu_particle_capacity
-	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, since the stage was created or last cleared. For overlapping spawn locations size the template with tfx_SetTemplateGPUCapacityForLocations, otherwise raise the ring with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
+	tfxU64 dropped_spawns;					//Spawns refused because a ring was full, since the stage was created or last cleared. For overlapping spawn locations size the template with tfx_SetTemplateGPUCapacityForLocations, for slow or catch-up updates set tfx_SetGPUSizingUpdateRate, otherwise raise the ring with tfx_SetTemplateEmitterGPUCapacity. Blocked emitters aren't counted here
 } tfx_gpu_particle_stats_t;
 
 //A stage's health in one place, see tfx_GetStageDiagnostics and tfx_DescribeStage
@@ -1198,18 +1198,31 @@ tfxAPI float tfx_RadiansToDegrees(float radians);
 //--------------------------------
 //Random numbers
 //--------------------------------
+//A xorshift128+ generator seeded as tfx_RandomReseed does, so any seed, 0 included, gives a well spread stream
 tfxAPI tfx_random_t tfx_CreateRandom(tfxU32 seed);
+//Step the generator once and throw the number away
 tfxAPI void tfx_AdvanceRandom(tfx_random_t *random);
+//Reseed from the millisecond clock, as tfx_RandomReseed does
 tfxAPI void tfx_RandomReseedTime(tfx_random_t *random);
+//Set the two state words as they are, unmixed. They mustn't both be 0, and small values give poor first draws, so pass well mixed values or use tfx_RandomReseed
 tfxAPI void tfx_RandomReseed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2);
+//Reseed from any value, 0 included: the seed is mixed into both state words with split mix 64, and the same seed always gives the same stream
 tfxAPI void tfx_RandomReseed(tfx_random_t *random, tfxU64 seed);
+//A float from 0 to 1, which can round up to exactly 1
 tfxAPI float tfx_GenerateRandom(tfx_random_t *random);
+//A float from 0 to max
 tfxAPI float tfx_RandomRangeZeroToMax(tfx_random_t *random, float max);
+//A float between from and to, worked out as to - (to - from) * tfx_GenerateRandom, so low draws land near to rather than from
 tfxAPI float tfx_RandomRangeFromTo(tfx_random_t *random, float from, float to);
+//An int from from to to, both included
 tfxAPI int tfx_RandomRangeFromToInt(tfx_random_t *random, int from, int to);
+//An unsigned int from 0 to max - 1
 tfxAPI tfxU32 tfx_RandomRangeZeroToMaxUInt(tfx_random_t *random, tfxU32 max);
+//An int from 0 to max - 1
 tfxAPI int tfx_RandomRangeZeroToMaxInt(tfx_random_t *random, int max);
+//Move the generator onto a different stream by amount (the first state word is multiplied by it, the second has it added), to branch a copy
 tfxAPI void tfx_AlterRandomSeedU64(tfx_random_t *random, tfxU64 amount);
+//As tfx_AlterRandomSeedU64
 tfxAPI void tfx_AlterRandomSeedU32(tfx_random_t *random, tfxU32 amount);
 
 //[API functions]
@@ -1262,10 +1275,10 @@ GPU shape lists still allocated. It prints one tip listing what it freed for you
 first is fine, they deregister from the sweep as they go, so there is no double free either way. tfx_GetMemoryInUse
 tells you how much is still allocated at any point.
 
-If you free objects yourself rather than leaving them to the sweep, free them in dependency order: free/complete
-a stage before the library whose effects it is simulating (a live stage references the library's effect data);
-an effect template holds its own detached clone of the effect, but tfx_FreeLibrary frees every template made from
-the library, so don't use one after freeing its library. A stage has outstanding worker-thread work
+If you free objects yourself rather than leaving them to the sweep, either order of stage and library is fine:
+tfx_FreeLibrary removes the library's effects from every stage before it frees anything, so you can unload one library
+while effects from others keep playing. An effect template holds its own detached clone of the effect, but
+tfx_FreeLibrary frees every template made from the library, so don't use one after freeing its library. A stage has outstanding worker-thread work
 after tfx_UpdateStage, so call tfx_CompleteStageWork (or use tfx_FreeStage, which completes it for you) before
 tearing anything down mid-frame.
 */
@@ -1455,7 +1468,7 @@ typedef enum {
 	tfxEffectTemplateFlags_marked_for_deletion					= 1 << 0,
 	tfxEffectTemplateFlags_needs_updating						= 1 << 1,
 	tfxEffectTemplateFlags_deletion_reported					= 1 << 2,		//The block on adding it to a stage has been reported once
-	tfxEffectTemplateFlags_user_location_tip_shown				= 1 << 3,
+	tfxEffectTemplateFlags_user_location_tip_checked			= 1 << 3,
 } tfx_effect_template_flag_bits;
 
 typedef tfxU32 tfxEffectTemplateFlags;          //tfx_effect_template_flag_bits
@@ -1779,8 +1792,14 @@ tfx_property_value_t member that holds it, a line at a time through tfx_SetPrint
 tfxAPI void tfx_PrintDescriptorProperties(tfx_library library, const char *path);
 
 /*
-Free all the memory used by a library
-* param tfx_library				A pointer to the library that you want to free
+Free all the memory used by a library, including every effect template made from it. Any of its effects still playing on a
+stage are removed from that stage first, straight away and without waiting for an update, so their ids go invalid (see
+tfx_IsEffectExpired) and there's no need to expire them yourself. Effects from other libraries keep playing.
+The stage's instance buffer still holds the removed effects' last instances until its next tfx_UpdateStage, so update
+the stages you'll draw and upload their instances before you draw them again. On a frame where the timer didn't tick,
+or while paused, tfx_UpdateStage(stage, 0) is enough. Don't call this while a stage is updating on another thread: it completes each stage's
+in-flight work, but a new update mustn't start until it returns.
+* @param library                A valid pointer to a tfx_library_t
 */
 tfxAPI void tfx_FreeLibrary(tfx_library library);
 
@@ -1904,6 +1923,11 @@ Rules:
   Properties and shapes can move on any sync that changes something, so always upload on a version change.
 - If you draw between updates, upload on the frames you upload the stage's instances. The instances you keep drawing
   until the next update were written with the layout you uploaded last.
+- To unload a library while others keep playing: tfx_FreeLibrary (it removes that library's effects from every stage),
+  then tfx_UpdateGlobalGPUData, then update each stage and upload its instances before drawing it again, since the free
+  can move the other libraries' properties and shapes. A paused game or a frame where the timer didn't tick still needs
+  that update: tfx_UpdateStage(stage, 0) rewrites the instances without advancing. Or free libraries inside your fixed
+  step, before tfx_UpdateGlobalGPUData and the update, and free their images after that update.
 - Limits: 65536 GPU property slots and 256 color ramp layers across every library. If the loaded libraries need more,
   the sync asserts in debug and returns false, and the libraries that didn't fit get no placement. tfx_DescribeStage
   reports it.
@@ -1915,7 +1939,9 @@ Rules:
 Lay out every loaded library in the global GPU buffers so one stage can draw effects from any of them. Call it once per
 frame before updating your stages, and after loading, freeing or refreshing a library. It returns straight away when no
 library changed. When something did change it waits for any opted-in stage update still in flight before moving anything.
-Never call it while another thread is loading, freeing or refreshing a library. See "Drawing effects from more than one library".
+If it moved a library that effects were already drawing from, update the opted-in stages before you draw them with the
+new data. Never call it while another thread is loading, freeing or refreshing a library. See "Drawing effects
+from more than one library".
 * @returns bool                     false if a library didn't fit in the global buffers and has no placement
 */
 tfxAPI bool tfx_UpdateGlobalGPUData(void);
@@ -2149,7 +2175,7 @@ Get the number of instances within the instance buffer of a stage for a specific
 tfxAPI int tfx_GetInstanceCountByLayer(tfx_stage stage, tfxU32 layer);
 
 /*
-Get the update time being used by the stage.
+Get the length of the last update in seconds, or of the last step for tfx_UpdateStageSubSteps, after max_frame_length (240 ms) cut it.
 * @param stage                    A handle to an initialised tfx_stage_t.
 */
 tfxAPI double tfx_GetUpdateTime(tfx_stage stage);
@@ -2445,7 +2471,8 @@ the pool, in slots.
 Every emitter instance gets a ring of fixed size in the pool when its effect is added: tfx_GetEmitterGPUCapacity, which
 is the authored estimate times any location count from tfx_SetTemplateGPUCapacityForLocations, or whatever
 tfx_SetTemplateEmitterGPUCapacity set. Size the pool in this order:
-  1. Create the effect templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest).
+  1. Create the effect templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest). If you
+     update slower than 60 times a second, or catch up in one tfx_UpdateStage call, set tfx_SetGPUSizingUpdateRate.
   2. tfx_SetTemplateGPUCapacityForLocations on templates that play at several spawn locations at once.
   3. tfx_SetTemplateEmitterGPUCapacity for any one emitter that needs a different ring.
   4. Add tfx_GetTemplateGPUPoolSlots for every template instance that plays at once into gpu_particle_capacity, then
@@ -2557,10 +2584,23 @@ tfx_SetStageGPUSimulation hasn't turned it off.
 tfxAPI bool tfx_StageGPUSimulationIsOn(tfx_stage stage);
 
 /*
+Sets the slowest update rate GPU ring capacities are sized for, 60 updates a second by default. A ring holds each
+particle's slot for its life plus up to one update, and an update's spawns all arrive at once, so slower updates need
+bigger rings. A catch-up done in one call, tfx_UpdateStage(stage, tick * 3), is one long update: it spawns all three
+ticks' particles at once, up to max_frame_length (240 ms) of them. tfx_UpdateStageSubSteps steps are an update each, so
+catching up that way needs no extra room.
+Call it before tfx_SetTemplateGPUCapacityForLocations and tfx_GetTemplateGPUPoolSlots. Rings already allocated keep
+their size, and it has no effect on capacities set with tfx_SetTemplateEmitterGPUCapacity.
+* @param updates_per_second        The slowest rate you'll update stages at, counting a single call catch-up of N ticks
+                                  as your rate divided by N.
+*/
+tfxAPI void tfx_SetGPUSizingUpdateRate(float updates_per_second);
+
+/*
 The ring capacity an instance of a Run on GPU emitter gets, in particles. Without an override this is what one spawn
 location needs, times the location count tfx_SetTemplateGPUCapacityForLocations set on its template. Every location
 adds its own amount, so an effect at N locations needs about N times the one location figure. It's worked out from the
-emitter's amounts each call, so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
+emitter's amounts and tfx_SetGPUSizingUpdateRate each call, so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
 fixes it.
 * @param emitter                   A handle to an emitter descriptor.
 * @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.
@@ -2637,9 +2677,12 @@ first one of each emitter type that isn't due. That makes it cheap enough to cal
 tfxAPI void tfx_TrimParticleArrays(tfx_stage stage, float idle_milliseconds);
 
 /*
-Get the current particle count for a stage
+Get the number of CPU particles a stage held after its last update, so 0 straight after adding an effect. Particles of Run on GPU emitters
+aren't counted, see tfx_GetGPUParticleStats. Includes particles that have died but still hold their place until the oldest particle in their
+emitter dies (drawn at zero size), so an emitter whose lives vary reads high by about half its life variation over its average life
+(about 6% for lives of 2000 to 2250 ms).
 * @param stage                     A pointer to a tfx_stage_t
-* @returns tfxU32                  The total number of particles currently being updated
+* @returns tfxU32                  The number of CPU particles the last update held
 */
 tfxAPI tfxU32 tfx_GetParticleCount(tfx_stage stage);
 
@@ -2658,9 +2701,10 @@ Get the current number of effects that are currently being updated by a stage
 tfxAPI tfxU32 tfx_GetEffectCount(tfx_stage stage);
 
 /*
-Get the current number of emitters that are currently being updated by a stage
+Get the number of emitters the CPU updated in the stage's last update, so 0 straight after adding an effect, until the next update.
+Run on GPU emitters aren't counted.
 * @param stage                     A pointer to a tfx_stage_t
-* @returns tfxU32                  The total number of emitters currently being updated
+* @returns tfxU32                  The number of emitters the CPU updated in the last update
 */
 tfxAPI tfxU32 tfx_GetEmitterCount(tfx_stage stage);
 
@@ -2692,9 +2736,9 @@ tfxAPI tfxU32 tfx_GetFreeEffectCount(tfx_stage stage);
 
 /*
 Set the seed for the stage for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the stage
-then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
-* @param stage                     A pointer to an initialised tfx_stage_t. 
-* @param seed                      An unsigned int representing the seed (Any value other then 0)
+then the effect will look the same each time. Any seed, 0 included, is fine.
+* @param stage                     A pointer to an initialised tfx_stage_t.
+* @param seed                      Any value
 */
 tfxAPI void tfx_SetStageSeed(tfx_stage stage, tfxU64 seed);
 
@@ -2761,6 +2805,9 @@ plays, from when it's added until its last particle dies. It's also when a locat
 it was added with tfxSpawnLocationAdd_no_auto_remove. Divide it by how often you add locations to estimate how many
 overlap, for tfx_SetTemplateGPUCapacityForLocations. To have the effect end after its locations, add them with
 tfxSpawnLocationAdd_expire_effect.
+A finite effect expires with its last particle, at most this long after it starts unless you raise its life with
+tfx_SetEffectLifeMultiplier, and leaves the stage an update after that (see tfx_IsEffectExpired). If you add one effect per
+burst, max_effects needs bursts per second * this / 1000, plus a couple.
 * @param tfx_effect_template		A handle to the effect template
 * @returns float					The time in milliseconds	
 */
@@ -2836,8 +2883,11 @@ tfxAPI void tfx_AdvanceEffectTime(tfx_stage stage, tfxEffectID effect_id, float 
 /*
 Update a stage which manages effects, ideally from a fixed step loop. elapsed is in milliseconds: at 60 updates a second it's 16.666667.
 If you interpolate particles in the vertex shader, the previous instance buffer has to be the one you drew last, so when the fixed loop has to
-run more than once to catch up, call this once with the elapsed time multiplied by the number of ticks rather than once per tick, or use
-tfx_UpdateStageSubSteps, which runs every tick at its own length and writes the instances once.
+run more than once to catch up, use tfx_UpdateStageSubSteps, which runs every tick at its own length and writes the instances once, or call this
+once with the elapsed time multiplied by the number of ticks rather than once per tick. Either way the previous buffer is then all of those ticks
+behind, so your timer's alpha isn't the factor to interpolate with, tfx_GetStageInterpolation turns it into the one that is.
+A single call is also one long update to the rings of Run on GPU emitters, which tfx_SetGPUSizingUpdateRate sizes for, sub-steps aren't.
+An elapsed longer than max_frame_length (240 ms) is cut to it, for spawning, aging and motion alike, so a long stall doesn't burst.
 In pseudo code, where the Timer functions are your own:
 
 	TimerAccumulate(game->timer);
@@ -2852,15 +2902,19 @@ In pseudo code, where the Timer functions are your own:
 
 		TimerUnAccumulate(game->timer);
 	}
-	TimerSet(game->timer);	//Set the timer and calculate the interpolation value. You can pass that to a uniform or push constant for the shader
+	TimerSet(game->timer);	//Set the timer's alpha: how far its accumulator is into the next tick, 0 to 1
+	//Every frame, not just update frames. Pass it to a uniform or push constant for the vertex shader
+	float lerp = tfx_GetStageInterpolation(game->stage, TimerAlpha(game->timer), FrameLength);
 
 	//Only upload the instance buffer to the gpu if the stage was updated.
 	if (TimerUpdateWasRun(game->timer)) {
 		RenderParticles(game->stage, game);
 	}
 
+An elapsed of 0 advances nothing and spawns nothing but still rewrites the instances. Use it to bring the instances up to
+date on a frame where the timer didn't tick, for example straight after tfx_FreeLibrary.
 * @param stage                 A pointer to an initialised tfx_stage_t.
-* @param elapsed               The time to advance the stage by, in milliseconds
+* @param elapsed               The time to advance the stage by, in milliseconds. 0 or more
 */
 tfxAPI void tfx_UpdateStage(tfx_stage stage, double elapsed);
 
@@ -2891,6 +2945,20 @@ the instance buffer after a step that didn't write instances, it doesn't describ
 * @param flags                 tfxUpdateStepFlags_write_instances to write the instance buffer, or tfxUpdateStepFlags_none
 */
 tfxAPI void tfx_UpdateStageSubStep(tfx_stage stage, double step_length, tfxUpdateStepFlags flags);
+
+/*
+Get the factor to interpolate between the previous and the current instance buffer with, from your fixed step timer's alpha. The previous buffer
+is as far behind as the time the stage simulated since its last write before this one, which is several ticks after a catch-up update and less
+than you asked for when max_frame_length clamped the update, so alpha on its own would make particles jump or stutter. This returns
+1 - (1 - alpha) * tick_length / that time, clamped to 0 to 1, which draws the particles one tick behind the simulation however much the last
+update covered. Call it every frame, from the thread that calls tfx_UpdateStage. If you update once a frame with the frame's own elapsed time
+and don't interpolate, you don't need it.
+* @param stage                 A pointer to an initialised tfx_stage_t.
+* @param alpha                 How far your timer's accumulator is into the next tick, 0 to 1
+* @param tick_length           The length of one tick of your timer in milliseconds, the same unit you pass to tfx_UpdateStage
+* @returns                     The interpolation factor, 0 to 1. 1 before the first update and after an update of 0
+*/
+tfxAPI float tfx_GetStageInterpolation(tfx_stage stage, float alpha, float tick_length);
 
 /*
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
@@ -2928,7 +2996,7 @@ tfxAPI void tfx_FreeStage(tfx_stage stage);
 //[Effects functions for altering effects that are currently playing out in a stage]
 
 /*
-Expire an effect by telling it to stop spawning particles. This means that the effect will eventually be removed from the stage after all of it's remaining particles have expired.
+Expire an effect by telling it to stop spawning particles. It expires on the update after its last remaining particle dies, see tfx_IsEffectExpired.
 * @param stage             A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_id       The id of the effect that you want to expire, returned when you added it to the stage
 */
@@ -2948,9 +3016,13 @@ Expire an effect by telling it to stop spawning particles and remove all associa
 tfxAPI void tfx_HardExpireEffect(tfx_stage stage, tfxEffectID effect_id);
 
 /*
-Find out if an effect has finished, either because it has been removed from the stage or because it is about to be. Once an effect
-is removed its slot is recycled for the next effect that you add, but the old id is never reused so it will keep reporting as expired
-and any other calls you make with it are ignored. Use this to know when to let go of an id you're holding on to.
+Find out if an effect has finished. That's at once after tfx_HardExpireEffect, otherwise on the update after which it has
+nothing alive and can never spawn again: a soft expired effect, or a finite one that has played out, ends with its last
+particle. An effect that could still spawn, like a looping one in a gap between spawns or one that spawns by distance
+travelled, has to have nothing alive for 1 second first, so that a gap doesn't end it.
+Nothing of an expired effect draws after the next tfx_UpdateStage, and the update after that takes it off the stage (see
+tfx_IsEffectOnStage). Its slot is then recycled for the next effect that you add, but the old id is never reused so it will keep
+reporting as expired and any other calls you make with it are ignored. Use this to know when to let go of an id you're holding on to.
 Like the other effect functions this should be called either before tfx_UpdateStage or after tfx_CompleteStageWork so that it isn't
 racing the stage update.
 * @param stage             A pointer to a tfx_stage_t where the effect is being managed
@@ -2958,6 +3030,16 @@ racing the stage update.
 * @returns               True if the effect has expired or the id is stale or invalid
 */
 tfxAPI bool tfx_IsEffectExpired(tfx_stage stage, tfxEffectID effect_id);
+
+/*
+Whether an effect still holds its slot on the stage. It turns false an update after tfx_IsEffectExpired turns true, when the slot
+is freed for reuse, so count effects against max_effects with this rather than tfx_IsEffectExpired. Same threading rule as
+tfx_IsEffectExpired.
+* @param stage             A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_id         The id of the effect, returned when you added it to the stage
+* @returns                 False once the effect has left the stage, or if the id is stale or invalid
+*/
+tfxAPI bool tfx_IsEffectOnStage(tfx_stage stage, tfxEffectID effect_id);
 
 /*
 Get effect user data
