@@ -49,7 +49,7 @@
 #include <errno.h>
 
 #if defined(_WIN32)
-// <Windows.h> is deliberately NOT included here — it leaks a large macro
+// <Windows.h> is deliberately NOT included here â€” it leaks a large macro
 // surface (min/max, near/far, GDI names, ...) into every consumer TU. The few
 // OS primitives the library needs are isolated in timelinefx.cpp; this header
 // only needs <process.h> (_beginthreadex) and <intrin.h> (atomic intrinsics),
@@ -142,33 +142,8 @@ typedef int tfxLONG;
 #endif
 #endif
 
-#ifndef TFX_ERROR_NAME
-#define TFX_ERROR_NAME "Allocator Error"
-#endif
-
-#ifndef TFX_ERROR_COLOR
-#define TFX_ERROR_COLOR "\033[31m"
-#endif
-
-#ifndef TFX_NOTICE_COLOR
-#define TFX_NOTICE_COLOR "\033[0m"
-#endif
-
-#ifndef TFX_NOTICE_NAME
-#define TFX_NOTICE_NAME "TimelineFX Notice"
-#endif
-
-#ifdef TFX_OUTPUT_NOTICE_MESSAGES
-#define TFX_PRINT_NOTICE(message_f, ...) printf(message_f"\033[0m", __VA_ARGS__)
-#else
-#define TFX_PRINT_NOTICE(message_f, ...)
-#endif
-
-#ifdef TFX_OUTPUT_ERROR_MESSAGES
-#define TFX_PRINT_ERROR(message_f, ...) printf(message_f"\033[0m", __VA_ARGS__)
-#else
-#define TFX_PRINT_ERROR(message_f, ...)
-#endif
+#define tfxPrint(message, ...) tfx_Print(message, ##__VA_ARGS__)
+#define TFX_PRINT_ERROR(message, ...) tfx_Print("TimelineFX error: " message, ##__VA_ARGS__)
 
 #define tfx__KILOBYTE(Value) ((Value) * 1024LL)
 #define tfx__MEGABYTE(Value) (tfx__KILOBYTE(Value) * 1024LL)
@@ -996,7 +971,7 @@ tfxAPI void* tfx_AllocationFromExtensionPtr(const void *block) {
 
 tfx_allocator *tfx_InitialiseAllocator(void *memory) {
 	if (!memory) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR("Allocator: the memory pointer passed in to the initialiser was NULL, did it allocate properly?");
 		return 0;
 	}
 
@@ -1026,7 +1001,7 @@ tfx_allocator *tfx_InitialiseAllocator(void *memory) {
 tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size) {
 	tfx_size array_offset = sizeof(tfx_allocator);
 	if (size < array_offset + tfx__MEMORY_ALIGNMENT) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Tried to initialise allocator with a memory allocation that is too small. Must be at least: %zi bytes\n", TFX_ERROR_NAME, array_offset + tfx__MEMORY_ALIGNMENT);
+		TFX_PRINT_ERROR("Allocator: tried to initialise an allocator with a memory allocation that is too small. It must be at least %zu bytes.", array_offset + tfx__MEMORY_ALIGNMENT);
 		return 0;
 	}
 
@@ -1098,9 +1073,9 @@ tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
 	}
 	#if defined(TFX_THREAD_SAFE)
 	tfx__unlock_thread_access(allocator);
-	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool. Was possibly freed by another thread\n", TFX_ERROR_NAME);
+	TFX_PRINT_ERROR("Allocator: a pool can only be removed when it has one free block. It was possibly freed by another thread.");
 	#else
-	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool.\n", TFX_ERROR_NAME);
+	TFX_PRINT_ERROR("Allocator: a pool can only be removed when it has one free block.");
 	#endif
 	return 0;
 }
@@ -1115,8 +1090,7 @@ void *tfx__allocate(tfx_allocator *allocator, tfx_size size, tfx_size remote_siz
 		return tfx__block_user_ptr(block);
 	}
 
-	//Out of memory;
-	TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Not enough memory in pool to allocate %llu bytes\n", TFX_ERROR_NAME, tfx__map_size);
+	//Not an error: tfxAllocate adds a pool and tries again
 	tfx__unlock_thread_access(allocator);
 	return 0;
 }
@@ -1249,7 +1223,7 @@ tfxAPI void* tfx_PromoteLinearBlock(tfx_allocator *allocator, void* linear_alloc
 
 	// Ensure the block is valid and currently in use.
 	if (tfx__is_free_block(block)) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot promote a block that is already free.\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR("Allocator: cannot promote a block that is already free.");
 		tfx__unlock_thread_access(allocator);
 		return 0;
 	}
@@ -1459,7 +1433,7 @@ void tfx_AddRemotePool(tfx_allocator *allocator, void *block_memory, tfx_size bl
 
 tfx_allocator *tfx_InitialiseAllocatorForRemote(void *memory) {
 	if (!memory) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR("Allocator: the memory pointer passed in to the initialiser was NULL, did it allocate properly?");
 		return 0;
 	}
 
@@ -1490,12 +1464,12 @@ int tfx_FreeRemote(tfx_allocator *allocator, void* block_extension) {
 
 int tfx_InitialiseLinearAllocator(tfx_linear_allocator_t *allocator, void *memory, tfx_size size) {
 	if (!memory) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: The memory pointer passed in to the initialiser was NULL, did it allocate properly?\n", TFX_ERROR_NAME);
+		TFX_PRINT_ERROR("Allocator: the memory pointer passed in to the initialiser was NULL, did it allocate properly?");
 		memset(allocator, 0, sizeof(tfx_linear_allocator_t));
 		return 0;
 	}
 	if (size <= tfx__MINIMUM_BLOCK_SIZE) {
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Size of linear allocator size is too small. It must be a mimimum of %i\n", TFX_ERROR_NAME, tfx__MINIMUM_BLOCK_SIZE);
+		TFX_PRINT_ERROR("Allocator: a linear allocator must be bigger than %i bytes.", (int)tfx__MINIMUM_BLOCK_SIZE);
 		memset(allocator, 0, sizeof(tfx_linear_allocator_t));
 		return 0;
 	}
@@ -1528,7 +1502,7 @@ void *tfx_LinearAllocation(tfx_linear_allocator_t *allocator, tfx_size size_requ
 
 		if (new_offset > allocator->buffer_size) {
 			if (!allocator->next) {
-				TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Out of memory in linear allocator.\n", TFX_ERROR_NAME);
+				TFX_PRINT_ERROR("Allocator: out of memory in a linear allocator.");
 				return NULL;
 			} else {
 				allocator = allocator->next;
@@ -1631,14 +1605,6 @@ tfx_allocator *tfxGetAllocator();
 #define tfxOSCILLATOR_WIDE_APPLY(value, t, oscillator) tfxWideMul(value, tfxWideAdd(tfxOSCILLATOR_WIDE_SIN(tfxWideAdd(t, (oscillator).offset_x), (oscillator).frequency, (oscillator).amplitude), (oscillator).offset_y))
 #define tfxMIN_SEGMENT_COUNT 32 
 #define tfxMAX_SEGMENT_COUNT 1024 
-#if defined(__MINGW32__) && !defined(__clang__)
-tfxAPI_EDITOR void tfx__print(const char *format, ...) __attribute__((format(gnu_printf, 1, 2)));
-#elif defined(__GNUC__) || defined(__clang__)
-tfxAPI_EDITOR void tfx__print(const char *format, ...) __attribute__((format(printf, 1, 2)));
-#else
-tfxAPI_EDITOR void tfx__print(const char *format, ...);
-#endif
-#define tfxPrint(message, ...) tfx__print(message, ##__VA_ARGS__)
 #ifdef TFX_DISABLE_TIPS
 #define tfxTIP(message, ...)
 #else
@@ -1744,7 +1710,7 @@ inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
 #endif
 
 #ifdef _WIN32
-// Implemented in timelinefx.cpp — the QueryPerformanceCounter path needs
+// Implemented in timelinefx.cpp â€” the QueryPerformanceCounter path needs
 // <Windows.h>. The Apple/Linux timers below have no such dependency.
 tfxU32 tfx_Millisecs(void);
 tfxU64 tfx_Microsecs(void);
@@ -5037,6 +5003,7 @@ typedef struct tfx_storage_s {
 	tfx_thread_access volatile pool_growth_access;
 	tfxU32 memory_pool_count;
 	size_t default_memory_pool_size;
+	bool memory_pool_tip_shown;
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
 	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
 	tfx_data_types_dictionary_t data_types;
@@ -5343,7 +5310,7 @@ void tfx__join_thread(void **thread_handle);
 void tfx__join_thread(pthread_t *thread_handle);
 #endif
 
-// Implemented in timelinefx.cpp — the Win32 path uses GetSystemInfo (needs
+// Implemented in timelinefx.cpp â€” the Win32 path uses GetSystemInfo (needs
 // <Windows.h>).
 tfxAPI unsigned int tfx_HardwareConcurrency(void);
 
@@ -6488,6 +6455,9 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 
 //Size must agree with the shader struct size
 tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
+//The fixed bindings in timelinefx.slang load the lag spine by these offsets
+tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_x) == 92 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_y) == 156);
+tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_z) == 220 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_quaternion) == 288);
 
 //---- GPU compute particle buffer management ----
 

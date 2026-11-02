@@ -100,8 +100,8 @@ size_t tfxGetNextPower(size_t n) {
 //Must be called with the pool growth lock held
 bool tfxAddHostMemoryPool(size_t size) {
 	if (tfxStore->memory_pool_count >= tfxMAX_MEMORY_POOLS) {
+		TFX_PRINT_ERROR("reached the maximum number of memory pools (%i).", tfxMAX_MEMORY_POOLS);
 		TFX_ASSERT(false);    //Reached the max number of memory pools
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Reached the maximum number of memory pools (%i).\n", TFX_ERROR_NAME, tfxMAX_MEMORY_POOLS);
 		return false;
 	}
 	size_t required_size = size + tfx__BLOCK_POINTER_OFFSET + tfx__BLOCK_SIZE_OVERHEAD + tfx__MEMORY_ALIGNMENT * 2;
@@ -109,11 +109,14 @@ bool tfxAddHostMemoryPool(size_t size) {
 	if (pool_size < required_size) {
 		pool_size = tfxGetNextPower(required_size);
 	}
-	TFX_PRINT_NOTICE(TFX_NOTICE_COLOR"%s: Ran out of memory, creating a new pool of size %zu. \n", TFX_NOTICE_NAME, pool_size);
+	if (!tfxStore->memory_pool_tip_shown) {
+		tfxStore->memory_pool_tip_shown = true;
+		tfxTIP("memory pool full, allocated another of %.1f MB. Pass a bigger memory_pool_size to tfx_BeginTimelineFX if this happens during play.", (double)pool_size / (double)tfx__MEGABYTE(1));
+	}
 	tfx_pool *pool = (tfx_pool *)tfxCurrentContext->allocation_callbacks.allocate(tfxCurrentContext->allocation_callbacks.user_data, pool_size, 16);
 	if (!pool) {
+		TFX_PRINT_ERROR("unable to allocate a new memory pool of %zu bytes.", pool_size);
 		TFX_ASSERT(false);    //Unable to allocate more memory. Out of memory?
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Unable to allocate a new memory pool of size %zu.\n", TFX_ERROR_NAME, pool_size);
 		return false;
 	}
 	tfx_AddPool(tfxMemoryAllocator, pool, pool_size);
@@ -27066,7 +27069,7 @@ tfxINTERNAL void tfx__print_to_stdout(const char *message, void *user_data) {
 static tfx_print_callback tfx__print_callback = tfx__print_to_stdout;
 static void *tfx__print_user_data = nullptr;
 
-void tfx__print(const char *format, ...) {
+void tfx_Print(const char *format, ...) {
 	char message[1024];
 	va_list arguments;
 	va_start(arguments, format);
@@ -27083,13 +27086,13 @@ void tfx_SetPrintCallback(tfx_print_callback callback, void *user_data) {
 
 bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *allocation_callbacks) {
 	if (!context) {
+		TFX_PRINT_ERROR("cannot set a null TimelineFX context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot set a null TimelineFX context.\n", TFX_ERROR_NAME);
 		return false;
 	}
 	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
+		TFX_PRINT_ERROR("allocation callbacks must provide both allocate and deallocate.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
 		return false;
 	}
 	tfxCurrentContext = context;
@@ -27118,34 +27121,34 @@ bool tfx_SetContext(tfx_context context, const tfx_allocation_callbacks_t *alloc
 
 tfx_context tfx_InitialiseTimelineFXMemory(size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks) {
 	if (tfxCurrentContext) {
+		TFX_PRINT_ERROR("TimelineFX memory is already initialised.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX memory is already initialised.\n", TFX_ERROR_NAME);
 		return tfxCurrentContext;
 	}
 	if (allocation_callbacks && (!allocation_callbacks->allocate || !allocation_callbacks->deallocate)) {
+		TFX_PRINT_ERROR("allocation callbacks must provide both allocate and deallocate.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
 		return nullptr;
 	}
 	tfx_allocation_callbacks_t callbacks{nullptr, tfx__default_memory_allocate, tfx__default_memory_deallocate};
 	if (allocation_callbacks) callbacks = *allocation_callbacks;
 	void *memory_pool = callbacks.allocate(callbacks.user_data, memory_pool_size, 16);
 	if (!memory_pool) {
+		TFX_PRINT_ERROR("the allocation callback failed to allocate the initial TimelineFX memory pool.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callback failed to allocate the initial TimelineFX memory pool.\n", TFX_ERROR_NAME);
 		return nullptr;
 	}
 	tfx_allocator *allocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
 	if (!allocator) {
+		TFX_PRINT_ERROR("failed to initialise the TimelineFX allocator.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to initialise the TimelineFX allocator.\n", TFX_ERROR_NAME);
 		callbacks.deallocate(callbacks.user_data, memory_pool, memory_pool_size, 16);
 		return nullptr;
 	}
 	tfx_context context = (tfx_context)tfx_AllocateAligned(allocator, sizeof(tfx_context_t), 16);
 	if (!context) {
+		TFX_PRINT_ERROR("failed to allocate the TimelineFX context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to allocate the TimelineFX context.\n", TFX_ERROR_NAME);
 		callbacks.deallocate(callbacks.user_data, memory_pool, memory_pool_size, 16);
 		return nullptr;
 	}
@@ -27351,19 +27354,19 @@ unsigned int tfx_GetDefaultThreadCount(void) {
 tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const tfx_allocation_callbacks_t *allocation_callbacks) {
 	if (!tfxCurrentContext) tfx_InitialiseTimelineFXMemory(memory_pool_size, allocation_callbacks);
 	if (!tfxCurrentContext) {
+		TFX_PRINT_ERROR("failed to initialise TimelineFX.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Failed to initialise TimelineFX.\n", TFX_ERROR_NAME);
 		return nullptr;
 	}
 	if (!tfxCurrentContext->suspended) {
+		TFX_PRINT_ERROR("the TimelineFX context is already running.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
 		return nullptr;
 	}
 	if (allocation_callbacks) {
 		if (!allocation_callbacks->allocate || !allocation_callbacks->deallocate) {
+			TFX_PRINT_ERROR("allocation callbacks must provide both allocate and deallocate.");
 			TFX_ASSERT(false);
-			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Allocation callbacks must provide both allocate and deallocate.\n", TFX_ERROR_NAME);
 			return nullptr;
 		}
 		tfxCurrentContext->allocation_callbacks = *allocation_callbacks;
@@ -27376,8 +27379,8 @@ tfx_context tfx_BeginTimelineFX(int max_threads, size_t memory_pool_size, const 
 
 void tfx_DrainAllThreadWork(void) {
 	if (!tfxCurrentContext) {
+		TFX_PRINT_ERROR("cannot drain thread work without a current TimelineFX context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot drain thread work without a current TimelineFX context.\n", TFX_ERROR_NAME);
 		return;
 	}
 	for (tfx_stage stage : tfxStore->stages.data) {
@@ -27388,13 +27391,13 @@ void tfx_DrainAllThreadWork(void) {
 
 void tfx_SuspendTimelineFX(void) {
 	if (!tfxCurrentContext) {
+		TFX_PRINT_ERROR("cannot suspend without a current TimelineFX context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot suspend without a current TimelineFX context.\n", TFX_ERROR_NAME);
 		return;
 	}
 	if (tfxCurrentContext->suspended) {
+		TFX_PRINT_ERROR("the TimelineFX context is already suspended.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already suspended.\n", TFX_ERROR_NAME);
 		return;
 	}
 
@@ -27423,13 +27426,13 @@ void tfx_SuspendTimelineFX(void) {
 
 void tfx_ResumeTimelineFX(void) {
 	if (!tfxCurrentContext) {
+		TFX_PRINT_ERROR("cannot resume without a current TimelineFX context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot resume without a current TimelineFX context.\n", TFX_ERROR_NAME);
 		return;
 	}
 	if (!tfxCurrentContext->suspended) {
+		TFX_PRINT_ERROR("the TimelineFX context is already running.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: TimelineFX context is already running.\n", TFX_ERROR_NAME);
 		return;
 	}
 	tfx__initialise_thread_queues(&tfxStore->thread_queues);
@@ -27439,8 +27442,8 @@ void tfx_ResumeTimelineFX(void) {
 
 void tfx_EndTimelineFX() {
 	if (!tfxCurrentContext) {
+		TFX_PRINT_ERROR("cannot end TimelineFX without a current context.");
 		TFX_ASSERT(false);
-		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Cannot end TimelineFX without a current context.\n", TFX_ERROR_NAME);
 		return;
 	}
 	if (!tfxCurrentContext->suspended) tfx_SuspendTimelineFX();

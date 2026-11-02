@@ -1267,7 +1267,7 @@ tfx_* function used here is documented in full below.
 Ownership and teardown ordering
 -------------------------------
 Everything is allocated from the memory pool created by tfx_BeginTimelineFX, so tfx_EndTimelineFX must be the
-very last TimelineFX call you make — it tears down the worker threads and the pool itself.
+very last TimelineFX call you make â€” it tears down the worker threads and the pool itself.
 
 tfx_EndTimelineFX sweeps up anything you did not free yourself: it completes and frees every stage, then frees every
 animation manager, then every library (and with it every effect template made from it), then any streams, packages and
@@ -1330,15 +1330,30 @@ didn't free.
 tfxAPI void tfx_GetMemoryInUse(size_t *bytes, tfxU32 *blocks);
 
 /*
-Send every message TimelineFX prints, errors and tips included, to your own log instead of stdout. Tips are one line messages
-starting "TimelineFX tip:" that point out a likely mistake once, at the moment the library sees it, for example an effect
-that spawns at user spawn locations being added to a stage. Define TFX_DISABLE_TIPS to compile them out.
+Send every message TimelineFX prints to your own log instead of stdout. Errors start "TimelineFX error:" and are always on:
+they only print when something has failed, such as running out of memory pools or calling tfx_BeginTimelineFX twice.
+Tips are one line messages starting "TimelineFX tip:" that point out a likely mistake once, at the moment the library sees
+it, for example an effect that spawns at user spawn locations being added to a stage. Define TFX_DISABLE_TIPS to compile
+them out.
 Can be set before or after tfx_BeginTimelineFX. It can be called from the stage update thread and worker threads, so it
 must be thread safe.
 * @param callback           Receives each message without a trailing newline, or NULL to go back to printing to stdout
 * @param user_data          Passed to the callback
 */
 tfxAPI void tfx_SetPrintCallback(tfx_print_callback callback, void *user_data);
+
+/*
+Print a message through the callback set with tfx_SetPrintCallback, or to stdout if there isn't one. Backends and helper
+layers use it so their messages land in the same log as the library's. Messages longer than 1023 characters are cut short.
+* @param format             A printf format string, without a trailing newline
+*/
+#if defined(__MINGW32__) && !defined(__clang__)
+tfxAPI void tfx_Print(const char *format, ...) __attribute__((format(gnu_printf, 1, 2)));
+#elif defined(__GNUC__) || defined(__clang__)
+tfxAPI void tfx_Print(const char *format, ...) __attribute__((format(printf, 1, 2)));
+#else
+tfxAPI void tfx_Print(const char *format, ...);
+#endif
 
 /*
 Get the context used internally for bookkeeping. If allocation callbacks are passed during initialisation, they allocate the context.
@@ -2431,8 +2446,8 @@ so they need nothing more from you.
 The reference kernel is in Shaders/timelinefx.slang, a single file with a contents list at its top, entry point
 simulate_particles, with tfx_gpu_particle_push_t as its push constants. Every buffer access it makes goes through its
 Buffer_access section, which handles each binding model. By default it indexes bindless arrays (Vulkan, D3D12). On Metal every buffer index is a slot in an argument buffer
-of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, OpenGL),
-binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
+of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, SDL_gpu,
+OpenGL), binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
 To add custom forces, collision or anything else per particle without forking it, write your own
 entry point in your own Slang module:
   1. import timelinefx and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
@@ -2453,9 +2468,9 @@ entry point in your own Slang module:
      spawn and kept every tick, and cold.user_value holds the spawn location's tfx_SetSpawnLocationUserData. after_spawn
      can set both on the spawns the kernel generates (spawn.user_flags, spawn.user_value).
   2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
-     It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64. For WGSL, and OpenGL under
-     TFX_FIXED_BINDINGS, which have no push constants, also declare them as [[vk::binding(4, 0)]] ConstantBuffer<...>
-     : register(b15) and pick with __target_switch, as the library's simulate_particles does (Shaders/readme.md).
+     It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64. WGSL and TFX_FIXED_BINDINGS
+     builds have no push constants, so also declare a uniform twin with TFX_UNIFORM_PUSH(your_push, name) and pick with
+     __target_switch on TFX_UNIFORM_PUSH_CASES, as the library's simulate_particles does (Shaders/readme.md).
   3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
      tfx_simulate(thread_id.x, your_push.tfx, update), tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook)
      with a spawn hook, or tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook, write_hook) with a write hook.
@@ -2490,7 +2505,7 @@ Setup, once:
      Where storage buffers are untyped (Vulkan, and Metal's table slots) one index with cold_base and noise_base does
      for all three. D3D12 structured views carry their row size, so make one view per section, either over the
      section with a base of 0 or over the whole buffer with the base. WGSL and TFX_FIXED_BINDINGS builds (D3D11,
-     OpenGL) always use one pool buffer with the bases.
+     SDL_gpu, OpenGL) always use one pool buffer with the bases.
   2. Upload the graph lookups from tfx_GetGPUGraphLookupsBuffer, as ribbons do.
 
 Per frame, after tfx_UpdateStage:
