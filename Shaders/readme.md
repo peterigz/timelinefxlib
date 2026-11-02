@@ -14,11 +14,15 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 
 | Target | Command |
 | --- | --- |
-| Vulkan | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -o <entry point>.spv` |
-| D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -line-directive-mode none -o <entry point>.cso` |
+| Vulkan, bindless | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -o <entry point>.spv` |
+| Fixed bindings, SPIR-V | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.spv` |
+| Fixed bindings, DXIL | `slangc timelinefx.slang -entry <entry point> -target dxil -profile <vs_6_0, ps_6_0 or cs_6_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.dxil` |
+| D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -line-directive-mode none -o <entry point>.cso` |
 
+- **`TFX_ENTRY_<entry point>`** is the entry point's name as it is, for example `-D TFX_ENTRY_tfx_billboard_vertex`. Under the fixed bindings it picks that entry point's resources and slots, so the compile has to have it. The kernel's slots don't depend on it.
+- **`spirv_1_5` needs a Vulkan 1.2 device.** The bindless model needs 1.2 anyway, for descriptor indexing. Under the fixed bindings `-profile spirv_1_3` also validates for Vulkan 1.1 (checked with spirv-val, not yet on a device). SDL_gpu creates a Vulkan 1.0 instance unless you pass `SDL_GPUVulkanOptions` with `vulkan_api_version` through `SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER`.
 - **Vulkan needs `shaderDrawParameters`**, a core Vulkan 1.1 feature. Slang reads `SV_VertexID` as `gl_VertexIndex - gl_BaseVertex`, which needs the `DrawParameters` capability.
-- **D3D11:** fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits, hence `-line-directive-mode none`. Leave out `-stage`: the entry point declares it, and slangc warns if you pass it as well.
+- **D3D11:** fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits, hence `-line-directive-mode none`. Leave out `-stage`: the entry point declares it, and slangc warns if you pass it as well. fxc has no register spaces, so leave every `*_SPACE` macro at 0.
 - **Matrices are column major** whatever your Slang session defaults to (the Slang API defaults to row major, slangc to column major), because every matrix in the file is marked `column_major`. Upload them column major.
 
 ## Entry points
@@ -41,7 +45,7 @@ Dispatch the compute entry points with enough groups to cover their count, `(cou
 
 ## Push constants
 
-The library declares `tfx_gpu_particle_push_t`, `tfx_ribbon_bucket_globals_t`, `tfx_sprite_data_push_t` and `tfx_ribbon_data_push_t` in timelinefx.h, and fills the ribbon globals for you per bucket. The other push constants are yours to declare. Their members are `uint`s unless the table says otherwise:
+The library declares `tfx_gpu_particle_push_t`, `tfx_ribbon_bucket_globals_t`, `tfx_sprite_data_push_t` and `tfx_ribbon_data_push_t` in timelinefx.h, and fills the ribbon globals for you per bucket. Under the fixed bindings each of them is a uniform buffer instead, and the billboard draws take the draw constants in the slots table in place of theirs. The other push constants are yours to declare. Their members are `uint`s unless the table says otherwise:
 
 | Struct | Members, in order |
 | --- | --- |
@@ -77,57 +81,104 @@ The two vertex inputs are vertex buffers:
 
 D3D12 hasn't been tried yet.
 
-### Fixed bindings: D3D11, OpenGL and WGSL
+### Fixed bindings: D3D11, SDL_gpu, OpenGL and WGSL
 
-Compile with `-D TFX_FIXED_BINDINGS` for an API without descriptor arrays. The accessors ignore the push constants' buffer indexes and read one resource per register. The kernel's bases still apply. Every shape comes from one atlas texture array, so `texture_array_index` is only the atlas layer and the uv rects are the shapes' places in it. There are no vertex inputs: the billboard draws read their instance from a buffer by `SV_InstanceID` and unpack it the way the vertex formats above would, and the ribbon draw reads its vertex by `SV_VertexID`.
+Compile with `-D TFX_FIXED_BINDINGS` for an API without descriptor arrays, or one that binds a fixed set of resources per pipeline stage. Every billboard, ribbon and playback entry point and the kernel compile this way; the bounds passes don't.
 
-The kernel uses the one-buffer setup. WGSL always does, define or not, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default.
+**It needs storage buffers in the vertex stage.** The billboard vertex shader reads the previous update's instance at `captured_index`, so the instances are a buffer it can index, not vertex attributes. That rules out WebGL2, most OpenGL ES 3.x devices (vertex stage storage buffers are optional there and often 0) and OpenGL below 4.3.
 
-| Buffer | WGSL / GLSL / SPIR-V (group/set 0) | HLSL |
+What changes under the define:
+- **One resource per slot.** The accessors ignore the push constants' buffer indexes. The kernel's bases still apply.
+- **Every buffer is raw**, read with `Load<T>` at the C size of its rows, because some APIs only give raw views of a storage buffer (SDL_gpu on D3D12). On D3D11 create them with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and raw views.
+- **No push constants on any target.** Each block is a uniform buffer.
+- **One atlas.** Every shape comes from one atlas texture array, so `texture_array_index` is only the atlas layer and the uv rects are the shapes' places in it.
+- **No vertex inputs.** The billboard draws read their instance from a buffer by `SV_InstanceID` and unpack it the way the vertex formats above would, and the ribbon draw reads its vertex by `SV_VertexID`. `SV_InstanceID` leaves out the draw's first instance on D3D11 and D3D12, and Slang subtracts `gl_BaseInstance` on Vulkan, so start every billboard draw at instance 0 and pass its first instance in `instance_offset`.
+- **Samplers are separate** (a texture and a sampler at the same slot number) unless you define `TFX_COMBINED_SAMPLERS`, which gives SPIR-V combined image samplers. OpenGL is always combined. Under combined samplers the color ramps get a sampler too, though they're only loaded: bind a nearest one.
+
+#### Slots
+
+Each entry point's resources in each class count up from 0. Slot n of a class is SPIR-V binding `TFX_<class>_BINDING + n` in set `TFX_<class>_SPACE`, and HLSL register `<letter>n` in space `TFX_<class>_SPACE`. The classes and their defaults:
+
+| Class | Letter | Set and space | SPIR-V binding base |
+| --- | --- | --- | --- |
+| `VERTEX_READ`: vertex shader buffers | `t` | 0 | 0 |
+| `VERTEX_UNIFORM`: vertex shader uniforms | `b` | 0 | 5 |
+| `FRAGMENT_TEXTURE`: fragment shader textures | `t` | 0 | 7 |
+| `FRAGMENT_SAMPLER`: fragment shader samplers, when they're separate | `s` | 0 | 9 |
+| `COMPUTE_WRITE`: compute read write buffers | `u` | 0 | 0 |
+| `COMPUTE_READ`: compute read only buffers | `t` | 0 | 2 |
+| `COMPUTE_UNIFORM`: compute uniforms | `b` | 0 | 6 |
+
+The defaults put everything in set and space 0, with no binding shared by two classes that a vertex and fragment pair, or one compute pass, uses. That suits D3D11, OpenGL, WGSL and a Vulkan host with one descriptor set per pipeline. Override any of them with `-D`. For SDL_gpu, which numbers each stage's slots from 0 in its own set and space:
+
+```
+-D TFX_VERTEX_UNIFORM_SPACE=1 -D TFX_VERTEX_UNIFORM_BINDING=0
+-D TFX_FRAGMENT_TEXTURE_SPACE=2 -D TFX_FRAGMENT_TEXTURE_BINDING=0 -D TFX_FRAGMENT_SAMPLER_SPACE=2 -D TFX_FRAGMENT_SAMPLER_BINDING=0
+-D TFX_COMPUTE_READ_BINDING=0 -D TFX_COMPUTE_WRITE_SPACE=1 -D TFX_COMPUTE_UNIFORM_SPACE=2 -D TFX_COMPUTE_UNIFORM_BINDING=0
+-D TFX_COMBINED_SAMPLERS
+```
+
+Each entry point's slots, in the order SDL_gpu wants (textures, then read only buffers, then read write buffers, then uniforms). Raw buffers are rows in the C layout:
+
+| Entry point | Slot | Holds |
 | --- | --- | --- |
-| The pool, read write: the hot section at its start, cold and noise at `cold_base` / `noise_base` | binding 0 | `u0` |
-| The instance buffer, read write | binding 1 | `u1` |
-| The graph lookups, read only | binding 2 | `t0` |
-| The frame's upload from `tfx_CopyGPUParticleUpload`, read only, dispatches at its start | binding 3 | `t1` |
-| The push constants | binding 4, a uniform buffer | `b0`, a constant buffer |
+| `simulate_particles` | `COMPUTE_READ` 0 | The graph lookups |
+| | `COMPUTE_READ` 1 | The frame's upload from `tfx_CopyGPUParticleUpload`, dispatches at its start |
+| | `COMPUTE_WRITE` 0 | The pool: the hot section at its start, cold and noise at `cold_base` / `noise_base` |
+| | `COMPUTE_WRITE` 1 | The instance buffer |
+| | `COMPUTE_UNIFORM` 0 | `tfx_gpu_particle_push_t` |
+| `tfx_billboard_vertex` | `VERTEX_READ` 0 | The instances being drawn |
+| | `VERTEX_READ` 1 | The previous update's instances |
+| | `VERTEX_READ` 2 | The image data |
+| | `VERTEX_READ` 3 | The emitter properties |
+| | `VERTEX_UNIFORM` 0 | The view: `view`, `projection` (both 4x4), `screen_size`, `milliseconds`, `timer_lerp`, `update_time` |
+| | `VERTEX_UNIFORM` 1 | The draw: `instance_offset`, `index_offset` (uints), `ndc_offset_x`, `ndc_offset_y` (floats) |
+| `tfx_billboard_baked_vertex` | `VERTEX_READ` 0 | The instances `tfx_sprite_playback` wrote |
+| | `VERTEX_READ` 1 | The image data |
+| | `VERTEX_READ` 2 | The emitter properties |
+| | `VERTEX_UNIFORM` 0, 1 | The view and the draw, as above |
+| `tfx_billboard_fragment`, `tfx_ribbon_fragment` | `FRAGMENT_TEXTURE` 0 | The shape atlas, sampled |
+| | `FRAGMENT_TEXTURE` 1 | The color ramps, a texture array read with an integer load |
+| | `FRAGMENT_SAMPLER` 0 | The atlas's sampler, when samplers are separate |
+| `tfx_ribbon_compute` | `COMPUTE_READ` 0 | The ribbon emitters |
+| | `COMPUTE_READ` 1 | The graph lookups |
+| | `COMPUTE_READ` 2 | The ribbons |
+| | `COMPUTE_READ` 3 | The ribbon segments |
+| | `COMPUTE_WRITE` 0 | The ribbon vertexes it writes |
+| | `COMPUTE_WRITE` 1 | The ribbon indexes it writes |
+| | `COMPUTE_UNIFORM` 0 | `tfx_ribbon_bucket_globals_t` |
+| `tfx_ribbon_vertex` | `VERTEX_READ` 0 | The ribbon vertexes `tfx_ribbon_compute` wrote |
+| | `VERTEX_READ` 1 | The ribbons |
+| | `VERTEX_READ` 2 | The ribbon emitters |
+| | `VERTEX_READ` 3 | The graph lookups |
+| | `VERTEX_READ` 4 | The image data |
+| | `VERTEX_UNIFORM` 0 | The view |
+| | `VERTEX_UNIFORM` 1 | `tfx_ribbon_bucket_globals_t` |
+| `tfx_sprite_playback` | `COMPUTE_READ` 0 | The animation offsets |
+| | `COMPUTE_READ` 1 | The animation instances |
+| | `COMPUTE_READ` 2 | The baked sprites |
+| | `COMPUTE_READ` 3 | The baked emitter properties |
+| | `COMPUTE_WRITE` 0 | The billboard instances it writes |
+| | `COMPUTE_UNIFORM` 0 | `tfx_sprite_data_push_t` |
+| `tfx_ribbon_playback` | `COMPUTE_READ` 0 | The ribbon offsets |
+| | `COMPUTE_READ` 1 | The animation instances |
+| | `COMPUTE_READ` 2 | The baked ribbons |
+| | `COMPUTE_READ` 3 | The baked ribbon properties |
+| | `COMPUTE_WRITE` 0 | The ribbons it writes |
+| | `COMPUTE_UNIFORM` 0 | `tfx_ribbon_data_push_t` |
 
-The render passes use these registers. D3D11 binds per stage, so a register only has to mean the same thing in the passes that share it. Raw buffers are rows in the C layout; structured buffers have the C struct's size as their stride.
-
-| Register | Holds | Read by |
-| --- | --- | --- |
-| `b0` | The view, the uniform buffer above | The vertex shaders |
-| `b1` | `instance_offset`, `index_offset` (uints), `ndc_offset_x`, `ndc_offset_y` (floats) | The billboard vertex shaders. `SV_InstanceID` leaves out the draw's first instance on D3D11, so pass it in `instance_offset` |
-| `b2` | `tfx_ribbon_bucket_globals_t` | The ribbon passes |
-| `b3` | `tfx_sprite_data_push_t` | `tfx_sprite_playback` |
-| `b4` | `tfx_ribbon_data_push_t` | `tfx_ribbon_playback` |
-| `t0` | The instances being drawn, raw | The billboard vertex shaders |
-| `t1` | The previous instances, or the baked sprites, raw | `tfx_billboard_vertex`, `tfx_sprite_playback` |
-| `t2` | The image data, structured | The vertex shaders |
-| `t3` | The emitter properties, structured | The billboard vertex shaders, `tfx_sprite_playback` |
-| `t4`, `s0` | The shape atlas and its sampler | The fragment shaders |
-| `t5` | The color ramps, a texture array read with an integer load | The fragment shaders |
-| `t6` | The ribbon emitters, structured | `tfx_ribbon_compute`, `tfx_ribbon_vertex` |
-| `t7` | The graph lookups, raw | `tfx_ribbon_compute`, `tfx_ribbon_vertex` |
-| `t8` | The ribbons, structured | `tfx_ribbon_compute`, `tfx_ribbon_vertex` |
-| `t9` | The ribbon segments, structured | `tfx_ribbon_compute` |
-| `t10` | The ribbon vertexes `tfx_ribbon_compute` wrote, structured | `tfx_ribbon_vertex` |
-| `t11`, `t12` | The animation offsets and the animation instances, raw | Both playbacks |
-| `t13`, `t14` | The baked ribbons and the baked ribbon properties, structured | `tfx_ribbon_playback` |
-| `u0`, `u1` | The ribbon vertexes (structured) and indexes (raw) | `tfx_ribbon_compute` writes them |
-| `u2` | The billboard instances, raw | `tfx_sprite_playback` writes them |
-| `u3` | The ribbons, structured | `tfx_ribbon_playback` writes them |
-
-The bounds passes have no fixed bindings.
+With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SPIR-V bindings 0 to 3, 5 and 6 in set 0. With the SDL_gpu line its uniforms are b0, b1 in space1, and bindings 0, 1 in set 1.
 
 - **D3D11:** [implementations](../implementations) has a working host with the whole build in its CMake. Notes from it:
-  - Create raw buffers with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and give them raw (`DXGI_FORMAT_R32_TYPELESS`) views. The kernel's upload can be a `DYNAMIC` buffer that `tfx_CopyGPUParticleUpload` fills straight through `Map(WRITE_DISCARD)`.
+  - The kernel's upload can be a `DYNAMIC` raw buffer that `tfx_CopyGPUParticleUpload` fills straight through `Map(WRITE_DISCARD)`.
   - Create the pool zeroed. The library never clears it and it never needs clearing after that.
   - Update the kernel's constant buffer before each dispatch, changing only `dispatch_index`.
   - Unbind what the next pass writes. The instance buffer the kernel writes is the one the vertex shader reads, and a buffer bound for reading and writing at once gets one of its binds cleared, with a debug layer warning.
   - If you keep two instance buffers for interpolation, copy both across when they grow, because the GPU instances in the previous one exist nowhere else.
   - fxc warns that 256 threads times the kernel's temp registers is over its recommended total (X4714), and that `pow` won't work for a negative base (X3571). The base is a unit hash, never negative, and neither shows up at run time.
-- **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. For the kernel, bind the four buffers as SSBOs at bindings 0 to 3 (`glBindBufferBase`) and the push constants as a UBO at binding 4. The render passes haven't been tried on OpenGL.
-- **WGSL:** each kernel dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset. The render passes haven't been tried on WebGPU.
+- **SDL_gpu:** compile with the line above, SPIR-V for Vulkan and DXIL for D3D12. Push each uniform block with `SDL_PushGPUVertexUniformData`, `SDL_PushGPUComputeUniformData` and so on at its slot, the kernel's once per dispatch. SDL doesn't zero buffers, so create the pool by uploading zeros. There's no SDL_gpu example in [implementations](../implementations) yet.
+- **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. With the defaults the kernel's buffers are SSBOs at bindings 0 to 3 (`glBindBufferBase`) and its uniforms a UBO at binding 6. The render passes haven't been tried on OpenGL.
+- **WGSL:** the kernel always uses these bindings, define or not, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default. Each kernel dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset. The render passes haven't been tried on WebGPU.
 
 ### Metal
 
@@ -184,7 +235,7 @@ You can add custom forces, collision, spawn placement or changes to how particle
 
 Then write your own `[numthreads(tfx_group_size, 1, 1)]` entry point with `tfx_gpu_particle_push` as the first member of your push constants and call `tfx_simulate` with your hooks, using `tfx_no_particle_update`, `tfx_no_particle_spawn` and `tfx_no_particle_write` for the ones you don't need. The GPU particle simulation section of timelinefx.h walks through it step by step. Your hooks only run on the GPU, so emitters that fall back to the CPU (during warmup, for example) simulate without them.
 
-A host entry point with its own push constants does what `simulate_particles` does: declare them twice, `[[vk::push_constant]]` and `[[vk::binding(4, 0)]] ... : register(b15)` (the register keeps it out of Metal's buffer slots), and read them through a function that picks with `__target_switch`: `case wgsl:` (plus `case glsl:` under `TFX_FIXED_BINDINGS`) returns the uniform one, `default:` the push constant one.
+A host entry point with its own push constants does what `simulate_particles` does: declare them twice, `[[vk::push_constant]] ConstantBuffer<my_push> my_push_constants;` and `TFX_UNIFORM_PUSH(my_push, my_uniform_push);`, which is the uniform buffer twin at the kernel's uniform slot, and read them through a function that picks with `__target_switch`: `TFX_UNIFORM_PUSH_CASES` returns the uniform one, `default:` the push constant one.
 
 ## Pre-baked effects
 

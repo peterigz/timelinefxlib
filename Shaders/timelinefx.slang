@@ -3,8 +3,8 @@
 
 	The library's reference shaders, one file a host can copy into its renderer and compile with Slang, one entry point at a time: the
 	compute kernel for Run on GPU emitters, which compiles for Vulkan, D3D12, D3D11, Metal, OpenGL or WebGPU, and the billboard, ribbon,
-	baked playback and bounds passes, which use the bindless model. Search for a keyword below to jump to its section (in Vim, * on the
-	keyword):
+	baked playback and bounds passes. Every render pass compiles for the bindless model, and all but the bounds for the fixed bindings.
+	Search for a keyword below to jump to its section (in Vim, * on the keyword):
 
 	[About_the_kernel]                  What the kernel does, one dispatch per ring and one thread per ring slot
 
@@ -24,7 +24,7 @@
 
 	--Binding
 	[Buffer_access]                     Every buffer read and write, for each binding model
-		[Binding_macros]                TFX_FIXED_BINDINGS and the per target cases
+		[Binding_macros]                TFX_FIXED_BINDINGS, the per target cases and the fixed binding classes
 		[Push_constants]                The library's push constants, and their uniform buffer twin for WGSL and OpenGL
 		[Bindless_arrays]               Vulkan and D3D12
 		[Metal_buffer_table]            Metal's argument buffer of gpuAddress values
@@ -47,7 +47,7 @@
 	--The render passes
 	[Render_rows]                       Row and push constant structs, byte for byte mirrors of their C structs
 	[Render_access]                     Push constant blocks, bindless arrays and the accessors every read and write goes through
-		[Fixed_render_bindings]         The D3D11 registers every render read and write goes to under TFX_FIXED_BINDINGS
+		[Fixed_render_bindings]         Each render entry point's slots under TFX_FIXED_BINDINGS
 	[Render_math]                       Unpacking and packing, the quaternion matrix and the billboard rotation
 	[Billboard_vertex]                  tfx_billboard_vertex, the live billboard draw
 	[Billboard_baked_vertex]            tfx_billboard_baked_vertex, the baked billboard draw
@@ -1363,27 +1363,96 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 
 //--- Binding_macros
 
-//-D TFX_FIXED_BINDINGS gives every target the four fixed raw buffers WGSL always uses, for D3D11, OpenGL and anything else without descriptor arrays
-//HLSL keeps tfx_push_constants under TFX_FIXED_BINDINGS: it's a plain cbuffer at b0, which is what D3D11 wants
+//-D TFX_FIXED_BINDINGS gives every target the four fixed raw buffers WGSL always uses, for D3D11, SDL_gpu, OpenGL and anything else without
+//descriptor arrays. It has no push constants on any target: each block is a uniform buffer
 #if defined(TFX_FIXED_BINDINGS)
 #define TFX_FIXED_CASES case wgsl: case hlsl: case glsl: case spirv:
-#define TFX_FIXED_REGISTER(slot) : register(slot)
 #define TFX_BINDLESS_ACCESS
-#define TFX_UNIFORM_PUSH_CASES case wgsl: case glsl:
+#define TFX_UNIFORM_PUSH_CASES case wgsl: case hlsl: case glsl: case spirv:
 #else
 #define TFX_FIXED_CASES case wgsl:
-#define TFX_FIXED_REGISTER(slot)
 //GLSL needs the extension to index runtime descriptor arrays, and Slang only emits it from a function, never from the declarations
 #define TFX_BINDLESS_ACCESS __glsl_extension(GL_EXT_nonuniform_qualifier)
 #define TFX_UNIFORM_PUSH_CASES case wgsl:
 #endif
 
+//OpenGL has only combined image samplers. -D TFX_COMBINED_SAMPLERS gives SPIR-V them too, which SDL_gpu's Vulkan backend needs
+#if defined(TFX_COMBINED_SAMPLERS)
+#define TFX_COMBINED_SAMPLER_CASES case glsl: case spirv:
+#else
+#define TFX_COMBINED_SAMPLER_CASES case glsl:
+#endif
+
+//The fixed binding classes. Slot n of a class is SPIR-V binding <class>_BINDING + n in set <class>_SPACE, and HLSL register <letter>n in
+//space <class>_SPACE. Each entry point's slots in a class count up from 0. The defaults put everything in set and space 0 with no two
+//classes a vertex and fragment pair, or a compute pass, uses sharing a binding. Override any of them with -D
+#ifndef TFX_VERTEX_READ_SPACE
+#define TFX_VERTEX_READ_SPACE 0
+#endif
+#ifndef TFX_VERTEX_READ_BINDING
+#define TFX_VERTEX_READ_BINDING 0
+#endif
+#ifndef TFX_VERTEX_UNIFORM_SPACE
+#define TFX_VERTEX_UNIFORM_SPACE 0
+#endif
+#ifndef TFX_VERTEX_UNIFORM_BINDING
+#define TFX_VERTEX_UNIFORM_BINDING 5
+#endif
+#ifndef TFX_FRAGMENT_TEXTURE_SPACE
+#define TFX_FRAGMENT_TEXTURE_SPACE 0
+#endif
+#ifndef TFX_FRAGMENT_TEXTURE_BINDING
+#define TFX_FRAGMENT_TEXTURE_BINDING 7
+#endif
+#ifndef TFX_FRAGMENT_SAMPLER_SPACE
+#define TFX_FRAGMENT_SAMPLER_SPACE 0
+#endif
+#ifndef TFX_FRAGMENT_SAMPLER_BINDING
+#define TFX_FRAGMENT_SAMPLER_BINDING 9
+#endif
+#ifndef TFX_COMPUTE_WRITE_SPACE
+#define TFX_COMPUTE_WRITE_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_WRITE_BINDING
+#define TFX_COMPUTE_WRITE_BINDING 0
+#endif
+#ifndef TFX_COMPUTE_READ_SPACE
+#define TFX_COMPUTE_READ_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_READ_BINDING
+#define TFX_COMPUTE_READ_BINDING 2
+#endif
+#ifndef TFX_COMPUTE_UNIFORM_SPACE
+#define TFX_COMPUTE_UNIFORM_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_UNIFORM_BINDING
+#define TFX_COMPUTE_UNIFORM_BINDING 6
+#endif
+
+#define TFX_PASTE(first, second) first##second
+#define TFX_PASTE_EXPANDED(first, second) TFX_PASTE(first, second)
+//fxc has no register spaces, but Slang leaves space0 out of what it emits, so the defaults compile for D3D11
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_FIXED_REGISTER(letter, slot, space_index) : register(TFX_PASTE(letter, slot), TFX_PASTE_EXPANDED(space, space_index))
+#else
+#define TFX_FIXED_REGISTER(letter, slot, space_index)
+#endif
+//TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0) is slot 0 of the compute write class, register u0
+#define TFX_FIXED_DECLARE(type, name, resource_class, letter, slot) [[vk::binding(TFX_##resource_class##_BINDING + slot, TFX_##resource_class##_SPACE)]] type name TFX_FIXED_REGISTER(letter, slot, TFX_##resource_class##_SPACE)
+
 //--- Push_constants
 
+//A kernel's push constants as a uniform buffer, for the targets in TFX_UNIFORM_PUSH_CASES, moved along per dispatch. Host entry points
+//declare their twin with it too. Without the define the register keeps it out of Metal's buffer slots
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_UNIFORM_PUSH(type, name) TFX_FIXED_DECLARE(ConstantBuffer<type>, name, COMPUTE_UNIFORM, b, 0)
+#else
+#define TFX_UNIFORM_PUSH(type, name) [[vk::binding(TFX_COMPUTE_UNIFORM_BINDING, TFX_COMPUTE_UNIFORM_SPACE)]] ConstantBuffer<type> name : register(b15)
+#endif
+
 //Only the library's entry point reads these, so a host's entry point can declare its own push constants
-[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants TFX_FIXED_REGISTER(b0);
-//WebGPU and OpenGL have no push constants, so there they're a uniform buffer moved along per dispatch. The register keeps it out of Metal's buffer slots
-[[vk::binding(4, 0)]] ConstantBuffer<tfx_gpu_particle_push> tfx_uniform_push_constants : register(b15);
+[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants;
+TFX_UNIFORM_PUSH(tfx_gpu_particle_push, tfx_uniform_push_constants);
 
 //--- Bindless_arrays
 
@@ -1423,11 +1492,11 @@ ParameterBlock<tfx_metal_buffer_table> tfx_metal_buffers;
 //--- Fixed_raw_buffers
 
 //The four buffers of the one-buffer setup, for WGSL (no descriptor arrays, 8 storage buffers) and TFX_FIXED_BINDINGS. These ignore the indexes
-[[vk::binding(0, 0)]] RWByteAddressBuffer tfx_fixed_pool TFX_FIXED_REGISTER(u0);
-[[vk::binding(1, 0)]] RWByteAddressBuffer tfx_fixed_instances TFX_FIXED_REGISTER(u1);
-[[vk::binding(2, 0)]] ByteAddressBuffer tfx_fixed_graphs TFX_FIXED_REGISTER(t0);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instances, COMPUTE_WRITE, u, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graphs, COMPUTE_READ, t, 0);
 //The frame's upload: dispatches at its start, then the tick, location and spawn arrays at their bases
-[[vk::binding(3, 0)]] ByteAddressBuffer tfx_fixed_upload TFX_FIXED_REGISTER(t1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_upload, COMPUTE_READ, t, 1);
 
 //The C sizes of the rows the raw paths read, which pack members as C does, whose Load/Store pack members as C does where a Metal float3 would take 16 bytes
 static const uint tfx_hot_row_bytes = 32;
@@ -2900,12 +2969,15 @@ struct tfx_ribbon_bounds_push {
 
 //---- Push constants, one block per pass
 
-//Under TFX_FIXED_BINDINGS the billboard draws take tfx_fixed_draw in place of theirs, which are all indexes but for the offsets
+//Under TFX_FIXED_BINDINGS the billboard draws take tfx_fixed_draw in place of theirs, which are all indexes but for the offsets, and the
+//ribbon and playback blocks are uniform buffers in the fixed render bindings
 [[vk::push_constant]] ConstantBuffer<tfx_billboard_push> tfx_billboard_push_constants;
 [[vk::push_constant]] ConstantBuffer<tfx_baked_billboard_push> tfx_baked_billboard_push_constants;
-[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants TFX_FIXED_REGISTER(b2);
-[[vk::push_constant]] ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants TFX_FIXED_REGISTER(b3);
-[[vk::push_constant]] ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants TFX_FIXED_REGISTER(b4);
+#if !defined(TFX_FIXED_BINDINGS)
+[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
+#endif
 [[vk::push_constant]] ConstantBuffer<tfx_ribbon_bounds_push> tfx_ribbon_bounds_push_constants;
 
 //---- Bindless arrays
@@ -2930,9 +3002,14 @@ struct tfx_ribbon_bounds_push {
 
 //--- Fixed_render_bindings
 
-//One register per kind of row, the layout the D3D11 example binds. Every shape is in one atlas, so the bindless image index is ignored
+//Each entry point's own resources under TFX_FIXED_BINDINGS, picked by -D TFX_ENTRY_<entry point>, for example -D TFX_ENTRY_tfx_billboard_vertex.
+//Its slots in each class count up from 0 in the order SDL_gpu wants: textures, then read only buffers, then read write buffers, then
+//uniforms. What an entry point doesn't read is declared without a binding so the module still compiles, and Slang leaves it out. Every
+//buffer is raw, read at the C size of its rows, because some APIs only give raw views (SDL_gpu on D3D12). Every shape is in one atlas, so
+//the bindless image index is ignored
 #if defined(TFX_FIXED_BINDINGS)
-//SV_InstanceID leaves out the draw's first instance on D3D11, so it comes in here with the billboard push constants that aren't indexes
+//SV_InstanceID leaves out the draw's first instance on D3D11 and D3D12, and Slang reads it as gl_InstanceIndex - gl_BaseInstance on
+//Vulkan, so it comes in here with the billboard push constants that aren't indexes
 struct tfx_fixed_draw_constants {
 	uint instance_offset;
 	uint index_offset;
@@ -2940,31 +3017,184 @@ struct tfx_fixed_draw_constants {
 	float ndc_offset_y;
 };
 
-ConstantBuffer<tfx_view_uniforms> tfx_fixed_view : register(b0);
-ConstantBuffer<tfx_fixed_draw_constants> tfx_fixed_draw : register(b1);
-ByteAddressBuffer tfx_fixed_draw_instances : register(t0);										//The instances a billboard draw draws
-ByteAddressBuffer tfx_fixed_instance_rows : register(t1);										//The previous instances, or the baked sprites
-StructuredBuffer<tfx_image_data> tfx_fixed_image_data : register(t2);
-StructuredBuffer<tfx_emitter_properties> tfx_fixed_emitter_properties : register(t3);
-Texture2DArray tfx_fixed_particle_images : register(t4);										//The shape atlas
-Texture2DArray tfx_fixed_color_ramps : register(t5);
-StructuredBuffer<tfx_ribbon_emitter> tfx_fixed_ribbon_emitters : register(t6);
-ByteAddressBuffer tfx_fixed_graph_rows : register(t7);
-StructuredBuffer<tfx_ribbon> tfx_fixed_ribbons : register(t8);
-StructuredBuffer<float4> tfx_fixed_ribbon_segments : register(t9);
-StructuredBuffer<tfx_ribbon_vertex_row> tfx_fixed_ribbon_vertices : register(t10);
-ByteAddressBuffer tfx_fixed_offsets : register(t11);
-ByteAddressBuffer tfx_fixed_animation_instances : register(t12);
-StructuredBuffer<tfx_ribbon_instance_data> tfx_fixed_baked_ribbons : register(t13);
-StructuredBuffer<tfx_animation_ribbon_properties> tfx_fixed_ribbon_properties : register(t14);
-RWStructuredBuffer<tfx_ribbon_vertex_row> tfx_fixed_ribbon_vertex_output : register(u0);
-RWByteAddressBuffer tfx_fixed_ribbon_index_output : register(u1);
-RWByteAddressBuffer tfx_fixed_instance_output : register(u2);
-RWStructuredBuffer<tfx_ribbon> tfx_fixed_ribbon_output : register(u3);
-SamplerState tfx_fixed_sampler : register(s0);
-
+static const uint tfx_image_data_row_bytes = 48;
+static const uint tfx_emitter_properties_row_bytes = 32;
+static const uint tfx_ribbon_row_bytes = 48;
+static const uint tfx_ribbon_segment_row_bytes = 16;
+static const uint tfx_ribbon_vertex_row_bytes = 32;
+static const uint tfx_ribbon_emitter_row_bytes = 416;
+//Where tfx_gpu_ribbon_emitter_t's lag spine arrays start, which timelinefx_internal.h asserts. Loading them by offset reads one sample, where
+//indexing the array in a loaded row would load all of it
+static const uint tfx_lag_spine_position_x_offset = 92;
+static const uint tfx_lag_spine_position_y_offset = 156;
+static const uint tfx_lag_spine_position_z_offset = 220;
+static const uint tfx_lag_spine_quaternion_offset = 288;
 static const uint tfx_animation_instance_row_bytes = 64;
-#define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_fixed_ribbon_emitters[row]
+static const uint tfx_baked_ribbon_row_bytes = 64;
+static const uint tfx_ribbon_properties_row_bytes = 68;
+
+#if defined(TFX_ENTRY_tfx_billboard_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, VERTEX_READ, t, 1);				//The previous instances
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 3);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_DRAW_INSTANCES
+#define TFX_DECLARED_INSTANCE_ROWS
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_DRAW
+#elif defined(TFX_ENTRY_tfx_billboard_baked_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_DRAW_INSTANCES
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_DRAW
+#elif defined(TFX_ENTRY_tfx_billboard_fragment) || defined(TFX_ENTRY_tfx_ribbon_fragment)
+//Combined samplers take the texture's slot, and the color ramps get a sampler of their own there though they're only loaded
+TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_particle_images, FRAGMENT_TEXTURE, t, 0);				//The shape atlas
+TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_color_ramps, FRAGMENT_TEXTURE, t, 1);
+TFX_FIXED_DECLARE(SamplerState, tfx_fixed_sampler, FRAGMENT_SAMPLER, s, 0);
+TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_particle_images, FRAGMENT_TEXTURE, t, 0);
+TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_color_ramps, FRAGMENT_TEXTURE, t, 1);
+#define TFX_DECLARED_IMAGES
+#elif defined(TFX_ENTRY_tfx_ribbon_compute)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, COMPUTE_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_segments, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_vertex_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_index_output, COMPUTE_WRITE, u, 1);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_RIBBON_EMITTERS
+#define TFX_DECLARED_GRAPH_ROWS
+#define TFX_DECLARED_RIBBONS
+#define TFX_DECLARED_RIBBON_SEGMENTS
+#define TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
+#define TFX_DECLARED_RIBBON_PUSH
+#elif defined(TFX_ENTRY_tfx_ribbon_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_vertices, VERTEX_READ, t, 0);				//The vertexes tfx_ribbon_compute wrote
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, VERTEX_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, VERTEX_READ, t, 3);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 4);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_RIBBON_VERTICES
+#define TFX_DECLARED_RIBBONS
+#define TFX_DECLARED_RIBBON_EMITTERS
+#define TFX_DECLARED_GRAPH_ROWS
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_RIBBON_PUSH
+#elif defined(TFX_ENTRY_tfx_sprite_playback)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, COMPUTE_READ, t, 2);				//The baked sprites
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instance_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_sprite_data_push>, tfx_sprite_data_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_OFFSETS
+#define TFX_DECLARED_ANIMATION_INSTANCES
+#define TFX_DECLARED_INSTANCE_ROWS
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_INSTANCE_OUTPUT
+#define TFX_DECLARED_SPRITE_DATA_PUSH
+#elif defined(TFX_ENTRY_tfx_ribbon_playback)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_baked_ribbons, COMPUTE_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_properties, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_data_push>, tfx_ribbon_data_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_OFFSETS
+#define TFX_DECLARED_ANIMATION_INSTANCES
+#define TFX_DECLARED_BAKED_RIBBONS
+#define TFX_DECLARED_RIBBON_PROPERTIES
+#define TFX_DECLARED_RIBBON_OUTPUT
+#define TFX_DECLARED_RIBBON_DATA_PUSH
+#endif
+
+#ifndef TFX_DECLARED_DRAW_INSTANCES
+ByteAddressBuffer tfx_fixed_draw_instances;
+#endif
+#ifndef TFX_DECLARED_INSTANCE_ROWS
+ByteAddressBuffer tfx_fixed_instance_rows;
+#endif
+#ifndef TFX_DECLARED_IMAGE_DATA
+ByteAddressBuffer tfx_fixed_image_data;
+#endif
+#ifndef TFX_DECLARED_EMITTER_PROPERTIES
+ByteAddressBuffer tfx_fixed_emitter_properties;
+#endif
+#ifndef TFX_DECLARED_VIEW
+ConstantBuffer<tfx_view_uniforms> tfx_fixed_view;
+#endif
+#ifndef TFX_DECLARED_DRAW
+ConstantBuffer<tfx_fixed_draw_constants> tfx_fixed_draw;
+#endif
+#ifndef TFX_DECLARED_IMAGES
+Texture2DArray tfx_fixed_particle_images;
+Texture2DArray tfx_fixed_color_ramps;
+SamplerState tfx_fixed_sampler;
+Sampler2DArray tfx_fixed_combined_particle_images;
+Sampler2DArray tfx_fixed_combined_color_ramps;
+#endif
+#ifndef TFX_DECLARED_RIBBON_EMITTERS
+ByteAddressBuffer tfx_fixed_ribbon_emitters;
+#endif
+#ifndef TFX_DECLARED_GRAPH_ROWS
+ByteAddressBuffer tfx_fixed_graph_rows;
+#endif
+#ifndef TFX_DECLARED_RIBBONS
+ByteAddressBuffer tfx_fixed_ribbons;
+#endif
+#ifndef TFX_DECLARED_RIBBON_SEGMENTS
+ByteAddressBuffer tfx_fixed_ribbon_segments;
+#endif
+#ifndef TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
+RWByteAddressBuffer tfx_fixed_ribbon_vertex_output;
+RWByteAddressBuffer tfx_fixed_ribbon_index_output;
+#endif
+#ifndef TFX_DECLARED_RIBBON_VERTICES
+ByteAddressBuffer tfx_fixed_ribbon_vertices;
+#endif
+#ifndef TFX_DECLARED_OFFSETS
+ByteAddressBuffer tfx_fixed_offsets;
+#endif
+#ifndef TFX_DECLARED_ANIMATION_INSTANCES
+ByteAddressBuffer tfx_fixed_animation_instances;
+#endif
+#ifndef TFX_DECLARED_INSTANCE_OUTPUT
+RWByteAddressBuffer tfx_fixed_instance_output;
+#endif
+#ifndef TFX_DECLARED_BAKED_RIBBONS
+ByteAddressBuffer tfx_fixed_baked_ribbons;
+#endif
+#ifndef TFX_DECLARED_RIBBON_PROPERTIES
+ByteAddressBuffer tfx_fixed_ribbon_properties;
+#endif
+#ifndef TFX_DECLARED_RIBBON_OUTPUT
+RWByteAddressBuffer tfx_fixed_ribbon_output;
+#endif
+#ifndef TFX_DECLARED_RIBBON_PUSH
+ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
+#endif
+#ifndef TFX_DECLARED_SPRITE_DATA_PUSH
+ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
+#endif
+#ifndef TFX_DECLARED_RIBBON_DATA_PUSH
+ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
+#endif
+
+#define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter>((row) * tfx_ribbon_emitter_row_bytes)
 #else
 #define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_ribbon_emitter_buffers[buffer_index][row]
 #endif
@@ -2981,7 +3211,7 @@ tfx_instance tfx_load_draw_instance(uint instance_id) {
 }
 
 tfx_ribbon_vertex_row tfx_load_draw_ribbon_vertex(uint vertex_id) {
-	return tfx_fixed_ribbon_vertices[vertex_id];
+	return tfx_fixed_ribbon_vertices.Load<tfx_ribbon_vertex_row>(vertex_id * tfx_ribbon_vertex_row_bytes);
 }
 
 tfx_instance tfx_load_instance_row(uint buffer_index, uint row) {
@@ -2993,11 +3223,11 @@ void tfx_store_instance_row(uint buffer_index, uint row, tfx_instance instance) 
 }
 
 tfx_image_data tfx_load_image_data(uint buffer_index, uint row) {
-	return tfx_fixed_image_data[row];
+	return tfx_fixed_image_data.Load<tfx_image_data>(row * tfx_image_data_row_bytes);
 }
 
 tfx_emitter_properties tfx_load_emitter_properties(uint buffer_index, uint row) {
-	return tfx_fixed_emitter_properties[row];
+	return tfx_fixed_emitter_properties.Load<tfx_emitter_properties>(row * tfx_emitter_properties_row_bytes);
 }
 
 tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
@@ -3005,19 +3235,19 @@ tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
 }
 
 tfx_ribbon tfx_load_ribbon(uint buffer_index, uint row) {
-	return tfx_fixed_ribbons[row];
+	return tfx_fixed_ribbons.Load<tfx_ribbon>(row * tfx_ribbon_row_bytes);
 }
 
 void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbon ribbon) {
-	tfx_fixed_ribbon_output[row] = ribbon;
+	tfx_fixed_ribbon_output.Store<tfx_ribbon>(row * tfx_ribbon_row_bytes, ribbon);
 }
 
 float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_segments[row].xyz;
+	return tfx_fixed_ribbon_segments.Load<float3>(row * tfx_ribbon_segment_row_bytes);
 }
 
 void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
-	tfx_fixed_ribbon_vertex_output[row] = vertex;
+	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
 }
 
 void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
@@ -3033,19 +3263,25 @@ tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) 
 }
 
 tfx_ribbon_instance_data tfx_load_baked_ribbon(uint buffer_index, uint row) {
-	return tfx_fixed_baked_ribbons[row];
+	return tfx_fixed_baked_ribbons.Load<tfx_ribbon_instance_data>(row * tfx_baked_ribbon_row_bytes);
 }
 
 tfx_animation_ribbon_properties tfx_load_ribbon_properties(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_properties[row];
+	return tfx_fixed_ribbon_properties.Load<tfx_animation_ribbon_properties>(row * tfx_ribbon_properties_row_bytes);
 }
 
 float4 tfx_sample_particle_image(uint image_index, uint sampler_index, float3 tex_coord) {
-	return tfx_fixed_particle_images.Sample(tfx_fixed_sampler, tex_coord);
+	__target_switch {
+	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_particle_images.Sample(tex_coord);
+	default: return tfx_fixed_particle_images.Sample(tfx_fixed_sampler, tex_coord);
+	}
 }
 
 float4 tfx_load_color_ramp(uint texture_index, int3 texel) {
-	return tfx_fixed_color_ramps.Load(int4(texel, 0));
+	__target_switch {
+	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_color_ramps.Load(int4(texel, 0));
+	default: return tfx_fixed_color_ramps.Load(int4(texel, 0));
+	}
 }
 
 tfx_billboard_push tfx_billboard_entry_push() {
@@ -3183,6 +3419,18 @@ TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_emitter_draw(uint buffer_index, uint r
 	return uint2(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index);
 }
 
+#if defined(TFX_FIXED_BINDINGS)
+float3 tfx_load_lag_spine_position(uint buffer_index, uint row, uint sample_index) {
+	const uint sample_start = row * tfx_ribbon_emitter_row_bytes + sample_index * 4;
+	return float3(tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_x_offset),
+	              tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_y_offset),
+	              tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_z_offset));
+}
+
+float4 tfx_load_lag_spine_quaternion(uint buffer_index, uint row, uint sample_index) {
+	return tfx_unpack16bit_quaternion(tfx_fixed_ribbon_emitters.Load<uint2>(row * tfx_ribbon_emitter_row_bytes + tfx_lag_spine_quaternion_offset + sample_index * 8));
+}
+#else
 TFX_BINDLESS_ACCESS float3 tfx_load_lag_spine_position(uint buffer_index, uint row, uint sample_index) {
 	return float3(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_position_x[sample_index],
 	              TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_position_y[sample_index],
@@ -3192,6 +3440,7 @@ TFX_BINDLESS_ACCESS float3 tfx_load_lag_spine_position(uint buffer_index, uint r
 TFX_BINDLESS_ACCESS float4 tfx_load_lag_spine_quaternion(uint buffer_index, uint row, uint sample_index) {
 	return tfx_unpack16bit_quaternion(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_quaternion[sample_index]);
 }
+#endif
 
 //The bounds passes are editor only, so they have no fixed binding
 TFX_BINDLESS_ACCESS void tfx_store_bounding_box(uint buffer_index, uint row, tfx_bounding_box box) {
@@ -3472,10 +3721,17 @@ float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensi
 
 [shader("fragment")]
 float4 tfx_billboard_fragment(tfx_billboard_output input) : SV_Target {
+	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
+#if !defined(TFX_FIXED_BINDINGS)
 	const tfx_billboard_push push = tfx_billboard_entry_push();
+#endif
 	const float3 tex_coord = float3(input.uv, float(input.indexes.x & 0xFFFFu));
 	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int(input.indexes.y >> 8), 0);
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_shade_particle(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+#else
 	return tfx_shade_particle(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
+#endif
 }
 
 //Below this many pixels across, a ribbon starts dropping fragments because the rasteriser only covers pixels whose centre falls
@@ -3484,8 +3740,12 @@ static const float tfx_min_ribbon_pixels = 1.5;
 
 [shader("fragment")]
 float4 tfx_ribbon_fragment(tfx_ribbon_output input) : SV_Target {
+#if defined(TFX_FIXED_BINDINGS)
+	const float4 color = tfx_shade_particle(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+#else
 	const tfx_ribbon_bucket_globals push = tfx_ribbon_push_constants;
 	const float4 color = tfx_shade_particle(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
+#endif
 	//fwidth is how far across the ribbon one pixel steps, so its reciprocal is the ribbon's width in pixels
 	const float across_per_pixel = fwidth(input.ribbon_across);
 	const float ribbon_pixels = across_per_pixel > 0.0 ? 1.0 / across_per_pixel : tfx_min_ribbon_pixels;
@@ -3851,7 +4111,10 @@ struct tfx_ribbon_output {
 	[[vk::location(0)]] float3 tex_coord : TEXCOORD0;
 	[[vk::location(1)]] nointerpolation int3 texture_indexes : TEXCOORD1;
 	[[vk::location(2)]] float4 intensity_curved_alpha_map : TEXCOORD2;
+	//The fixed bindings sample one atlas, so there the fragment shader has no use for it
+#if !defined(TFX_FIXED_BINDINGS)
 	[[vk::location(3)]] nointerpolation uint image_index : TEXCOORD3;
+#endif
 	//0 to 1 across the ribbon's width, so its screen space derivative gives the ribbon's width in pixels
 	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
 };
@@ -3893,7 +4156,9 @@ tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_inp
 	const float2 ribbon_intensity_gradient_map = tfx_unpack_sscaled16x2(ribbon.intensity_gradient_map) * tfx_color_unpack_scale;
 	const float2 ribbon_curved_alpha = tfx_unpack_sscaled16x2(ribbon.curved_alpha) * tfx_color_unpack_scale;
 
+#if !defined(TFX_FIXED_BINDINGS)
 	output.image_index = image.texture_array_index >> 16;
+#endif
 	output.tex_coord = float3(wrap_fraction * (image.uv.z - image.uv.x) + image.uv.x, ribbon_across * (image.uv.w - image.uv.y) + image.uv.y, float(image.texture_array_index & 0xFFFFu));
 	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(ribbon_position * 255));
 	output.intensity_curved_alpha_map = float4(sampled_intensity * ribbon_intensity_gradient_map.x, sampled_curved_alpha * ribbon_curved_alpha.x,
