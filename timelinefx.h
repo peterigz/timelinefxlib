@@ -606,7 +606,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time. Must be less than 65535. Default 1000.
 	tfxU32 max_emitters;                    //The maximum number of particle emitters across all effects, 0 for 3 times max_effects. Adding an effect whose emitters won't fit fails, see tfx_EffectIDIsValid. Default 0.
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
-											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the stage to get the byte
+											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferMaxSizeInBytes after creating the stage to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
 											//nearest multiple of 32. Must be less than 16777215. Default 32768.
 	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this stage. Ribbons stop spawning once it is reached. Default 1000.
@@ -1083,6 +1083,9 @@ typedef struct tfx_ribbon_batch_s {
 	tfxU32 stage_count;
 } tfx_ribbon_batch_t;
 
+//Bytes per ribbon the baked ribbon playback writes, for sizing its output buffer from tfx_impl_baked_frame_t ribbon_count
+#define tfxRIBBON_SIZE 48
+
 typedef struct tfx_ribbon_batch_sizes_s {
 	size_t segment_buffer_size_in_bytes;
 	size_t ribbon_buffer_size_in_bytes;
@@ -1237,8 +1240,10 @@ tfx_* function used here is documented in full below.
     // 1. Initialise the library and its memory pool (once, at startup).
     tfx_BeginTimelineFX(tfx_GetDefaultThreadCount(), 128 * 1024 * 1024);
 
-    // 2. Load an effects library from a .tfx file. shape_loader uploads each image to your renderer;
-    //    uv_lookup returns its uv rect. Then build the GPU shape/graph/color-ramp data and upload it.
+    // 2. Load an effects library from a .tfx file. shape_loader hands you each image; uv_lookup returns its uv rect.
+    //    Then pack the shapes (tfx_impl_BuildShapeAtlas does it), call tfx_UpdateLibraryGPUImageData so uv_lookup runs
+    //    again, and tfx_UpdateGlobalGPUData before drawing more than one library with one set of buffers. The order is
+    //    in implementations/README.md, "Setting up a library".
     tfx_library library = tfx_LoadEffectLibrary("effects.tfx", shape_loader, uv_lookup, user_data);
 
     // 3. Create a stage (the runtime effect manager) to simulate effects in.
@@ -1278,7 +1283,7 @@ tells you how much is still allocated at any point.
 If you free objects yourself rather than leaving them to the sweep, either order of stage and library is fine:
 tfx_FreeLibrary removes the library's effects from every stage before it frees anything, so you can unload one library
 while effects from others keep playing. An effect template holds its own detached clone of the effect, but
-tfx_FreeLibrary frees every template made from the library, so don't use one after freeing its library. A stage has outstanding worker-thread work
+tfx_FreeLibrary frees every template made from the library, so drop your handles to them and don't free them again. A stage has outstanding worker-thread work
 after tfx_UpdateStage, so call tfx_CompleteStageWork (or use tfx_FreeStage, which completes it for you) before
 tearing anything down mid-frame.
 */
@@ -1807,7 +1812,8 @@ tfx_property_value_t member that holds it, a line at a time through tfx_SetPrint
 tfxAPI void tfx_PrintDescriptorProperties(tfx_library library, const char *path);
 
 /*
-Free all the memory used by a library, including every effect template made from it. Any of its effects still playing on a
+Free all the memory used by a library, including every effect template made from it: drop your template handles, and don't
+pass them to tfx_FreeEffectTemplate afterwards. In debug builds a freed handle usually trips the handle assert. Any of its effects still playing on a
 stage are removed from that stage first, straight away and without waiting for an update, so their ids go invalid (see
 tfx_IsEffectExpired) and there's no need to expire them yourself. Effects from other libraries keep playing.
 The stage's instance buffer still holds the removed effects' last instances until its next tfx_UpdateStage, so update
@@ -2604,8 +2610,11 @@ particle's slot for its life plus up to one update, and an update's spawns all a
 bigger rings. A catch-up done in one call, tfx_UpdateStage(stage, tick * 3), is one long update: it spawns all three
 ticks' particles at once, up to max_frame_length (240 ms) of them. tfx_UpdateStageSubSteps steps are an update each, so
 catching up that way needs no extra room.
-Call it before tfx_SetTemplateGPUCapacityForLocations and tfx_GetTemplateGPUPoolSlots. Rings already allocated keep
-their size, and it has no effect on capacities set with tfx_SetTemplateEmitterGPUCapacity.
+Call it before tfx_SetTemplateGPUCapacityForLocations and tfx_GetTemplateGPUPoolSlots: each records the rate on the
+template and its rings are sized at that rate from then on, so changing it afterwards can't make the rings disagree with
+the pool slots you added up. Templates you never sized, and tfx_GetEmitterGPUCapacity on a library's own emitters, use
+the current rate. Rings already allocated keep their size, and it has no effect on capacities set with
+tfx_SetTemplateEmitterGPUCapacity.
 * @param updates_per_second        The slowest rate you'll update stages at, counting a single call catch-up of N ticks
                                   as your rate divided by N.
 */
@@ -2615,7 +2624,7 @@ tfxAPI void tfx_SetGPUSizingUpdateRate(float updates_per_second);
 The ring capacity an instance of a Run on GPU emitter gets, in particles. Without an override this is what one spawn
 location needs, times the location count tfx_SetTemplateGPUCapacityForLocations set on its template. Every location
 adds its own amount, so an effect at N locations needs about N times the one location figure. It's worked out from the
-emitter's amounts and tfx_SetGPUSizingUpdateRate each call, so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
+emitter's amounts and the sizing rate each call (the rate its template was sized at, or tfx_SetGPUSizingUpdateRate), so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
 fixes it.
 * @param emitter                   A handle to an emitter descriptor.
 * @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.
@@ -2638,7 +2647,8 @@ tfxAPI tfxU32 tfx_SetTemplateGPUCapacityForLocations(tfx_effect_template t, tfxU
 
 /*
 The pool slots the template's Run on GPU emitters take with their current capacities, rounded the way the pool hands
-them out. Add it into gpu_particle_capacity for every instance of the template that will play at once.
+them out. Add it into gpu_particle_capacity for every instance of the template that will play at once. It records the
+current tfx_SetGPUSizingUpdateRate on the template, so the rings it adds match this count even if the rate changes later.
 * @param t                         A handle to an effect template
 */
 tfxAPI tfxU32 tfx_GetTemplateGPUPoolSlots(tfx_effect_template t);
@@ -4259,6 +4269,10 @@ Scale all nodes on an emitter graph. Scaling a color graph gives the emitter a c
 own, and scaling an overtime graph the GPU reads gives it its own graph lookups, so tfx_GetColorRampsVersion,
 tfx_GetParticlePropertiesVersion or tfx_GetGPUGraphLookupsVersion will tell you to upload them again. Single shot emitters
 ignore the amount graphs, use tfx_SetTemplateSingleSpawnAmount for those.
+A particle's spawn size is a base plus a random amount up to a variation, each from its own graph, so to make particles
+twice the size scale tfxEmitter_base_width_index, tfxEmitter_variation_width_index, tfxEmitter_base_height_index and
+tfxEmitter_variation_height_index by 2. An emitter with uniform size takes its height from the two width graphs, so scale
+just those. Scaling the base alone leaves the variation where it was.
 * @param tfx_effect_template	  Handle to a valid effect template
 * @param emitter_path			  "Effect/Emitter", or the emitter's tfx_GetDescriptorPath
 * @param graph_index			  tfx_emitter_graph_index of the graph that you want to scale. Must be an emitter graph or an assert will be called

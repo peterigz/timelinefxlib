@@ -29,6 +29,7 @@ tfx__pin_str_mirror(256);
 tfx__pin_str_mirror(512);
 #undef tfx__pin_str_mirror
 
+static_assert(sizeof(tfx_ribbon_t) == tfxRIBBON_SIZE, "tfx_ribbon_t changed size, update tfxRIBBON_SIZE in timelinefx.h");
 static_assert(sizeof(tfx_vec2_t) == 8, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
 static_assert(offsetof(tfx_vec2_t, x) == 0, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
 static_assert(offsetof(tfx_vec2_t, y) == 4, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
@@ -3514,6 +3515,8 @@ void tfx_FreeEffectTemplate(tfx_effect_template effect_template) {
 		}
 	}
 	tfx_ResetTemplate(effect_template);
+	//A handle kept after tfx_FreeLibrary then fails TFX_ASSERT_HANDLE, until the memory is reused
+	effect_template->magic = 0;
 	tfxFREE(effect_template);
 }
 
@@ -13586,6 +13589,9 @@ void tfx__apply_template_override(tfx_effect_template effect_template, tfx_templ
 	case tfx_template_override_gpu_location_count:
 		descriptor->gpu_location_count = template_override->count;
 		break;
+	case tfx_template_override_gpu_sizing_rate:
+		descriptor->gpu_sizing_update_rate = template_override->amount;
+		break;
 	case tfx_template_override_global_graph_scale: {
 		tfx_effect_descriptor original_effect = effect_template->original_effect;
 		tfx_graph_t *graph = &library->graphs[descriptor->state_properties.graph_list_index].graphs[template_override->graph_index];
@@ -13993,7 +13999,7 @@ tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effec
 	if (effect_template->effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations && !(effect_template->flags & tfxEffectTemplateFlags_user_location_tip_checked)) {
 		effect_template->flags |= tfxEffectTemplateFlags_user_location_tip_checked;
 		if (tfx__first_process_tip(effect_template->effect->path_hash)) {
-			tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation (shown once per effect).", effect_template->effect->name.c_str());
+			tfxTIP("\"%s\" spawns at user spawn locations, so it won't spawn anything until you add one with tfx_AddSpawnLocation. Ignore this if you add them straight after (shown once per effect).", effect_template->effect->name.c_str());
 		}
 	}
 #endif
@@ -20601,8 +20607,18 @@ void tfx_CompleteStageWork(tfx_stage pm) {
 	tfx__wait_for_stage_update(pm);
 }
 
+tfxINTERNAL float tfx__gpu_sizing_rate(tfx_effect_descriptor emitter) {
+	return emitter->parent && emitter->parent->gpu_sizing_update_rate > 0.f ? emitter->parent->gpu_sizing_update_rate : tfxStore->gpu_sizing_update_rate;
+}
+
 tfxINTERNAL tfxU32 tfx__gpu_ring_sized_locations(tfx_effect_descriptor emitter) {
 	return emitter->parent && emitter->parent->gpu_location_count ? emitter->parent->gpu_location_count : 1;
+}
+
+//The ring an explicit capacity meant for one location would need, for the drop messages
+tfxINTERNAL tfxU32 tfx__gpu_capacity_for_locations(tfxU32 capacity, tfxU32 location_count) {
+	const tfxU64 total = (tfxU64)capacity * location_count;
+	return total < 0xFFFFFFFF ? (tfxU32)total : 0xFFFFFFFF;
 }
 
 //A ring sized from the estimate that drops with no more locations than it was sized for was short because the update was longer
@@ -20610,7 +20626,7 @@ tfxINTERNAL bool tfx__gpu_drop_from_update_length(tfx_effect_descriptor emitter,
 	if (emitter->state_properties.gpu_capacity_override || location_count > tfx__gpu_ring_sized_locations(emitter)) {
 		return false;
 	}
-	return update_length > 1000.0 / tfxStore->gpu_sizing_update_rate + 0.5;
+	return update_length > 1000.0 / tfx__gpu_sizing_rate(emitter) + 0.5;
 }
 
 void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
@@ -20698,7 +20714,9 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 					const tfxU32 location_count = work_entry->user_spawn_locations ? work_entry->user_spawn_locations->active_slots.current_size : 0;
 					const tfxU32 sized_locations = tfx__gpu_ring_sized_locations(emitter.source_emitter);
 					if (tfx__gpu_drop_from_update_length(emitter.source_emitter, location_count, update_length)) {
-						tfxTIP("GPU emitter \"%s\" is dropping spawns: its ring of %u is sized for %u locations at %.3g updates a second, but this update was %.1f ms. Set tfx_SetGPUSizingUpdateRate to your slowest update rate before you size the pool, or catch up with tfx_UpdateStageSubSteps, or raise the ring with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity, sized_locations, tfxStore->gpu_sizing_update_rate, update_length);
+						tfxTIP("GPU emitter \"%s\" is dropping spawns: its ring of %u is sized for %u locations at %.3g updates a second, but this update was %.1f ms. Set tfx_SetGPUSizingUpdateRate to your slowest update rate before you size the pool, or catch up with tfx_UpdateStageSubSteps, or raise the ring with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity, sized_locations, tfx__gpu_sizing_rate(emitter.source_emitter), update_length);
+					} else if (emitter.source_emitter->state_properties.gpu_capacity_override && location_count > 1) {
+						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u, set with tfx_SetTemplateEmitterGPUCapacity, is full with %u spawn locations playing on it. Raise it, to about %u if %u was meant for one location.", path.c_str(), group.capacity, location_count, tfx__gpu_capacity_for_locations(group.capacity, location_count), group.capacity);
 					} else if (location_count > 1) {
 						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more.", path.c_str(), group.capacity, location_count, location_count);
 					} else {
@@ -25044,7 +25062,7 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 			//Every source particle spawns the burst once, and the sources turn over every source life while the burst outlives them
 			float source_life_ms = tfx__Max(tfx__estimate_max_life(source), 1.f);
 			//A burst's slots are held up to an update past its life, the + 1 covers a 60Hz update
-			const float extra_hold_ms = tfx__Max(1000.f / tfxStore->gpu_sizing_update_rate - 1000.f / 60.f, 0.f);
+			const float extra_hold_ms = tfx__Max(1000.f / tfx__gpu_sizing_rate(child) - 1000.f / 60.f, 0.f);
 			return tfx__Max((tfxU32)ceilf(total * source_particles * ((max_life_ms + extra_hold_ms) / source_life_ms + 1.f)), (tfxU32)1);
 		}
 		//A single spawn on ribbon bursts once, times the ribbons alive at that moment with the spawn ratio
@@ -25078,7 +25096,7 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 	float max_life_sec = max_life_ms / 1000.f;
 	tfxU32 result = (tfxU32)ceilf(max_amount_per_sec * max_life_sec);
 	//Slots are held up to an update past their life and an update's spawns arrive at once
-	result += (tfxU32)ceilf(max_amount_per_sec * 2.f / tfxStore->gpu_sizing_update_rate);
+	result += (tfxU32)ceilf(max_amount_per_sec * 2.f / tfx__gpu_sizing_rate(child));
 	return tfx__Max(result, (tfxU32)1);
 }
 
@@ -25200,6 +25218,14 @@ tfxU32 tfx_SetTemplateGPUCapacityForLocations(tfx_effect_template t, tfxU32 loca
 
 tfxU32 tfx_GetTemplateGPUPoolSlots(tfx_effect_template t) {
 	TFX_ASSERT_HANDLE(t);	//Not a valid effect template handle
+	//Its rings are allocated at the rate the pool was sized with, whatever the global rate is when it's added
+	if (t->effect->gpu_sizing_update_rate != tfxStore->gpu_sizing_update_rate) {
+		tfx_template_override_t template_override = {};
+		template_override.type = tfx_template_override_gpu_sizing_rate;
+		template_override.path_hash = t->paths.MakeKey(t->effect->name.c_str());
+		template_override.amount = tfxStore->gpu_sizing_update_rate;
+		tfx__set_template_override(t, &template_override);
+	}
 	tfxU32 pool_slots = 0;
 	for (tfx_effect_descriptor emitter : t->effect->children) {
 		if (tfx__descriptor_takes_gpu_ring(emitter)) {
@@ -26307,7 +26333,10 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 		}
 		if (problem.dropped_spawns && tfx__gpu_drop_from_update_length(problem.emitter, problem.location_count, problem.dropped_update_length)) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns: its ring of %u is sized for %u locations at %.3g updates a second, but updates of up to %.1f ms dropped them. Set tfx_SetGPUSizingUpdateRate to your slowest update rate before you size the pool, or catch up with tfx_UpdateStageSubSteps, or raise the ring with tfx_SetTemplateEmitterGPUCapacity",
-				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, tfx__gpu_ring_sized_locations(problem.emitter), tfxStore->gpu_sizing_update_rate, problem.dropped_update_length);
+				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, tfx__gpu_ring_sized_locations(problem.emitter), tfx__gpu_sizing_rate(problem.emitter), problem.dropped_update_length);
+		} else if (problem.dropped_spawns && problem.emitter->state_properties.gpu_capacity_override && problem.location_count > 1) {
+			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u, set with tfx_SetTemplateEmitterGPUCapacity, was full with %u spawn locations playing on it. Raise it, to about %u if %u was meant for one location",
+				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, tfx__gpu_capacity_for_locations(problem.ring_capacity, problem.location_count), problem.ring_capacity);
 		} else if (problem.dropped_spawns && problem.location_count > 1) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more",
 				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, problem.location_count);

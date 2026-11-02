@@ -6686,6 +6686,7 @@ typedef struct tfx_effect_descriptor_s {
 	//The amount of time that the effect warms up before rendering. Only relevant for effects.
 	float warmup_time;	//Measured in millisecs
 	tfxU32 gpu_location_count;		//Set by tfx_SetTemplateGPUCapacityForLocations, multiplies its GPU emitters' estimated capacity. 0 is one location
+	float gpu_sizing_update_rate;	//tfx_SetGPUSizingUpdateRate when tfx_GetTemplateGPUPoolSlots last sized the template, so its rings match. 0 uses the global
 
 	tfxU32 gpu_lookup_offset;
 
@@ -7705,6 +7706,7 @@ typedef enum {
 	tfx_template_override_gpu_capacity,
 	tfx_template_override_gpu_key,
 	tfx_template_override_gpu_location_count,
+	tfx_template_override_gpu_sizing_rate,
 } tfx_template_override_type;
 
 //A template setter call, kept so it can be replayed when a refresh rebuilds the template's clone
