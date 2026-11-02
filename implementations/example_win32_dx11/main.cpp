@@ -176,6 +176,8 @@ static LRESULT WINAPI WindowProcedure(HWND window, UINT message, WPARAM wparam, 
 			example_scene_Burst(&example.scene);
 		} else if (wparam == 'O') {
 			example_scene_ToggleOrbit(&example.scene);
+		} else if (wparam == 'L') {
+			example_scene_ReloadSecondLibrary(&example.scene);
 		}
 		return 0;
 	case WM_SYSCOMMAND:
@@ -189,6 +191,18 @@ static LRESULT WINAPI WindowProcedure(HWND window, UINT message, WPARAM wparam, 
 		return 0;
 	}
 	return DefWindowProcA(window, message, wparam, lparam);
+}
+
+//Every atlas after the load, and the second library's after a reload
+static bool UploadPendingAtlases(example_t *state) {
+	bool uploaded = true;
+	tfx_impl_atlas_t *atlas = example_scene_GetPendingAtlas(&state->scene);
+	while (atlas) {
+		uploaded = tfx_impl_dx11_UploadAtlas(&state->renderer, atlas) && uploaded;
+		tfx_impl_FreeAtlasPixels(atlas);
+		atlas = example_scene_GetPendingAtlas(&state->scene);
+	}
+	return uploaded;
 }
 
 static void UpdateWindowTitle(example_t *state, UINT frames_per_second) {
@@ -229,18 +243,17 @@ int main(int argc, char **argv) {
 
 	//Starts the worker threads and the memory pool that everything in the library allocates from
 	tfx_BeginTimelineFX(tfx_GetDefaultThreadCount(), EXAMPLE_MEMORY_POOL_SIZE);
-	tfx_impl_atlas_t atlas = {};
 	bool ready = tfx_impl_dx11_Init(&example.renderer, example.device, example.device_context, TFX_EXAMPLE_SHADER_FOLDER)
-		&& example_scene_Load(&example.scene, EXAMPLE_LIBRARY_PATH, EXAMPLE_SECOND_LIBRARY_PATH, EXAMPLE_SPRITE_DATA_PATH, EXAMPLE_FEATURES, &atlas)
-		&& tfx_impl_dx11_UploadAtlas(&example.renderer, &atlas)
+		&& example_scene_Load(&example.scene, EXAMPLE_LIBRARY_PATH, EXAMPLE_SECOND_LIBRARY_PATH, EXAMPLE_SPRITE_DATA_PATH, EXAMPLE_FEATURES)
+		&& tfx_impl_dx11_CreateAtlas(&example.renderer, example.scene.atlas_layer_size, example.scene.atlas_layer_count)
+		&& UploadPendingAtlases(&example)
 		&& (!example.scene.animation_manager || tfx_impl_dx11_UploadSpriteData(&example.renderer, example.scene.animation_manager, example.scene.baked_shapes));
-	tfx_impl_FreeAtlasPixels(&atlas);
 	if (ready) {
 		example_scene_Start(&example.scene);
 		if (argc > 1 && atof(argv[1]) > 0.0) {
 			example.scene.timer = tfx_impl_CreateTimer(atof(argv[1]));
 		}
-		printf("Space: burst  O: pause the camera  Mouse wheel: zoom  Escape: quit\n");
+		printf("Space: burst  O: pause the camera  L: free and reload the second library  Mouse wheel: zoom  Escape: quit\n");
 	}
 
 	LARGE_INTEGER counter_frequency;
@@ -287,6 +300,7 @@ int main(int argc, char **argv) {
 		tfx_impl_frame_t frame;
 		tfx_impl_uniforms_t uniforms;
 		example_scene_Update(&example.scene, elapsed_milliseconds, (float)example.width, (float)example.height, tfx_impl_clip_space_depth_zero_to_one, &frame, &uniforms);
+		UploadPendingAtlases(&example);
 		tfx_impl_dx11_UploadFrame(&example.renderer, &frame);
 		tfx_impl_dx11_Compute(&example.renderer, &uniforms);
 

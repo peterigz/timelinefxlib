@@ -9,7 +9,7 @@
 	[Impl_timer]		Fixed step timer for the stage update and the shader interpolation value
 	[Impl_camera]		Look at camera with the view and projection matrices
 	[Impl_shapes]		Shape loader callback that decodes every shape format to RGBA8 frames
-	[Impl_atlas]		Packs every shape frame into the layers of one texture array, and the uv lookup callback
+	[Impl_atlas]		Packs a shape list's frames into a range of layers of a texture array, and the uv lookup callback
 	[Impl_frame]		What a backend uploads and draws each frame: instances and the shader uniforms
 */
 
@@ -120,14 +120,20 @@ void tfx_impl_FreeShapes(tfx_impl_shapes_t *shapes);
 
 //--- Impl_atlas
 
+//One shape list's layers. Give each library its own shape list and atlas, in its own range of layers of one texture array,
+//so a library can be freed and reloaded without rebuilding the others
 typedef struct tfx_impl_atlas_s {
 	tfxU32 layer_size;				//Width and height of every layer
-	tfxU32 layer_count;
+	tfxU32 first_layer;				//Where its layers go in the texture array. The regions' layers already include it
+	tfxU32 layer_count;				//Its own layers, from first_layer on
 	unsigned char *pixels;			//RGBA8, layer after layer, freed with tfx_impl_FreeAtlasPixels once uploaded
 } tfx_impl_atlas_t;
 
-//Packs every frame of every shape and fills their regions. Frees the shape sheets. Call after loading, before tfx_UpdateLibraryGPUImageData
-bool tfx_impl_BuildShapeAtlas(tfx_impl_shapes_t *shapes, tfx_impl_atlas_t *atlas);
+//The smallest layer size that fits the shapes' largest frame. Atlases that share a texture array need the largest of their sizes
+tfxU32 tfx_impl_GetAtlasLayerSize(const tfx_impl_shapes_t *shapes);
+//Packs every frame of every shape into layers from first_layer on and fills their regions. Frees the shape sheets. Call after
+//loading, before tfx_UpdateLibraryGPUImageData. A layer_size of 0 uses tfx_impl_GetAtlasLayerSize
+bool tfx_impl_BuildShapeAtlas(tfx_impl_shapes_t *shapes, tfx_impl_atlas_t *atlas, tfxU32 first_layer, tfxU32 layer_size);
 void tfx_impl_FreeAtlasPixels(tfx_impl_atlas_t *atlas);
 //The tfx_uv_lookup callback. The layer goes in texture_array_index, whose upper 16 bits (a bindless image index in the reference shaders) stay 0
 void tfx_impl_GetUV(void *pointer, tfx_gpu_image_data_t *image_data, int offset);

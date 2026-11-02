@@ -18,7 +18,7 @@ set(TFX_IMPL_COMMON_SOURCE
 
 function(tfx_example_target target_name)
 	target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TFX_LIBRARY_FOLDER})
-	target_compile_definitions(${target_name} PRIVATE TFX_OUTPUT_NOTICE_MESSAGES TFX_IMPL_KTX2_ZSTD TFX_EXAMPLE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
+	target_compile_definitions(${target_name} PRIVATE TFX_IMPL_KTX2_ZSTD TFX_EXAMPLE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}")
 	if (MSVC)
 		target_compile_definitions(${target_name} PRIVATE _CRT_SECURE_NO_WARNINGS)
 	endif()
@@ -34,7 +34,7 @@ if (NOT TFX_SLANGC)
 endif()
 
 if (WIN32)
-	# Each entry point with its D3D11 profile, compiled to <entry>.cso. fxc can't compile Slang's #line directives, hence -line-directive-mode none
+	# Each entry point with its D3D11 profile, compiled to <entry>.cso with TFX_ENTRY_<entry> picking its fixed bindings. fxc can't compile Slang's #line directives, hence -line-directive-mode none
 	set(TFX_DX11_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/dx11_shaders)
 	set(TFX_DX11_ENTRY_POINTS
 		simulate_particles cs_5_0
@@ -57,7 +57,7 @@ if (WIN32)
 		set(shader_output ${TFX_DX11_SHADER_FOLDER}/${entry_point}.cso)
 		add_custom_command(OUTPUT ${shader_output}
 			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_DX11_SHADER_FOLDER}
-			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target dxbc -profile ${profile} -D TFX_FIXED_BINDINGS -line-directive-mode none -o ${shader_output}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target dxbc -profile ${profile} -D TFX_FIXED_BINDINGS -D TFX_ENTRY_${entry_point} -line-directive-mode none -o ${shader_output}
 			DEPENDS ${TFX_SHADER_SOURCE}
 			COMMENT "Compiling ${entry_point} for D3D11")
 		list(APPEND TFX_DX11_SHADERS ${shader_output})

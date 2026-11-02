@@ -30,7 +30,7 @@ locations) call `tfx_PrintLibrary(library)`.
 | --- | --- | --- |
 | Rings allocated but `estimated_live_particles` 0, or a `No spawn locations right now` line | The effect isn't spawning. Usually it spawns at user spawn locations and has none | `tfx_AddSpawnLocation` (see user-spawn-locations.md) |
 | `blocked_emitters` > 0, or a `Blocked:` line | The pool was too full to give the emitter a ring, so it spawns nothing | Size the pool from `tfx_SetTemplateGPUCapacityForLocations`, below |
-| `dropped_spawns` > 0, or a `Dropping spawns:` line | The emitter's ring is too small for how many locations overlap, or for how long the updates are when the line names an update length | A larger location count in `tfx_SetTemplateGPUCapacityForLocations`, `tfx_SetGPUSizingUpdateRate` for slow or single call catch-up updates, or `tfx_SetTemplateEmitterGPUCapacity` for one emitter |
+| `dropped_spawns` > 0, or a `Dropping spawns:` line | The emitter's ring is too small for how many locations overlap, or for how long the updates are when the line names an update length. A line that says the ring was set with `tfx_SetTemplateEmitterGPUCapacity` means that capacity is shared by every location playing | A larger location count in `tfx_SetTemplateGPUCapacityForLocations`, `tfx_SetGPUSizingUpdateRate` for slow or single call catch-up updates, or a larger `tfx_SetTemplateEmitterGPUCapacity` |
 | An `Unfetched:` line, or `unfetched_gpu_updates` climbing | The host updates the stage without calling `tfx_GetGPUParticleFrame` | Fetch and dispatch on every frame the stage updated |
 | `slots_in_use` well above `estimated_live_particles` | Normal: a dead particle keeps its slot until every particle spawned in the same tick has died | Nothing. Compare `estimated_live_particles` with the CPU, never `slots_in_use` |
 | A `Library ... tfxErrorCode_` line | The library loaded with problems. `file_version_out_of_date` alone isn't one: the library loaded fine | Re-save it in the editor |
@@ -68,7 +68,8 @@ particle's life plus up to one update, and an update's spawns all arrive at once
 catch-up done as one `tfx_UpdateStage(stage, tick * 3)` call counts as a 20 updates a second update for this, at any
 length up to `max_frame_length` (240 ms), which cuts every update for spawning and motion alike.
 `tfx_UpdateStageSubSteps` steps are an update each, so catching up that way needs no extra room. Set the rate to the
-slowest you'll see before step 2.
+slowest you'll see before step 2. Sizing a template records the rate on it, so its rings stay the size you added up even
+if the rate changes before the effect is added.
 
 ## Template paths
 

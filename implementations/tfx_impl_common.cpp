@@ -411,7 +411,7 @@ void tfx_impl_ShapeLoader(const char *filename, tfx_image_data_t *image_data, vo
 		shape->frame_width = shape->frame_height = 1;
 		shape->sheet_width = shape->sheet_height = 1;
 		shapes->unreadable_count++;
-		printf("Skipped particle shape %s (image format %i) because %s. It will draw as a white square.\n", filename ? filename : "", (int)format, error);
+		tfx_Print("Skipped particle shape %s (image format %i) because %s. It will draw as a white square.", filename ? filename : "", (int)format, error);
 	}
 	tfx_SetImagePointer(image_data, shape);
 }
@@ -462,25 +462,39 @@ static void tfx_impl__copy_frame_to_atlas(const tfx_impl_atlas_frame_t *atlas_fr
 	}
 }
 
-bool tfx_impl_BuildShapeAtlas(tfx_impl_shapes_t *shapes, tfx_impl_atlas_t *atlas) {
-	memset(atlas, 0, sizeof(tfx_impl_atlas_t));
-	tfxU32 frame_total = 0;
+static tfxU32 tfx_impl__largest_frame_side(const tfx_impl_shapes_t *shapes) {
 	tfxU32 largest_side = 0;
 	for (tfxU32 index = 0; index != shapes->count; ++index) {
-		tfx_impl_shape_t *shape = shapes->shapes[index];
-		frame_total += shape->frame_count;
+		const tfx_impl_shape_t *shape = shapes->shapes[index];
 		largest_side = shape->frame_width > largest_side ? shape->frame_width : largest_side;
 		largest_side = shape->frame_height > largest_side ? shape->frame_height : largest_side;
+	}
+	return largest_side;
+}
+
+tfxU32 tfx_impl_GetAtlasLayerSize(const tfx_impl_shapes_t *shapes) {
+	tfxU32 largest_side = tfx_impl__largest_frame_side(shapes);
+	tfxU32 layer_size = TFX_IMPL_ATLAS_MIN_LAYER_SIZE;
+	while (layer_size < largest_side + TFX_IMPL_ATLAS_PADDING * 2 && layer_size < TFX_IMPL_ATLAS_MAX_LAYER_SIZE) {
+		layer_size *= 2;
+	}
+	return layer_size;
+}
+
+bool tfx_impl_BuildShapeAtlas(tfx_impl_shapes_t *shapes, tfx_impl_atlas_t *atlas, tfxU32 first_layer, tfxU32 layer_size) {
+	memset(atlas, 0, sizeof(tfx_impl_atlas_t));
+	atlas->first_layer = first_layer;
+	tfxU32 frame_total = 0;
+	for (tfxU32 index = 0; index != shapes->count; ++index) {
+		frame_total += shapes->shapes[index]->frame_count;
 	}
 	if (frame_total == 0) {
 		return false;
 	}
-	atlas->layer_size = TFX_IMPL_ATLAS_MIN_LAYER_SIZE;
-	while (atlas->layer_size < largest_side + TFX_IMPL_ATLAS_PADDING * 2 && atlas->layer_size < TFX_IMPL_ATLAS_MAX_LAYER_SIZE) {
-		atlas->layer_size *= 2;
-	}
+	tfxU32 largest_side = tfx_impl__largest_frame_side(shapes);
+	atlas->layer_size = layer_size ? layer_size : tfx_impl_GetAtlasLayerSize(shapes);
 	if (largest_side + TFX_IMPL_ATLAS_PADDING * 2 > atlas->layer_size) {
-		printf("A shape frame of %u pixels is too big for a %u pixel atlas layer\n", largest_side, atlas->layer_size);
+		tfx_Print("A shape frame of %u pixels is too big for a %u pixel atlas layer", largest_side, atlas->layer_size);
 		return false;
 	}
 
@@ -548,7 +562,7 @@ bool tfx_impl_BuildShapeAtlas(tfx_impl_shapes_t *shapes, tfx_impl_atlas_t *atlas
 		region->uv[1] = top * inverse_size;
 		region->uv[2] = (left + atlas_frame->shape->frame_width) * inverse_size;
 		region->uv[3] = (top + atlas_frame->shape->frame_height) * inverse_size;
-		region->layer = atlas_frame->layer;
+		region->layer = atlas->first_layer + atlas_frame->layer;
 	}
 	free(frames);
 	for (tfxU32 index = 0; index != shapes->count; ++index) {

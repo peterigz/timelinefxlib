@@ -21,7 +21,8 @@ every backend would write it the same way: if it would, it belongs in common.
 
 The code is C-style C++: plain structs and free functions, no STL. The headers are wrapped in `extern "C"`, so a C
 project can call a backend that was built as C++. The examples only include `timelinefx.h`, never
-`timelinefx_internal.h`, which is exactly what a game sees.
+`timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
+`tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
 Status: D3D11 draws CPU simulated billboards and ribbons, GPU simulated particles, and baked billboard and ribbon
 playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
@@ -43,8 +44,9 @@ its bin folder on the `PATH` or set `TFX_SLANGC` to it.
 example_win32_dx11 [updates per second]
 ```
 
-Space fires a burst of sparks, O pauses the camera orbit, the mouse wheel zooms and Escape quits. The window title shows
-the frame rate and the particle counts. In debug builds the D3D11 debug layer's messages are repeated on the console.
+Space fires a burst of sparks, O pauses the camera orbit, L frees and reloads the second library, the mouse wheel
+zooms and Escape quits. The window title shows the frame rate and the particle counts. In debug builds the D3D11
+debug layer's messages are repeated on the console.
 Passing an update rate (20 or 400, say) is a quick way to check the interpolation: the effects should look the same at
 any rate.
 
@@ -68,14 +70,16 @@ can't draw yet. With no features at all it plays the first three, which only nee
 The libraries and the renderer have to be set up in this order (`example_scene_Load`, then the backend's uploads):
 
 1. `tfx_LoadEffectLibrary(path, tfx_impl_ShapeLoader, tfx_impl_GetUV, &shapes)` for each library. The shape loader
-   decodes every shape to RGBA8 frames and hands the library a pointer to each one. Every library loads into the same
-   shape list, so their shapes share one atlas.
+   decodes every shape to RGBA8 frames and hands the library a pointer to each one. Give each library its own
+   `tfx_impl_shapes_t`, so its shapes get their own layers of the atlas and it can be freed and reloaded on its own.
 2. `tfx_CreateEffectTemplate` for each effect you'll play. Templates can be made at any time: they share the library's
    GPU data until a template customises a graph the GPU reads.
 3. For baked playback, `tfx_CreateAnimationManager` and `tfx_LoadSpriteData(path, manager, tfx_impl_ShapeLoader,
-   &shapes)`. The sprite data carries its own shapes, and loading them into the same shape list puts them in the same
-   atlas.
-4. `tfx_impl_BuildShapeAtlas` packs every frame into the layers of one texture array.
+   &sprite_shapes)`. The sprite data carries its own shapes, which get a shape list of their own too.
+4. `tfx_impl_BuildShapeAtlas(&shapes, &atlas, first_layer, layer_size)` for each shape list packs its frames into
+   layers from `first_layer` on, and the layers the uv lookup writes include it. Every list goes into one texture
+   array, so they share a layer size: the largest `tfx_impl_GetAtlasLayerSize` of them. The scene puts the lists one
+   after another and keeps spare layers after the second library, so a reload can grow.
 5. `tfx_UpdateLibraryGPUImageData` for each library. The library calls the uv lookup again now that the atlas exists.
    The first call, during the load, happens before the atlas exists. For baked playback,
    `tfx_BuildAnimationManagerGPUShapeData` with `tfx_impl_GetUV` does the same for the sprite data's own
@@ -83,7 +87,8 @@ The libraries and the renderer have to be set up in this order (`example_scene_L
 6. `tfx_UpdateGlobalGPUData` lays every library out in one set of global buffers, and the stage is created with
    `global_library_indexes` on, so the indexes it writes point into them. It returns false if the libraries need more
    room than the global buffers have. Effects can only be added from libraries it has placed.
-7. The backend uploads the atlas once (`tfx_impl_dx11_UploadAtlas`). Everything else goes up on update frames, whenever
+7. The backend creates one texture array with every list's layers (`tfx_impl_dx11_CreateAtlas`) and uploads each atlas
+   into its own layers (`tfx_impl_dx11_UploadAtlas`), making mips for those layers only. Everything else goes up on update frames, whenever
    its version has changed since the last upload: the emitter properties (`tfx_GetGlobalParticlePropertiesBuffer`), the
    shape frame data (`tfx_GetGlobalGPUShapes`), the color ramps one layer at a time (`tfx_GetGlobalColorRampLayer`) and
    the graph lookups (`tfx_GetGPUGraphLookupsBuffer`, which ribbons and the GPU kernel read). So loading a library or
@@ -102,6 +107,21 @@ library, so use a sort key per library (`tfx_SetEffectSortKey`) and bind that li
 Free the stage before the library, and the shapes after the library, because the library holds pointers to them
 (`example_scene_Shutdown` does all three). Call `tfx_EndTimelineFX` after that.
 
+**Freeing and reloading a library.** Press L in an example and the scene frees the second library and loads it again
+while the first keeps playing (`example_scene__reload_second_library`). It waits for an update frame and does it before
+the stage update, so the instances drawn next have the new layout:
+
+1. `tfx_FreeLibrary`, which removes its effects from every stage and frees its templates, then `tfx_impl_FreeShapes`.
+2. Load it into the same shape list, then create its templates.
+3. `tfx_impl_BuildShapeAtlas` at the same `first_layer`. If it needs more layers than were kept for it, the texture
+   array has to be made again with every library's atlas rebuilt, and their pixels are gone by then, so keep spares.
+4. `tfx_UpdateLibraryGPUImageData` and `tfx_UpdateGlobalGPUData`, then add its effects back to the stage.
+5. The backend uploads the new atlas into its layers before the frame is drawn (`example_scene_GetPendingAtlas`). The
+   global buffers go up with the frame as usual, when their versions changed. Reloading the same file into the same
+   layers leaves them unchanged.
+
+Upload between frames: an API that doesn't track hazards for you needs the GPU finished with the layers first.
+
 ### Why an atlas
 
 The reference shaders give every shape its own texture array and pick the one a particle samples per pixel through a
@@ -109,7 +129,9 @@ bindless index. D3D11, OpenGL and WebGPU can't index textures per pixel, so the 
 every shape into one RGBA8 texture array instead. The uv lookup writes each frame's rect and puts its layer in
 `texture_array_index`, leaving the upper 16 bits (the bindless index in the reference shaders) at 0. Each frame gets 2
 pixels of padding filled with its own edge pixels, so bilinear filtering stays clean. The atlas makes its own mips, so a
-little bleed between neighbours at a distance is expected.
+little bleed between neighbours at a distance is expected. They're made per layer after each upload, with D3D11's
+`GenerateMips` on a view of just that atlas's layers. Their quality decides how particles a pixel or two across look,
+so if small particles shimmer or vanish, build the mips on the CPU with a better filter than the API's box filter.
 
 ## The frame loop
 
@@ -165,6 +187,22 @@ Rules the loop depends on:
   and frees libraries, and never while another thread is loading one. Upload the global data on the frames you upload
   instances, because the instances drawn between updates were written with the layout you uploaded last.
 
+**Drawing by sort key.** `tfx_impl_GatherFrame` gathers each layer as one range, which is all you need while every
+effect draws the same way. To draw some effects with their own pipeline or resources, give them a key with
+`tfx_SetEffectSortKey` and walk each layer's keys yourself after the gather:
+
+```c
+for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	tfx_instance_key_range_t range;
+	while (tfx_GetNextInstanceKeyRange(stage, layer, &range)) {
+		//Bind what range.sort_key draws with, then draw the CPU instances and after them the GPU ones
+		//draw(range.instance_start, range.instance_count);
+		//draw(range.gpu_instance_start, range.gpu_instance_count);
+	}
+	tfx_ResetInstanceBufferLoopIndex(stage);
+}
+```
+
 ## Direct3D 11 notes
 
 - **No vertex buffers or input layout.** `tfx_instance_t` stores its size as signed 16-bit integers that the shader
@@ -172,10 +210,13 @@ Rules the loop depends on:
   and previous instance from raw buffers by `SV_InstanceID` and unpacks them itself. The quad corners come from
   `SV_VertexID`, with 6 vertices per instance.
 - **`SV_InstanceID` doesn't include `StartInstanceLocation`**, so a draw's first instance goes in a constant buffer.
-- **The push constants become constant buffers.** The frame constants (`tfx_impl_uniforms_t`) are at b0 and the
-  per-draw instance offsets at b1. Every other resource has a fixed register, so the bindless indexes are gone. The
-  shaders are compiled with `-D TFX_FIXED_BINDINGS`, and the `[Fixed_render_bindings]` section of `timelinefx.slang`
-  lists every register.
+- **The push constants become constant buffers.** Every vertex shader takes the frame constants
+  (`tfx_impl_uniforms_t`) at b0 and its draw's own constants at b1: the instance offset for billboards, the bucket
+  globals for ribbons. Every other resource has a fixed register, so the bindless indexes are gone. The shaders are
+  compiled with `-D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point>`, which gives each entry point its own registers
+  counting up from 0. Shaders/readme.md lists them.
+- **Every buffer is raw.** They're created with `D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS` and given
+  `DXGI_FORMAT_R32_TYPELESS` views, and the shaders read rows at their C size.
 - **Struct layouts are checked.** `timelinefx.slang` mirrors the library's GPU structs by hand, so `tfx_impl_dx11.cpp`
   static_asserts their sizes and names the struct to fix when one changes.
 - **Library data** goes up in `tfx_impl_dx11_UploadFrame` on update frames, each part only when its global version has
@@ -195,7 +236,7 @@ Rules the loop depends on:
 - **Ribbons** are uploaded on update frames and rebuilt by `tfx_ribbon_compute` every frame, because relative ribbons follow
   their emitter with the frame's lerp. `tfx_impl_dx11_Compute` runs one dispatch per bucket with the bucket's
   `tfx_ribbon_bucket_globals_t` in a constant buffer. `tfx_impl_dx11_Render` then walks the same buckets again for the
-  indexed draws. The compute shader writes the vertices to a structured buffer that the vertex shader pulls from, and
+  indexed draws. The compute shader writes the vertices to a raw buffer that the vertex shader pulls from, and
   writes the indices to a raw buffer that's also bound as the index buffer. It uses 256 threads per group rather than
   the GLSL's 1024, which fxc warns is over its register budget.
 - **GPU particles:** the kernel is compiled with `-D TFX_FIXED_BINDINGS`, which binds the pool at u0, the current
@@ -236,31 +277,46 @@ Rules the loop depends on:
 | Vulkan | `tfx_impl_clip_space_depth_zero_to_one \| tfx_impl_clip_space_flip_y` |
 | OpenGL | none |
 
+Pass the flags for what you draw through, not the API under it: a layer that gives every API one clip space flips
+Vulkan for you (SDL_gpu does), so it takes the D3D row.
+
 ## Porting to a new API
 
 Use the D3D11 backend as the template: keep its function names with your API's prefix, and its order of work.
 
 **Setting up**
+- [ ] Check the API can read storage buffers from the vertex stage. Both binding models need it, because the billboard
+      vertex shader reads the previous update's instance at `captured_index`. WebGL2, most OpenGL ES 3.x devices and
+      OpenGL below 4.3 can't.
 - [ ] Add `example_<platform>_<api>/main.cpp`: a window, a device, a swap chain and the loop. It calls
       `example_scene_Load`, your upload functions, `example_scene_Start`, then `example_scene_Update` and your upload,
       compute and render calls each frame, with the clip space flags from the table above.
-- [ ] Add `tfx_impl_<api>.h/.cpp` with the same functions as `tfx_impl_dx11.h`: `Init`, `UploadAtlas`,
+- [ ] Add `tfx_impl_<api>.h/.cpp` with the same functions as `tfx_impl_dx11.h`: `Init`, `CreateAtlas`, `UploadAtlas`,
       `UploadSpriteData`, `UploadFrame`, `Compute`, `Render` and `Shutdown`. The backend draws into whatever target
       `main.cpp` has bound, so it never owns the swap chain.
 - [ ] Add a target to `CMakeLists.txt`, with a slangc build of each entry point your backend uses.
 - [ ] Turn on the API's validation layer in debug builds and print what it says. Every step below is done when it's
-      silent.
+      silent, so first prove its output reaches you with a deliberate error. Some layers (SDL_gpu) turn validation on
+      without installing a messenger, and then silence means nothing is listening.
 - [ ] Static_assert the sizes of every library struct your shaders mirror, as `tfx_impl_dx11.cpp` does.
 
 **Shaders.** Never ported by hand: compile `../Shaders/timelinefx.slang` for your target, as `../Shaders/readme.md`
-describes. Vulkan and D3D12 use its default bindless model. D3D11 compiles it with `-D TFX_FIXED_BINDINGS`, which reads
-every resource from a fixed register and every shape from one atlas, and reads the instances and ribbon vertexes from
-buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the same define, but neither has been tried.
+describes. Where the API has descriptor arrays (Vulkan, D3D12), use its default bindless model. Everywhere else, and
+for any layer that binds a fixed set of resources per stage (SDL_gpu), compile with `-D TFX_FIXED_BINDINGS
+-D TFX_ENTRY_<entry point>`: each entry point reads its own resources from slots counting up from 0, every shape
+from one atlas, every buffer as raw rows, and the instances and ribbon vertexes from buffers in place of vertex
+attributes. Macros set the set, space and binding base of each kind of slot, so the slots fit your API's or engine's
+convention. D3D11 uses it with the defaults. OpenGL and WebGPU are meant to use the same define, but neither has been
+tried.
 
 **1. CPU billboards** (`example_scene_feature_none`)
-- [ ] The atlas as an RGBA8 texture array with mips, and a clamped linear sampler with mip filtering.
+- [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear
+      sampler with mip filtering. Upload each atlas into its own layers and make mips for just those layers. A layer
+      over several APIs can make different mips on each (SDL_gpu's Vulkan and D3D12 do), which shows on particles a
+      pixel or two across.
 - [ ] The color ramps as a texture array, one layer per `tfx_GetGlobalColorRampLayer`, in the format of its bytes per
-      pixel (always RGBA16F). It's read with an integer load, never sampled. Upload only the layers whose version
+      pixel (always RGBA16F). It's read with an integer load, never sampled, but where textures and samplers are
+      combined (OpenGL, SDL_gpu on Vulkan) bind a nearest sampler with it. Upload only the layers whose version
       changed, and recreate it with headroom when `tfx_GetGlobalColorRampLayerCount` outgrows it.
 - [ ] The shape frames (`tfx_GetGlobalGPUShapes`) and emitter properties (`tfx_GetGlobalParticlePropertiesBuffer`) as
       read only buffers, uploaded on update frames when their versions change.
@@ -278,6 +334,9 @@ buffers in place of vertex attributes. OpenGL and WebGPU are meant to use the sa
       and running at 20 and 400 updates a second looks the same as 60.
 - [ ] Check: the Fireflies from the second library have their own shapes and colors. Swap the order the two libraries
       load in and they should look the same, because that moves every library's place in the global buffers.
+- [ ] Check: press L to free and reload the second library while the first plays. The Fireflies come back with their
+      own shapes and colors, nothing else flickers, and the validation layer stays silent. Check 6 of
+      `../agents/integration-checks.md` has the procedure.
 
 **2. Ribbons** (`example_scene_feature_ribbons`)
 - [ ] Read only segment, ribbon and emitter buffers, uploaded on update frames.

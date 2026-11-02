@@ -55,6 +55,9 @@ typedef struct tfx_impl_dx11_s {
 
 	ID3D11Texture2D *shape_atlas;
 	ID3D11ShaderResourceView *shape_atlas_view;
+	tfxU32 shape_atlas_layer_size;
+	tfxU32 shape_atlas_layer_count;
+	tfxU32 shape_atlas_mip_count;
 	//Every loaded library's data, from the global getters, so one set of buffers draws effects from any library
 	ID3D11Texture2D *color_ramps;
 	ID3D11ShaderResourceView *color_ramps_view;
@@ -122,7 +125,10 @@ typedef struct tfx_impl_dx11_s {
 
 //Loads the shaders and creates the states. shader_folder holds each entry point of timelinefx.slang compiled to <entry point>.cso with TFX_FIXED_BINDINGS
 bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11DeviceContext *device_context, const char *shader_folder);
-//Uploads the shape atlas that every library and the sprite data share. The rest of the library data goes up with each frame in tfx_impl_dx11_UploadFrame
+//Creates the texture array that every library's atlas and the sprite data's atlas are uploaded into, with room for all their layers
+bool tfx_impl_dx11_CreateAtlas(tfx_impl_dx11_t *renderer, tfxU32 layer_size, tfxU32 layer_count);
+//Writes an atlas into its layers of the texture array and generates their mips, between frames. The rest of the library data
+//goes up with each frame in tfx_impl_dx11_UploadFrame
 bool tfx_impl_dx11_UploadAtlas(tfx_impl_dx11_t *renderer, const tfx_impl_atlas_t *atlas);
 //Uploads an animation manager's baked sprite data, color ramps, shape frames and emitter properties, after tfx_BuildAnimationManagerGPUShapeData
 bool tfx_impl_dx11_UploadSpriteData(tfx_impl_dx11_t *renderer, tfx_animation_manager animation_manager, tfx_gpu_shapes shapes);
