@@ -42,6 +42,11 @@ Three quantities, in particles:
 - **Pool slots:** a ring capacity rounded up the way the pool hands it out.
 - **`gpu_particle_capacity`:** the pool, in slots.
 
+A slot is 112 bytes of GPU memory (`tfx_GetGPUParticleBufferSizes` has the exact pool size), and `tfx_PrintLibrary` and
+`tfx_DescribeStage` print each ring and the pool in MB. Every location spawns the effect's full amount, so an effect
+authored for one location needs its rings times the location count: scale its amount graphs down with
+`tfx_ScaleTemplateEmitterGraph` before sizing a fleet, and the ring follows them.
+
 Every Run on GPU emitter instance gets a fixed ring, sized by default for one spawn location. For an effect that plays
 at several locations at once, in this order:
 

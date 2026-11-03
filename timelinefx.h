@@ -613,7 +613,7 @@ typedef struct tfx_stage_info_s {
 	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this stage, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit fails, see tfx_EffectIDIsValid. Default 0.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases. Default 1.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater. Default 4096.
-	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits at a steady 60 updates a second, slower rates and single call catch-up updates need tfx_SetGPUSizingUpdateRate. It fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
+	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits at a steady 60 updates a second, slower rates and single call catch-up updates need tfx_SetGPUSizingUpdateRate. It fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. Each slot is 112 bytes of GPU memory, and tfx_GetGPUParticleBufferSizes gives the exact pool size. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations. Default true.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Default true.
 	bool auto_order_effects;                //Set to true to sort the effects by depth each frame, so within each layer effects are drawn back to front. Use tfx_SetStageCamera in 3d to set the effect depth to the distance the camera. Default false, true with tfxStageSetup_auto_order_effects.
@@ -1134,6 +1134,7 @@ struct tfx_ribbon_bucket_globals_s  {
 	float ndc_offset_x;
 	float ndc_offset_y;
 	tfxU32 emitter_offset;			//Where this stage's emitters start in a ribbon batch's emitter buffer
+	tfxU32 padding;					//Uniform blocks are multiples of 16 bytes
 };
 
 typedef struct tfx_sprite_data_push_s {
@@ -1147,6 +1148,7 @@ typedef struct tfx_sprite_data_push_s {
 	tfxU32 image_data_index;
 	tfxU32 emitter_properties_index;
 	tfxU32 bounding_boxes_index;
+	tfxU32 padding[2];
 } tfx_sprite_data_push_t;
 
 //Push constants for tfx_ribbon_playback
@@ -1158,6 +1160,7 @@ typedef struct tfx_ribbon_data_push_s {
 	tfxU32 ribbon_data_index;
 	tfxU32 ribbon_output_index;
 	tfxU32 ribbon_properties_index;
+	tfxU32 padding;
 } tfx_ribbon_data_push_t;
 
 typedef struct tfx_gpu_graph_data_s {
@@ -1338,8 +1341,9 @@ Send every message TimelineFX prints to your own log instead of stdout. Errors s
 they only print when something has failed, such as running out of memory pools or calling tfx_BeginTimelineFX twice.
 Tips are one line messages starting "TimelineFX tip:" that point out a likely mistake once, at the moment the library sees
 it, for example an effect that spawns at user spawn locations being added to a stage. Define TFX_DISABLE_TIPS to compile
-them out. In debug builds a failed assert prints "TimelineFX assert failed:" with its condition, file and line before it
-stops the program, unless you define your own TFX_ASSERT.
+them out. In debug builds a failed assert prints "TimelineFX assert failed:" with its condition, file and line, then
+stops the program with the C runtime's assert, which in a Windows GUI program is a dialog that waits for a click. Define
+your own TFX_ASSERT when you compile timelinefx.cpp to change that.
 Can be set before or after tfx_BeginTimelineFX. It can be called from the stage update thread and worker threads, so it
 must be thread safe.
 * @param callback           Receives each message without a trailing newline, or NULL to go back to printing to stdout
@@ -1818,7 +1822,9 @@ stage are removed from that stage first, straight away and without waiting for a
 tfx_IsEffectExpired) and there's no need to expire them yourself. Effects from other libraries keep playing.
 The stage's instance buffer still holds the removed effects' last instances until its next tfx_UpdateStage, so update
 the stages you'll draw and upload their instances before you draw them again. On a frame where the timer didn't tick,
-or while paused, tfx_UpdateStage(stage, 0) is enough. Don't call this while a stage is updating on another thread: it completes each stage's
+or while paused, tfx_UpdateStage(stage, 0) is enough. Until then tfx_GetNextInstanceKeyRange and tfx_GetNextInstanceBuffer
+already leave the removed effects out, so they no longer match the buffer, and the instance getters print a tip.
+Don't call this while a stage is updating on another thread: it completes each stage's
 in-flight work, but a new update mustn't start until it returns.
 * @param library                A valid pointer to a tfx_library_t
 */
@@ -2496,8 +2502,10 @@ the pool, in slots.
 Every emitter instance gets a ring of fixed size in the pool when its effect is added: tfx_GetEmitterGPUCapacity, which
 is the authored estimate times any location count from tfx_SetTemplateGPUCapacityForLocations, or whatever
 tfx_SetTemplateEmitterGPUCapacity set. Size the pool in this order:
-  1. Create the effect templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest). If you
-     update slower than 60 times a second, or catch up in one tfx_UpdateStage call, set tfx_SetGPUSizingUpdateRate.
+  1. Create the effect templates and customise their amounts (tfx_SetTemplateSingleSpawnAmount and the rest). Every
+     location spawns the effect's full amount, so to play an effect authored for one location at many, scale its amount
+     graphs down with tfx_ScaleTemplateEmitterGraph. If you update slower than 60 times a second, or catch up in one
+     tfx_UpdateStage call, set tfx_SetGPUSizingUpdateRate.
   2. tfx_SetTemplateGPUCapacityForLocations on templates that play at several spawn locations at once.
   3. tfx_SetTemplateEmitterGPUCapacity for any one emitter that needs a different ring.
   4. Add tfx_GetTemplateGPUPoolSlots for every template instance that plays at once into gpu_particle_capacity, then
@@ -2628,7 +2636,7 @@ tfxAPI void tfx_SetGPUSizingUpdateRate(float updates_per_second);
 The ring capacity an instance of a Run on GPU emitter gets, in particles. Without an override this is what one spawn
 location needs, times the location count tfx_SetTemplateGPUCapacityForLocations set on its template. Every location
 adds its own amount, so an effect at N locations needs about N times the one location figure. It's worked out from the
-emitter's amounts and the sizing rate each call (the rate its template was sized at, or tfx_SetGPUSizingUpdateRate), so it follows tfx_SetTemplateSingleSpawnAmount until tfx_SetTemplateEmitterGPUCapacity
+emitter's amounts and the sizing rate each call (the rate its template was sized at, or tfx_SetGPUSizingUpdateRate), so it follows tfx_SetTemplateSingleSpawnAmount, and tfx_ScaleTemplateEmitterGraph on the amount graphs, until tfx_SetTemplateEmitterGPUCapacity
 fixes it.
 * @param emitter                   A handle to an emitter descriptor.
 * @returns tfxU32                  0 when the emitter doesn't have Run on GPU set.

@@ -2924,6 +2924,7 @@ struct tfx_ribbon_bucket_globals {
 	float ndc_offset_x;
 	float ndc_offset_y;
 	uint emitter_offset;
+	uint padding;
 };
 
 //Mirrors tfx_sprite_data_push_t, for the sprite playback and the sprite bounds
@@ -2938,6 +2939,7 @@ struct tfx_sprite_data_push {
 	uint image_data_index;
 	uint emitter_properties_index;
 	uint bounding_boxes_index;
+	uint2 padding;
 };
 
 //Mirrors tfx_ribbon_data_push_t
@@ -2949,6 +2951,7 @@ struct tfx_ribbon_data_push {
 	uint ribbon_data_index;
 	uint ribbon_output_index;
 	uint ribbon_properties_index;
+	uint padding;
 };
 
 //Mirrors the editor's ribbon_bb_push_t

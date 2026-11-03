@@ -3139,6 +3139,8 @@ typedef enum {
 	tfxStageFlags_updating		                     	= 1,
 	tfxStageFlags_disable_spawning                  	= 2,
 	tfxStageFlags_gpu_group_order_changed           	= 1 << 3,		//A GPU group was added or released or its sort key changed, so gpu_group_order needs rebuilding
+	tfxStageFlags_library_freed                     	= 1 << 4,		//tfx_FreeLibrary removed effects since the last instance write, so the instance buffer still holds them
+	tfxStageFlags_library_freed_tip_shown           	= 1 << 5,
 	tfxStageFlags_update_base_values                	= 1 << 6,
 	tfxStageFlags_dynamic_sprite_allocation         	= 1 << 7,
 	tfxStageFlags_animation_loops                   	= 1 << 9,

@@ -71,13 +71,16 @@ library" in timelinefx.h):
   uploads. They change after a load, a free or a template customisation, then hold still. One that changes every frame
   means something is re-laying the libraries out each frame.
 - Capture a frame, swap the order the libraries load in, and capture the same frame again with the same
-  `tfx_SetStageSeed` and schedule. Swapping moves every library's place in the global buffers, so the two must match.
+  `tfx_SetStageSeed`, schedule and fixed frame time (a varying frame time changes the interpolation). Swapping moves every library's place in the global buffers, so the two must match.
   Effects from one library drawing with another's shapes or colors means the backend is binding a library's own data
   (`tfx_GetParticlePropertiesBuffer`, `tfx_GetColorRampBitmap`, `tfx_GetLibraryGPUShapes`) instead of the global data.
 - Free a library while another's effects keep playing, on a frame where the timer doesn't tick (pause first).
   Call `tfx_UpdateStage(stage, 0)` and upload the instances before drawing. The freed library's effects must be gone
   and the remaining effects must draw with their own library's data on that frame too. Drawing without the update shows
-  them with the moved layout until the next real update.
+  them with the moved layout until the next real update, and the instance getters print `TimelineFX tip: tfx_FreeLibrary
+  removed effects from this stage and it hasn't updated since, so its instances still include them. Call
+  tfx_UpdateStage(stage, 0) before drawing.` `tfx_GetNextInstanceKeyRange` already leaves the freed effects out, so a
+  check built on key ranges passes on that frame. Check what you actually drew.
 - Then load it again while the others play and add its effects back. With every shape in one atlas texture (fixed
   bindings), it has to go back into its own layers, see "Freeing and reloading a library" in implementations/README.md.
   Its effects must draw with their own shapes and colors, and nothing else may flicker.

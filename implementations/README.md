@@ -354,6 +354,35 @@ differences.
 - **D3D12 depth clears.** The depth texture is created with `SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT` at 1,
   or the debug layer warns on every clear.
 
+## sokol_gfx notes
+
+There's no sokol backend here. An outside integration ported the D3D11 backend function for function onto sokol_gfx,
+with one source building for `SOKOL_D3D11` and `SOKOL_GLCORE`. These are the differences it found.
+
+- **Shaders.** D3D11 takes the DXBC line from the Shaders readme, GL takes the SPIR-V and SPIRV-Cross line, both with the
+  fixed bindings. Each `sg_shader_desc` comes straight from the slots table: `VERTEX_READ` n is `views[n].storage_buffer`
+  (read only, `hlsl_register_t_n` n, `glsl_binding_n` n), `COMPUTE_WRITE` n is `u`n and binding n, `COMPUTE_READ` n is `t`n
+  and binding 2 + n, and the two fragment textures are t0 and t1, with GL names `tfx_fixed_combined_particle_images` and
+  `tfx_fixed_combined_color_ramps`.
+- **Uniforms.** Each block is a sokol uniform block at its b slot, applied with `sg_apply_uniforms` per draw and per
+  dispatch. On GL, sokol sets each member with `glUniform*`, has no uint type and allows 16 members per block, so the GLSL
+  is post-processed into `ivec4` arrays, as the Shaders readme's OpenGL notes describe, and fed as `SG_UNIFORMTYPE_INT4`.
+  The size given to `sg_apply_uniforms` must match the declared one exactly.
+- **The color ramps need a sampler.** sokol wants every texture in a texture/sampler pair on every backend, so declare
+  a nearest sampler at slot 1 for them, which the D3D11 shader never reads.
+- **Buffers.** Persistent buffers are `storage|copy_dst`, and the instance buffers `copy_src` too, so they can be copied
+  across when they grow. Each frame's uploads go into one `write_transient` staging buffer and are copied out with
+  `sg_copy_buffer_to_buffer` and `sg_copy_buffer_to_image` outside the passes. The kernel's upload can be a
+  `write_transient` storage buffer itself, used in the same frame. Ribbon indexes are `storage|index_buffer`. The pool
+  is created with zeroed data.
+- **One compute pass a frame** holds the kernel's dispatches on update frames and the ribbon geometry every frame. sokol
+  unbinds between passes, so none of the D3D11 backend's unbinding is needed.
+- **Mips are built on the CPU** with a 2 x 2 box filter, as in the SDL_gpu backend: sokol has no `GenerateMips`.
+- **Debug output.** sokol turns on the D3D11 debug layer and a GL debug context with `SOKOL_DEBUG`, but installs no GL
+  callback. Load `glDebugMessageCallback` yourself and prove it reaches your log with a deliberate error.
+- **No readback.** sokol_gfx can't read a buffer back. For checks, `sg_d3d11_query_buffer_info` and
+  `sg_gl_query_buffer_info` give the native buffer to map or `glGetBufferSubData`.
+
 ## Clip space
 
 `tfx_impl_Perspective` builds a right handed projection. Every backend passes the flags for its own clip space:
@@ -371,10 +400,13 @@ Vulkan for you (SDL_gpu does), so it takes the D3D row.
 
 Use the D3D11 backend as the template: keep its function names with your API's prefix, and its order of work.
 
+The checks below are by eye, against `example_scene`. A port that plays its own scene, or can't see its window, has a
+numeric version of each in `../agents/integration-checks.md`, and each check names its section.
+
 **Setting up**
 - [ ] Check the API can read storage buffers from the vertex stage. Both binding models need it, because the billboard
       vertex shader reads the previous update's instance at `captured_index`. WebGL2, most OpenGL ES 3.x devices and
-      OpenGL below 4.3 can't.
+      OpenGL below 4.3 (macOS included) can't.
 - [ ] Add `example_<platform>_<api>/main.cpp`: a window, a device, a swap chain and the loop. It calls
       `example_scene_Load`, your upload functions, `example_scene_Start`, then `example_scene_Update` and your upload,
       compute and render calls each frame, with the clip space flags from the table above.
@@ -383,8 +415,8 @@ Use the D3D11 backend as the template: keep its function names with your API's p
       `main.cpp` has bound, so it never owns the swap chain.
 - [ ] Add a target to `CMakeLists.txt`, with a slangc build of each entry point your backend uses.
 - [ ] Turn on the API's validation layer in debug builds and print what it says. Every step below is done when it's
-      silent, so first prove its output reaches you with a deliberate error. Some layers (SDL_gpu) turn validation on
-      without installing a messenger, and then silence means nothing is listening.
+      silent, so first prove its output reaches you with a deliberate error. Some layers (SDL_gpu, and sokol_gfx on
+      OpenGL) turn validation on without installing a messenger or callback, and then silence means nothing is listening.
 - [ ] Static_assert the sizes of every library struct your shaders mirror, as `tfx_impl_dx11.cpp` does.
 
 **Shaders.** Never ported by hand: compile `../Shaders/timelinefx.slang` for your target, as `../Shaders/readme.md`
@@ -393,8 +425,8 @@ for any layer that binds a fixed set of resources per stage (SDL_gpu), compile w
 -D TFX_ENTRY_<entry point>`: each entry point reads its own resources from slots counting up from 0, every shape
 from one atlas, every buffer as raw rows, and the instances and ribbon vertexes from buffers in place of vertex
 attributes. Macros set the set, space and binding base of each kind of slot, so the slots fit your API's or engine's
-convention. D3D11 uses it with the defaults. OpenGL and WebGPU are meant to use the same define, but neither has been
-tried.
+convention. D3D11 uses it with the defaults. OpenGL uses it through SPIR-V and SPIRV-Cross, as the Shaders readme
+describes. WebGPU is meant to use the same define, but hasn't been tried.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear
@@ -404,7 +436,8 @@ tried.
       Vulkan and D3D12 do), which shows on particles a pixel or two across.
 - [ ] The color ramps as a texture array, one layer per `tfx_GetGlobalColorRampLayer`, in the format of its bytes per
       pixel (always RGBA16F). It's read with an integer load, never sampled, but where textures and samplers are
-      combined (OpenGL, SDL_gpu on Vulkan) bind a nearest sampler with it. Upload only the layers whose version
+      combined (OpenGL, SDL_gpu on Vulkan), or where your layer wants every texture paired (sokol_gfx), bind a nearest
+      sampler with it. Upload only the layers whose version
       changed, and recreate it with headroom when `tfx_GetGlobalColorRampLayerCount` outgrows it.
 - [ ] The shape frames (`tfx_GetGlobalGPUShapes`) and emitter properties (`tfx_GetGlobalParticlePropertiesBuffer`) as
       read only buffers, uploaded on update frames when their versions change.
@@ -419,9 +452,10 @@ tried.
       when it isn't: a particle's first frame, a loop back to the start of its path, or after too long a gap.
 - [ ] Premultiplied blending (ONE / ONE_MINUS_SRC_ALPHA), depth test on, depth write off.
 - [ ] Check: the torch circles with its smoke trailing behind, the sparks stretch along their motion, the leaves tumble,
-      and running at 20 and 400 updates a second looks the same as 60.
+      and running at 20 and 400 updates a second looks the same as 60 (integration checks 1 and 5).
 - [ ] Check: the Fireflies from the second library have their own shapes and colors. Swap the order the two libraries
-      load in and they should look the same, because that moves every library's place in the global buffers.
+      load in and they should look the same, because that moves every library's place in the global buffers
+      (integration check 6).
 - [ ] Check: press L to free and reload the second library while the first plays. The Fireflies come back with their
       own shapes and colors, nothing else flickers, and the validation layer stays silent. Check 6 of
       `../agents/integration-checks.md` has the procedure.
@@ -443,7 +477,7 @@ tried.
 - [ ] Instance buffers that the kernel can write, sized for `gpu_instance_start + gpu_instance_count`.
 - [ ] One dispatch per record, every fetch, before the draw that reads the current instance buffer.
 - [ ] Each layer drawn as its CPU range then its GPU range.
-- [ ] Check: `tfx_GetGPUParticleStats` reports no dropped spawns at 60 updates a second, and the leaves and the GPU
+- [ ] Check: `tfx_GetGPUParticleStats` reports no dropped spawns at 60 updates a second (integration checks 2 to 4), and the leaves and the GPU
       Simulated fountain both draw.
 - [ ] If they don't, print `tfx_DescribeStage` and read the `TimelineFX tip:` lines in the log. Then turn the GPU
       simulation off with `tfx_SetStageGPUSimulation(stage, false)`, clear the stage and add the effects again. Still

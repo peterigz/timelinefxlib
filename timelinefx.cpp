@@ -33,6 +33,10 @@ static_assert(sizeof(tfx_ribbon_t) == tfxRIBBON_SIZE, "tfx_ribbon_t changed size
 static_assert(sizeof(tfx_vec2_t) == 8, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
 static_assert(offsetof(tfx_vec2_t, x) == 0, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
 static_assert(offsetof(tfx_vec2_t, y) == 4, "tfx_vec2_t layout no longer matches the C mirror struct in timelinefx.h");
+static_assert(sizeof(tfx_gpu_particle_push_t) % 16 == 0, "Uniform blocks must be a multiple of 16 bytes");
+static_assert(sizeof(tfx_ribbon_bucket_globals_t) % 16 == 0, "Uniform blocks must be a multiple of 16 bytes");
+static_assert(sizeof(tfx_sprite_data_push_t) % 16 == 0, "Uniform blocks must be a multiple of 16 bytes");
+static_assert(sizeof(tfx_ribbon_data_push_t) % 16 == 0, "Uniform blocks must be a multiple of 16 bytes");
 
 //tfx_image_data_t offsets on 64 bit pointers; the sizeof(void *) != 8 term makes these asserts
 //hold trivially on 32 bit targets, where the pointer-dependent offsets differ.
@@ -5637,6 +5641,7 @@ void tfx_FreeLibrary(tfx_library library) {
 		}
 		if (has_library_effects) {
 			tfx__purge_expired_effects(pm);
+			pm->flags |= tfxStageFlags_library_freed;
 		}
 	}
 	if (library->global_ramp_layers.current_size) {
@@ -7407,7 +7412,8 @@ tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str25
 	tfx_str256_t value;
 	tfx_property_value_t property_value;
 	if (!tfx_GetDescriptorProperty(effect, property_name.c_str(), &property_value)) {
-		TFX_ASSERT(false);	//Property name not found or it doesn't apply to this descriptor type
+		TFX_PRINT_ERROR("property \"%s\" not found, or it doesn't apply to this descriptor type.", property_name.c_str());
+		TFX_ASSERT(false);
 		return value;
 	}
 	tfx__format_property_value(&property_value, &value);
@@ -13659,9 +13665,26 @@ tfxINTERNAL bool tfx__require_template_path(tfx_effect_template t, const char *p
 	if (tfx__find_template_path(t, path, key)) {
 		return true;
 	}
-	tfxTIP("\"%s\" isn't in template \"%s\". Use \"%s/%s\" or tfx_GetDescriptorPath of one of its emitters.", path, t->effect->name.c_str(), t->effect->name.c_str(),
-		t->effect->children.current_size ? t->effect->children[0]->name.c_str() : "Emitter");
-	TFX_ASSERT(false);	//The path isn't in the template, see the tip above
+#ifndef TFX_DISABLE_TIPS
+	const char *effect_name = t->effect->name.c_str();
+	const tfxU32 emitter_count = t->effect->children.current_size;
+	tfx_str512_t emitters;
+	//Started with Setf, since an Appendf onto an empty string drops a character
+	if (emitter_count) {
+		emitters.Setf("\"%s/%s\"", effect_name, t->effect->children[0]->name.c_str());
+	} else {
+		emitters.Setf("none");
+	}
+	for (tfxU32 index = 1; index < emitter_count; ++index) {
+		const char *emitter_name = t->effect->children[index]->name.c_str();
+		if (emitters.Length() + strlen(effect_name) + strlen(emitter_name) > 400) {
+			emitters.Appendf(" and %u more", emitter_count - index);
+			break;
+		}
+		emitters.Appendf(", \"%s/%s\"", effect_name, emitter_name);
+	}
+	tfxTIP("\"%s\" isn't in template \"%s\". Its emitters are %s.", path, effect_name, emitters.c_str());
+#endif
 	return false;
 }
 
@@ -15723,7 +15746,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	pm->current_particle_count = pm->instance_buffer.current_size;
 
-	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
+	pm->flags &= ~(tfxStageFlags_update_base_values | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written | tfxStageFlags_library_freed);
 	pm->flags |= write_instances ? 0 : tfxStageFlags_instances_not_written;
 	pm->unwritten_update_time = write_instances ? 0.0 : pm->unwritten_update_time + pm->update_time;
 }
@@ -18241,10 +18264,20 @@ void tfx_ForceStageSingleThreaded(tfx_stage pm, bool switch_on) {
 Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_stage_t.
 */
+tfxINTERNAL void tfx__tip_library_freed(tfx_stage pm) {
+#ifndef TFX_DISABLE_TIPS
+	if ((pm->flags & (tfxStageFlags_library_freed | tfxStageFlags_library_freed_tip_shown)) == tfxStageFlags_library_freed) {
+		pm->flags |= tfxStageFlags_library_freed_tip_shown;
+		tfxTIP("tfx_FreeLibrary removed effects from this stage and it hasn't updated since, so its instances still include them. Call tfx_UpdateStage(stage, 0) before drawing.");
+	}
+#endif
+}
+
 tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
+	tfx__tip_library_freed(pm);
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer);
 }
 
@@ -18253,6 +18286,7 @@ tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
+	tfx__tip_library_freed(pm);
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + pm->layer_start[layer];
 }
 
@@ -18714,7 +18748,7 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks) {
 	//that double-dispatches age work against the same bank.
 	pm->warmup_effects[0].clear();
 	pm->warmup_effects[1].clear();
-	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written);
+	pm->flags &= ~(tfxStageFlags_warming_up | tfxStageFlags_skip_instance_writes | tfxStageFlags_instances_not_written | tfxStageFlags_library_freed);
 	pm->unwritten_update_time = 0.0;
 	pm->pending_write_span = 0.0;
 	pm->last_write_span = 0.0;
@@ -26270,8 +26304,8 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 	if (!pm->gpu_pool_allocator) {
 		tfx__write_line(&writer, "GPU simulation: off, the stage has no gpu_particle_capacity");
 	} else {
-		tfx__write_line(&writer, "GPU simulation: %s. Pool of %u slots, %u allocated to %u rings. %u slots in use, about %u particles alive. %u blocked emitters, %llu dropped spawns, %u updates since the last tfx_GetGPUParticleFrame",
-			diagnostics.gpu_simulation_on ? "on" : "off with tfx_SetStageGPUSimulation, so effects added now run on the CPU", gpu.capacity, gpu.allocated, gpu.ring_count, gpu.slots_in_use,
+		tfx__write_line(&writer, "GPU simulation: %s. Pool of %u slots (%.1f MB), %u allocated to %u rings. %u slots in use, about %u particles alive. %u blocked emitters, %llu dropped spawns, %u updates since the last tfx_GetGPUParticleFrame",
+			diagnostics.gpu_simulation_on ? "on" : "off with tfx_SetStageGPUSimulation, so effects added now run on the CPU", gpu.capacity, (double)tfx_GetGPUParticleBufferSizes(pm).pool_bytes / (1024.0 * 1024.0), gpu.allocated, gpu.ring_count, gpu.slots_in_use,
 			gpu.estimated_live_particles, gpu.blocked_emitters, (unsigned long long)gpu.dropped_spawns, diagnostics.unfetched_gpu_updates);
 	}
 	if (pm->info.global_library_indexes) {
@@ -26336,6 +26370,9 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 
 	if (diagnostics.unfetched_gpu_updates > 2) {
 		tfx__write_line(&writer, "Unfetched: %u updates since the last tfx_GetGPUParticleFrame, all kept for the next fetch. Fetch and dispatch every frame you update", diagnostics.unfetched_gpu_updates);
+	}
+	if (pm->flags & tfxStageFlags_library_freed) {
+		tfx__write_line(&writer, "Out of date: tfx_FreeLibrary removed effects from this stage and it hasn't updated since, so its instances still include them. Call tfx_UpdateStage(stage, 0) before drawing");
 	}
 
 	tfx_vector_t<tfx_effect_instances_t> waiting_effects;
@@ -26452,7 +26489,10 @@ tfxINTERNAL void tfx__describe_library_emitter(tfx_text_writer_t *writer, tfx_ef
 		tfx__write_line(writer, "  %s: particles, %s, CPU%s", path.c_str(), details.c_str(), shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? ", other emitters spawn from it" : "");
 	} else if (tfx__descriptor_takes_gpu_ring(emitter)) {
 		const tfxU32 capacity = tfx_GetEmitterGPUCapacity(emitter);
-		tfx__write_line(writer, "  %s: particles, %s, GPU, ring of %u per instance, %u pool slots", path.c_str(), details.c_str(), capacity, tfx__round_up_gpu_ring_capacity(capacity));
+		const tfxU32 pool_slots = tfx__round_up_gpu_ring_capacity(capacity);
+		const double megabytes = (double)pool_slots * (sizeof(tfx_gpu_particle_hot_t) + sizeof(tfx_gpu_particle_cold_t) + sizeof(tfx_gpu_particle_noise_t)) / (1024.0 * 1024.0);
+		const bool at_user_locations = emitter->parent && (emitter->parent->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
+		tfx__write_line(writer, "  %s: particles, %s, GPU, ring of %u %s, %u pool slots (%.1f MB)", path.c_str(), details.c_str(), capacity, at_user_locations ? "for one spawn location" : "per instance", pool_slots, megabytes);
 	} else {
 		tfx__write_line(writer, "  %s: particles, %s, Run on GPU but runs on the CPU because %s", path.c_str(), details.c_str(),
 			shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source ? "other emitters spawn from it" : "its particles are relative and its effect doesn't spawn at user spawn locations");
@@ -28670,6 +28710,7 @@ bool tfx_GetNextInstanceBuffer(tfx_stage pm, tfxU32 layer, tfx_instance_t **inst
 	TFX_ASSERT(layer < tfxLAYERS);
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
+	tfx__tip_library_freed(pm);
 	if (pm->effect_index_position >= pm->effects_in_use[pm->current_ebuff].current_size) {
 		*instances = nullptr;
 		*instance_data = nullptr;
@@ -28695,6 +28736,7 @@ bool tfx_GetNextInstanceKeyRange(tfx_stage pm, tfxU32 layer, tfx_instance_key_ra
 	TFX_ASSERT(range);
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
+	tfx__tip_library_freed(pm);
 	memset(range, 0, sizeof(tfx_instance_key_range_t));
 	tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[pm->current_ebuff];
 	//Effects with nothing on this layer are skipped rather than read, as ones added since the update have no offsets yet
