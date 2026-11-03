@@ -3205,7 +3205,6 @@ ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
 ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
 #endif
 
-#define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter>((row) * tfx_ribbon_emitter_row_bytes)
 #else
 #define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_ribbon_emitter_buffers[buffer_index][row]
 #endif
@@ -3266,7 +3265,7 @@ void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
 }
 
 uint tfx_load_offset(uint buffer_index, uint row) {
-	return tfx_fixed_offsets.Load(row * 4);
+	return tfx_fixed_offsets.Load<uint>(row * 4);
 }
 
 tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) {
@@ -3388,12 +3387,13 @@ tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
 }
 #endif
 
-//The ribbon emitter up to its lag spine. The ribbon passes read the 416 byte row field by field rather than copying it
+//The ribbon emitter up to its lag spine, as laid out in the row. Bindless reads it field by field, the fixed bindings in one 92 byte load
 struct tfx_ribbon_emitter_frame {
 	uint2 quaternion;
 	uint lookup_offset;
 	uint angle_type;
 	float3 position;
+	float age;
 	float3 captured_position;
 	uint morph_segment_start_index;
 	float noise_frequency;
@@ -3402,16 +3402,29 @@ struct tfx_ribbon_emitter_frame {
 	float noise_lock_rate;
 	float3 fixed_angle_normal;
 	uint sample_count_noise;
+	uint start_frame_index;
 	float lag_time;
 	float lag_span;
 };
 
+#if defined(TFX_FIXED_BINDINGS)
+tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter_frame>(row * tfx_ribbon_emitter_row_bytes);
+}
+
+//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index
+uint2 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
+	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(buffer_index, row);
+	return uint2(emitter.lookup_offset, emitter.start_frame_index);
+}
+#else
 TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
 	tfx_ribbon_emitter_frame frame;
 	frame.quaternion = TFX_RIBBON_EMITTER_ROW(buffer_index, row).quaternion;
 	frame.lookup_offset = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset;
 	frame.angle_type = TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type;
 	frame.position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).position;
+	frame.age = TFX_RIBBON_EMITTER_ROW(buffer_index, row).age;
 	frame.captured_position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).captured_position;
 	frame.morph_segment_start_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).morph_segment_start_index;
 	frame.noise_frequency = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_frequency;
@@ -3420,6 +3433,7 @@ TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint 
 	frame.noise_lock_rate = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_lock_rate;
 	frame.fixed_angle_normal = TFX_RIBBON_EMITTER_ROW(buffer_index, row).fixed_angle_normal;
 	frame.sample_count_noise = TFX_RIBBON_EMITTER_ROW(buffer_index, row).sample_count_noise;
+	frame.start_frame_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index;
 	frame.lag_time = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_time;
 	frame.lag_span = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_span;
 	return frame;
@@ -3429,6 +3443,7 @@ TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint 
 TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
 	return uint2(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index);
 }
+#endif
 
 #if defined(TFX_FIXED_BINDINGS)
 float3 tfx_load_lag_spine_position(uint buffer_index, uint row, uint sample_index) {

@@ -19,10 +19,11 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 | Fixed bindings, SPIR-V | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.spv` |
 | Fixed bindings, DXIL | `slangc timelinefx.slang -entry <entry point> -target dxil -profile <vs_6_0, ps_6_0 or cs_6_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.dxil` |
 | D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -line-directive-mode none -o <entry point>.cso` |
+| WebGPU | `slangc timelinefx.slang -entry <entry point> -target wgsl -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.wgsl` |
 | OpenGL | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -D TFX_FIXED_BINDINGS -D TFX_COMBINED_SAMPLERS -D TFX_ENTRY_<entry point> -o <entry point>.spv`, then `spirv-cross <entry point>.spv --version 430 --no-es --no-support-nonzero-baseinstance --output <entry point>.glsl` |
 
 - **`TFX_ENTRY_<entry point>`** is the entry point's name as it is, for example `-D TFX_ENTRY_tfx_billboard_vertex`. Under the fixed bindings it picks that entry point's resources and slots, so the compile has to have it. The kernel's slots don't depend on it.
-- **`-fvk-use-entrypoint-name`** keeps the entry point's own name in the SPIR-V. Without it slangc names every one `main`, which is the name to give your API instead. DXIL and DXBC always keep the name.
+- **`-fvk-use-entrypoint-name`** keeps the entry point's own name in the SPIR-V. Without it slangc names every one `main`, which is the name to give your API instead. DXIL, DXBC and WGSL always keep the name.
 - **`spirv_1_5` needs a Vulkan 1.2 device.** The bindless model needs 1.2 anyway, for descriptor indexing. Under the fixed bindings `-profile spirv_1_3` also validates for Vulkan 1.1 (checked with spirv-val, not yet on a device). SDL_gpu creates a Vulkan 1.0 instance unless you pass `SDL_GPUVulkanOptions` with `vulkan_api_version` through `SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER`.
 - **Vulkan needs `shaderDrawParameters`**, a core Vulkan 1.1 feature. Slang reads `SV_VertexID` as `gl_VertexIndex - gl_BaseVertex`, which needs the `DrawParameters` capability. SDL_gpu only turns it on when you ask for it in `feature_list`, with Vulkan 1.2 for `spirv_1_5`:
 
@@ -95,6 +96,15 @@ The two vertex inputs are vertex buffers:
 | Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint |
 
 These formats exist on every API. `size` and `intensity_gradient_map` are signed 16-bit integers the shader converts to float, because D3D, Metal and WebGPU have no scaled formats, and `alignment` and `curved_alpha_life` read four bytes because D3D and WebGPU have no three byte formats. The fourth byte is spare.
+
+#### Bindless on Vulkan
+
+Compile to SPIR-V with no defines, with the Vulkan row of the compile table. [implementations](../implementations) has a working host, `tfx_impl_vulkan`, and the editor draws with the same shaders.
+
+- **One descriptor set.** Every storage buffer array, whatever its row type, is at binding 5, so one array of storage buffer descriptors serves them all, and a buffer needs one descriptor however many row types it's read as. If you add images or buffers while frames are in flight, give bindings 3 and 5 `UPDATE_AFTER_BIND`, `UPDATE_UNUSED_WHILE_PENDING` and `PARTIALLY_BOUND`.
+- **Push constants** all start at offset 0. The largest block is `tfx_ribbon_bucket_globals_t` at 112 bytes, inside the 128 every device has, so one range for the vertex, fragment and compute stages serves every pipeline. The baked billboard draw pushes `tfx_baked_billboard_push`, and the fragment shader it shares with the live draw reads the first seven values as `tfx_billboard_push`.
+- **Features:** Vulkan 1.2's `runtimeDescriptorArray` and `shaderSampledImageArrayNonUniformIndexing`, 1.1's `shaderDrawParameters` (see the notes under the compile table), and the update after bind features if you use them.
+- **`tfx_billboard_baked_vertex` has no location 7**, because baked sprites don't read their previous instance. Leave `captured_index` out of its pipeline's vertex input, or the validation layer warns that it isn't consumed.
 
 #### Bindless on D3D12
 
@@ -217,7 +227,11 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
 - **OpenGL:** compile through SPIR-V with the line in the compile table. Every entry point comes out as `#version 430`, so it needs OpenGL 4.3. [implementations](../implementations) has a working host, `tfx_impl_gl`, with the whole build in its CMake, and it has also run under sokol_gfx. With the defaults, buffers are SSBOs and uniform blocks std140 UBOs at the bindings in the slots table (`glBindBufferBase`), and the two textures are `sampler2DArray`s at bindings 7 and 8.
   - The vertex shaders use `gl_BaseVertexARB` and `gl_BaseInstanceARB` when the driver has `GL_ARB_shader_draw_parameters`, and otherwise a plain `uniform int SPIRV_Cross_BaseVertex` and `SPIRV_Cross_BaseInstance`, which are 0 unless you set them. Either way, draw at base vertex 0 and first instance 0, and pass the first instance in `instance_offset`. `--no-support-nonzero-baseinstance` stops SPIRV-Cross from adding the base instance a second time. glslangValidator rejects `gl_BaseVertexARB`, but drivers accept it.
   - Each uniform block is rows of 16 bytes holding 32-bit words, uints and floats mixed. A layer that sets uniforms member by member with `glUniform*` and has no uint type (sokol_gfx's GL backend) can't take them as SPIRV-Cross writes them, and `--flatten-ubo` refuses blocks that mix types. Add `--glsl-emit-ubo-as-plain-uniforms`, rewrite each `uniform Block name;` as `uniform ivec4 name_raw[N];`, and rebuild the struct at the top of `main()` with `intBitsToFloat` and `uint()`. Then feed it as N `ivec4`s.
-- **WGSL:** the kernel always uses these bindings, define or not, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default. Each kernel dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset. The render passes haven't been tried on WebGPU.
+- **WGSL:** compile with the WebGPU line in the compile table. The kernel always uses these bindings, define or not, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default. With the defaults every entry point's resources are in group 0 at the bindings in the slots table, with the atlas's sampler separate. [implementations](../implementations) has a working host, `tfx_impl_webgpu`, run on wgpu-native's Vulkan and D3D12 backends.
+  - Each uniform block is a uniform buffer bound at a dynamic offset. The kernel needs its own `dispatch_index` per dispatch, so write one 64 byte block per dispatch, and one per draw range and ribbon bucket, at 256 byte steps.
+  - The vertex shaders only read storage buffers, which is all WebGPU allows in the vertex stage. The ribbon compute uses the most storage buffers, 6.
+  - Bind the color ramps as `unfilterable-float`. They're only loaded, so a 32 bit float ramp works without `float32-filterable`.
+  - Make every texture view a 2D array, even of a one layer texture, whose default view is a plain 2D one.
 
 ### Metal
 

@@ -7,9 +7,11 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `tfx_impl_common.h/.cpp` | Everything that would be written the same way whatever API draws the particles: shape loading, the shape atlas, the fixed step timer, the camera matrices and gathering each frame's instances from a stage. Nothing in it talks to a GPU. |
 | `tfx_impl_dx11.h/.cpp` | The Direct3D 11 backend. |
 | `tfx_impl_dx12.h/.cpp` | The Direct3D 12 backend, with the bindless shaders: one descriptor heap and root constants. |
+| `tfx_impl_vulkan.h/.cpp` | The Vulkan 1.3 backend, with the bindless shaders: one descriptor set, push constants and dynamic rendering. |
 | `tfx_impl_sdlgpu.h/.cpp` | The SDL3 GPU (SDL_gpu) backend, for its Vulkan and Direct3D 12 drivers. |
+| `tfx_impl_webgpu.h/.cpp` | The WebGPU backend, written against the standard `webgpu.h` and run on wgpu-native. Uploads go through the queue, uniforms through dynamic offsets. |
 | `tfx_impl_gl.h/.cpp` | The OpenGL 4.3 core backend. It includes no GL header and loads its functions through a loader you pass it, such as `glfwGetProcAddress`. |
-| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, bindless `.dxil` for D3D12, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, bindless `.dxil` for D3D12, bindless `.spv` for Vulkan, `.wgsl` for WebGPU, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
@@ -18,6 +20,8 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `example_win32_dx12/main.cpp` | A Win32 window, a D3D12 device, queue, swap chain and frames in flight, and the same main loop. |
 | `example_sdl3_gpu/main.cpp` | An SDL3 window and GPU device, Vulkan by default or Direct3D 12 with `--d3d12`, and the same main loop. |
 | `example_glfw_opengl/main.cpp` | A GLFW window with a 4.3 core debug context, and the same main loop. |
+| `example_glfw_vulkan/main.cpp` | A GLFW window, a Vulkan 1.3 instance, device and swap chain with frames in flight, and the same main loop. |
+| `example_glfw_webgpu/main.cpp` | A GLFW window, a wgpu-native instance, adapter, device and surface, Vulkan or D3D12 underneath, and the same main loop. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
 
 So there are three layers. `tfx_impl_common` is integration code you can copy into a game as it is, `example_scene` is
@@ -30,7 +34,7 @@ project can call a backend that was built as C++. The examples only include `tim
 `timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
-Status: D3D11, D3D12 (bindless), SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
+Status: D3D11, D3D12 (bindless), Vulkan (bindless), WebGPU (wgpu-native), SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
 baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
@@ -50,20 +54,27 @@ The SDL3 example is off by default, because it downloads and builds SDL3 with Fe
 `-D TFX_EXAMPLE_SDL3=ON` when you configure. The OpenGL example is off by default too, because it needs GLFW, which it
 downloads unless the parent project already has a `glfw` target, and spirv-cross, which comes with the Vulkan SDK. Turn
 it on with `-D TFX_EXAMPLE_GL=ON`. The D3D12 example is off by default to keep the build short: turn it on with
-`-D TFX_EXAMPLE_DX12=ON`.
+`-D TFX_EXAMPLE_DX12=ON`. The Vulkan example needs the Vulkan SDK (CMake's `find_package(Vulkan)`) and GLFW, fetched
+the same way: turn it on with `-D TFX_EXAMPLE_VULKAN=ON`. The WebGPU example downloads wgpu-native's release for Windows x64
+or Linux x64 (or set `TFX_WGPU_NATIVE_DIR` to one you've unzipped) and uses GLFW: turn it on with `-D TFX_EXAMPLE_WEBGPU=ON`.
 
 ```
 example_win32_dx11 [updates per second]
 example_win32_dx12 [updates per second] [--frames N] [--test-debug-output] [--gpu-validation]
 example_sdl3_gpu [--d3d12] [updates per second]
 example_glfw_opengl [updates per second] [--frames N] [--test-debug-output]
+example_glfw_vulkan [updates per second] [--frames N] [--test-debug-output] [--gpu-validation]
+example_glfw_webgpu [updates per second] [--frames N] [--test-debug-output] [--gpu-validation] [--vulkan | --d3d12]
 ```
 
 Space fires a burst of sparks, O pauses the camera orbit, L frees and reloads the second library, the mouse wheel
 zooms and Escape quits. The window title shows the frame rate and the particle counts. In debug builds the D3D11
 debug layer's messages are repeated on the console, and so are the Vulkan validation layer's and the D3D12 debug
-layer's in the SDL3 example. The OpenGL example asks for a debug context and the backend prints the driver's messages;
-`--test-debug-output` makes one deliberate error to prove they arrive, and `--frames N` quits after N frames.
+layer's in the SDL3 example. The OpenGL example asks for a debug context and the backend prints the driver's messages,
+the D3D12 and Vulkan examples print their debug and validation layers' messages, and the WebGPU example prints WebGPU's
+validation errors and wgpu-native's log. In the examples that take them,
+`--test-debug-output` makes one deliberate error to prove the messages arrive, `--gpu-validation` turns on the GPU
+side of the layer, which checks what the shaders do with each descriptor, and `--frames N` quits after N frames.
 Passing an update rate (20 or 400, say) is a quick way to check the interpolation: the effects should look the same at
 any rate. The examples size the GPU rings for it with `tfx_SetGPUSizingUpdateRate` before the scene starts.
 
@@ -340,6 +351,89 @@ heap slot from their push constants. The Shaders readme's "Bindless on D3D12" ha
   `--test-debug-output` makes one deliberate error to prove they arrive, and `--gpu-validation` turns on GPU based validation,
   which checks what the shaders do with each descriptor. It reports live objects at exit, where only the device should be left.
 
+## Vulkan notes
+
+`tfx_impl_vulkan` uses the bindless model, the same SPIR-V the editor draws with. It follows the D3D12 backend's functions
+and order of work, and binds one descriptor set for everything. The Shaders readme's "Bindless on Vulkan" has the layout.
+
+- **Vulkan 1.3**, for dynamic rendering and synchronization2, plus the descriptor indexing features and
+  `shaderDrawParameters` that `tfx_impl_vulkan_Init` lists in `tfx_impl_vulkan.h`. `example_glfw_vulkan` checks them
+  when it picks a device and turns them on. The pipelines are made for the color and depth formats you pass, with no
+  render pass. With a render pass of your own, give `VkGraphicsPipelineCreateInfo` its `renderPass` in place of the
+  `VkPipelineRenderingCreateInfo`.
+- **Frames in flight** work as on D3D12: call `tfx_impl_vulkan_BeginFrame` with the frame slot once its fence has
+  signalled. Each slot has its own upload ring, and anything replaced while a frame may still read it (a grown buffer
+  and its descriptor slot, a big upload) is destroyed when its slot comes round again.
+- **Descriptors.** One set, with the sampler at binding 0, images at 3, storage buffers at 5 and uniform buffers at 7.
+  Images and buffers are written into free slots while earlier frames are still in flight, so those two bindings are
+  `UPDATE_AFTER_BIND`, `UPDATE_UNUSED_WHILE_PENDING` and `PARTIALLY_BOUND`. Storage buffers are untyped, so each buffer
+  has one slot whatever row types it's read as: the pool's hot, cold and noise sections all take the pool's index with
+  their bases, and the frame's upload arrays all take the upload's.
+- **One pipeline layout** for every pipeline, with one push constant range of 112 bytes (the ribbon globals, the largest
+  block) for the vertex, fragment and compute stages. The baked billboard draw pushes `tfx_baked_billboard_push`, whose
+  first seven values are what the shared fragment shader reads. The kernel's block goes once per fetch, then only
+  `dispatch_index`, its first 4 bytes, per dispatch.
+- **Barriers are global memory barriers**, three of them each frame: one before the uploads' copies, one at the start
+  of `tfx_impl_vulkan_Compute` and one at its end for the draws. So call `tfx_impl_vulkan_Compute` every frame, outside
+  `vkCmdBeginRendering`, even when there's nothing to dispatch. An engine that tracks buffer state in a render graph can
+  replace them with its own.
+- **The view uniforms** are a small host visible uniform buffer per frame slot, written by `tfx_impl_vulkan_Render`,
+  because copies aren't allowed inside rendering.
+- **The atlas is image slot 0.** Its mips are linear blits of the level above, a 2 x 2 box filter. Every layer is moved
+  to the shader read layout on the first upload, because the view covers layers no atlas has filled yet.
+- **The billboard draws** take the instance buffer as a per instance vertex buffer, and `vkCmdDraw`'s first instance
+  starts each range. The baked billboard pipeline leaves out location 7, `captured_index`, which its vertex shader
+  doesn't read.
+- **Memory.** Every buffer and image gets its own `vkAllocateMemory`, which is plenty for the few dozen the backend
+  makes. An engine would sub-allocate from its own allocator or VMA.
+- **Validation.** The example turns the validation layer on in debug builds when the Vulkan SDK has installed it, and
+  prints its messages through a debug messenger. `--test-debug-output` creates a zero size buffer to prove they arrive,
+  and `--gpu-validation` turns on GPU assisted validation. At exit the layer reports any object the backend leaked
+  when the device is destroyed.
+
+## WebGPU notes
+
+`tfx_impl_webgpu` follows the SDL_gpu backend, with the same fixed bindings compiled to WGSL, and uses nothing but the
+standard `webgpu.h`. It has run on wgpu-native v29 over Vulkan and D3D12. Dawn and the browser (Emscripten) haven't been
+tried, and the example's window and device code is wgpu-native's.
+
+- **Bind groups.** Everything is in group 0 at the bindings in the Shaders readme's slots table, with one explicit bind
+  group layout per pipeline, since the uniform blocks take dynamic offsets. A bind group can't be changed once it's made,
+  so each one is kept and made again only after a buffer or texture has been replaced, which a counter on the renderer
+  tracks. The billboard draw and the kernel keep one for each instance buffer being the current one.
+- **Uniforms.** WebGPU has no push constants, so every block lives in one uniform buffer at 256 byte steps and is bound
+  at a dynamic offset: the view first, then each draw range's draw constants, then the compute blocks, one per kernel
+  dispatch for its `dispatch_index`, the two playback blocks and each ribbon bucket's globals. The ribbon draw reads
+  the globals again from the block its compute dispatch used. `tfx_impl_webgpu_Compute` and `tfx_impl_webgpu_Render` each
+  write their blocks with one `wgpuQueueWriteBuffer`. A bind group holds the buffer itself, so the compute counts the
+  ribbon buckets first and grows the buffer before taking any bind group.
+- **Uploads go through the queue.** `wgpuQueueWriteBuffer` and `wgpuQueueWriteTexture` copy the data before returning
+  and land after everything already submitted, so the backend has no upload rings, frame slots or deferred releases. A
+  queue write lands before every command buffer of the next submit, though, so a copy recorded in the frame's encoder
+  would run after the frame's uploads. Grown instance buffers are copied across in a command buffer of their own,
+  submitted at once. `tfx_CopyGPUParticleUpload` fills a CPU copy that the queue copies again, and the pool needs no
+  clearing because every new WebGPU buffer starts zeroed.
+- **No barriers.** WebGPU puts them in between dispatches and passes. The compute is one compute pass, and the render
+  pass binds nothing for writing.
+- **Limits.** The defaults are enough: 6 storage buffers in a stage at most (the ribbon compute), read only in the
+  vertex stage as WebGPU requires, and 256 invocations a workgroup. The example still asks for the adapter's
+  `maxStorageBufferBindingSize` and `maxBufferSize`, because the default 128 MB binding can be too small for a big pool.
+- **Textures.** Every view is made as a 2D array, even of a one layer texture, whose default view is plain 2D and doesn't
+  fit the shaders' `texture_2d_array`. The color ramps are bound as unfilterable float, since they're only loaded, so a 32
+  bit float ramp needs no `float32-filterable`. The atlas mips are built on the CPU, as for SDL_gpu, because WebGPU
+  can't generate them.
+- **Errors.** WebGPU validates every call and reports what no error scope catches to the device's uncaptured error
+  callback, which the example prints. `tfx_impl_webgpu_Init` puts an error scope around the pipelines, so a shader or
+  layout mistake fails Init. wgpu-native calls the scope back before `wgpuDevicePopErrorScope` returns. Where a WebGPU calls
+  back later, the error is still printed but Init can't fail on it. In debug builds the example also turns on wgpu's
+  backend validation (the Vulkan validation layer or the D3D12 debug layer) and prints wgpu-native's log.
+  `--test-debug-output` creates a buffer that can't be both mapped and a storage buffer, and `--gpu-validation` turns on
+  GPU based validation underneath.
+- **D3D12 under wgpu** compiles naga's HLSL at pipeline creation, so the example asks for DXC by its file name,
+  `dxcompiler.dll`, which it finds on the PATH (the Vulkan SDK has one). An empty path asks for a DXC built into
+  wgpu-native, which the release builds don't have, and without the DLL wgpu leaves out D3D12 altogether. FXC works but
+  takes much longer. The debug example starts in about 6 seconds on D3D12 and 3 on Vulkan.
+
 ## SDL_gpu notes
 
 `tfx_impl_sdlgpu` follows the D3D11 backend call for call, with the same fixed bindings, so these are only the
@@ -494,7 +588,7 @@ for any layer that binds a fixed set of resources per stage (SDL_gpu), compile w
 from one atlas, every buffer as raw rows, and the instances and ribbon vertexes from buffers in place of vertex
 attributes. Macros set the set, space and binding base of each kind of slot, so the slots fit your API's or engine's
 convention. D3D11 uses it with the defaults. OpenGL uses it through SPIR-V and SPIRV-Cross, as the Shaders readme
-describes and the OpenGL backend does. WebGPU is meant to use the same define, but hasn't been tried.
+describes and the OpenGL backend does. WebGPU uses it as WGSL, as the WebGPU backend does.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear

@@ -160,13 +160,8 @@ if (TFX_EXAMPLE_SDL3)
 	target_compile_definitions(example_sdl3_gpu PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_SDL_SHADER_FOLDER}")
 endif()
 
-# Off unless asked for. Uses the parent project's glfw target when it has one, otherwise downloads GLFW
-option(TFX_EXAMPLE_GL "Build the OpenGL example with GLFW" OFF)
-if (TFX_EXAMPLE_GL)
-	find_program(TFX_SPIRV_CROSS spirv-cross HINTS "$ENV{VULKAN_SDK}/Bin")
-	if (NOT TFX_SPIRV_CROSS)
-		message(FATAL_ERROR "spirv-cross wasn't found. It comes with the Vulkan SDK, put its bin folder on the PATH or set TFX_SPIRV_CROSS to spirv-cross")
-	endif()
+# The OpenGL and Vulkan examples use the parent project's glfw target when it has one, otherwise they download GLFW
+macro(tfx_example_require_glfw)
 	if (NOT TARGET glfw)
 		include(FetchContent)
 		set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -179,6 +174,16 @@ if (TFX_EXAMPLE_GL)
 			GIT_SHALLOW TRUE)
 		FetchContent_MakeAvailable(glfw)
 	endif()
+endmacro()
+
+# Off unless asked for, because it needs GLFW
+option(TFX_EXAMPLE_GL "Build the OpenGL example with GLFW" OFF)
+if (TFX_EXAMPLE_GL)
+	find_program(TFX_SPIRV_CROSS spirv-cross HINTS "$ENV{VULKAN_SDK}/Bin")
+	if (NOT TFX_SPIRV_CROSS)
+		message(FATAL_ERROR "spirv-cross wasn't found. It comes with the Vulkan SDK, put its bin folder on the PATH or set TFX_SPIRV_CROSS to spirv-cross")
+	endif()
+	tfx_example_require_glfw()
 
 	# Slang's own GLSL is Vulkan GLSL, so each entry point goes through SPIR-V and spirv-cross to GLSL 430, with the default fixed bindings
 	set(TFX_GL_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/gl_shaders)
@@ -274,4 +279,141 @@ if (WIN32 AND TFX_EXAMPLE_DX12)
 	target_link_libraries(example_win32_dx12 PRIVATE d3d12 dxgi)
 	add_dependencies(example_win32_dx12 tfx_dx12_shaders)
 	target_compile_definitions(example_win32_dx12 PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_DX12_SHADER_FOLDER}")
+endif()
+
+# Off unless asked for, because it needs the Vulkan SDK and GLFW. The bindless model: SPIR-V with no defines, each entry point keeping
+# its name, reading every resource from one descriptor set by the index in its push constants
+option(TFX_EXAMPLE_VULKAN "Build the Vulkan example with GLFW, with the bindless shaders" OFF)
+if (TFX_EXAMPLE_VULKAN)
+	find_package(Vulkan REQUIRED)
+	tfx_example_require_glfw()
+	set(TFX_VULKAN_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/vulkan_shaders)
+	set(TFX_VULKAN_ENTRY_POINTS
+		simulate_particles
+		tfx_billboard_vertex
+		tfx_billboard_baked_vertex
+		tfx_billboard_fragment
+		tfx_ribbon_compute
+		tfx_ribbon_vertex
+		tfx_ribbon_fragment
+		tfx_sprite_playback
+		tfx_ribbon_playback
+	)
+	set(TFX_VULKAN_SHADERS)
+	foreach(entry_point ${TFX_VULKAN_ENTRY_POINTS})
+		set(shader_output ${TFX_VULKAN_SHADER_FOLDER}/${entry_point}.spv)
+		add_custom_command(OUTPUT ${shader_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_VULKAN_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -o ${shader_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for Vulkan")
+		list(APPEND TFX_VULKAN_SHADERS ${shader_output})
+	endforeach()
+	add_custom_target(tfx_vulkan_shaders DEPENDS ${TFX_VULKAN_SHADERS})
+
+	add_executable(example_glfw_vulkan
+		${CMAKE_CURRENT_SOURCE_DIR}/example_glfw_vulkan/main.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_vulkan.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_vulkan.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	set_source_files_properties(${TFX_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_glfw_vulkan)
+	target_link_libraries(example_glfw_vulkan PRIVATE glfw Vulkan::Vulkan)
+	add_dependencies(example_glfw_vulkan tfx_vulkan_shaders)
+	target_compile_definitions(example_glfw_vulkan PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_VULKAN_SHADER_FOLDER}")
+endif()
+
+# Off unless asked for, because it downloads wgpu-native's prebuilt release and needs GLFW. The fixed bindings as WGSL, each entry
+# point keeping its own name
+option(TFX_EXAMPLE_WEBGPU "Build the WebGPU example with wgpu-native and GLFW" OFF)
+if (TFX_EXAMPLE_WEBGPU)
+	tfx_example_require_glfw()
+	set(TFX_WGPU_NATIVE_DIR "" CACHE PATH "An unzipped wgpu-native release holding include/webgpu and lib, downloaded when empty")
+	set(wgpu_native_folder ${TFX_WGPU_NATIVE_DIR})
+	if (NOT wgpu_native_folder)
+		if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+			set(wgpu_native_archive wgpu-windows-x86_64-msvc-release.zip)
+			set(wgpu_native_hash 7e67d7445c42aeb85e30f88930fd8d7d83ee769e3390aeb1ada75ebf3cf78132)
+		elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+			set(wgpu_native_archive wgpu-linux-x86_64-release.zip)
+			set(wgpu_native_hash 95a4d90c071005a98d03eab348beaa6b07e16eb00d1dcdb9f8348f75eb97ec5a)
+		else()
+			message(FATAL_ERROR "There's no wgpu-native download set up for this platform. Unzip a release from github.com/gfx-rs/wgpu-native and set TFX_WGPU_NATIVE_DIR to it")
+		endif()
+		if (POLICY CMP0135)
+			cmake_policy(SET CMP0135 NEW)
+		endif()
+		include(FetchContent)
+		FetchContent_Declare(wgpu_native
+			URL https://github.com/gfx-rs/wgpu-native/releases/download/v29.0.1.1/${wgpu_native_archive}
+			URL_HASH SHA256=${wgpu_native_hash})
+		FetchContent_MakeAvailable(wgpu_native)
+		set(wgpu_native_folder ${wgpu_native_SOURCE_DIR})
+	endif()
+	if (NOT TARGET tfx_wgpu_native)
+		add_library(tfx_wgpu_native SHARED IMPORTED)
+		if (WIN32)
+			set_target_properties(tfx_wgpu_native PROPERTIES
+				IMPORTED_LOCATION ${wgpu_native_folder}/lib/wgpu_native.dll
+				IMPORTED_IMPLIB ${wgpu_native_folder}/lib/wgpu_native.dll.lib)
+		elseif (APPLE)
+			set_target_properties(tfx_wgpu_native PROPERTIES IMPORTED_LOCATION ${wgpu_native_folder}/lib/libwgpu_native.dylib)
+		else()
+			set_target_properties(tfx_wgpu_native PROPERTIES IMPORTED_LOCATION ${wgpu_native_folder}/lib/libwgpu_native.so)
+		endif()
+		set_target_properties(tfx_wgpu_native PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES ${wgpu_native_folder}/include
+			INTERFACE_COMPILE_DEFINITIONS WGPU_SHARED_LIBRARY)
+	endif()
+
+	set(TFX_WEBGPU_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/webgpu_shaders)
+	set(TFX_WEBGPU_ENTRY_POINTS
+		simulate_particles
+		tfx_billboard_vertex
+		tfx_billboard_baked_vertex
+		tfx_billboard_fragment
+		tfx_ribbon_compute
+		tfx_ribbon_vertex
+		tfx_ribbon_fragment
+		tfx_sprite_playback
+		tfx_ribbon_playback
+	)
+	set(TFX_WEBGPU_SHADERS)
+	foreach(entry_point ${TFX_WEBGPU_ENTRY_POINTS})
+		set(shader_output ${TFX_WEBGPU_SHADER_FOLDER}/${entry_point}.wgsl)
+		add_custom_command(OUTPUT ${shader_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_WEBGPU_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target wgsl -D TFX_FIXED_BINDINGS -D TFX_ENTRY_${entry_point} -o ${shader_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for WebGPU")
+		list(APPEND TFX_WEBGPU_SHADERS ${shader_output})
+	endforeach()
+	add_custom_target(tfx_webgpu_shaders DEPENDS ${TFX_WEBGPU_SHADERS})
+
+	add_executable(example_glfw_webgpu
+		${CMAKE_CURRENT_SOURCE_DIR}/example_glfw_webgpu/main.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_webgpu.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_webgpu.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	set_source_files_properties(${TFX_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_glfw_webgpu)
+	target_link_libraries(example_glfw_webgpu PRIVATE glfw tfx_wgpu_native)
+	add_dependencies(example_glfw_webgpu tfx_webgpu_shaders)
+	target_compile_definitions(example_glfw_webgpu PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_WEBGPU_SHADER_FOLDER}")
+	if (WIN32)
+		add_custom_command(TARGET example_glfw_webgpu POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different ${wgpu_native_folder}/lib/wgpu_native.dll $<TARGET_FILE_DIR:example_glfw_webgpu>)
+	endif()
 endif()
