@@ -1,6 +1,5 @@
 #include "example_scene.h"
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 #define EXAMPLE_SCENE_UPDATE_FREQUENCY 60.0
@@ -17,7 +16,7 @@
 
 static tfx_effect_template example_scene__create_template(tfx_library library, const char *path) {
 	if (!tfx_IsValidDescriptorPath(library, path)) {
-		printf("There's no effect called \"%s\" in the library\n", path);
+		tfx_Print("There's no effect called \"%s\" in the library", path);
 		return NULL;
 	}
 	return tfx_CreateEffectTemplate(library, path);
@@ -37,11 +36,11 @@ static tfx_library example_scene__load_library(const char *path, tfx_impl_shapes
 	tfxErrorFlags status = library ? tfx_GetLibraryErrorStatus(library) : tfxErrorCode_library_object_could_not_be_created;
 	//These two still leave a fully loaded library
 	if (status & tfxErrorCode_file_version_out_of_date) {
-		printf("%s was saved in file format %u, resave it in the editor to update it\n", path, tfx_GetLibraryFileVersion(library));
+		tfx_Print("%s was saved in file format %u, resave it in the editor to update it", path, tfx_GetLibraryFileVersion(library));
 	}
 	status &= ~(tfxErrorCode_file_version_out_of_date | tfxErrorCode_shapes_changed_on_disk);
 	if (status != 0) {
-		printf("Could not load %s (error flags 0x%x)\n", path, (unsigned)status);
+		tfx_Print("Could not load %s (error flags 0x%x)", path, (unsigned)status);
 		if (library) {
 			tfx_FreeLibrary(library);
 		}
@@ -58,7 +57,7 @@ static bool example_scene__build_atlas(example_scene_t *scene, example_scene_sha
 		return true;
 	}
 	if (!tfx_impl_BuildShapeAtlas(&shape_set->shapes, &shape_set->atlas, first_layer, scene->atlas_layer_size)) {
-		printf("Could not build the shape atlas\n");
+		tfx_Print("Could not build the shape atlas");
 		return false;
 	}
 	return true;
@@ -93,13 +92,13 @@ static void example_scene__reload_second_library(example_scene_t *scene) {
 		return;
 	}
 	if (shape_set->atlas.layer_count > shape_set->reserved_layers) {
-		printf("%s needs %u atlas layers but only %u are kept for it\n", scene->second_library_path, shape_set->atlas.layer_count, shape_set->reserved_layers);
+		tfx_Print("%s needs %u atlas layers but only %u are kept for it", scene->second_library_path, shape_set->atlas.layer_count, shape_set->reserved_layers);
 		example_scene__free_second_library(scene);
 		return;
 	}
 	tfx_UpdateLibraryGPUImageData(scene->second_library);
 	if (!tfx_UpdateGlobalGPUData()) {
-		printf("The libraries need more room than the global GPU buffers have\n");
+		tfx_Print("The libraries need more room than the global GPU buffers have");
 		example_scene__free_second_library(scene);
 		return;
 	}
@@ -107,7 +106,7 @@ static void example_scene__reload_second_library(example_scene_t *scene) {
 		scene->second_library_id = tfx_AddEffectTemplateToStage(scene->stage, scene->second_library_template);
 		tfx_SetEffectPosition(scene->stage, scene->second_library_id, 4.f, 1.f, -4.f);
 	}
-	printf("Reloaded %s into atlas layers %u to %u\n", scene->second_library_path, first_layer, first_layer + shape_set->reserved_layers - 1);
+	tfx_Print("Reloaded %s into atlas layers %u to %u", scene->second_library_path, first_layer, first_layer + shape_set->reserved_layers - 1);
 }
 
 bool example_scene_Load(example_scene_t *scene, const char *library_path, const char *second_library_path, const char *sprite_data_path, tfxU32 features) {
@@ -143,7 +142,7 @@ bool example_scene_Load(example_scene_t *scene, const char *library_path, const 
 		scene->animation_manager = tfx_CreateAnimationManager(EXAMPLE_SCENE_MAX_BAKED_INSTANCES, 0);
 		tfxErrorFlags sprite_data_status = tfx_LoadSpriteData(sprite_data_path, scene->animation_manager, tfx_impl_ShapeLoader, &scene->shape_sets[example_scene_shapes_sprite_data].shapes);
 		if (sprite_data_status != 0) {
-			printf("Could not load %s (error flags 0x%x)\n", sprite_data_path, (unsigned)sprite_data_status);
+			tfx_Print("Could not load %s (error flags 0x%x)", sprite_data_path, (unsigned)sprite_data_status);
 			return false;
 		}
 	}
@@ -177,7 +176,7 @@ bool example_scene_Load(example_scene_t *scene, const char *library_path, const 
 	}
 	//Lays every library out in the global buffers the backend uploads. Effects can only be added from libraries it placed
 	if (!tfx_UpdateGlobalGPUData()) {
-		printf("The libraries need more room than the global GPU buffers have\n");
+		tfx_Print("The libraries need more room than the global GPU buffers have");
 		return false;
 	}
 	return true;
@@ -275,7 +274,7 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 		//One call per frame that writes the instances once, so the previous instance buffer is always the one drawn last
 		tfx_UpdateStageSubSteps(scene->stage, scene->timer.update_length, ticks);
 	}
-	tfx_impl_GatherFrame(scene->stage, ticks, (scene->features & example_scene_feature_ribbons) ? &scene->ribbon_staging : NULL,
+	tfx_impl_GatherFrame(scene->stage, ticks > 0, (scene->features & example_scene_feature_ribbons) ? &scene->ribbon_staging : NULL,
 		(scene->features & example_scene_feature_gpu_simulation) != 0, frame);
 
 	if (scene->animation_manager) {

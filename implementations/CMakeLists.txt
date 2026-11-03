@@ -82,3 +82,80 @@ if (WIN32)
 	add_dependencies(example_win32_dx11 tfx_dx11_shaders)
 	target_compile_definitions(example_win32_dx11 PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_DX11_SHADER_FOLDER}")
 endif()
+
+# Off unless asked for, because it downloads and builds SDL3
+option(TFX_EXAMPLE_SDL3 "Build the SDL3 GPU example, fetching SDL3 with FetchContent" OFF)
+if (TFX_EXAMPLE_SDL3)
+	include(FetchContent)
+	set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+	set(SDL_STATIC ON CACHE BOOL "" FORCE)
+	set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+	FetchContent_Declare(SDL3
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+		GIT_TAG release-3.4.18
+		GIT_SHALLOW TRUE)
+	FetchContent_MakeAvailable(SDL3)
+
+	# SDL_gpu's sets and spaces, SPIR-V for Vulkan and DXIL for D3D12. Each entry point keeps its name in SPIR-V so SDL can find it
+	set(TFX_SDL_SHADER_DEFINES -D TFX_FIXED_BINDINGS
+		-D TFX_VERTEX_UNIFORM_SPACE=1 -D TFX_VERTEX_UNIFORM_BINDING=0
+		-D TFX_FRAGMENT_TEXTURE_SPACE=2 -D TFX_FRAGMENT_TEXTURE_BINDING=0 -D TFX_FRAGMENT_SAMPLER_SPACE=2 -D TFX_FRAGMENT_SAMPLER_BINDING=0
+		-D TFX_COMPUTE_READ_BINDING=0 -D TFX_COMPUTE_WRITE_SPACE=1 -D TFX_COMPUTE_UNIFORM_SPACE=2 -D TFX_COMPUTE_UNIFORM_BINDING=0
+		-D TFX_COMBINED_SAMPLERS)
+	set(TFX_SDL_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/sdl_shaders)
+	set(TFX_SDL_ENTRY_POINTS
+		simulate_particles cs_6_0
+		tfx_billboard_vertex vs_6_0
+		tfx_billboard_baked_vertex vs_6_0
+		tfx_billboard_fragment ps_6_0
+		tfx_ribbon_compute cs_6_0
+		tfx_ribbon_vertex vs_6_0
+		tfx_ribbon_fragment ps_6_0
+		tfx_sprite_playback cs_6_0
+		tfx_ribbon_playback cs_6_0
+	)
+	set(TFX_SDL_SHADERS)
+	list(LENGTH TFX_SDL_ENTRY_POINTS entry_point_list_length)
+	math(EXPR last_entry_point_index "${entry_point_list_length} - 1")
+	foreach(entry_point_index RANGE 0 ${last_entry_point_index} 2)
+		math(EXPR profile_index "${entry_point_index} + 1")
+		list(GET TFX_SDL_ENTRY_POINTS ${entry_point_index} entry_point)
+		list(GET TFX_SDL_ENTRY_POINTS ${profile_index} profile)
+		set(spirv_output ${TFX_SDL_SHADER_FOLDER}/${entry_point}.spv)
+		add_custom_command(OUTPUT ${spirv_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_SDL_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name ${TFX_SDL_SHADER_DEFINES} -D TFX_ENTRY_${entry_point} -o ${spirv_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for SDL_gpu Vulkan")
+		list(APPEND TFX_SDL_SHADERS ${spirv_output})
+		if (WIN32)
+			set(dxil_output ${TFX_SDL_SHADER_FOLDER}/${entry_point}.dxil)
+			add_custom_command(OUTPUT ${dxil_output}
+				COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_SDL_SHADER_FOLDER}
+				COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target dxil -profile ${profile} ${TFX_SDL_SHADER_DEFINES} -D TFX_ENTRY_${entry_point} -o ${dxil_output}
+				DEPENDS ${TFX_SHADER_SOURCE}
+				COMMENT "Compiling ${entry_point} for SDL_gpu D3D12")
+			list(APPEND TFX_SDL_SHADERS ${dxil_output})
+		endif()
+	endforeach()
+	add_custom_target(tfx_sdl_shaders DEPENDS ${TFX_SDL_SHADERS})
+
+	add_executable(example_sdl3_gpu
+		${CMAKE_CURRENT_SOURCE_DIR}/example_sdl3_gpu/main.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_sdlgpu.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_sdlgpu.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	set_source_files_properties(${TFX_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_sdl3_gpu)
+	# vulkan_core.h from SDL's own copy, because the Vulkan SDK's include folder has older SDL3 headers in it
+	target_include_directories(example_sdl3_gpu PRIVATE ${sdl3_SOURCE_DIR}/src/video/khronos)
+	target_link_libraries(example_sdl3_gpu PRIVATE SDL3::SDL3)
+	add_dependencies(example_sdl3_gpu tfx_sdl_shaders)
+	target_compile_definitions(example_sdl3_gpu PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_SDL_SHADER_FOLDER}")
+endif()

@@ -14,14 +14,26 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 
 | Target | Command |
 | --- | --- |
-| Vulkan, bindless | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -o <entry point>.spv` |
-| Fixed bindings, SPIR-V | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.spv` |
+| Vulkan, bindless | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -o <entry point>.spv` |
+| Fixed bindings, SPIR-V | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.spv` |
 | Fixed bindings, DXIL | `slangc timelinefx.slang -entry <entry point> -target dxil -profile <vs_6_0, ps_6_0 or cs_6_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.dxil` |
 | D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -line-directive-mode none -o <entry point>.cso` |
 
 - **`TFX_ENTRY_<entry point>`** is the entry point's name as it is, for example `-D TFX_ENTRY_tfx_billboard_vertex`. Under the fixed bindings it picks that entry point's resources and slots, so the compile has to have it. The kernel's slots don't depend on it.
+- **`-fvk-use-entrypoint-name`** keeps the entry point's own name in the SPIR-V. Without it slangc names every one `main`, which is the name to give your API instead. DXIL and DXBC always keep the name.
 - **`spirv_1_5` needs a Vulkan 1.2 device.** The bindless model needs 1.2 anyway, for descriptor indexing. Under the fixed bindings `-profile spirv_1_3` also validates for Vulkan 1.1 (checked with spirv-val, not yet on a device). SDL_gpu creates a Vulkan 1.0 instance unless you pass `SDL_GPUVulkanOptions` with `vulkan_api_version` through `SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER`.
-- **Vulkan needs `shaderDrawParameters`**, a core Vulkan 1.1 feature. Slang reads `SV_VertexID` as `gl_VertexIndex - gl_BaseVertex`, which needs the `DrawParameters` capability.
+- **Vulkan needs `shaderDrawParameters`**, a core Vulkan 1.1 feature. Slang reads `SV_VertexID` as `gl_VertexIndex - gl_BaseVertex`, which needs the `DrawParameters` capability. SDL_gpu only turns it on when you ask for it in `feature_list`, with Vulkan 1.2 for `spirv_1_5`:
+
+  ```c
+  VkPhysicalDeviceVulkan11Features vulkan_11_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+  vulkan_11_features.shaderDrawParameters = VK_TRUE;
+  SDL_GPUVulkanOptions vulkan_options = { 0 };
+  vulkan_options.vulkan_api_version = VK_MAKE_API_VERSION(0, 1, 2, 0);
+  vulkan_options.feature_list = &vulkan_11_features;	//Only read at 1.2 and up
+  SDL_SetPointerProperty(properties, SDL_PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER, &vulkan_options);
+  ```
+
+  Both have to stay alive until `SDL_CreateGPUDeviceWithProperties` returns. The Vulkan SDK's `Include` folder has its own, older SDL3 headers, so adding it to your include path for `vulkan_core.h` can hide `SDL_GPUVulkanOptions`. Put SDL's include folder first, or take the Vulkan headers from somewhere else. Without these options the shaders still draw on some drivers, so only the validation layer tells you.
 - **D3D11:** fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits, hence `-line-directive-mode none`. Leave out `-stage`: the entry point declares it, and slangc warns if you pass it as well. fxc has no register spaces, so leave every `*_SPACE` macro at 0.
 - **Matrices are column major** whatever your Slang session defaults to (the Slang API defaults to row major, slangc to column major), because every matrix in the file is marked `column_major`. Upload them column major.
 
@@ -79,7 +91,7 @@ The two vertex inputs are vertex buffers:
 | Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sscaled, 3 `alignment` r8g8b8_snorm, 4 `intensity_gradient_map` r16g16_sscaled, 5 `curved_alpha_life` r8g8b8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
 | Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint |
 
-D3D12 hasn't been tried yet.
+D3D12 hasn't been tried with the bindless model yet. The fixed bindings below run on D3D12 under SDL_gpu.
 
 ### Fixed bindings: D3D11, SDL_gpu, OpenGL and WGSL
 
@@ -176,7 +188,7 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
   - Unbind what the next pass writes. The instance buffer the kernel writes is the one the vertex shader reads, and a buffer bound for reading and writing at once gets one of its binds cleared, with a debug layer warning.
   - If you keep two instance buffers for interpolation, copy both across when they grow, because the GPU instances in the previous one exist nowhere else.
   - fxc warns that 256 threads times the kernel's temp registers is over its recommended total (X4714), and that `pow` won't work for a negative base (X3571). The base is a unit hash, never negative, and neither shows up at run time.
-- **SDL_gpu:** compile with the line above, SPIR-V for Vulkan and DXIL for D3D12. Push each uniform block with `SDL_PushGPUVertexUniformData`, `SDL_PushGPUComputeUniformData` and so on at its slot, the kernel's once per dispatch. SDL doesn't zero buffers, so create the pool by uploading zeros. There's no SDL_gpu example in [implementations](../implementations) yet.
+- **SDL_gpu:** compile with the line above, SPIR-V for Vulkan and DXIL for D3D12. Push each uniform block with `SDL_PushGPUVertexUniformData`, `SDL_PushGPUComputeUniformData` and so on at its slot, the kernel's once per dispatch. SDL doesn't zero buffers, so create the pool by uploading zeros. [implementations](../implementations) has a working host, `tfx_impl_sdlgpu`, with the whole build in its CMake and more notes in its README.
 - **OpenGL:** Slang emits `#version 450`, so OpenGL 4.5. With the defaults the kernel's buffers are SSBOs at bindings 0 to 3 (`glBindBufferBase`) and its uniforms a UBO at binding 6. The render passes haven't been tried on OpenGL.
 - **WGSL:** the kernel always uses these bindings, define or not, because WebGPU has no descriptor arrays or push constants and allows 8 storage buffers per stage by default. Each kernel dispatch needs its own `dispatch_index`, so write one 64 byte block per dispatch at 256 byte steps and bind it with a dynamic offset. The render passes haven't been tried on WebGPU.
 

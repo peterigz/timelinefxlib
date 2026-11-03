@@ -186,7 +186,7 @@ typedef struct tfx_impl_baked_frame_s {
 } tfx_impl_baked_frame_t;
 
 typedef struct tfx_impl_frame_s {
-	tfxU32 ticks;					//Updates run this frame, nothing needs uploading when it's 0
+	bool stage_updated;				//An update wrote instances this frame, nothing needs uploading when it's false
 	tfx_instance_t *instances;		//Layer major, so the whole buffer goes up in one copy
 	tfxU32 instance_count;
 	tfxU32 layer_start[tfxLAYERS];	//The CPU instances of each layer
@@ -199,9 +199,10 @@ typedef struct tfx_impl_frame_s {
 	tfx_impl_baked_frame_t baked;
 } tfx_impl_frame_t;
 
-//Call after the stage update (or every frame with ticks 0) and waits for it to finish. Pass null ribbon staging if the backend
-//doesn't draw ribbons, and only fetch the GPU particles if the backend dispatches them
-void tfx_impl_GatherFrame(tfx_stage stage, tfxU32 ticks, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame);
+//Call every frame after any stage update and waits for it to finish. stage_updated is true when a tfx_UpdateStage* call ran this frame,
+//including tfx_UpdateStage(stage, 0) after freeing a library on a paused frame. Pass null ribbon staging if the backend doesn't
+//draw ribbons, and only fetch the GPU particles if the backend dispatches them
+void tfx_impl_GatherFrame(tfx_stage stage, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame);
 void tfx_impl_FreeRibbonStaging(tfx_impl_ribbon_staging_t *ribbon_staging);
 //Call every frame after tfx_UpdateAnimationManager
 void tfx_impl_GatherBakedFrame(tfx_animation_manager animation_manager, tfx_impl_baked_frame_t *baked);

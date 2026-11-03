@@ -623,17 +623,17 @@ static void tfx_impl__gather_ribbons(tfx_stage stage, tfx_impl_ribbon_staging_t 
 	ribbon_frame->emitters = staging->emitters;
 }
 
-void tfx_impl_GatherFrame(tfx_stage stage, tfxU32 ticks, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame) {
+void tfx_impl_GatherFrame(tfx_stage stage, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame) {
 	memset(frame, 0, sizeof(tfx_impl_frame_t));
-	frame->ticks = ticks;
-	if (ticks == 0) {
+	frame->stage_updated = stage_updated;
+	if (!stage_updated) {
 		return;
 	}
 	frame->instances = tfx_GetInstanceBuffer(stage);
-	frame->instance_count = (tfxU32)tfx_GetInstanceCount(stage);
+	frame->instance_count = tfx_GetInstanceCount(stage);
 	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 		frame->layer_start[layer] = (tfxU32)(tfx_GetInstanceBufferByLayer(stage, layer) - frame->instances);
-		frame->layer_count[layer] = (tfxU32)tfx_GetInstanceCountByLayer(stage, layer);
+		frame->layer_count[layer] = tfx_GetInstanceCountByLayer(stage, layer);
 	}
 	if (ribbon_staging) {
 		tfx_impl__gather_ribbons(stage, ribbon_staging, &frame->ribbons);

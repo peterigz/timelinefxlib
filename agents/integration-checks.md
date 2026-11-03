@@ -5,7 +5,7 @@ window, so each one prints something to compare. The porting checklist in implem
 this says how to tell it works.
 
 **First:** route the library's messages to a log you can read with `tfx_SetPrintCallback`, if the host has no console,
-and read every line starting `TimelineFX tip:` or `TimelineFX error:`. The tip saying an effect "spawns at user spawn locations" is expected
+and read every line starting `TimelineFX tip:`, `TimelineFX error:` or `TimelineFX assert failed:`. The tip saying an effect "spawns at user spawn locations" is expected
 once per effect when you add locations straight after. Act on every other one.
 
 ## 1. The stage is healthy

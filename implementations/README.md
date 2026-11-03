@@ -6,12 +6,14 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | --- | --- |
 | `tfx_impl_common.h/.cpp` | Everything that would be written the same way whatever API draws the particles: shape loading, the shape atlas, the fixed step timer, the camera matrices and gathering each frame's instances from a stage. Nothing in it talks to a GPU. |
 | `tfx_impl_dx11.h/.cpp` | The Direct3D 11 backend. |
-| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point the example uses to a `.cso`. |
+| `tfx_impl_sdlgpu.h/.cpp` | The SDL3 GPU (SDL_gpu) backend, for its Vulkan and Direct3D 12 drivers. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11 and `.spv` and `.dxil` for SDL_gpu. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
 | `example.tfxsd` | Burst, recorded from `example.tfx` in the editor, for baked playback. |
 | `example_win32_dx11/main.cpp` | A Win32 window, a D3D11 device and swap chain, and the main loop that calls the scene and the backend. |
+| `example_sdl3_gpu/main.cpp` | An SDL3 window and GPU device, Vulkan by default or Direct3D 12 with `--d3d12`, and the same main loop. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
 
 So there are three layers. `tfx_impl_common` is integration code you can copy into a game as it is, `example_scene` is
@@ -24,8 +26,8 @@ project can call a backend that was built as C++. The examples only include `tim
 `timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
-Status: D3D11 draws CPU simulated billboards and ribbons, GPU simulated particles, and baked billboard and ribbon
-playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
+Status: D3D11 and SDL_gpu (Vulkan and D3D12) draw CPU simulated billboards and ribbons, GPU simulated particles, and
+baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
 
@@ -40,13 +42,18 @@ Every shader is compiled from `../Shaders/timelinefx.slang` with slangc, which c
 the Slang releases on GitHub. CMake looks on the `PATH` and in the Vulkan SDK, and stops if it can't find it, so put
 its bin folder on the `PATH` or set `TFX_SLANGC` to it.
 
+The SDL3 example is off by default, because it downloads and builds SDL3 with FetchContent. Turn it on with
+`-D TFX_EXAMPLE_SDL3=ON` when you configure.
+
 ```
 example_win32_dx11 [updates per second]
+example_sdl3_gpu [--d3d12] [updates per second]
 ```
 
 Space fires a burst of sparks, O pauses the camera orbit, L frees and reloads the second library, the mouse wheel
 zooms and Escape quits. The window title shows the frame rate and the particle counts. In debug builds the D3D11
-debug layer's messages are repeated on the console.
+debug layer's messages are repeated on the console, and so are the Vulkan validation layer's and the D3D12 debug
+layer's in the SDL3 example.
 Passing an update rate (20 or 400, say) is a quick way to check the interpolation: the effects should look the same at
 any rate.
 
@@ -109,7 +116,9 @@ Free the stage before the library, and the shapes after the library, because the
 
 **Freeing and reloading a library.** Press L in an example and the scene frees the second library and loads it again
 while the first keeps playing (`example_scene__reload_second_library`). It waits for an update frame and does it before
-the stage update, so the instances drawn next have the new layout:
+the stage update, so the instances drawn next have the new layout. To free on a frame without an update (a paused game),
+call `tfx_UpdateStage(stage, 0)` after `tfx_UpdateGlobalGPUData` and pass `stage_updated` true to `tfx_impl_GatherFrame`,
+or the backend keeps drawing instances written with the old layout:
 
 1. `tfx_FreeLibrary`, which removes its effects from every stage and frees its templates, then `tfx_impl_FreeShapes`.
 2. Load it into the same shape list, then create its templates.
@@ -150,15 +159,16 @@ if (ticks > 0) {
 	//Every due tick at its own length, writing the instances once, so the previous instance buffer is always the one drawn last
 	tfx_UpdateStageSubSteps(stage, timer.update_length, ticks);
 }
-//Waits for the update and does nothing when ticks is 0. Only fetch GPU particles if the backend dispatches them
-tfx_impl_GatherFrame(stage, ticks, &ribbon_staging, fetch_gpu_particles, &frame);
+//Waits for the update and does nothing without one. Pass true after tfx_UpdateStage(stage, 0) too, see "Freeing and reloading a library"
+//Only fetch GPU particles if the backend dispatches them
+tfx_impl_GatherFrame(stage, ticks > 0, &ribbon_staging, fetch_gpu_particles, &frame);
 //Baked playback runs on the real frame time rather than the stage's ticks
 tfx_UpdateAnimationManager(animation_manager, (float)elapsed_milliseconds);
 tfx_impl_GatherBakedFrame(animation_manager, &frame.baked);
 //timer_lerp comes from tfx_GetStageInterpolation, every frame
 tfx_impl_SetUniforms(&uniforms, &camera, screen_width, screen_height, &timer, stage);
 
-tfx_impl_dx11_UploadFrame(&renderer, &frame);	//Baked data every frame, instances, ribbons and changed library data only when ticks > 0
+tfx_impl_dx11_UploadFrame(&renderer, &frame);	//Baked data every frame, instances, ribbons and changed library data only after an update
 tfx_impl_dx11_Compute(&renderer, &uniforms);	//GPU particles on update frames, baked playback and ribbon geometry every frame
 tfx_impl_dx11_Render(&renderer, &uniforms);		//Every frame, interpolating with uniforms.timer_lerp
 ```
@@ -202,6 +212,36 @@ for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 	tfx_ResetInstanceBufferLoopIndex(stage);
 }
 ```
+
+Ribbons aren't in those ranges. Each ribbon bucket holds one key's ribbons and reports it in `dispatch.sort_key`, and
+the buckets come in the order they were made, not by key. Drawing every billboard and then every ribbon, as the D3D11
+example does, puts all ribbons over all billboards whatever their keys. That's right until a key has to draw over
+another key's ribbons. Then draw key by key, each key's billboards in every layer and then its ribbon buckets. Walk every
+bucket and draw only the matching ones, because the dispatch offsets count up through the whole walk:
+
+```c
+//keys: the sort keys you gave out, lowest first
+for (tfxU32 key_index = 0; key_index != key_count; ++key_index) {
+	tfxU32 key = keys[key_index];
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		tfx_instance_key_range_t range;
+		while (tfx_GetNextInstanceKeyRange(stage, layer, &range)) {
+			if (range.sort_key == key) {
+				//Draw the CPU then the GPU instances as above
+			}
+		}
+		tfx_ResetInstanceBufferLoopIndex(stage);
+	}
+	tfx_ribbon_dispatch_t dispatch = tfx_CreateRibbonBatchDispatch(&frame.ribbons.stage_offsets);
+	while (tfx_NextRibbonDispatch(stage, &dispatch)) {
+		if (dispatch.sort_key == key) {
+			//Push tfx_GetRibbonDispatchGlobals(&dispatch), then draw dispatch.index_count indexes from dispatch.index_offset
+		}
+	}
+}
+```
+
+Every key switches from the billboard pipeline to the ribbon one and back, so keep this to the keys that need it.
 
 ## Direct3D 11 notes
 
@@ -267,6 +307,53 @@ for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 - **Shaders** are compiled ahead of time by slangc, one `<entry point>.cso` each, and `tfx_impl_dx11_Init` loads them
   from the folder the CMake project builds them into.
 
+## SDL_gpu notes
+
+`tfx_impl_sdlgpu` follows the D3D11 backend call for call, with the same fixed bindings, so these are only the
+differences.
+
+- **The device.** SDL only turns on what you ask for, and the shaders need Vulkan 1.2 (`spirv_1_5`) and
+  `shaderDrawParameters` (`SV_VertexID`). `CreateDevice` in `example_sdl3_gpu/main.cpp` passes both through
+  `SDL_GPUVulkanOptions`. It takes `vulkan_core.h` from SDL's own source, because the Vulkan SDK's include folder has
+  older SDL3 headers that hide `SDL_GPUVulkanOptions`. Without the options some drivers draw anyway, so only the
+  validation layer tells you.
+- **Validation output.** In debug mode SDL turns the validation layer on but installs no messenger, so nothing reaches
+  you. The example sets `VK_KHRONOS_VALIDATION_DEBUG_ACTION=VK_DBG_LAYER_ACTION_LOG_MSG`, which prints the layer's
+  messages to stdout (`VK_KHRONOS_VALIDATION_LOG_FILENAME` sends them to a file). D3D12's debug layer messages come
+  through `SDL_Log`, which the example prints.
+- **Shaders.** Each entry point is compiled twice with the Shaders readme's SDL `-D` line: SPIR-V with
+  `-fvk-use-entrypoint-name`, so SDL finds it by name, and DXIL at shader model 6.0. SDL wants each shader's counts when
+  it's created:
+
+  | Entry point | Counts |
+  | --- | --- |
+  | `tfx_billboard_vertex` | 4 storage buffers, 2 uniform buffers |
+  | `tfx_billboard_baked_vertex` | 3 storage buffers, 2 uniform buffers |
+  | `tfx_ribbon_vertex` | 5 storage buffers, 2 uniform buffers |
+  | `tfx_billboard_fragment`, `tfx_ribbon_fragment` | 2 samplers: the atlas and the color ramps |
+  | `simulate_particles` | 2 read only, 2 read write, 1 uniform buffer, 256 threads |
+  | `tfx_ribbon_compute` | 4 read only, 2 read write, 1 uniform buffer, 256 threads |
+  | `tfx_sprite_playback`, `tfx_ribbon_playback` | 4 read only, 1 read write, 1 uniform buffer, 128 threads |
+
+- **Uniforms** go through `SDL_PushGPUVertexUniformData` and `SDL_PushGPUComputeUniformData`: the frame's
+  `tfx_impl_uniforms_t` at vertex slot 0 once per frame, each draw's first instance or bucket globals at slot 1, and
+  each compute dispatch's block at compute slot 0, the kernel's before every dispatch.
+- **Everything records into one command buffer** in call order: `tfx_impl_sdlgpu_UploadFrame` (one copy pass),
+  `tfx_impl_sdlgpu_Compute` (compute passes), then `tfx_impl_sdlgpu_Render` inside your render pass. Upload and compute
+  run whether or not you got a swapchain texture, because every GPU particle fetch has to be dispatched.
+- **Uploads.** A frame's uploads are queued, copied into one transfer buffer mapped with cycling, and recorded in one
+  copy pass, with grown instance buffers copied across first. Uploads into buffers never cycle, because the previous
+  instance buffer and the particle pool have to keep what's in them. SDL doesn't zero buffers, so the pool's first
+  upload is zeros.
+- **Compute writes.** The kernel binds the pool and the instance buffer for writing without cycling, since the pool
+  carries the particles over and the instance buffer already holds the frame's CPU instances. The playback and ribbon
+  geometry passes rewrite everything they write, so they cycle and never wait on a frame still drawing.
+- **Mips are built on the CPU.** `SDL_GenerateMipmapsForGPUTexture` does every layer, and its Vulkan and D3D12 mips
+  differ from about the eighth level, which shows on particles a pixel or two across. A 2 x 2 box filter per layer
+  matches D3D11's and is the same on both drivers.
+- **D3D12 depth clears.** The depth texture is created with `SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT` at 1,
+  or the debug layer warns on every clear.
+
 ## Clip space
 
 `tfx_impl_Perspective` builds a right handed projection. Every backend passes the flags for its own clip space:
@@ -311,9 +398,10 @@ tried.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear
-      sampler with mip filtering. Upload each atlas into its own layers and make mips for just those layers. A layer
-      over several APIs can make different mips on each (SDL_gpu's Vulkan and D3D12 do), which shows on particles a
-      pixel or two across.
+      sampler with mip filtering. Upload each atlas into its own layers and make mips for just those layers, or for
+      every layer if your API can't take a range (SDL_gpu can't): the other layers are rebuilt from their own pixels,
+      which costs time but changes nothing. A layer over several APIs can make different mips on each (SDL_gpu's
+      Vulkan and D3D12 do), which shows on particles a pixel or two across.
 - [ ] The color ramps as a texture array, one layer per `tfx_GetGlobalColorRampLayer`, in the format of its bytes per
       pixel (always RGBA16F). It's read with an integer load, never sampled, but where textures and samplers are
       combined (OpenGL, SDL_gpu on Vulkan) bind a nearest sampler with it. Upload only the layers whose version
