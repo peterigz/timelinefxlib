@@ -669,7 +669,7 @@ bool tfx_impl_dx11_UploadFrame(tfx_impl_dx11_t *renderer, const tfx_impl_frame_t
 	if (!tfx_impl_dx11__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
-	if (frame->ticks == 0) {
+	if (!frame->stage_updated) {
 		return true;
 	}
 	if (!tfx_impl_dx11__upload_library_data(renderer)) {
