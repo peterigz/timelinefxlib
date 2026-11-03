@@ -88,7 +88,8 @@ typedef void *tfx_pool;
 //variables only used inside asserts do not become unused-variable warnings.
 #define TFX_ASSERT(condition) ((void)sizeof((condition) ? 1 : 0))
 #else
-#define TFX_ASSERT assert
+//Prints through the print callback first, so a host logging through it sees which assert stopped the program
+#define TFX_ASSERT(condition) ((condition) ? (void)0 : (tfx_Print("TimelineFX assert failed: %s (%s:%d)", #condition, __FILE__, __LINE__), assert(false)))
 #endif
 #endif
 

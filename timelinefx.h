@@ -613,7 +613,6 @@ typedef struct tfx_stage_info_s {
 	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this stage, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit fails, see tfx_EffectIDIsValid. Default 0.
 	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases. Default 1.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater. Default 4096.
-	tfxU32 sort_passes;                     //Unused: each effect's depth sort passes are set on the effect in the editor. Default 3.
 	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits at a steady 60 updates a second, slower rates and single call catch-up updates need tfx_SetGPUSizingUpdateRate. It fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations. Default true.
 	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Default true.
@@ -1272,7 +1271,7 @@ tfx_* function used here is documented in full below.
 Ownership and teardown ordering
 -------------------------------
 Everything is allocated from the memory pool created by tfx_BeginTimelineFX, so tfx_EndTimelineFX must be the
-very last TimelineFX call you make â€” it tears down the worker threads and the pool itself.
+very last TimelineFX call you make, because it tears down the worker threads and the pool itself.
 
 tfx_EndTimelineFX sweeps up anything you did not free yourself: it completes and frees every stage, then frees every
 animation manager, then every library (and with it every effect template made from it), then any streams, packages and
@@ -1339,7 +1338,8 @@ Send every message TimelineFX prints to your own log instead of stdout. Errors s
 they only print when something has failed, such as running out of memory pools or calling tfx_BeginTimelineFX twice.
 Tips are one line messages starting "TimelineFX tip:" that point out a likely mistake once, at the moment the library sees
 it, for example an effect that spawns at user spawn locations being added to a stage. Define TFX_DISABLE_TIPS to compile
-them out.
+them out. In debug builds a failed assert prints "TimelineFX assert failed:" with its condition, file and line before it
+stops the program, unless you define your own TFX_ASSERT.
 Can be set before or after tfx_BeginTimelineFX. It can be called from the stage update thread and worker threads, so it
 must be thread safe.
 * @param callback           Receives each message without a trailing newline, or NULL to go back to printing to stdout
@@ -1709,7 +1709,7 @@ tfxAPI int tfx_GetBitmapWidth(tfx_bitmap_t *bitmap);
 tfxAPI int tfx_GetBitmapHeight(tfx_bitmap_t *bitmap);
 
 /*
-Output all the effect names in a library to the console
+Print all the effect names in a library through the print callback, see tfx_SetPrintCallback
 * @param tfx_library                A valid pointer to a tfx_library
 */
 tfxAPI void tfx_ListEffectNames(tfx_library library);
@@ -1948,7 +1948,9 @@ Rules:
   then tfx_UpdateGlobalGPUData, then update each stage and upload its instances before drawing it again, since the free
   can move the other libraries' properties and shapes. A paused game or a frame where the timer didn't tick still needs
   that update: tfx_UpdateStage(stage, 0) rewrites the instances without advancing. Or free libraries inside your fixed
-  step, before tfx_UpdateGlobalGPUData and the update, and free their images after that update.
+  step, before tfx_UpdateGlobalGPUData and the update. The GPU copies of its images (textures, atlas layers) have to
+  outlive the instances drawn with them, so free or overwrite those after that update. Its CPU side pixels can go any
+  time after tfx_FreeLibrary.
 - Limits: 65536 GPU property slots and 256 color ramp layers across every library. If the loaded libraries need more,
   the sync asserts in debug and returns false, and the libraries that didn't fit get no placement. tfx_DescribeStage
   reports it.
@@ -2081,12 +2083,11 @@ and tweak it as needed before passing it in.
 tfxAPI tfx_stage tfx_CreateStage(tfx_stage_info_t info);
 
 /*
-Clear the stage as tfx_ClearStage(stage, true, true) does, and also empty its instance buffers and free each emitter's
-storage. Nothing else about the stage changes. Each effect's depth sort passes are set on the effect in the editor.
+Clear the stage as tfx_ClearStage(stage, true) does, and also empty its instance buffers and free each emitter's
+storage. Nothing else about the stage changes.
 * @param stage                    A pointer to an initialised tfx_stage_t.
-* @param sort_passes              Unused
 */
-tfxAPI void tfx_ReconfigureStage(tfx_stage stage, tfxU32 sort_passes);
+tfxAPI void tfx_ReconfigureStage(tfx_stage stage);
 
 /*
 Block until all of the stage's in-flight update work (started by tfx_UpdateStage) has finished. Call this before
@@ -2110,7 +2111,9 @@ Give an effect a sort key. Within each layer of the instance buffer effects are 
 is on, so every effect sharing a key is one contiguous range that you can draw with its own resources, for example one range per library (or see
 "Drawing effects from more than one library" to let libraries share a range). Use
 tfx_GetNextInstanceKeyRange to get those ranges. Run on GPU emitters are ordered by key too, in a second range per key after the CPU instances, but
-not by depth. Ribbons are kept in separate buckets per key and each ribbon dispatch reports its key in sort_key.
+not by depth. Ribbons aren't in those ranges: they're kept in separate buckets per key, each ribbon dispatch reports its key in sort_key,
+and the buckets aren't in key order. Where ribbons draw against billboards is up to you, so to layer effects by key draw each key's ribbon
+buckets with that key's billboard ranges (see "Drawing by sort key" in implementations/README.md).
 Set the key straight after adding the effect. Live ribbons are stored in their bucket, so the key of an effect can't change while any of its ribbons are
 alive: the call asserts and leaves the key as it was. Keys take effect on the next tfx_UpdateStage and effects have a key of 0 until you set one.
 This waits for any stage update in progress, so call it before tfx_UpdateStage rather than straight after.
@@ -2172,7 +2175,7 @@ tfxAPI tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage stage, tfxU32 laye
 Get the number of instances within the instance buffer of a stage
 * @param stage                    A pointer to an initialised tfx_stage_t.
 */
-tfxAPI int tfx_GetInstanceCount(tfx_stage stage);
+tfxAPI tfxU32 tfx_GetInstanceCount(tfx_stage stage);
 
 /*
 Get the instances from the write before the one in tfx_GetInstanceBuffer. This is the buffer that each instance's
@@ -2187,13 +2190,13 @@ tfxAPI tfx_instance_t *tfx_GetPreviousInstanceBuffer(tfx_stage stage);
 Get the number of instances in the buffer returned by tfx_GetPreviousInstanceBuffer.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 */
-tfxAPI int tfx_GetPreviousInstanceCount(tfx_stage stage);
+tfxAPI tfxU32 tfx_GetPreviousInstanceCount(tfx_stage stage);
 
 /*
 Get the number of instances within the instance buffer of a stage for a specific layer.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 */
-tfxAPI int tfx_GetInstanceCountByLayer(tfx_stage stage, tfxU32 layer);
+tfxAPI tfxU32 tfx_GetInstanceCountByLayer(tfx_stage stage, tfxU32 layer);
 
 /*
 Get the length of the last update in seconds, or of the last step for tfx_UpdateStageSubSteps, after max_frame_length (240 ms) cut it.
@@ -2243,13 +2246,14 @@ Per-frame flow, after tfx_UpdateStage:
      transfer them to your device-local segment / ribbon / emitter buffers.
   3. Iterate the buckets to record compute dispatches: create a tfx_ribbon_dispatch_t with
      tfx_CreateRibbonDispatch(), then loop while tfx_NextRibbonDispatch(stage, &dispatch) returns true. Each call
-     fills in the per-bucket offsets/counts and populates dispatch.ribbon_data->globals with the push-constant
-     block; dispatch total_segments tells you how many threads to launch.
+     fills in the per-bucket offsets/counts and points dispatch.globals (or tfx_GetRibbonDispatchGlobals) at the
+     push-constant block; dispatch total_segments tells you how many threads to launch.
   4. Iterate the buckets again the same way to record the draw calls, using dispatch.index_count and
      dispatch.index_offset for the indexed draw.
 
-The dispatch iterator advances an internal cursor on the stage, so if you need to walk the buckets more than
-once in a frame (compute pass, then render pass) call tfx_ResetRibbonDispatchIterator(stage) between passes.
+The dispatch iterator advances an internal cursor on the stage, which goes back to the start when
+tfx_NextRibbonDispatch returns false, so you can walk the buckets as many times a frame as you like (compute pass,
+then render pass). Only a walk you stop early needs tfx_ResetRibbonDispatchIterator(stage) before the next one.
 tfx_NextRibbonDispatch / tfx_GetRibbonBufferRequirements / tfx_CopyRibbonDataToStagingBuffers all implicitly
 complete any in-flight stage update work first (see the threading contract above), so they are safe to call
 straight after tfx_UpdateStage. For a complete worked example see tfx_impl_dx11__build_ribbon_geometry and
@@ -2267,8 +2271,8 @@ tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch(void);
 /*
 Advance to the next ribbon bucket that has ribbons to draw. Call in a while loop until it returns false. On each
 true return, ribbon_dispatch is filled with this bucket's vertex/index offsets and counts, total_segments (the
-work item count for the compute dispatch) and a pointer to the bucket in ribbon_data whose globals member is the
-push-constant block for both the compute and render passes. Implicitly completes any in-flight stage update.
+work item count for the compute dispatch) and globals, the push-constant block for both the compute and render passes.
+Implicitly completes any in-flight stage update.
 * @param stage                     A handle to an initialised tfx_stage_t.
 * @param ribbon_dispatch           A pointer to a tfx_ribbon_dispatch_t (from tfx_CreateRibbonDispatch) updated in place.
 * @returns bool                    true while there is another bucket to process, false when iteration is finished.
@@ -2276,13 +2280,13 @@ push-constant block for both the compute and render passes. Implicitly completes
 tfxAPI bool tfx_NextRibbonDispatch(tfx_stage stage, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 /*
-Reset the stage's internal ribbon bucket iterator back to the start. Call this between two passes over the
-buckets in the same frame (for example after the compute pass, before the render pass) so tfx_NextRibbonDispatch
-walks them again from the beginning.
+Reset the stage's internal ribbon bucket iterator back to the start. A walk that runs until tfx_NextRibbonDispatch
+returns false resets it already, so you only need this after stopping a walk early.
 * @param stage                     A handle to an initialised tfx_stage_t.
 */
 tfxAPI void tfx_ResetRibbonDispatchIterator(tfx_stage stage);
 
+//The bucket's push-constant block for the compute and render passes, the same pointer as ribbon_dispatch->globals
 tfxAPI tfx_ribbon_bucket_globals_t *tfx_GetRibbonDispatchGlobals(tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 /*
@@ -2768,7 +2772,8 @@ then the effect will look the same each time. Any seed, 0 included, is fine.
 tfxAPI void tfx_SetStageSeed(tfx_stage stage, tfxU64 seed);
 
 /*
-Add an effect to a tfx_stage_t from an effect template. If the stage is part way through an update this waits for it to finish first,
+Add an effect to a tfx_stage_t from an effect template. This is the only way to add an effect, so make a template with tfx_CreateEffectTemplate
+even if you don't customise it. If the stage is part way through an update this waits for it to finish first,
 see the threading contract above tfx_CreateStageInfo. An effect that spawns at user spawn locations (see
 tfx_EffectTemplateSpawnsAtUserLocations) spawns nothing until you give it one with tfx_AddSpawnLocation.
 * @param stage                      A pointer to an initialised tfx_stage_t.
@@ -2777,15 +2782,6 @@ tfx_EffectTemplateSpawnsAtUserLocations) spawns nothing until you give it one wi
 									out of room for it
 */
 tfxAPI tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage stage, tfx_effect_template effect);
-
-/*
-Add an effect to a tfx_stage_t. Generally you should always call tfx_AddEffectTemplateToStage and use templates to organise your effects but if you want to just
-test things out you can add an effect direct from a library using this command.
-* @param stage							A pointer to an initialised tfx_stage_t. 
-* @param effect						tfx_effect_descriptor_t object that you want to add to the stage.
-* @returns tfxEffectID				The id to manipulate the effect with. Check it with tfx_EffectIDIsValid: it fails if the stage is out of room for it
-*/
-tfxAPI tfxEffectID tfx_AddRawEffectToStage(tfx_stage stage, tfx_effect_descriptor effect);
 
 //Only checks for the id a failed add returns, use tfx_IsEffectExpired to find out if the effect is still running
 tfxAPI bool tfx_EffectIDIsValid(tfxEffectID id);
@@ -3006,9 +3002,8 @@ Clear all particles, instance_data and effects in a stage, and reset the stage's
 free all the memory associated with the stage.
 * @param stage                     A pointer to an initialised tfx_stage_t.
 * @param free_particle_banks    Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
-* @param free_sprite_buffers    Unused, pass false
 */
-tfxAPI void tfx_ClearStage(tfx_stage stage, bool free_particle_banks, bool free_sprite_buffers);
+tfxAPI void tfx_ClearStage(tfx_stage stage, bool free_particle_banks);
 
 /*
 Free all the memory used in the stage. You don't have to call this - tfx_EndTimelineFX frees any stages

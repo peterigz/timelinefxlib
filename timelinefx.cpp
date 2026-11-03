@@ -55,17 +55,10 @@ static_assert(sizeof(void *) != 8 || sizeof(tfx_image_data_t) == 304, "tfx_image
 
 #ifdef _WIN32
 #if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
+	//Silent on failure, callers report it with their own error code and some only probe for the file
 	FILE *tfx__open_file(const char *file_name, const char *mode) {
 		FILE *file = NULL;
-		errno_t err = fopen_s(&file, file_name, mode);
-		if (err != 0 || file == NULL) {
-			char errMessage[100];
-			if (strerror_s(errMessage, sizeof(errMessage), err) == 0) {
-				printf("strerror_s says open failed: %s\n", errMessage);
-			}
-			else {
-				printf("Error retrieving error message\n");
-			}
+		if (fopen_s(&file, file_name, mode) != 0) {
 			return NULL;
 		}
 		return file;
@@ -12056,7 +12049,7 @@ void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_spr
 	tfx_vec3_t pm_camera_position = pm->camera_position;
 	tfxEffectID preview_effect_index;
 
-	tfx_ReconfigureStage(pm, effect->sort_passes);
+	tfx_ReconfigureStage(pm);
 	tfxU32 struct_size = sizeof(tfx_instance_t);
 	for (tfxEachLayer) {
 		pm->instance_buffer_for_recording[0][layer].free();
@@ -12231,7 +12224,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 	tmp_ribbon_frame_meta.free();
 
-	tfx_ReconfigureStage(pm, effect->sort_passes);
+	tfx_ReconfigureStage(pm);
 	if (!(pm->flags & tfxStageFlags_using_uids)) {
 		tfx__toggle_sprites_with_uid(pm, true);
 	}
@@ -12252,7 +12245,7 @@ TFX_ENABLE_COMPILER_WARNING()
 
 	if (total_sprites == 0 && total_ribbons == 0) {
 		tfx_DisableStageSpawning(pm, false);
-		tfx_ClearStage(pm, false, false);
+		tfx_ClearStage(pm, false);
 		tfx__sync_lock(&pm->update_thread_mutex);
 		pm->flags &= ~tfxStageFlags_recording_sprites;
 		memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
@@ -12559,7 +12552,7 @@ TFX_ENABLE_COMPILER_WARNING()
 	}
 
 	tfx_DisableStageSpawning(pm, false);
-	tfx_ClearStage(pm, false, false);
+	tfx_ClearStage(pm, false);
 	tfx__sync_lock(&pm->update_thread_mutex);
 	pm->flags &= ~tfxStageFlags_recording_sprites;
 	memset(&pm->recording_thread_id, 0, sizeof(pm->recording_thread_id));
@@ -14004,12 +13997,6 @@ tfxEffectID tfx_AddEffectTemplateToStage(tfx_stage pm, tfx_effect_template effec
 	}
 #endif
 	return tfx__add_effect_to_stage(pm, effect_template->effect);
-}
-
-tfxEffectID tfx_AddRawEffectToStage(tfx_stage pm, tfx_effect_descriptor effect) {
-	TFX_ASSERT_HANDLE(pm);				//Not a valid particle manager handle
-	TFX_ASSERT(false);	//Function deprecated, you must create an effect template first and then add that to the stage
-	return 0;
 }
 
 bool tfx_EffectIDIsValid(tfxEffectID id) {
@@ -16197,7 +16184,7 @@ tfxAPI tfx_effect_descriptor tfx_CreateEffectDescriptor(tfx_effect_descriptor_ty
 void tfx_ListEffectNames(tfx_library library) {
 	tfxU32 index = 0;
 	for (tfx_effect_descriptor effect : library->effects) {
-		printf("%i) %s\n", index++, effect->name.c_str());
+		tfxPrint("%u) %s", index++, effect->name.c_str());
 	}
 }
 
@@ -18080,10 +18067,10 @@ void tfx__toggle_sprites_with_uid(tfx_stage pm, bool switch_on) {
 	}
 }
 
-void tfx_ReconfigureStage(tfx_stage pm, tfxU32 req_sort_passes) {
+void tfx_ReconfigureStage(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_external_recording(pm);
-	tfx_ClearStage(pm, true, true);
+	tfx_ClearStage(pm, true);
 
 	tfxStageFlags current_flags = (pm->flags & tfxStageFlags_dynamic_sprite_allocation) |
 											(pm->flags & tfxStageFlags_double_buffer_sprites) |
@@ -18269,7 +18256,7 @@ tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage pm, tfxU32 layer) {
 	return tfxCastBufferRef(tfx_instance_t, pm->instance_buffer) + pm->layer_start[layer];
 }
 
-int tfx_GetInstanceCount(tfx_stage pm) {
+tfxU32 tfx_GetInstanceCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
@@ -18283,13 +18270,13 @@ tfx_instance_t *tfx_GetPreviousInstanceBuffer(tfx_stage pm) {
 	return tfxCastBufferRef(tfx_instance_t, pm->previous_instance_buffer);
 }
 
-int tfx_GetPreviousInstanceCount(tfx_stage pm) {
+tfxU32 tfx_GetPreviousInstanceCount(tfx_stage pm) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
 	return pm->previous_instance_buffer.current_size;
 }
 
-int tfx_GetInstanceCountByLayer(tfx_stage pm, tfxU32 layer) {
+tfxU32 tfx_GetInstanceCountByLayer(tfx_stage pm, tfxU32 layer) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	tfx__wait_for_stage_update(pm);
 	TFX_ASSERT(!(pm->flags & tfxStageFlags_instances_not_written));	//The last update step didn't write instances, see tfx_UpdateStageSubStep
@@ -18628,7 +18615,7 @@ void tfx_SetStageWorkQueueSizes(tfx_stage pm, tfxU32 spawn_work_max, tfxU32 cont
 	pm->sorting_work_entry.reserve(age_work_max);
 }
 
-void tfx_ClearStage(tfx_stage pm, bool free_particle_banks, bool free_sprite_buffers) {
+void tfx_ClearStage(tfx_stage pm, bool free_particle_banks) {
 	tfx__wait_for_external_recording(pm);
 	tfx__wait_for_stage_update(pm);
 	if (free_particle_banks) {
@@ -20718,7 +20705,7 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 					} else if (emitter.source_emitter->state_properties.gpu_capacity_override && location_count > 1) {
 						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u, set with tfx_SetTemplateEmitterGPUCapacity, is full with %u spawn locations playing on it. Raise it, to about %u if %u was meant for one location.", path.c_str(), group.capacity, location_count, tfx__gpu_capacity_for_locations(group.capacity, location_count), group.capacity);
 					} else if (location_count > 1) {
-						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more.", path.c_str(), group.capacity, location_count, location_count);
+						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, N), N being the most locations that ever play at once, at least %u.", path.c_str(), group.capacity, location_count, location_count);
 					} else {
 						tfxTIP("GPU emitter \"%s\" is dropping spawns because its ring of %u is full. Raise it with tfx_SetTemplateEmitterGPUCapacity.", path.c_str(), group.capacity);
 					}
@@ -26338,7 +26325,7 @@ tfxU32 tfx_DescribeStage(tfx_stage pm, char *buffer, tfxU32 buffer_size) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u, set with tfx_SetTemplateEmitterGPUCapacity, was full with %u spawn locations playing on it. Raise it, to about %u if %u was meant for one location",
 				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, tfx__gpu_capacity_for_locations(problem.ring_capacity, problem.location_count), problem.ring_capacity);
 		} else if (problem.dropped_spawns && problem.location_count > 1) {
-			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, %u) or more",
+			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full, with %u spawn locations playing on it. Size the template with tfx_SetTemplateGPUCapacityForLocations(template, N), N being the most locations that ever play at once, at least %u",
 				path.c_str(), (unsigned long long)problem.dropped_spawns, problem.ring_capacity, problem.location_count, problem.location_count);
 		} else if (problem.dropped_spawns) {
 			tfx__write_line(&writer, "Dropping spawns: GPU emitter \"%s\" dropped %llu spawns because its ring of %u was full. Raise it with tfx_SetTemplateEmitterGPUCapacity",
@@ -27923,7 +27910,6 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	info.max_ribbon_emitters = 0;
 	info.ribbon_tessellation = 1;
 	info.multi_threaded_batch_size = 4096;
-	info.sort_passes = 3;
 	info.double_buffer_sprites = true;
 	info.dynamic_sprite_allocation = true;
 	info.auto_order_effects = false;
