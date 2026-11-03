@@ -1450,33 +1450,41 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 #define TFX_UNIFORM_PUSH(type, name) [[vk::binding(TFX_COMPUTE_UNIFORM_BINDING, TFX_COMPUTE_UNIFORM_SPACE)]] ConstantBuffer<type> name : register(b15)
 #endif
 
+//The bindless model's D3D registers: each descriptor array at register 0 of its own space, so a root signature can be built from
+//the table in Shaders/readme.md. The render push constants are left to Slang, explicit ones would move Metal's buffer slots
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_BINDLESS_REGISTER(name, space)
+#else
+#define TFX_BINDLESS_REGISTER(name, space) : register(name, space)
+#endif
+
 //Only the library's entry point reads these, so a host's entry point can declare its own push constants
-[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants TFX_BINDLESS_REGISTER(b0, space0);
 TFX_UNIFORM_PUSH(tfx_gpu_particle_push, tfx_uniform_push_constants);
 
 //--- Bindless_arrays
 
 //The pool's hot, cold and noise sections can be views of one buffer, as can the frame's arrays
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_hot> hot_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_cold> cold_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_noise> noise_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_instance> instance_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_spawn> spawn_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[];
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_hot> hot_buffers[] TFX_BINDLESS_REGISTER(u0, space1);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_cold> cold_buffers[] TFX_BINDLESS_REGISTER(u0, space2);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_noise> noise_buffers[] TFX_BINDLESS_REGISTER(u0, space3);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_instance> instance_buffers[] TFX_BINDLESS_REGISTER(u0, space4);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_spawn> spawn_buffers[] TFX_BINDLESS_REGISTER(t0, space2);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[] TFX_BINDLESS_REGISTER(t0, space3);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[] TFX_BINDLESS_REGISTER(t0, space4);
 //The force rows after the tick records, the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[] TFX_BINDLESS_REGISTER(t0, space5);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[] TFX_BINDLESS_REGISTER(t0, space6);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[] TFX_BINDLESS_REGISTER(t0, space7);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[] TFX_BINDLESS_REGISTER(t0, space8);
 //A generated tick's spawn block, runs and multipliers, 64 byte rows of the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_e> spawn_block_e_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[];
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[] TFX_BINDLESS_REGISTER(t0, space9);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[] TFX_BINDLESS_REGISTER(t0, space10);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[] TFX_BINDLESS_REGISTER(t0, space11);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[] TFX_BINDLESS_REGISTER(t0, space12);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_e> spawn_block_e_buffers[] TFX_BINDLESS_REGISTER(t0, space13);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[] TFX_BINDLESS_REGISTER(t0, space14);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[] TFX_BINDLESS_REGISTER(t0, space15);
 
 //--- Metal_buffer_table
 
@@ -2985,23 +2993,23 @@ struct tfx_ribbon_bounds_push {
 
 //---- Bindless arrays
 
-[[vk::binding(0, 0)]] SamplerState tfx_samplers[];
-[[vk::binding(3, 0)]] Texture2DArray tfx_images[];
-[[vk::binding(7, 0)]] ConstantBuffer<tfx_view_uniforms> tfx_view_uniform_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_instance> tfx_instance_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_image_data> tfx_image_data_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_emitter_properties> tfx_emitter_properties_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon> tfx_ribbon_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_emitter> tfx_ribbon_emitter_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<float4> tfx_ribbon_segment_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<uint> tfx_offset_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_instance> tfx_animation_instance_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_instance_data> tfx_baked_ribbon_buffers[];
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_ribbon_properties> tfx_ribbon_properties_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon> tfx_ribbon_output_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon_vertex_row> tfx_ribbon_vertex_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<uint> tfx_ribbon_index_buffers[];
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_bounding_box> tfx_bounding_box_buffers[];
+[[vk::binding(0, 0)]] SamplerState tfx_samplers[] TFX_BINDLESS_REGISTER(s0, space1);
+[[vk::binding(3, 0)]] Texture2DArray tfx_images[] TFX_BINDLESS_REGISTER(t0, space1);
+[[vk::binding(7, 0)]] ConstantBuffer<tfx_view_uniforms> tfx_view_uniform_buffers[] TFX_BINDLESS_REGISTER(b0, space1);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_instance> tfx_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space16);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_image_data> tfx_image_data_buffers[] TFX_BINDLESS_REGISTER(t0, space17);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_emitter_properties> tfx_emitter_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space18);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon> tfx_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space19);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_emitter> tfx_ribbon_emitter_buffers[] TFX_BINDLESS_REGISTER(t0, space20);
+[[vk::binding(5, 0)]] StructuredBuffer<float4> tfx_ribbon_segment_buffers[] TFX_BINDLESS_REGISTER(t0, space21);
+[[vk::binding(5, 0)]] StructuredBuffer<uint> tfx_offset_buffers[] TFX_BINDLESS_REGISTER(t0, space22);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_instance> tfx_animation_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space23);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_instance_data> tfx_baked_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space24);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_ribbon_properties> tfx_ribbon_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space25);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon> tfx_ribbon_output_buffers[] TFX_BINDLESS_REGISTER(u0, space5);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon_vertex_row> tfx_ribbon_vertex_buffers[] TFX_BINDLESS_REGISTER(u0, space6);
+[[vk::binding(5, 0)]] RWStructuredBuffer<uint> tfx_ribbon_index_buffers[] TFX_BINDLESS_REGISTER(u0, space7);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_bounding_box> tfx_bounding_box_buffers[] TFX_BINDLESS_REGISTER(u0, space8);
 
 //--- Fixed_render_bindings
 
@@ -3466,6 +3474,11 @@ float2 tfx_unpack_sscaled16x2(uint packed) {
 	return float2(float(int(packed << 16) >> 16), float(int(packed) >> 16));
 }
 
+//The r16g16_sint vertex format
+int2 tfx_unpack_sint16x2(uint packed) {
+	return int2(int(packed << 16) >> 16, int(packed) >> 16);
+}
+
 //Two unsigned 16 bit halves
 float2 tfx_unpack_uscaled16x2(uint packed) {
 	return float2(float(packed & 0xFFFFu), float(packed >> 16));
@@ -3557,10 +3570,10 @@ float3 tfx_billboard_corner(uint corner, float2 size, float2 handle) {
 struct tfx_billboard_input {
 	[[vk::location(0)]] float4 position : POSITION;							//Stretch in w
 	[[vk::location(1)]] float4 quaternion : QUATERNION;						//r16g16b16a16_snorm
-	[[vk::location(2)]] float2 size : SIZE;									//r16g16_sscaled
-	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8_snorm
-	[[vk::location(4)]] float2 intensity_gradient_map : INTENSITY;			//r16g16_sscaled
-	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8_unorm
+	[[vk::location(2)]] int2 size : SIZE;									//r16g16_sint, because D3D, Metal and WebGPU have no sscaled formats
+	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8a8_snorm
+	[[vk::location(4)]] int2 intensity_gradient_map : INTENSITY;			//r16g16_sint
+	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8a8_unorm
 	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame in the low 13 bits]
 	[[vk::location(7)]] uint captured_index : CAPTURED_INDEX;
 };
@@ -3588,7 +3601,7 @@ tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_i
 	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
 	const tfx_emitter_properties properties = tfx_load_emitter_properties(push.properties_index, (input.indexes >> 16) & 0xFFFFu);
 
-	const float2 size = input.size * tfx_size_unpack_scale;
+	const float2 size = float2(input.size) * tfx_size_unpack_scale;
 	const float4 quaternion = normalize(input.quaternion);
 
 	//Not interpolated on a particle's first frame, when it loops back to the start of a path, or when too long has passed, and hidden that frame
@@ -3639,18 +3652,18 @@ tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_i
 
 	//The sprite holds the animation frame only, the emitter's properties hold where its image starts
 	const tfx_image_data image = tfx_load_image_data(push.image_data_index, properties.start_frame_index + (input.indexes & 0x00001FFFu));
-	return tfx_billboard_varyings(clip_position, corner, image, properties, input.intensity_gradient_map, input.curved_alpha_life);
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
 }
 
 #if defined(TFX_FIXED_BINDINGS)
-//What the vertex formats do to tfx_instance_t, for targets without sscaled formats that read the instance from a buffer
+//What the vertex formats do to tfx_instance_t, for the fixed bindings, which read the instance from a buffer
 tfx_billboard_input tfx_unpack_billboard_input(tfx_instance instance) {
 	tfx_billboard_input input;
 	input.position = instance.position;
 	input.quaternion = max(tfx_unpack16bit_quaternion(instance.quaternion), -1.0);
-	input.size = tfx_unpack_sscaled16x2(instance.size);
+	input.size = tfx_unpack_sint16x2(instance.size);
 	input.alignment = tfx_unpack_snorm8x3(instance.alignment);
-	input.intensity_gradient_map = tfx_unpack_sscaled16x2(instance.intensity_gradient_map);
+	input.intensity_gradient_map = tfx_unpack_sint16x2(instance.intensity_gradient_map);
 	input.curved_alpha_life = tfx_unpack_unorm8x4(instance.curved_alpha_life).xyz;
 	input.indexes = instance.indexes;
 	input.captured_index = instance.captured_index;
@@ -3682,7 +3695,7 @@ tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_bill
 	const float3 camera_relative_alignment = mul(view_rotation, input.alignment);
 	const float3x3 rotation = tfx_billboard_rotation(normalize(input.quaternion), input.alignment, camera_relative_alignment, align_flags);
 
-	float3 position = mul(rotation, tfx_billboard_corner(corner, input.size * tfx_size_unpack_scale, properties.image_handle));
+	float3 position = mul(rotation, tfx_billboard_corner(corner, float2(input.size) * tfx_size_unpack_scale, properties.image_handle));
 
 	//position.w is the baked stretch, half of it forwards along the alignment and half backwards
 	const float3 stretch_direction = billboarding ? input.alignment : normalize(camera_relative_alignment);
@@ -3694,7 +3707,7 @@ tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_bill
 	clip_position.xy += float2(push.ndc_offset_x, push.ndc_offset_y) * clip_position.w;
 
 	const tfx_image_data image = tfx_load_image_data(push.image_data_index, input.indexes & 0x00001FFFu);
-	return tfx_billboard_varyings(clip_position, corner, image, properties, input.intensity_gradient_map, input.curved_alpha_life);
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
 }
 
 #if defined(TFX_FIXED_BINDINGS)

@@ -15,6 +15,7 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 | Target | Command |
 | --- | --- |
 | Vulkan, bindless | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -o <entry point>.spv` |
+| D3D12, bindless | `slangc timelinefx.slang -entry <entry point> -target dxil -profile <vs_6_0, ps_6_0 or cs_6_0> -o <entry point>.dxil` |
 | Fixed bindings, SPIR-V | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -fvk-use-entrypoint-name -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.spv` |
 | Fixed bindings, DXIL | `slangc timelinefx.slang -entry <entry point> -target dxil -profile <vs_6_0, ps_6_0 or cs_6_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.dxil` |
 | D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -line-directive-mode none -o <entry point>.cso` |
@@ -90,10 +91,30 @@ The two vertex inputs are vertex buffers:
 
 | Draw | Buffer | Locations and formats |
 | --- | --- | --- |
-| Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sscaled, 3 `alignment` r8g8b8_snorm, 4 `intensity_gradient_map` r16g16_sscaled, 5 `curved_alpha_life` r8g8b8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
+| Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sint, 3 `alignment` r8g8b8a8_snorm, 4 `intensity_gradient_map` r16g16_sint, 5 `curved_alpha_life` r8g8b8a8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
 | Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint |
 
-D3D12 hasn't been tried with the bindless model yet. The fixed bindings below run on D3D12 under SDL_gpu.
+These formats exist on every API. `size` and `intensity_gradient_map` are signed 16-bit integers the shader converts to float, because D3D, Metal and WebGPU have no scaled formats, and `alignment` and `curved_alpha_life` read four bytes because D3D and WebGPU have no three byte formats. The fourth byte is spare.
+
+#### Bindless on D3D12
+
+Compile to DXIL with no defines (`-target dxil -profile <vs_6_0, ps_6_0 or cs_6_0>`). [implementations](../implementations) has a working host, `tfx_impl_dx12`. HLSL can't put arrays of different types at one binding, so each descriptor array has register 0 of a space of its own:
+
+| Register | Spaces | Holds |
+| --- | --- | --- |
+| `b0` | 1 | The view uniforms, a constant buffer view of 256 bytes |
+| `t0` | 1 | Images, `Texture2DArray` |
+| `t0` | 2 to 25 | Read only structured buffers, one space per row type |
+| `u0` | 1 to 8 | Read write structured buffers, one space per row type |
+| `s0` | 1 | Samplers |
+
+- **One descriptor table covers them all.** Make a range for each space, every one unbounded and starting at offset 0, so all of them see the whole shader visible heap and a descriptor's heap slot is the index the shaders take. Samplers get a table of their own. Unbounded constant buffer and read write ranges need resource binding tier 3.
+- **The push constants are root constants** in space 0: `tfx_gpu_particle_push_t` at `b0`, `tfx_billboard_push` at `b1`, `tfx_baked_billboard_push` at `b2`, `tfx_ribbon_bucket_globals_t` at `b3`, `tfx_sprite_data_push_t` at `b4`, `tfx_ribbon_data_push_t` at `b5` and `tfx_ribbon_bounds_push` at `b6`. Together they're over the 64 DWORD limit, so make a root signature per block. The baked billboard draw takes two: its vertex shader reads `b2` and the fragment shader it shares with the live draw reads `b1`, so set both with the same first seven values. Set the kernel's block once per fetch and only `dispatch_index`, its first DWORD, per dispatch.
+- **A structured view bakes in its stride**, so a buffer read as two row types needs a view of each. The kernel reads its pool through three (hot 32, cold 64 and noise 16 bytes) and the frame's upload through four (dispatches 128, the 64 byte tick rows that the tick, force, spawn block and run arrays all share, spawns 112 and locations 32). Every section starts on a multiple of its own stride, so a view over the whole buffer from element 0 works with the push constants' bases. The ribbon emitters are 416 bytes, the baked ribbons 64, their properties 68 and the animation instances 64.
+- **Images** are read by the image index in the upper 16 bits of `texture_array_index`. With one atlas from `tfx_impl_GetUV` that index is 0, so put the atlas's view in heap slot 0.
+- **The billboard draws** take the instances as a vertex buffer, so start each range with the draw's start instance. The input assembler adds it and the shader never reads `SV_InstanceID`.
+
+The fixed bindings below also run on D3D12, under SDL_gpu.
 
 ### Fixed bindings: D3D11, SDL_gpu, OpenGL and WGSL
 
