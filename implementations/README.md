@@ -6,14 +6,16 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | --- | --- |
 | `tfx_impl_common.h/.cpp` | Everything that would be written the same way whatever API draws the particles: shape loading, the shape atlas, the fixed step timer, the camera matrices and gathering each frame's instances from a stage. Nothing in it talks to a GPU. |
 | `tfx_impl_dx11.h/.cpp` | The Direct3D 11 backend. |
+| `tfx_impl_dx12.h/.cpp` | The Direct3D 12 backend, with the bindless shaders: one descriptor heap and root constants. |
 | `tfx_impl_sdlgpu.h/.cpp` | The SDL3 GPU (SDL_gpu) backend, for its Vulkan and Direct3D 12 drivers. |
 | `tfx_impl_gl.h/.cpp` | The OpenGL 4.3 core backend. It includes no GL header and loads its functions through a loader you pass it, such as `glfwGetProcAddress`. |
-| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, bindless `.dxil` for D3D12, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
 | `example.tfxsd` | Burst, recorded from `example.tfx` in the editor, for baked playback. |
 | `example_win32_dx11/main.cpp` | A Win32 window, a D3D11 device and swap chain, and the main loop that calls the scene and the backend. |
+| `example_win32_dx12/main.cpp` | A Win32 window, a D3D12 device, queue, swap chain and frames in flight, and the same main loop. |
 | `example_sdl3_gpu/main.cpp` | An SDL3 window and GPU device, Vulkan by default or Direct3D 12 with `--d3d12`, and the same main loop. |
 | `example_glfw_opengl/main.cpp` | A GLFW window with a 4.3 core debug context, and the same main loop. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
@@ -28,7 +30,7 @@ project can call a backend that was built as C++. The examples only include `tim
 `timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
-Status: D3D11, SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
+Status: D3D11, D3D12 (bindless), SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
 baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
@@ -47,10 +49,12 @@ its bin folder on the `PATH` or set `TFX_SLANGC` to it.
 The SDL3 example is off by default, because it downloads and builds SDL3 with FetchContent. Turn it on with
 `-D TFX_EXAMPLE_SDL3=ON` when you configure. The OpenGL example is off by default too, because it needs GLFW, which it
 downloads unless the parent project already has a `glfw` target, and spirv-cross, which comes with the Vulkan SDK. Turn
-it on with `-D TFX_EXAMPLE_GL=ON`.
+it on with `-D TFX_EXAMPLE_GL=ON`. The D3D12 example is off by default to keep the build short: turn it on with
+`-D TFX_EXAMPLE_DX12=ON`.
 
 ```
 example_win32_dx11 [updates per second]
+example_win32_dx12 [updates per second] [--frames N] [--test-debug-output] [--gpu-validation]
 example_sdl3_gpu [--d3d12] [updates per second]
 example_glfw_opengl [updates per second] [--frames N] [--test-debug-output]
 ```
@@ -251,9 +255,8 @@ Every key switches from the billboard pipeline to the ribbon one and back, so ke
 
 ## Direct3D 11 notes
 
-- **No vertex buffers or input layout.** `tfx_instance_t` stores its size as signed 16-bit integers that the shader
-  scales, which Vulkan reads with an SSCALED format. D3D has no scaled formats, so the vertex shader reads the current
-  and previous instance from raw buffers by `SV_InstanceID` and unpacks them itself. The quad corners come from
+- **No vertex buffers or input layout.** Under the fixed bindings the vertex shader reads the current and previous
+  instance from raw buffers by `SV_InstanceID` and unpacks them itself. The quad corners come from
   `SV_VertexID`, with 6 vertices per instance.
 - **`SV_InstanceID` doesn't include `StartInstanceLocation`**, so a draw's first instance goes in a constant buffer.
 - **The push constants become constant buffers.** Every vertex shader takes the frame constants
@@ -312,6 +315,30 @@ Every key switches from the billboard pipeline to the ribbon one and back, so ke
     manager (`tfx_GetAnimationRibbonGraphLookupsBufferPointer`), because a `.tfxsd` plays without a library.
 - **Shaders** are compiled ahead of time by slangc, one `<entry point>.cso` each, and `tfx_impl_dx11_Init` loads them
   from the folder the CMake project builds them into.
+
+## Direct3D 12 notes
+
+`tfx_impl_dx12` uses the bindless model rather than the fixed bindings, so it follows the D3D11 backend's functions and order
+of work but binds nothing per draw: every buffer and texture is a view in one shader visible heap, and the shaders take each one's
+heap slot from their push constants. The Shaders readme's "Bindless on D3D12" has the layout.
+
+- **Frames in flight.** Call `tfx_impl_dx12_BeginFrame` with the frame slot once the GPU has finished the last frame that used it.
+  Each slot has its own upload ring, and anything replaced while a frame may still read it (a grown buffer, its views, a big
+  upload) is released when its slot comes round again. Upload, compute and render all record into your command list.
+- **Every buffer a shader reads is in the default heap**, filled with `CopyBufferRegion` from the frame's upload ring, including
+  the view uniforms and the kernel's upload. Buffers move between the copy, unordered access and one combined read state, and a
+  buffer written again by the next frame gets a UAV barrier.
+- **Root signatures.** One descriptor table of unbounded ranges, one per space, all at offset 0, a sampler table, and the push
+  constant block as root constants. One root signature per block, because together they're over the 64 DWORD limit. Built with
+  root signature version 1.0, where descriptors and data are volatile, because the heap gains views while frames are in flight.
+- **The atlas is heap slot 0**, because `tfx_impl_GetUV` leaves the image index at 0. Mips are built on the CPU with the same 2 x 2
+  box filter as the SDL_gpu backend, because D3D12 has no `GenerateMips`.
+- **The billboard draws** use the instance buffer as a per instance vertex buffer and start each range with `DrawInstanced`'s
+  start instance. The ribbon draws use the vertex and index buffers `tfx_ribbon_compute` wrote, which are also unordered access
+  views.
+- **Validation.** The example turns the debug layer on in debug builds and prints its messages every frame.
+  `--test-debug-output` makes one deliberate error to prove they arrive, and `--gpu-validation` turns on GPU based validation,
+  which checks what the shaders do with each descriptor. It reports live objects at exit, where only the device should be left.
 
 ## SDL_gpu notes
 
@@ -486,8 +513,8 @@ describes and the OpenGL backend does. WebGPU is meant to use the same define, b
 - [ ] One instanced draw of 6 vertices per layer. If the API's instance id doesn't include the draw's first instance
       (D3D11, D3D12 and OpenGL's `gl_InstanceID`), pass the first instance in yourself. Vulkan's `gl_InstanceIndex`
       and WGSL's `instance_index` include it.
-- [ ] Read the size as signed 16-bit values, through an SSCALED vertex format where the API has one and by unpacking
-      in the shader where it doesn't.
+- [ ] Under the bindless model, use the vertex formats in the Shaders readme. `size` and `intensity_gradient_map` are
+      `r16g16_sint`, which the shader converts to float.
 - [ ] If you write your own billboard shader, decode `indexes` and `captured_index` as their comments in `tfx_instance_t`
       say: read the previous instance only when the capture flag (bit 15) is set, and draw the instance at zero size
       when it isn't: a particle's first frame, a loop back to the start of its path, or after too long a gap.

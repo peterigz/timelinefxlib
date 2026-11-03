@@ -224,3 +224,54 @@ if (TFX_EXAMPLE_GL)
 	target_link_libraries(example_glfw_opengl PRIVATE glfw)
 	add_dependencies(example_glfw_opengl tfx_gl_shaders)
 endif()
+
+# Off unless asked for, to keep the build short. The bindless model: DXIL with no defines, each entry point reading every resource
+# from one descriptor heap by the index in its root constants
+option(TFX_EXAMPLE_DX12 "Build the Direct3D 12 example, with the bindless shaders" OFF)
+if (WIN32 AND TFX_EXAMPLE_DX12)
+	set(TFX_DX12_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/dx12_shaders)
+	set(TFX_DX12_ENTRY_POINTS
+		simulate_particles cs_6_0
+		tfx_billboard_vertex vs_6_0
+		tfx_billboard_baked_vertex vs_6_0
+		tfx_billboard_fragment ps_6_0
+		tfx_ribbon_compute cs_6_0
+		tfx_ribbon_vertex vs_6_0
+		tfx_ribbon_fragment ps_6_0
+		tfx_sprite_playback cs_6_0
+		tfx_ribbon_playback cs_6_0
+	)
+	set(TFX_DX12_SHADERS)
+	list(LENGTH TFX_DX12_ENTRY_POINTS entry_point_list_length)
+	math(EXPR last_entry_point_index "${entry_point_list_length} - 1")
+	foreach(entry_point_index RANGE 0 ${last_entry_point_index} 2)
+		math(EXPR profile_index "${entry_point_index} + 1")
+		list(GET TFX_DX12_ENTRY_POINTS ${entry_point_index} entry_point)
+		list(GET TFX_DX12_ENTRY_POINTS ${profile_index} profile)
+		set(shader_output ${TFX_DX12_SHADER_FOLDER}/${entry_point}.dxil)
+		add_custom_command(OUTPUT ${shader_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_DX12_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target dxil -profile ${profile} -o ${shader_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for D3D12")
+		list(APPEND TFX_DX12_SHADERS ${shader_output})
+	endforeach()
+	add_custom_target(tfx_dx12_shaders DEPENDS ${TFX_DX12_SHADERS})
+
+	add_executable(example_win32_dx12
+		${CMAKE_CURRENT_SOURCE_DIR}/example_win32_dx12/main.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_dx12.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_dx12.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	set_source_files_properties(${TFX_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_win32_dx12)
+	target_link_libraries(example_win32_dx12 PRIVATE d3d12 dxgi)
+	add_dependencies(example_win32_dx12 tfx_dx12_shaders)
+	target_compile_definitions(example_win32_dx12 PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_DX12_SHADER_FOLDER}")
+endif()
