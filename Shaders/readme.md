@@ -21,6 +21,7 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 | D3D11 | `slangc timelinefx.slang -entry <entry point> -target dxbc -profile <vs_5_0, ps_5_0 or cs_5_0> -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -line-directive-mode none -o <entry point>.cso` |
 | WebGPU | `slangc timelinefx.slang -entry <entry point> -target wgsl -D TFX_FIXED_BINDINGS -D TFX_ENTRY_<entry point> -o <entry point>.wgsl` |
 | OpenGL | `slangc timelinefx.slang -entry <entry point> -target spirv -profile spirv_1_5 -O3 -D TFX_FIXED_BINDINGS -D TFX_COMBINED_SAMPLERS -D TFX_ENTRY_<entry point> -o <entry point>.spv`, then `spirv-cross <entry point>.spv --version 430 --no-es --no-support-nonzero-baseinstance --output <entry point>.glsl` |
+| Metal | `slangc timelinefx.slang -entry <entry point> -target metal -D TFX_FIXED_BINDINGS -D TFX_METAL_SLOTS -D TFX_ENTRY_<entry point> -o <entry point>.metal`, and `simulate_particles` with no defines |
 
 - **`TFX_ENTRY_<entry point>`** is the entry point's name as it is, for example `-D TFX_ENTRY_tfx_billboard_vertex`. Under the fixed bindings it picks that entry point's resources and slots, so the compile has to have it. The kernel's slots don't depend on it.
 - **`-fvk-use-entrypoint-name`** keeps the entry point's own name in the SPIR-V. Without it slangc names every one `main`, which is the name to give your API instead. DXIL, DXBC and WGSL always keep the name.
@@ -38,6 +39,7 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 
   Both have to stay alive until `SDL_CreateGPUDeviceWithProperties` returns. The Vulkan SDK's `Include` folder has its own, older SDL3 headers, so adding it to your include path for `vulkan_core.h` can hide `SDL_GPUVulkanOptions`. Put SDL's include folder first, or take the Vulkan headers from somewhere else. Without these options the shaders still draw on some drivers, so only the validation layer tells you.
 - **OpenGL goes through SPIR-V and SPIRV-Cross**, as sokol-shdc does. Slang's own `-target glsl` is Vulkan GLSL: the kernel's happens to compile for OpenGL, but the vertex shaders use `gl_VertexIndex` and `gl_InstanceIndex`, which OpenGL doesn't have. spirv-cross ships with the Vulkan SDK. See the OpenGL notes under the fixed bindings.
+- **Metal takes the text** `-target metal` writes, compiled at run time with `newLibraryWithSource`, or ahead of time with `xcrun -sdk macosx metal`, which needs the Metal toolchain that recent Xcode versions download separately (`xcodebuild -downloadComponent MetalToolchain`). Slang keeps its `#line` directives, so Metal's errors point at lines of `timelinefx.slang`. See the Metal section for the defines.
 - **D3D11:** fxc fails with "internal error: flattened side effect" on the `#line` directives Slang otherwise emits, hence `-line-directive-mode none`. Leave out `-stage`: the entry point declares it, and slangc warns if you pass it as well. fxc has no register spaces, so leave every `*_SPACE` macro at 0.
 - **Matrices are column major** whatever your Slang session defaults to (the Slang API defaults to row major, slangc to column major), because every matrix in the file is marked `column_major`. Upload them column major.
 
@@ -126,7 +128,7 @@ Compile to DXIL with no defines (`-target dxil -profile <vs_6_0, ps_6_0 or cs_6_
 
 The fixed bindings below also run on D3D12, under SDL_gpu.
 
-### Fixed bindings: D3D11, SDL_gpu, OpenGL and WGSL
+### Fixed bindings: D3D11, SDL_gpu, OpenGL, WGSL and Metal
 
 Compile with `-D TFX_FIXED_BINDINGS` for an API without descriptor arrays, or one that binds a fixed set of resources per pipeline stage. Every billboard, ribbon and playback entry point and the kernel compile this way; the bounds passes don't.
 
@@ -232,15 +234,29 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
   - The vertex shaders only read storage buffers, which is all WebGPU allows in the vertex stage. The ribbon compute uses the most storage buffers, 6.
   - Bind the color ramps as `unfilterable-float`. They're only loaded, so a 32 bit float ramp works without `float32-filterable`.
   - Make every texture view a 2D array, even of a one layer texture, whose default view is a plain 2D one.
+- **Metal:** compile with the Metal line in the compile table. Slang makes HLSL registers `tN`, `uN` and `bN` all `[[buffer(N)]]` and ignores spaces, so the classes a stage uses would collide. `-D TFX_METAL_SLOTS` gives each buffer class its own tens on Metal and changes nothing on any other target. [implementations](../implementations) has a working host, `tfx_impl_metal`.
+
+  | Class | Metal slots |
+  | --- | --- |
+  | `VERTEX_READ`, `COMPUTE_WRITE` | `[[buffer(n)]]` |
+  | `VERTEX_UNIFORM`, `COMPUTE_READ` | `[[buffer(10 + n)]]` |
+  | `COMPUTE_UNIFORM` | `[[buffer(20 + n)]]` |
+  | `FRAGMENT_TEXTURE`, `FRAGMENT_SAMPLER` | `[[texture(n)]]`, `[[sampler(n)]]` |
+
+  - Each uniform block is small enough for `setVertexBytes` and `setBytes`, which take up to 4 KB, so no uniform buffers are needed.
+  - The buffers come out as `device` pointers, though the vertex shaders only read them, so Metal warns of writable resources in a vertex function when it compiles them. The warning is harmless.
+  - The color ramps are read with `read()`, so they take no sampler.
 
 ### Metal
 
 The kernel has its own path, chosen when Slang targets Metal. Each buffer index in the push constants is a slot in `tfx_metal_buffers`, an argument buffer of `TFX_METAL_BUFFER_COUNT` (default 16, override with `-D`) 64 bit `gpuAddress` values. The accessors read and write every row through it as raw bytes packed exactly like the C structs, because a Metal `float3` is 16 bytes rather than 12. The host:
-- fills an `MTLBuffer` with the addresses and points each push constant index at its slot. A section can be its own slot with its address offset and a base of 0, or share one address with the bases.
-- binds the push constants and the table at the `[[buffer(n)]]` slots Slang gives them. `simulate_particles` uses 0 and 1. A host entry point with its own push constants gets its own slots, so read them from Slang's reflection.
-- calls `useResource` on every buffer the table points to: read for the frame's upload and the graph lookups, read and write for the pool and the instance buffer.
+- fills the table with the addresses and points each push constant index at its slot. A section can be its own slot with its address offset and a base of 0, or share one address with the bases. The table is 128 bytes, so it can go with `setBytes` rather than in an `MTLBuffer`.
+- binds the push constants and the table at the `[[buffer(n)]]` slots Slang gives them. `simulate_particles` compiled without defines uses 0 and 1. Under `TFX_FIXED_BINDINGS` the unused fixed buffers take slots first and move them, so compile the kernel without the defines. A host entry point with its own push constants gets its own slots, so read them from Slang's reflection.
+- calls `useResource` on every buffer the table points to: read for the frame's upload and the graph lookups, read and write for the pool and the instance buffer. Metal's shader validation checks these too, so a buffer left out is reported.
 
-The render passes have no Metal path yet.
+`gpuAddress` needs Metal 3 (macOS 13).
+
+The render passes use the fixed bindings with `-D TFX_METAL_SLOTS`, the Metal line in the compile table, at the slots in the Metal notes under the fixed bindings.
 
 ## Billboard particles
 

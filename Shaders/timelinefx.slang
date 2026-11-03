@@ -1431,6 +1431,20 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 
 #define TFX_PASTE(first, second) first##second
 #define TFX_PASTE_EXPANDED(first, second) TFX_PASTE(first, second)
+//Slang makes register tN, uN and bN all [[buffer(N)]] on Metal, ignoring spaces, so -D TFX_METAL_SLOTS gives the buffer classes that
+//would collide their own tens there: vertex uniforms and compute reads from 10, the compute uniform at 20
+#if defined(TFX_METAL_SLOTS)
+#define TFX_VERTEX_READ_TENS
+#define TFX_VERTEX_UNIFORM_TENS 1
+#define TFX_FRAGMENT_TEXTURE_TENS
+#define TFX_FRAGMENT_SAMPLER_TENS
+#define TFX_COMPUTE_WRITE_TENS
+#define TFX_COMPUTE_READ_TENS 1
+#define TFX_COMPUTE_UNIFORM_TENS 2
+#define TFX_FIXED_SLOT(resource_class, slot) TFX_PASTE_EXPANDED(TFX_##resource_class##_TENS, slot)
+#else
+#define TFX_FIXED_SLOT(resource_class, slot) slot
+#endif
 //fxc has no register spaces, but Slang leaves space0 out of what it emits, so the defaults compile for D3D11
 #if defined(TFX_FIXED_BINDINGS)
 #define TFX_FIXED_REGISTER(letter, slot, space_index) : register(TFX_PASTE(letter, slot), TFX_PASTE_EXPANDED(space, space_index))
@@ -1438,7 +1452,7 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 #define TFX_FIXED_REGISTER(letter, slot, space_index)
 #endif
 //TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0) is slot 0 of the compute write class, register u0
-#define TFX_FIXED_DECLARE(type, name, resource_class, letter, slot) [[vk::binding(TFX_##resource_class##_BINDING + slot, TFX_##resource_class##_SPACE)]] type name TFX_FIXED_REGISTER(letter, slot, TFX_##resource_class##_SPACE)
+#define TFX_FIXED_DECLARE(type, name, resource_class, letter, slot) [[vk::binding(TFX_##resource_class##_BINDING + slot, TFX_##resource_class##_SPACE)]] type name TFX_FIXED_REGISTER(letter, TFX_FIXED_SLOT(resource_class, slot), TFX_##resource_class##_SPACE)
 
 //--- Push_constants
 
@@ -3528,9 +3542,11 @@ uint tfx_pack_snorm16x2(float2 value) {
 	return (uint(scaled.x) & 0xFFFFu) | (uint(scaled.y) << 16);
 }
 
-//GLSL's mat3(a, b, c) takes columns, Slang's float3x3(a, b, c) takes rows
+//GLSL's mat3(a, b, c) takes columns, Slang's float3x3(a, b, c) takes rows. Built element by element, because Metal's vertex stage has no transpose
 float3x3 tfx_matrix_from_columns(float3 first, float3 second, float3 third) {
-	return transpose(float3x3(first, second, third));
+	return float3x3(first.x, second.x, third.x,
+	                first.y, second.y, third.y,
+	                first.z, second.z, third.z);
 }
 
 float3x3 tfx_view_rotation(float4x4 view) {

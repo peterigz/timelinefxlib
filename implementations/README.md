@@ -11,7 +11,8 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `tfx_impl_sdlgpu.h/.cpp` | The SDL3 GPU (SDL_gpu) backend, for its Vulkan and Direct3D 12 drivers. |
 | `tfx_impl_webgpu.h/.cpp` | The WebGPU backend, written against the standard `webgpu.h` and run on wgpu-native. Uploads go through the queue, uniforms through dynamic offsets. |
 | `tfx_impl_gl.h/.cpp` | The OpenGL 4.3 core backend. It includes no GL header and loads its functions through a loader you pass it, such as `glfwGetProcAddress`. |
-| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, bindless `.dxil` for D3D12, bindless `.spv` for Vulkan, `.wgsl` for WebGPU, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
+| `tfx_impl_metal.h/.mm` | The Metal backend, Objective-C++ without ARC. Fixed bindings for the render passes, the kernel's `gpuAddress` table, and frames in flight with upload rings. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, bindless `.dxil` for D3D12, bindless `.spv` for Vulkan, `.wgsl` for WebGPU, `.spv` and `.dxil` for SDL_gpu, `.spv` then `.glsl` through spirv-cross for OpenGL, and `.metal` source for Metal. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
@@ -22,6 +23,7 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `example_glfw_opengl/main.cpp` | A GLFW window with a 4.3 core debug context, and the same main loop. |
 | `example_glfw_vulkan/main.cpp` | A GLFW window, a Vulkan 1.3 instance, device and swap chain with frames in flight, and the same main loop. |
 | `example_glfw_webgpu/main.cpp` | A GLFW window, a wgpu-native instance, adapter, device and surface, Vulkan or D3D12 underneath, and the same main loop. |
+| `example_glfw_metal/main.mm` | A GLFW window with a `CAMetalLayer`, a Metal device and queue, frames in flight, and the same main loop. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
 
 So there are three layers. `tfx_impl_common` is integration code you can copy into a game as it is, `example_scene` is
@@ -34,7 +36,7 @@ project can call a backend that was built as C++. The examples only include `tim
 `timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
-Status: D3D11, D3D12 (bindless), Vulkan (bindless), WebGPU (wgpu-native), SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
+Status: D3D11, D3D12 (bindless), Vulkan (bindless), WebGPU (wgpu-native), SDL_gpu (Vulkan and D3D12), OpenGL 4.3 and Metal draw CPU simulated billboards and ribbons, GPU simulated particles, and
 baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
@@ -57,6 +59,8 @@ it on with `-D TFX_EXAMPLE_GL=ON`. The D3D12 example is off by default to keep t
 `-D TFX_EXAMPLE_DX12=ON`. The Vulkan example needs the Vulkan SDK (CMake's `find_package(Vulkan)`) and GLFW, fetched
 the same way: turn it on with `-D TFX_EXAMPLE_VULKAN=ON`. The WebGPU example downloads wgpu-native's release for Windows x64
 or Linux x64 (or set `TFX_WGPU_NATIVE_DIR` to one you've unzipped) and uses GLFW: turn it on with `-D TFX_EXAMPLE_WEBGPU=ON`.
+The Metal example builds on Apple platforms only and uses GLFW. It needs no Metal toolchain, because it compiles its shaders at
+start up: turn it on with `-D TFX_EXAMPLE_METAL=ON`.
 
 ```
 example_win32_dx11 [updates per second]
@@ -65,14 +69,16 @@ example_sdl3_gpu [--d3d12] [updates per second]
 example_glfw_opengl [updates per second] [--frames N] [--test-debug-output]
 example_glfw_vulkan [updates per second] [--frames N] [--test-debug-output] [--gpu-validation]
 example_glfw_webgpu [updates per second] [--frames N] [--test-debug-output] [--gpu-validation] [--vulkan | --d3d12]
+example_glfw_metal [updates per second] [--frames N] [--test-debug-output] [--gpu-validation]
 ```
 
 Space fires a burst of sparks, O pauses the camera orbit, L frees and reloads the second library, the mouse wheel
 zooms and Escape quits. The window title shows the frame rate and the particle counts. In debug builds the D3D11
 debug layer's messages are repeated on the console, and so are the Vulkan validation layer's and the D3D12 debug
 layer's in the SDL3 example. The OpenGL example asks for a debug context and the backend prints the driver's messages,
-the D3D12 and Vulkan examples print their debug and validation layers' messages, and the WebGPU example prints WebGPU's
-validation errors and wgpu-native's log. In the examples that take them,
+the D3D12 and Vulkan examples print their debug and validation layers' messages, the WebGPU example prints WebGPU's
+validation errors and wgpu-native's log, and the Metal example turns on Metal's API validation and prints what shader
+validation finds. In the examples that take them,
 `--test-debug-output` makes one deliberate error to prove the messages arrive, `--gpu-validation` turns on the GPU
 side of the layer, which checks what the shaders do with each descriptor, and `--frames N` quits after N frames.
 Passing an update rate (20 or 400, say) is a quick way to check the interpolation: the effects should look the same at
@@ -516,6 +522,56 @@ differences.
 - **Depth writes.** `tfx_impl_gl_Render` turns them off for the particles and back on at the end, because `glClear`
   doesn't clear depth while they're off.
 
+## Metal notes
+
+`tfx_impl_metal` follows the WebGPU backend, with the same fixed bindings compiled to Metal source, and the Vulkan backend's frames
+in flight. It's Objective-C++ built without ARC, so the renderer is a plain struct that releases what it owns, and its header needs
+`<Metal/Metal.h>`. It has run on an Apple M2 under macOS 26. Intel and AMD Macs haven't been tried.
+
+- **Shaders.** slangc writes each entry point as `.metal` text and `tfx_impl_metal_Init` compiles it with `newLibraryWithSource`,
+  so the build needs no Metal toolchain, which recent Xcode versions download separately. All nine compile in about half a second,
+  and an error points at its line in `timelinefx.slang`, because Slang keeps its `#line` directives.
+- **Slots.** Slang makes HLSL registers `tN`, `uN` and `bN` all `[[buffer(N)]]` and ignores spaces, so under the fixed bindings
+  a stage's classes would collide. `-D TFX_METAL_SLOTS` gives them their own tens: a vertex shader's buffers from 0, its view at
+  10 and its draw block at 11; a compute pass's written buffers from 0, its read buffers from 10 and its block at 20. Textures
+  and samplers have namespaces of their own and keep 0 and 1.
+- **The kernel** takes its own Metal path whatever the defines, so it's compiled without them: its push constants at
+  `[[buffer(0)]]` and a table of 16 `gpuAddress` values at `[[buffer(1)]]`, both sent with `setBytes`. The table holds the pool,
+  the current instance buffer, the graph lookups and the frame's upload, and the push constants' bases do the rest. Metal only
+  sees those buffers through `useResource`, read for the upload and the graph lookups, read and write for the pool and the
+  instance buffer, which keeps them resident and ordered against the passes around them. `gpuAddress` needs Metal 3 (macOS 13),
+  which Init checks.
+- **Uniforms.** `setVertexBytes` and `setBytes` replace every uniform block: the view once per frame, each draw's first instance
+  or each bucket's globals per draw, and each compute dispatch's block, the kernel's before every dispatch.
+- **Frames in flight.** Call `tfx_impl_metal_BeginFrame` with the frame slot once the GPU has finished the last frame that used
+  it. The example waits on a semaphore that its command buffers' completion handlers signal. Each slot has a shared upload ring.
+  What the GPU keeps (library data, instances, ribbons, the baked data) is in private buffers filled by blits from the ring,
+  because on Apple silicon a shared buffer is memory the GPU reads directly, and writing one that a frame in flight reads is a
+  race. What a frame reads once (the kernel's upload, the baked playback's offsets and animation instances) is read in place
+  from the ring. Command buffers keep what they use alive, so a grown private buffer is released at once, but a big upload's
+  buffer of its own and an outgrown ring wait for their slot to come round, because later passes of the same frame still bind them.
+- **Passes.** A frame's uploads are one blit pass, after a blit pass of their own that copies grown instance buffers across, so
+  the new instances land on top. Compute is one concurrent compute pass: the kernel's dispatches, the playback passes and the
+  ribbon buckets all write their own ranges, so its only barrier is `memoryBarrierWithScope` between the ribbon playback and
+  the baked ribbon geometry that reads it. Metal tracks hazards between passes and command buffers, so there are no others.
+  Wrap each frame in an `@autoreleasepool`, because encoders and drawables are autoreleased.
+- **Draws** start at instance 0 with the first instance in the draw constants, as on the other fixed binding backends. Ribbons
+  are drawn indexed from the index buffer `tfx_ribbon_compute` wrote.
+- **Textures.** The atlas and the color ramps are private texture arrays. The atlas mips are built on the CPU with the same
+  2 x 2 box filter as the WebGPU, SDL_gpu and D3D12 backends, straight into the upload memory after the layer they come from.
+  The color ramps are only read, so they need no sampler.
+- **The window.** GLFW with `GLFW_NO_API` and a `CAMetalLayer` on the Cocoa window's content view, BGRA8Unorm like the other
+  examples, with its `drawableSize` set from the framebuffer on every resize. The depth texture is memoryless, since it's
+  cleared and never stored.
+- **Validation.** In debug builds the example sets `MTL_DEBUG_LAYER=1` and `MTL_DEBUG_LAYER_ERROR_MODE=nslog` before it creates
+  the device, which works as well as setting them in the shell, and `--gpu-validation` sets `MTL_SHADER_VALIDATION=1`. Metal
+  prints "Metal API Validation Enabled" and "Metal GPU Validation Enabled" when they take. API errors go to NSLog on stderr. A
+  failed command buffer's error and shader validation's reports reach its completion handler, which prints them: shader
+  validation leaves the command buffer completed and reports in its `logs`, with the line in `timelinefx.slang`. It also checks
+  what the kernel reaches through its table, so a buffer left out of `useResource` is reported. `--test-debug-output` creates a
+  buffer of zero length. With shader validation on the scene runs at about a quarter of its frame rate.
+- **CMake** turns on OBJC as well as OBJCXX before anything adds GLFW, or a downloaded GLFW's `.m` files build as Objective-C++.
+
 ## sokol_gfx notes
 
 There's no sokol backend here. An outside integration ported the D3D11 backend function for function onto sokol_gfx,
@@ -588,7 +644,8 @@ for any layer that binds a fixed set of resources per stage (SDL_gpu), compile w
 from one atlas, every buffer as raw rows, and the instances and ribbon vertexes from buffers in place of vertex
 attributes. Macros set the set, space and binding base of each kind of slot, so the slots fit your API's or engine's
 convention. D3D11 uses it with the defaults. OpenGL uses it through SPIR-V and SPIRV-Cross, as the Shaders readme
-describes and the OpenGL backend does. WebGPU uses it as WGSL, as the WebGPU backend does.
+describes and the OpenGL backend does. WebGPU uses it as WGSL, as the WebGPU backend does. Metal uses it as Metal source
+with `-D TFX_METAL_SLOTS`, as the Metal backend does.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear

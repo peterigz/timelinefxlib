@@ -160,6 +160,13 @@ if (TFX_EXAMPLE_SDL3)
 	target_compile_definitions(example_sdl3_gpu PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_SDL_SHADER_FOLDER}")
 endif()
 
+# Off unless asked for, because it needs GLFW. Apple only, and Objective-C++, so its languages go on before anything adds GLFW: OBJC
+# as well, or a downloaded GLFW's .m files build as Objective-C++
+option(TFX_EXAMPLE_METAL "Build the Metal example with GLFW, Apple only" OFF)
+if (APPLE AND TFX_EXAMPLE_METAL)
+	enable_language(OBJC OBJCXX)
+endif()
+
 # The OpenGL and Vulkan examples use the parent project's glfw target when it has one, otherwise they download GLFW
 macro(tfx_example_require_glfw)
 	if (NOT TARGET glfw)
@@ -416,4 +423,56 @@ if (TFX_EXAMPLE_WEBGPU)
 		add_custom_command(TARGET example_glfw_webgpu POST_BUILD
 			COMMAND ${CMAKE_COMMAND} -E copy_if_different ${wgpu_native_folder}/lib/wgpu_native.dll $<TARGET_FILE_DIR:example_glfw_webgpu>)
 	endif()
+endif()
+
+# The Metal example, its option is with the GLFW macro. The fixed bindings as Metal source, with TFX_METAL_SLOTS so the buffer classes don't
+# share [[buffer]] indexes, compiled by the backend at start up, so the build needs no Metal toolchain. The kernel has its own Metal path,
+# which without the defines takes [[buffer(0)]] and [[buffer(1)]]
+if (APPLE AND TFX_EXAMPLE_METAL)
+	tfx_example_require_glfw()
+	set(TFX_METAL_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/metal_shaders)
+	set(TFX_METAL_ENTRY_POINTS
+		simulate_particles
+		tfx_billboard_vertex
+		tfx_billboard_baked_vertex
+		tfx_billboard_fragment
+		tfx_ribbon_compute
+		tfx_ribbon_vertex
+		tfx_ribbon_fragment
+		tfx_sprite_playback
+		tfx_ribbon_playback
+	)
+	set(TFX_METAL_SHADERS)
+	foreach(entry_point ${TFX_METAL_ENTRY_POINTS})
+		set(shader_output ${TFX_METAL_SHADER_FOLDER}/${entry_point}.metal)
+		set(shader_defines -D TFX_FIXED_BINDINGS -D TFX_METAL_SLOTS -D TFX_ENTRY_${entry_point})
+		if (entry_point STREQUAL "simulate_particles")
+			set(shader_defines)
+		endif()
+		add_custom_command(OUTPUT ${shader_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_METAL_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target metal ${shader_defines} -o ${shader_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for Metal")
+		list(APPEND TFX_METAL_SHADERS ${shader_output})
+	endforeach()
+	add_custom_target(tfx_metal_shaders DEPENDS ${TFX_METAL_SHADERS})
+
+	add_executable(example_glfw_metal
+		${CMAKE_CURRENT_SOURCE_DIR}/example_glfw_metal/main.mm
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_metal.mm
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_metal.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	# The renderer is a plain struct that releases what it owns, see tfx_impl_metal.h
+	set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/example_glfw_metal/main.mm ${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_metal.mm PROPERTIES COMPILE_OPTIONS -fno-objc-arc)
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_glfw_metal)
+	target_link_libraries(example_glfw_metal PRIVATE glfw "-framework Metal" "-framework QuartzCore" "-framework Cocoa")
+	add_dependencies(example_glfw_metal tfx_metal_shaders)
+	target_compile_definitions(example_glfw_metal PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_METAL_SHADER_FOLDER}")
 endif()
