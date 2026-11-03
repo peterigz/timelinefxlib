@@ -7,13 +7,15 @@ Minimal examples of drawing TimelineFX effects with different graphics API backe
 | `tfx_impl_common.h/.cpp` | Everything that would be written the same way whatever API draws the particles: shape loading, the shape atlas, the fixed step timer, the camera matrices and gathering each frame's instances from a stage. Nothing in it talks to a GPU. |
 | `tfx_impl_dx11.h/.cpp` | The Direct3D 11 backend. |
 | `tfx_impl_sdlgpu.h/.cpp` | The SDL3 GPU (SDL_gpu) backend, for its Vulkan and Direct3D 12 drivers. |
-| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11 and `.spv` and `.dxil` for SDL_gpu. |
+| `tfx_impl_gl.h/.cpp` | The OpenGL 4.3 core backend. It includes no GL header and loads its functions through a loader you pass it, such as `glfwGetProcAddress`. |
+| `../Shaders/timelinefx.slang` | Every shader: the GPU particle kernel and the render passes. CMake has slangc compile each entry point an example uses, to `.cso` for D3D11, `.spv` and `.dxil` for SDL_gpu, and `.spv` then `.glsl` through spirv-cross for OpenGL. |
 | `example_scene.h/.cpp` | The demo scene every example plays. It's example code showing how a game uses the library, separate from the integration code above. |
 | `example.tfx` | The library the scene plays. |
 | `example_second.tfx` | A second library, so the scene draws effects from two libraries with one set of buffers. The scene plays without it. |
 | `example.tfxsd` | Burst, recorded from `example.tfx` in the editor, for baked playback. |
 | `example_win32_dx11/main.cpp` | A Win32 window, a D3D11 device and swap chain, and the main loop that calls the scene and the backend. |
 | `example_sdl3_gpu/main.cpp` | An SDL3 window and GPU device, Vulkan by default or Direct3D 12 with `--d3d12`, and the same main loop. |
+| `example_glfw_opengl/main.cpp` | A GLFW window with a 4.3 core debug context, and the same main loop. |
 | `third_party/` | stb_image (PNG shapes), stb_rect_pack (the atlas), bcdec (BC4/5/7 KTX2 shapes) and zstd's single file decompressor (supercompressed KTX2 shapes). |
 
 So there are three layers. `tfx_impl_common` is integration code you can copy into a game as it is, `example_scene` is
@@ -26,7 +28,7 @@ project can call a backend that was built as C++. The examples only include `tim
 `timelinefx_internal.h`, which is exactly what a game sees. `tfx_impl_common` and the backends report problems with
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
-Status: D3D11 and SDL_gpu (Vulkan and D3D12) draw CPU simulated billboards and ribbons, GPU simulated particles, and
+Status: D3D11, SDL_gpu (Vulkan and D3D12) and OpenGL 4.3 draw CPU simulated billboards and ribbons, GPU simulated particles, and
 baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
@@ -43,25 +45,29 @@ the Slang releases on GitHub. CMake looks on the `PATH` and in the Vulkan SDK, a
 its bin folder on the `PATH` or set `TFX_SLANGC` to it.
 
 The SDL3 example is off by default, because it downloads and builds SDL3 with FetchContent. Turn it on with
-`-D TFX_EXAMPLE_SDL3=ON` when you configure.
+`-D TFX_EXAMPLE_SDL3=ON` when you configure. The OpenGL example is off by default too, because it needs GLFW, which it
+downloads unless the parent project already has a `glfw` target, and spirv-cross, which comes with the Vulkan SDK. Turn
+it on with `-D TFX_EXAMPLE_GL=ON`.
 
 ```
 example_win32_dx11 [updates per second]
 example_sdl3_gpu [--d3d12] [updates per second]
+example_glfw_opengl [updates per second] [--frames N] [--test-debug-output]
 ```
 
 Space fires a burst of sparks, O pauses the camera orbit, L frees and reloads the second library, the mouse wheel
 zooms and Escape quits. The window title shows the frame rate and the particle counts. In debug builds the D3D11
 debug layer's messages are repeated on the console, and so are the Vulkan validation layer's and the D3D12 debug
-layer's in the SDL3 example.
+layer's in the SDL3 example. The OpenGL example asks for a debug context and the backend prints the driver's messages;
+`--test-debug-output` makes one deliberate error to prove they arrive, and `--frames N` quits after N frames.
 Passing an update rate (20 or 400, say) is a quick way to check the interpolation: the effects should look the same at
-any rate.
+any rate. The examples size the GPU rings for it with `tfx_SetGPUSizingUpdateRate` before the scene starts.
 
 ## The scene
 
 | Effect | What it shows |
 | --- | --- |
-| Spitting Torch | An ordinary effect moved with `tfx_SetEffectPosition` every frame. Animated flames, smoke and embers trail behind it |
+| Spitting Torch | Animated flames and smoke on the CPU, and embers on the GPU, trailing behind it. Because it has a Run on GPU emitter it spawns at a user location, which the scene moves around a circle with `tfx_UpdateSpawnLocation` every frame |
 | Burst Sparks | Fire and forget: every burst (every so often, and on Space) adds a new effect at a random spot, and each one frees itself once it's finished. Stretched sparks |
 | Leaf Explosion | One effect that spawns at user locations: every burst adds a location at a random spot, and each location removes itself once the effect has played out there. Cheaper than an effect per burst, and what Run on GPU effects need. Freely aligned, tumbling leaves |
 | Space Weed | Ribbons |
@@ -354,6 +360,41 @@ differences.
 - **D3D12 depth clears.** The depth texture is created with `SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_DEPTH_FLOAT` at 1,
   or the debug layer warns on every clear.
 
+## OpenGL notes
+
+`tfx_impl_gl` follows the D3D11 backend call for call, with the same fixed bindings, so these are only the differences.
+
+- **The context.** 4.3 core, for storage buffers in the vertex stage and compute shaders, so not macOS. `tfx_impl_gl_Init`
+  checks the version and loads every function it calls through your loader, which has to return the GL 1.1 functions
+  too (`glfwGetProcAddress` and `SDL_GL_GetProcAddress` do, `wglGetProcAddress` alone doesn't).
+- **Debug output.** With a debug context, Init installs a `glDebugMessageCallback` that prints through `tfx_Print`,
+  leaving out notifications. Nothing else installs one, so ask for the debug context and prove the messages arrive.
+- **Shaders.** Each entry point goes through SPIR-V and spirv-cross to `#version 430` GLSL, as the Shaders readme
+  describes, with `TFX_COMBINED_SAMPLERS`. The backend compiles the text at start up and links the three render
+  programs and four compute programs. Storage buffers, uniform blocks and textures keep the bindings from the slots table:
+  GL numbers each of the three separately, so the defaults never collide.
+- **Uniforms** are one small uniform buffer per kind of block, rewritten with `glBufferSubData` before each draw or
+  dispatch: the frame's `tfx_impl_uniforms_t` at binding 5, a draw's first instance or a ribbon bucket's globals at 6, and
+  each compute dispatch's block at 6.
+- **Draws start at instance 0 and base vertex 0**, with the first instance in the draw constants. The vertex shaders
+  subtract `gl_BaseInstanceARB` and `gl_BaseVertexARB` where the driver has `GL_ARB_shader_draw_parameters`, and a
+  uniform left at 0 where it doesn't.
+- **One empty vertex array.** Core profile draws need a vertex array bound, though nothing reads vertex attributes. The
+  ribbon index buffer, which the compute writes as a storage buffer, is bound to it as the element buffer.
+- **Barriers.** Storage buffer writes aren't visible to later draws without `glMemoryBarrier`. `tfx_impl_gl_Compute`
+  issues one storage and element array barrier after all its dispatches, plus one between the ribbon playback and the
+  ribbon compute that reads its output. The kernel's dispatches write separate rings and instance ranges, so they need
+  none between them.
+- **Textures.** The atlas is immutable storage (`glTexStorage3D`), so a `glTextureView` of an atlas's layers lets
+  `glGenerateMipmap` rebuild only those, like the D3D11 backend's range view. The color ramps are read with
+  `texelFetch`, but a texture still has to be complete for that, so they're created with one level and nearest filters.
+- **Uploads** are `glBufferSubData` into buffers that grow by half again when they're too small, and grown instance
+  buffers are copied across with `glCopyBufferSubData`. The kernel's upload is mapped with
+  `GL_MAP_INVALIDATE_BUFFER_BIT` and filled by `tfx_CopyGPUParticleUpload`. The pool is created from zeroed memory, and
+  checked against `GL_MAX_SHADER_STORAGE_BLOCK_SIZE`, which 4.3 only promises to 16 MB.
+- **Depth writes.** `tfx_impl_gl_Render` turns them off for the particles and back on at the end, because `glClear`
+  doesn't clear depth while they're off.
+
 ## sokol_gfx notes
 
 There's no sokol backend here. An outside integration ported the D3D11 backend function for function onto sokol_gfx,
@@ -426,7 +467,7 @@ for any layer that binds a fixed set of resources per stage (SDL_gpu), compile w
 from one atlas, every buffer as raw rows, and the instances and ribbon vertexes from buffers in place of vertex
 attributes. Macros set the set, space and binding base of each kind of slot, so the slots fit your API's or engine's
 convention. D3D11 uses it with the defaults. OpenGL uses it through SPIR-V and SPIRV-Cross, as the Shaders readme
-describes. WebGPU is meant to use the same define, but hasn't been tried.
+describes and the OpenGL backend does. WebGPU is meant to use the same define, but hasn't been tried.
 
 **1. CPU billboards** (`example_scene_feature_none`)
 - [ ] The atlas as an RGBA8 texture array with mips and room for every shape list's layers, and a clamped linear

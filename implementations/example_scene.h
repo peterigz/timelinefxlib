@@ -70,9 +70,10 @@ typedef struct example_scene_s {
 	bool orbit_paused;
 	double time;					//Milliseconds since the scene started
 
-	//Moved around a circle with tfx_SetEffectPosition every frame
+	//Its embers run on the GPU, so it spawns at a user location, moved around a circle every frame
 	tfx_effect_template torch_template;
 	tfxEffectID torch_id;
+	tfxSpawnLocationID torch_location;
 	//Fire and forget: every burst adds a new effect, which frees itself once it's finished
 	example_scene_burst_t sparks;
 	//Spawn at user locations: one effect, and every burst adds a location that removes itself once the effect has played out there

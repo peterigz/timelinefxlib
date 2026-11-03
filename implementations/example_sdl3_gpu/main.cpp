@@ -172,6 +172,10 @@ int main(int argc, char **argv) {
 	bool ready = tfx_impl_sdlgpu_Init(&example.renderer, example.device, SDL_GetGPUSwapchainTextureFormat(example.device, example.window), EXAMPLE_DEPTH_FORMAT, TFX_EXAMPLE_SHADER_FOLDER)
 		&& LoadScene(&example);
 	if (ready) {
+		//Before the start sizes the GPU rings, so they hold a slower rate's longer updates
+		if (updates_per_second > 0.0) {
+			tfx_SetGPUSizingUpdateRate((float)updates_per_second);
+		}
 		example_scene_Start(&example.scene);
 		if (updates_per_second > 0.0) {
 			example.scene.timer = tfx_impl_CreateTimer(updates_per_second);

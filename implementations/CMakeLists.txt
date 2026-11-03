@@ -159,3 +159,68 @@ if (TFX_EXAMPLE_SDL3)
 	add_dependencies(example_sdl3_gpu tfx_sdl_shaders)
 	target_compile_definitions(example_sdl3_gpu PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_SDL_SHADER_FOLDER}")
 endif()
+
+# Off unless asked for. Uses the parent project's glfw target when it has one, otherwise downloads GLFW
+option(TFX_EXAMPLE_GL "Build the OpenGL example with GLFW" OFF)
+if (TFX_EXAMPLE_GL)
+	find_program(TFX_SPIRV_CROSS spirv-cross HINTS "$ENV{VULKAN_SDK}/Bin")
+	if (NOT TFX_SPIRV_CROSS)
+		message(FATAL_ERROR "spirv-cross wasn't found. It comes with the Vulkan SDK, put its bin folder on the PATH or set TFX_SPIRV_CROSS to spirv-cross")
+	endif()
+	if (NOT TARGET glfw)
+		include(FetchContent)
+		set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+		set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+		set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+		set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+		FetchContent_Declare(glfw
+			GIT_REPOSITORY https://github.com/glfw/glfw.git
+			GIT_TAG 3.4
+			GIT_SHALLOW TRUE)
+		FetchContent_MakeAvailable(glfw)
+	endif()
+
+	# Slang's own GLSL is Vulkan GLSL, so each entry point goes through SPIR-V and spirv-cross to GLSL 430, with the default fixed bindings
+	set(TFX_GL_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/gl_shaders)
+	set(TFX_GL_ENTRY_POINTS
+		simulate_particles
+		tfx_billboard_vertex
+		tfx_billboard_baked_vertex
+		tfx_billboard_fragment
+		tfx_ribbon_compute
+		tfx_ribbon_vertex
+		tfx_ribbon_fragment
+		tfx_sprite_playback
+		tfx_ribbon_playback
+	)
+	set(TFX_GL_SHADERS)
+	foreach(entry_point ${TFX_GL_ENTRY_POINTS})
+		set(spirv_output ${TFX_GL_SHADER_FOLDER}/${entry_point}.spv)
+		set(glsl_output ${TFX_GL_SHADER_FOLDER}/${entry_point}.glsl)
+		add_custom_command(OUTPUT ${glsl_output}
+			COMMAND ${CMAKE_COMMAND} -E make_directory ${TFX_GL_SHADER_FOLDER}
+			COMMAND ${TFX_SLANGC} ${TFX_SHADER_SOURCE} -entry ${entry_point} -target spirv -profile spirv_1_5 -O3 -D TFX_FIXED_BINDINGS -D TFX_COMBINED_SAMPLERS -D TFX_ENTRY_${entry_point} -o ${spirv_output}
+			COMMAND ${TFX_SPIRV_CROSS} ${spirv_output} --version 430 --no-es --no-support-nonzero-baseinstance --output ${glsl_output}
+			DEPENDS ${TFX_SHADER_SOURCE}
+			COMMENT "Compiling ${entry_point} for OpenGL")
+		list(APPEND TFX_GL_SHADERS ${glsl_output})
+	endforeach()
+	add_custom_target(tfx_gl_shaders DEPENDS ${TFX_GL_SHADERS})
+
+	add_executable(example_glfw_opengl
+		${CMAKE_CURRENT_SOURCE_DIR}/example_glfw_opengl/main.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/example_scene.h
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_gl.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/tfx_impl_gl.h
+		${TFX_SHADER_SOURCE}
+		${TFX_IMPL_COMMON_SOURCE}
+		${TFX_LIBRARY_SOURCE}
+	)
+	set_source_files_properties(${TFX_SHADER_SOURCE} PROPERTIES VS_TOOL_OVERRIDE "None")
+	source_group("Shaders" FILES ${TFX_SHADER_SOURCE})
+	tfx_example_target(example_glfw_opengl)
+	target_compile_definitions(example_glfw_opengl PRIVATE TFX_EXAMPLE_SHADER_FOLDER="${TFX_GL_SHADER_FOLDER}")
+	target_link_libraries(example_glfw_opengl PRIVATE glfw)
+	add_dependencies(example_glfw_opengl tfx_gl_shaders)
+endif()

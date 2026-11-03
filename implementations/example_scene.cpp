@@ -22,12 +22,14 @@ static tfx_effect_template example_scene__create_template(tfx_library library, c
 	return tfx_CreateEffectTemplate(library, path);
 }
 
-//Every Run on GPU emitter gets a ring sized for one spawn location, and the stage's pool has to hold every ring
+//Every Run on GPU emitter gets a ring sized for one spawn location, and the stage's pool has to hold every ring: the torch's embers,
+//the leaves and the GPU Simulated fountain
 static tfxU32 example_scene__set_gpu_capacities(example_scene_t *scene) {
 	//Leaf bursts overlap, so the leaves need room for every location that can be alive at once
 	float leaves_lifetime = tfx_GetEffectLifetime(scene->leaves.effect_template);
 	tfxU32 overlapping_locations = (tfxU32)(leaves_lifetime / EXAMPLE_SCENE_LEAVES_INTERVAL) + 1;
-	return tfx_SetTemplateGPUCapacityForLocations(scene->leaves.effect_template, overlapping_locations) + tfx_GetTemplateGPUPoolSlots(scene->gpu_template);
+	return tfx_SetTemplateGPUCapacityForLocations(scene->leaves.effect_template, overlapping_locations) + tfx_GetTemplateGPUPoolSlots(scene->gpu_template)
+		+ tfx_GetTemplateGPUPoolSlots(scene->torch_template);
 }
 
 //Each library loads its shapes into its own list, so they get their own layers of the atlas
@@ -196,6 +198,8 @@ void example_scene_Start(example_scene_t *scene) {
 	scene->camera_distance = 15.f;
 
 	scene->torch_id = tfx_AddEffectTemplateToStage(scene->stage, scene->torch_template);
+	float torch_position[3] = { -3.f, 0.f, 0.f };
+	scene->torch_location = tfx_AddSpawnLocation(scene->stage, scene->torch_id, torch_position, tfxSpawnLocationAdd_none);
 
 	scene->sparks.center = tfx_impl_Vec3(0.f, 1.f, 0.f);
 	scene->sparks.spread = 1.5f;
@@ -247,7 +251,8 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 	tfx_impl_vec3_t camera_front = tfx_impl_CameraFront(&scene->camera);
 	tfx_SetStageCamera(scene->stage, &camera_front.x, &scene->camera.position.x);
 	float torch_angle = time * EXAMPLE_SCENE_TORCH_SPEED;
-	tfx_SetEffectPosition(scene->stage, scene->torch_id, -4.f + cosf(torch_angle), 0.f, sinf(torch_angle));
+	float torch_position[3] = { -4.f + cosf(torch_angle), 0.f, sinf(torch_angle) };
+	tfx_UpdateSpawnLocation(scene->stage, scene->torch_location, torch_position);
 	float burst_position[3];
 	if (example_scene__next_burst(scene, &scene->sparks, scene->burst_requested, burst_position)) {
 		tfxEffectID sparks_id = tfx_AddEffectTemplateToStage(scene->stage, scene->sparks.effect_template);

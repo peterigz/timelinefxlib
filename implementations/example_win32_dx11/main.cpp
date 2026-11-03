@@ -249,6 +249,10 @@ int main(int argc, char **argv) {
 		&& UploadPendingAtlases(&example)
 		&& (!example.scene.animation_manager || tfx_impl_dx11_UploadSpriteData(&example.renderer, example.scene.animation_manager, example.scene.baked_shapes));
 	if (ready) {
+		//Before the start sizes the GPU rings, so they hold a slower rate's longer updates
+		if (argc > 1 && atof(argv[1]) > 0.0) {
+			tfx_SetGPUSizingUpdateRate((float)atof(argv[1]));
+		}
 		example_scene_Start(&example.scene);
 		if (argc > 1 && atof(argv[1]) > 0.0) {
 			example.scene.timer = tfx_impl_CreateTimer(atof(argv[1]));
