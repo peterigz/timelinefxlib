@@ -372,7 +372,10 @@ if (TFX_EXAMPLE_WEBGPU)
 		elseif (APPLE)
 			set_target_properties(tfx_wgpu_native PROPERTIES IMPORTED_LOCATION ${wgpu_native_folder}/lib/libwgpu_native.dylib)
 		else()
-			set_target_properties(tfx_wgpu_native PROPERTIES IMPORTED_LOCATION ${wgpu_native_folder}/lib/libwgpu_native.so)
+			# The release .so has no SONAME, without this the binary records its relative build path and only runs from the build folder
+			set_target_properties(tfx_wgpu_native PROPERTIES
+				IMPORTED_LOCATION ${wgpu_native_folder}/lib/libwgpu_native.so
+				IMPORTED_NO_SONAME TRUE)
 		endif()
 		set_target_properties(tfx_wgpu_native PROPERTIES
 			INTERFACE_INCLUDE_DIRECTORIES ${wgpu_native_folder}/include
