@@ -3739,18 +3739,6 @@ Set the user data in a tfx_animation_manager_t which can get passed through to c
 tfxAPI void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, void *user_data);
 
 /*
-Add sprite data to an animation manager sprite data buffer from an effect. This will record the
-animation if necessary and then convert the sprite data to tfx_sprite_data_t ready for uploading
-to the GPU
-* @param animation_manager       A pointer to a tfx_animation_manager_t where the effect animation is being managed
-* @param effect                  The effect to add sprite data for
-* @param stage                   A stage to record the effect with if it hasn't been recorded yet
-* @param camera_position         A float[3] array, the camera position to record with
-* @param sprite_data             Optional advanced usage if you want to use sprite data you recorded in another process. Pass 0 to just use the record or lookup pre-recorded data for the effect.
-*/
-tfxAPI void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_stage stage, float camera_position[3], tfx_sprite_data_t *sprite_data);
-
-/*
 Add an animation instance to the animation manager.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param path                    tfxKey path hash of the effect name and path: effect.path_hash
@@ -4197,23 +4185,6 @@ stage's update thread, so it can't add effects to the same stage.
 * @param update_callback          A pointer to the call back function
 */
 tfxAPI void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_stage stage, tfxEffectID effect_id));
-
-/*
-Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
-	* @param stage					  A stage that will be used to run the particle simulation and record the sprite data
-	* @param path				  const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
-	* @param camera				  Array of 3 floats with the camera position (only needed for effects that are sorted by depth)
-*/
-tfxAPI void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_stage stage, float update_frequency, float camera_position[3]);
-
-/*
-Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime. This version
-of the function allows you to pass in specific settings
-	* @param stage					  A stage that will be used to run the particle simulation and record the sprite data
-	* @param path				  const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
-	* @param camera				  Array of 3 floats with the camera position (only needed for effects that are sorted by depth)
-*/
-tfxAPI void tfx_RecordEffect(tfx_effect_descriptor e, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, tfx_stage stage, float update_frequency, float camera_position[3]);
 
 /*
 Disable an emitter within an effect. Disabling an emitter will stop it being added to the stage when calling tfx_AddEffectTemplateToStage

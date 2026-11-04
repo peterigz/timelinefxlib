@@ -6411,6 +6411,11 @@ typedef struct tfx_ribbon_s {	//48 bytes
 	tfxU32 scale;							//The parent effect's overall_scale as a half float in the low 16 bits, applied to the path segments
 } tfx_ribbon_t;
 
+tfxINTERNAL inline tfxU32 tfx__ribbon_start_index(const tfx_ribbon_t &ribbon) {
+	tfxU32 start_index = ribbon.start_index_flags & tfxRIBBON_START_INDEX_MASK;
+	return start_index == tfxRIBBON_START_INDEX_MASK ? tfxINVALID : start_index;
+}
+
 tfx__static_assert(sizeof(tfx_ribbon_t) == 48);
 
 typedef struct tfx_ribbon_soa_s {
@@ -7154,11 +7159,6 @@ typedef struct tfx_sort_work_entry_s {
 	tfx_vector_t *depth_indexes;
 #endif
 } tfx_sort_work_entry_t;
-
-typedef struct tfx_compress_work_entry_s {
-	tfx_sprite_data_t *sprite_data;
-	tfxU32 frame;
-} tfx_compress_work_entry_t;
 
 
 
@@ -7935,7 +7935,7 @@ tfxINTERNAL void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t eff
 tfxINTERNAL void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording);
 tfxINTERNAL void tfx__simulate_emitter_age(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__set_stage_timings(tfx_stage stage, double elapsed_time, double max_frame_length);
-tfxINTERNAL void tfx__update_stage(void *data);
+tfxAPI_EDITOR void tfx__update_stage(void *data);
 //Signal the persistent update thread to exit and join it. Safe to call on a stage whose
 //thread was never started. Call only after the in-flight update has been drained.
 tfxINTERNAL void tfx__shutdown_update_thread(tfx_stage pm);
@@ -7963,7 +7963,7 @@ tfxINTERNAL inline void tfx__wait_for_stage_update(tfx_stage pm) {
 }
 //If another thread is currently recording sprite data on this stage, block until
 //it finishes. Re-entrant calls from the recording thread itself pass through
-//immediately (tfx__record_sprite_data internally calls tfx_ReconfigureStage
+//immediately (the editor's sprite data recording calls tfx_ReconfigureStage
 //and tfx_ClearStage while the recording flag is still set).
 tfxINTERNAL inline bool tfx__is_recording_on_another_thread(tfx_stage pm) {
 	tfx__sync_lock(&pm->update_thread_mutex);
@@ -8085,7 +8085,6 @@ tfxINTERNAL inline tfxU32 tfx__stage_ramp_layer(tfx_stage pm, tfx_library librar
 	TFX_ASSERT(local_layer < library->global_ramp_layers.current_size);	//The layer has no global slot, call tfx_UpdateGlobalGPUData after changing a library and before updating the stage
 	return local_layer < library->global_ramp_layers.current_size ? library->global_ramp_layers[local_layer] : 0;
 }
-tfxINTERNAL tfxU32 tfx__library_ribbon_texture_indexes(tfx_stage pm, tfxU32 texture_indexes);
 tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
@@ -8209,7 +8208,8 @@ tfxAPI_EDITOR bool tfx__update_effect_color_graphs(tfx_effect_descriptor effect)
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
-tfxAPI_EDITOR void tfx__record_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, tfx_sprite_data_settings_t *settings, tfx_sprite_data_t *sprite_data, float update_frequency, float camera_position[3], int *progress);
+//Adds an effect's recording, or sprite_data in its place, to an animation manager. Only the editor records effects
+tfxAPI_EDITOR void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor effect, tfx_sprite_data_t *sprite_data);
 tfxAPI_EDITOR tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type type);
 tfxAPI_EDITOR void tfx__free_graph_list_graphs(tfx_graph_list_t *graph_list);
 tfxAPI_EDITOR void tfx__copy_graph_list(tfx_graph_list_t *src, tfx_graph_list_t *dst);
@@ -8217,7 +8217,6 @@ tfxAPI_EDITOR tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library 
 tfxAPI_EDITOR tfxU32 tfx__clone_library_gpu_particle_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxAPI_EDITOR tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfxU32 source_index, tfx_library destination_library);
-tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_stage pm, bool switch_on);
 tfxINTERNAL void tfx__set_effect_library_paths(tfx_effect_descriptor effect);
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
@@ -10115,43 +10114,6 @@ void tfx__update_particles_position(tfx_control_work_entry_t *work_entry, tfx_po
 //--------------------------------
 //effect manager internal functions
 //--------------------------------
-template<typename T>
-tfxINTERNAL inline void tfx__wrap_single_particle_instances(T *instance, tfx_sprite_data_t *sprite_data) {
-	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
-	for (tfxEachLayer) {
-		for (tfxU32 i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
-			if (instance[i].captured_index != tfxINVALID && instance[i].captured_index & 0x80000000) {
-				for (tfxU32 j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
-					if (sprites.uid[j].uid == sprites.uid[i].uid) {
-						instance[i].captured_index = j;
-					}
-				}
-			}
-		}
-	}
-}
-
-template<typename T> tfxINTERNAL void tfx__clear_wrap_bit(T* instance, tfx_sprite_data_t *sprite_data);
-template<typename T> tfxINTERNAL void tfx__sprite_data_offset_captured_indexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 previous_frame, tfxU32 current_frame);
-template<typename T> tfxINTERNAL void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data);
-tfxINTERNAL void tfx__ribbon_data_set_captured_indexes(tfx_sprite_data_t *sprite_data);
-
-template<typename T>
-tfxINTERNAL inline void tfx__invalidate_new_captured_index(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_stage pm, tfxU32 layer) {
-	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
-		if ((uids[i].age == 0 && !(instance[i].captured_index & 0x80000000)) || ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000))) {
-			instance[i].captured_index = tfxINVALID;
-		}
-	}
-}
-
-template<typename T>
-tfxINTERNAL inline void tfx__invalidate_offsetted_sprite_captured_index(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_stage pm, tfxU32 layer) {
-	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
-		instance[i].captured_index = tfxINVALID;
-	}
-}
-
 tfxINTERNAL tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL tfx_vec3_t tfx__vector_in_cone(tfx_vec3_t cone_direction, float z, float phi);
 tfxINTERNAL void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
@@ -10293,11 +10255,9 @@ tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_stage pm);
 tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_stage pm);
 
 tfxINTERNAL bool tfx__control_profile_has_noise(tfxEmitterControlProfileFlags flags);
-tfxINTERNAL void tfx__init_sprite_data_soa(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_data_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_data_soa_t *soa, tfxU32 reserve_amount);
 tfxAPI_EDITOR void tfx__copy_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
@@ -10374,7 +10334,7 @@ tfxINTERNAL void tfx__free_spawn_location_list(tfx_stage pm, tfxU32 index);
 tfxINTERNAL void tfx__free_all_particle_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_spawn_location_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_user_spawn_locations(tfx_stage pm);
-tfxINTERNAL void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length);
+tfxAPI_EDITOR void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length);
 tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
 tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
 
@@ -10398,12 +10358,6 @@ tfxINTERNAL void tfx__replay_template_overrides(tfx_effect_template effect_templ
 //--------------------------------
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
 tfxINTERNAL void tfx__update_effect_template(tfx_effect_template effect, tfx_effect_descriptor latest_effect);
-tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
-tfxINTERNAL void tfx__reset_ribbon_data_lerp_offset(tfx_sprite_data_t *sprites);
-tfxINTERNAL void tfx__compress_sprite_data(tfx_stage pm, tfx_effect_descriptor effect, float frame_length, int *progress);
-tfxINTERNAL void tfx__compress_ribbon_data(tfx_sprite_data_t *sprite_data, tfx_sprite_data_settings_t *settings, float frame_length, int *progress);
-tfxINTERNAL void tfx__update_sprite_alignment_data(tfx_sprite_data_t *sprite_data, float update_time);
-tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
 
