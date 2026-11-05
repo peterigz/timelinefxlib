@@ -4188,9 +4188,6 @@ tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 
 tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
-	if (library->free_ribbon_emitter_properties.size()) {
-		return library->free_ribbon_emitter_properties.pop_back();
-	}
 	tfx_ribbon_emitter_properties_t properties{};
 	properties.fixed_angle_normal = { 0.f, 1.f, 0.f };
 	properties.noise_frequency = 4.f;
@@ -4200,6 +4197,12 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	properties.noise_algorithm = tfxSimplexNoise;
 	properties.noise_octaves = 1;
 	properties.lag_time = 150.f;
+	properties.alpha_threshold = 0.5f;
+	if (library->free_ribbon_emitter_properties.size()) {
+		tfxU32 index = library->free_ribbon_emitter_properties.pop_back();
+		library->ribbon_properties[index] = properties;
+		return index;
+	}
 	library->ribbon_properties.push_back(properties);
 	return library->ribbon_properties.current_size - 1;
 }
@@ -4214,10 +4217,13 @@ void tfx__free_library_particle_gpu_properties(tfx_library library, tfxU32 index
 tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	library->particle_properties_version++;
-	if (library->free_particle_gpu_properties.size()) {
-		return library->free_particle_gpu_properties.pop_back();
-	}
 	tfx_gpu_particle_properties_t properties{};
+	properties.alpha_threshold = 0.5f;
+	if (library->free_particle_gpu_properties.size()) {
+		tfxU32 index = library->free_particle_gpu_properties.pop_back();
+		library->particle_gpu_properties[index] = properties;
+		return index;
+	}
 	library->particle_gpu_properties.push_back(properties);
 	return library->particle_gpu_properties.current_size - 1;
 }
@@ -4245,6 +4251,7 @@ void tfx__init_library(tfx_library library) {
 	library->gpu_shapes = tfx_CreateGPUShapesList();
 	library->library_file_path.SetText("");
 	library->paths.init();
+	tfx__set_default_layers(library);
 }
 
 tfx_str64_t tfx__get_name_from_path(const char *path) {
@@ -4512,6 +4519,38 @@ bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 leng
 	values.free();
 	packed.free();
 	return unpacked;
+}
+
+void tfx__set_default_layers(tfx_library library) {
+	for (tfxEachLayer) {
+		library->layers[layer].name.Setf("Layer %i", layer);
+		library->layers[layer].flags = tfxLayerFlags_none;
+	}
+	library->layers[0].name.Set("Default");
+	library->layers[1].name.Set("Depth");
+	library->layers[1].flags = tfxLayerFlags_writes_depth;
+}
+
+//index,flags,name with the name taking the rest of the line. Default and Depth are fixed, so only the custom layers are read
+bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length) {
+	const char *end = line + length;
+	char *cursor = nullptr;
+	tfxU32 layer = (tfxU32)strtoul(line, &cursor, 10);
+	if (cursor >= end || *cursor != ',' || layer < 2 || layer >= tfxLAYERS) {
+		return false;
+	}
+	tfxLayerFlags flags = (tfxLayerFlags)strtoul(cursor + 1, &cursor, 10);
+	if (cursor >= end || *cursor != ',') {
+		return false;
+	}
+	cursor++;
+	char name[tfx_str32_t::capacity - 1];
+	tfxU32 name_length = tfx__Min((tfxU32)(end - cursor), (tfxU32)sizeof(name) - 1);
+	memcpy(name, cursor, name_length);
+	name[name_length] = '\0';
+	library->layers[layer].name.Set(name);
+	library->layers[layer].flags = flags & tfxLayerFlags_writes_depth;
+	return true;
 }
 
 //Everything tfx_FreeLibrary releases except the handle itself and, when keep_shapes is set, the shape set and
@@ -5089,6 +5128,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("angle_offset_yaw", tfxFloat);
 	names_and_types.Insert("disable_billboard", tfxBool);
 	names_and_types.Insert("billboard_option", tfxUInt);
+	names_and_types.Insert("alpha_threshold", tfxFloat);
 	names_and_types.Insert("vector_align_type", tfxUInt);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("drag_half_life", tfxFloat);
@@ -5175,6 +5215,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_lag", tfxBool);
 	names_and_types.Insert("ribbon_orient_to_surface_normal", tfxBool);
 	names_and_types.Insert("ribbon_lag_time", tfxFloat);
+	names_and_types.Insert("ribbon_alpha_threshold", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
@@ -5843,6 +5884,8 @@ void tfx__assign_animation_emitter_property_vec2(tfx_gpu_particle_properties_t *
 void tfx__assign_animation_emitter_property_float(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_frames")
 		properties->animation_frames = value;
+	if (*field == "alpha_threshold")
+		properties->alpha_threshold = value;
 }
 
 void tfx__assign_animation_emitter_property_u32(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
@@ -6070,6 +6113,7 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 
 	if (gpu_properties) {
 		if (tfx__property_is(query, "billboard_option")) return tfx__property_u32(out_value, gpu_properties->flags & 0x3);
+		if (tfx__property_is(query, "alpha_threshold")) return tfx__property_float(out_value, gpu_properties->alpha_threshold);
 		if (tfx__property_is(query, "image_handle_x")) return tfx__property_float(out_value, gpu_properties->image_handle.x);
 		if (tfx__property_is(query, "image_handle_y")) return tfx__property_float(out_value, gpu_properties->image_handle.y);
 	}
@@ -6084,6 +6128,7 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 		if (tfx__property_is(query, "ribbon_noise_phase_range")) return tfx__property_float(out_value, ribbon_properties->noise_phase_range);
 		if (tfx__property_is(query, "ribbon_noise_lock_rate")) return tfx__property_float(out_value, ribbon_properties->noise_lock_rate);
 		if (tfx__property_is(query, "ribbon_lag_time")) return tfx__property_float(out_value, ribbon_properties->lag_time);
+		if (tfx__property_is(query, "ribbon_alpha_threshold")) return tfx__property_float(out_value, ribbon_properties->alpha_threshold);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_x")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.x);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_y")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.y);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_z")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.z);
@@ -6384,6 +6429,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "ribbon_noise_phase_range") { ribbon_properties->noise_phase_range = value; return; }
 		else if (*field == "ribbon_noise_lock_rate") { ribbon_properties->noise_lock_rate = value; return; }
 		else if (*field == "ribbon_lag_time") { ribbon_properties->lag_time = value; return; }
+		else if (*field == "ribbon_alpha_threshold") { ribbon_properties->alpha_threshold = tfx__Clamp(0.f, 1.f, value); return; }
 	}
 	if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.x = value;
 	else if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.y = value;
@@ -6448,6 +6494,7 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
 		if (*field == "image_handle_x") gpu_properties->image_handle.x = value;
 		else if (*field == "image_handle_y") gpu_properties->image_handle.y = value;
+		else if (*field == "alpha_threshold") gpu_properties->alpha_threshold = tfx__Clamp(0.f, 1.f, value);
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
@@ -8017,7 +8064,7 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 void tfx__rebuild_animation_ribbon_buckets(tfx_animation_manager animation_manager) {
 	animation_manager->animation_ribbon_buckets.clear();
 	for (tfx_animation_ribbon_properties_t &properties : animation_manager->ribbon_properties) {
-		tfxKey bucket_id = (tfxKey)properties.segment_count;
+		tfxKey bucket_id = ((tfxKey)properties.layer << 32) | properties.segment_count;
 		tfxU32 found_bucket_index = tfxINVALID;
 		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
 			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
@@ -8030,6 +8077,7 @@ void tfx__rebuild_animation_ribbon_buckets(tfx_animation_manager animation_manag
 			bucket.bucket_id = bucket_id;
 			bucket.segment_count = properties.segment_count;
 			bucket.tessellation = properties.tessellation;
+			bucket.layer = properties.layer;
 			found_bucket_index = animation_manager->animation_ribbon_buckets.current_size;
 			animation_manager->animation_ribbon_buckets.push_back(bucket);
 		}
@@ -8098,8 +8146,20 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 	tfx_package_entry_info_t *ribbon_properties_data = tfx__get_package_file(package, "ribbon_properties");
 	if (ribbon_properties_data && ribbon_properties_data->file_size > 0) {
-		animation_manager->ribbon_properties.resize((tfxU32)(ribbon_properties_data->file_size / sizeof(tfx_animation_ribbon_properties_t)));
-		memcpy(animation_manager->ribbon_properties.data, ribbon_properties_data->data.data, ribbon_properties_data->file_size);
+		if (package->header.file_version < 8) {
+			const size_t old_entry_size = offsetof(tfx_animation_ribbon_properties_t, layer);
+			tfxU32 property_count = (tfxU32)(ribbon_properties_data->file_size / old_entry_size);
+			animation_manager->ribbon_properties.resize(property_count);
+			for (tfxU32 index = 0; index != property_count; ++index) {
+				tfx_animation_ribbon_properties_t &properties = animation_manager->ribbon_properties[index];
+				memcpy(&properties, ribbon_properties_data->data.data + index * old_entry_size, old_entry_size);
+				properties.layer = 0;
+				properties.alpha_threshold = 0.5f;
+			}
+		} else {
+			animation_manager->ribbon_properties.resize((tfxU32)(ribbon_properties_data->file_size / sizeof(tfx_animation_ribbon_properties_t)));
+			memcpy(animation_manager->ribbon_properties.data, ribbon_properties_data->data.data, ribbon_properties_data->file_size);
+		}
 	}
 
 	tfx_package_entry_info_t *ribbon_graph_data = tfx__get_package_file(package, "ribbon_graph_data");
@@ -8158,6 +8218,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			}
 			else if (context == tfxStartEmitter) {
 				tfx_gpu_particle_properties_t emitter_properties{};
+				emitter_properties.alpha_threshold = 0.5f;
 				emitter_properties_stack.push_back_copy(emitter_properties);
 			}
 		}
@@ -8543,6 +8604,12 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 				continue;
 			}
+			if (context == tfxStartLayers) {
+				if (!tfx__read_layer_line(lib, line.start, (tfxU32)line.length)) {
+					error |= tfxErrorCode_some_data_not_loaded;
+				}
+				continue;
+			}
 			pair.clear();
 			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
@@ -8688,8 +8755,6 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			tfx__initialise_unitialised_graphs(effect_stack.back());
 			tfx__update_emitter_max_life(effect_stack.back());
 			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
-			tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(effect_stack.back());
-			ribbon_properties->ribbon_bucket_id = tfxRibbonBucketID(ribbon_properties->bucket_info);
 			current_effect->children.push_back(effect_stack.back());
 			effect_stack.pop();
 		}
@@ -8949,6 +9014,18 @@ tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 
 tfxU32 tfx_GetLibraryFileVersion(tfx_library library) {
 	return library->file_version;
+}
+
+tfxLayerFlags tfx_GetLayerFlags(tfx_library library, tfxU32 layer) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT(layer < tfxLAYERS);	//layer is outside index range
+	return library->layers[layer].flags;
+}
+
+const char *tfx_GetLayerName(tfx_library library, tfxU32 layer) {
+	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
+	TFX_ASSERT(layer < tfxLAYERS);	//layer is outside index range
+	return library->layers[layer].name.c_str();
 }
 
 //A running emitter holds a raw pointer into particle_shapes, and inserting or removing a shape moves that
@@ -9211,6 +9288,9 @@ void tfx_RefreshLibrary(tfx_library library, tfx_shape_loader shape_loader, tfx_
 	//Unregistered so the compute node table, rebuilt over every registered library, never gets entries for it
 	tfxStore->libraries.Remove((tfxKey)disk_library);
 	tfx__load_effect_library_package(package, disk_library, nullptr, nullptr, nullptr, true);
+	for (tfxEachLayer) {
+		library->layers[layer] = disk_library->layers[layer];
+	}
 
 	//At this point we should stop any stage work that's happening, we're about to edit effects that might be in flight
 	for (tfx_stage pm : tfxStore->stages.data) {
@@ -9650,6 +9730,8 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.noise_packed = (effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise)
 			? ((tfxU32)ribbon_properties.noise_algorithm | (ribbon_properties.noise_octaves << 4)) : 0;
 		properties.shader_type = ribbon_properties.angle_type;
+		properties.layer = tfx__get_shared_emitter_properties(effect)->layer;
+		properties.alpha_threshold = ribbon_properties.alpha_threshold;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 		properties.flags = effect->state_properties.property_flags;
 		//Sprite data can be played without the library, so the manager keeps its own copy of the rows in the same order as the global table
@@ -9669,7 +9751,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.start_frame_index = image.compute_shape_index;
 		}
 		//Find or create a compatible animation ribbon bucket
-		tfxKey bucket_id = (tfxKey)properties.segment_count;
+		tfxKey bucket_id = ((tfxKey)properties.layer << 32) | properties.segment_count;
 		tfxU32 found_bucket_index = tfxINVALID;
 		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
 			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
@@ -9682,6 +9764,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			bucket.bucket_id = bucket_id;
 			bucket.segment_count = properties.segment_count;
 			bucket.tessellation = properties.tessellation;
+			bucket.layer = properties.layer;
 			bucket.max_ribbon_count = 0;
 			bucket.ribbon_count = 0;
 			bucket.ribbon_offset = 0;
@@ -9949,6 +10032,7 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 		frame = frame >= metrics.frame_count ? 0 : frame;
 		if (instance.current_time >= instance.animation_length_in_time) {
 			if (instance.flags & tfxAnimationInstanceFlags_loop) {
+				instance.frame = 0;
 				instance.sprite_count = metrics.frame_meta[0].total_sprites;
 				instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 				instance.current_time -= instance.animation_length_in_time;
@@ -9987,6 +10071,7 @@ void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float e
 			}
 		}
 		else {
+			instance.frame = frame;
 			instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 			instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 			if (metrics.ribbon_frame_meta.current_size > 0) {
@@ -10062,6 +10147,7 @@ void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 		tfxU32 frame = tfxU32(frame_time) + 1;
 		frame = frame >= metrics.frame_count ? 0 : frame;
+		instance.frame = frame;
 		instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 		instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 		if (metrics.ribbon_frame_meta.current_size > 0) {
@@ -10566,6 +10652,7 @@ void tfx_CopyAnimationRibbonEmitters(tfx_animation_manager animation_manager, vo
 		emitter.noise_speed = properties.noise_speed;
 		emitter.noise_phase_range = properties.noise_phase_range;
 		emitter.noise_lock_rate = properties.noise_lock_rate;
+		emitter.alpha_threshold = properties.alpha_threshold;
 		emitters[index] = emitter;
 	}
 }
@@ -10584,6 +10671,7 @@ bool tfx_NextAnimationRibbonDispatch(tfx_animation_manager animation_manager, tf
 		tfx_ribbon_buffer_info_t info = tfx_GenerateRibbonBufferInfo(bucket.tessellation);
 		ribbon_dispatch->ribbon_data = nullptr;
 		ribbon_dispatch->sort_key = 0;
+		ribbon_dispatch->layer = bucket.layer;
 		ribbon_dispatch->index_offset = bucket.index_offset;
 		ribbon_dispatch->vertex_offset = bucket.vertex_offset;
 		ribbon_dispatch->ribbon_offset = bucket.ribbon_offset;
@@ -10989,12 +11077,14 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	}
 }
 
-//Puts a ribbon emitter in the bucket for its segment count and sort key, picking up any path blocks that bucket already holds for it.
-//Needs the emitter's library, path attributes and samples_per_segment set first. Inserting a bucket can move the others.
+//Puts a ribbon emitter in the bucket for its segment count, sort key and layer, picking up any path blocks that bucket already holds for it.
+//Needs the emitter's source ribbon, library, path attributes and samples_per_segment set first. Inserting a bucket can move the others.
 tfxINTERNAL tfx_ribbon_bucket_t *tfx__attach_ribbon_emitter_to_bucket(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon_emitter, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxU32 sort_key) {
-	tfxKey bucket_id = tfx__ribbon_bucket_key(ribbon_properties->bucket_info.segment_count, sort_key);
+	tfxU32 layer = tfx__get_shared_emitter_properties(ribbon_emitter.source_ribbon)->layer;
+	TFX_ASSERT(layer < tfxLAYERS);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(ribbon_properties->bucket_info.segment_count, sort_key, layer);
 	if (!pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
-		tfx__init_ribbon_segment_buffer(pm, bucket_id, &ribbon_properties->bucket_info, sort_key, 1);
+		tfx__init_ribbon_segment_buffer(pm, bucket_id, &ribbon_properties->bucket_info, sort_key, layer, 1);
 	}
 	ribbon_emitter.ribbon_bucket_id = bucket_id;
 	tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(bucket_id);
@@ -14867,10 +14957,10 @@ double tfx_GetUpdateTime(tfx_stage pm) {
 	return pm->update_time;
 }
 
-tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key) {
+tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) {
 	tfx_ribbon_bucket_t *bucket = nullptr;
 	tfx__wait_for_stage_update(pm);
-	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key, layer);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
 		bucket = &pm->ribbon_segment_buckets.At(bucket_id);
 	}
@@ -14894,9 +14984,9 @@ bool tfx_HasRibbonsToDraw(tfx_stage pm) {
 	return false;
 }
 
-tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key) {
+tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) {
 	tfx_ribbon_buffer_info_t info{};
-	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key, layer);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
 		info = pm->ribbon_segment_buckets.At(bucket_id).buffer_info;
 	}
@@ -14971,6 +15061,7 @@ bool tfx_NextRibbonDispatch(tfx_stage pm, tfx_ribbon_dispatch_t *ribbon_dispatch
 		ribbon_dispatch->ribbon_data = bucket;
 		ribbon_dispatch->globals = &bucket->globals;
 		ribbon_dispatch->sort_key = bucket->sort_key;
+		ribbon_dispatch->layer = bucket->layer;
 		ribbon_dispatch->total_segments = ribbon_count * bucket->globals.segment_count;
 		ribbon_dispatch->index_offset = ribbon_dispatch->last_index_offset;
 		ribbon_dispatch->vertex_offset = ribbon_dispatch->last_vertex_offset;
@@ -15803,9 +15894,10 @@ tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, t
 	return tfx_Hash(&hasher, key_parts, sizeof(key_parts), 0);
 }
 
-void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, int tessellation) {
+void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, int tessellation) {
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
 	bucket.sort_key = sort_key;
+	bucket.layer = layer;
 	memset(&bucket.ribbons, 0, sizeof(tfx_ribbon_soa_t));
 	bucket.segments.init();
 	bucket.segments.set_alignment(16);
@@ -16340,6 +16432,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.noise_speed = noise_properties->noise_speed;
 	gpu_emitter.noise_phase_range = noise_properties->noise_phase_range;
 	gpu_emitter.noise_lock_rate = noise_properties->noise_lock_rate;
+	gpu_emitter.alpha_threshold = noise_properties->alpha_threshold;
 	tfxU32 packed_noise = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
 		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
 	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);

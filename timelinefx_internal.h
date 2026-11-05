@@ -2953,7 +2953,9 @@ typedef enum {
 	tfxStartBookmarks,
 	tfxEndBookmarks,
 	tfxStartSpawnMaps,
-	tfxEndSpawnMaps
+	tfxEndSpawnMaps,
+	tfxStartLayers,
+	tfxEndLayers
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
@@ -5551,7 +5553,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 7;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type.
+const tfxU32 tfxFILE_VERSION = 8;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6151,7 +6153,6 @@ typedef struct tfx_ribbon_bucket_info_s {
 
 typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_ribbon_bucket_info_t bucket_info;
-	tfxKey ribbon_bucket_id;
 	tfx_vec3_t fixed_angle_normal;
 	tfxRibbonBucketComputeShaderType angle_type;
 	float noise_frequency;
@@ -6161,6 +6162,7 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_noise_type noise_algorithm;
 	tfxU32 noise_octaves;
 	float lag_time;
+	float alpha_threshold;			//Cutout threshold when the emitter's layer writes depth
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6393,7 +6395,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
 	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
-	tfxU32 lag_spine_padding;		//Named so {} zeroes it; implicit padding in the shaders' std430 layout
+	float alpha_threshold;			//Fills the gap before the 8 byte aligned quaternions, so there's no implicit padding
 	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
 } tfx_gpu_ribbon_emitter_t;
 
@@ -6401,7 +6403,7 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
 //The fixed bindings in timelinefx.slang load the lag spine by these offsets
 tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_x) == 92 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_y) == 156);
-tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_z) == 220 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_quaternion) == 288);
+tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_z) == 220 && offsetof(tfx_gpu_ribbon_emitter_t, alpha_threshold) == 284 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_quaternion) == 288);
 
 //---- GPU compute particle buffer management ----
 
@@ -6888,6 +6890,7 @@ typedef struct tfx_ribbon_bucket_s {
 #endif
 	tfxRibbonBucketFlags flags;
 	tfxU32 sort_key;
+	tfxU32 layer;
 } tfx_ribbon_bucket_t;
 
 #ifdef __cplusplus
@@ -7116,7 +7119,7 @@ typedef struct tfx_animation_instance_s {
 	float animation_length_in_time;     //Total time that the animation lasts for
 	float tween;                        //The point time within the frame (0..1)
 	tfxAnimationInstanceFlags flags;    //Flags associated with the instance
-	tfxU32 padding0;
+	tfxU32 frame;                       //The frame meta the last update or cycle picked, which holds the instance's per layer ranges
 	tfxU32 padding1;
 } tfx_animation_instance_t;
 
@@ -7138,15 +7141,20 @@ typedef struct tfx_animation_ribbon_properties_s {
 	float noise_phase_range;
 	float noise_lock_rate;
 	tfxU32 noise_packed;
+	tfxU32 layer;
+	float alpha_threshold;
 } tfx_animation_ribbon_properties_t;
 
 //tfx_animation_ribbon_properties in timelinefx.slang has to agree with this byte for byte
-tfx__static_assert(sizeof(tfx_animation_ribbon_properties_t) == 68);
+tfx__static_assert(sizeof(tfx_animation_ribbon_properties_t) == 76);
+//Sprite data before file version 8 saved the entries without the layer and alpha threshold
+tfx__static_assert(offsetof(tfx_animation_ribbon_properties_t, layer) == 68);
 
 typedef struct tfx_animation_ribbon_bucket_s {
 	tfxKey bucket_id;
 	tfxU32 segment_count;
 	tfxU32 tessellation;
+	tfxU32 layer;
 	tfxU32 max_ribbon_count;
 	//Per-frame dynamic (set during Update/Cycle):
 	tfxU32 ribbon_count;
@@ -7570,9 +7578,15 @@ typedef struct tfx_spawn_map_s {
 	float coverage;
 } tfx_spawn_map_t;
 
+typedef struct tfx_layer_settings_s {
+	tfx_str32_t name;
+	tfxLayerFlags flags;
+} tfx_layer_settings_t;
+
 typedef struct tfx_library_s {
 	tfxU32 magic;
 	tfxErrorFlags error_flags;
+	tfx_layer_settings_t layers[tfxLAYERS];
 	//Names this library in the stages' ribbon path caches. Never reused, unlike the address of a freed library.
 	//A refresh needs no new one: an updated effect is given new path slots, so its old blocks can't be matched.
 	tfxU32 path_cache_id;
@@ -7698,9 +7712,8 @@ typedef struct tfx_data_entry_s {
 #define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
 #define tfxColorRampIDWithoutEdited(id) (id & 0x7FFFFFFF)
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
-#define tfxRibbonBucketID(bucket_info) (tfxKey)bucket_info.segment_count
-//A stage keeps a separate bucket per effect sort key, so ribbons from differently keyed effects are never dispatched together
-tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 sort_key) { return ((tfxKey)sort_key << 32) | segment_count; }
+//A stage keeps a separate bucket per effect sort key and layer, so ribbons from differently keyed effects or layers are never dispatched together
+tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) { return ((tfxKey)sort_key << 32) | ((tfxKey)layer << 24) | segment_count; }
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
@@ -7720,7 +7733,7 @@ tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor ef
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, int tessellation);
+tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, int tessellation);
 tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
 
@@ -7752,6 +7765,8 @@ tfxAPI_EDITOR tfxKey tfx__add_spawn_map(tfx_library library, const tfxU8 *values
 tfxAPI_EDITOR tfx_spawn_map_t *tfx__get_spawn_map(tfx_library library, tfxKey spawn_map_hash);
 tfxINTERNAL void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map);
 tfxAPI_EDITOR bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 length);
+tfxINTERNAL void tfx__set_default_layers(tfx_library library);
+tfxINTERNAL bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length);
 tfxINTERNAL void tfx__copy_spawn_map(tfx_library source_library, tfx_library destination_library, tfxKey spawn_map_hash);
 tfxINTERNAL void tfx__free_spawn_maps(tfx_library library);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);

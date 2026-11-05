@@ -224,6 +224,15 @@ Rules the loop depends on:
   and frees libraries, and never while another thread is loading one. Upload the global data on the frames you upload
   instances, because the instances drawn between updates were written with the layout you uploaded last.
 
+**Layers that write depth.** The examples draw every layer with the one blended billboard pipeline and every ribbon with
+the one blended ribbon pipeline, so a layer whose `tfx_GetLayerFlags` has `tfxLayerFlags_writes_depth`, layer 1 included,
+draws like Default in them. To draw it as the editor does, make a second billboard pipeline with
+`tfx_billboard_cutout_fragment` and a second ribbon pipeline with `tfx_ribbon_cutout_fragment`, both with blending off and
+depth test and write on. Draw those layers' billboards with them first, then the ribbon buckets whose `dispatch.layer` is
+one of them, then everything else, against the depth buffer the scene drew into. Walk the ribbon dispatches once for each
+group with a fresh dispatch and skip the buckets that aren't in it. Baked billboards aren't grouped by layer across
+instances, so draw them all with the blended pipeline. Baked ribbon buckets are, so they can take the cutout.
+
 **Drawing by sort key.** `tfx_impl_GatherFrame` gathers each layer as one range, which is all you need while every
 effect draws the same way. To draw some effects with their own pipeline or resources, give them a key with
 `tfx_SetEffectSortKey` and walk each layer's keys yourself after the gather:

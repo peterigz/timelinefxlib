@@ -233,7 +233,8 @@ typedef struct tfx_gpu_particle_properties_s {
 	tfxU32 flags;						//Flags like billboard alignment type
 	tfxU32 start_frame_index;			//First shape frame, an index into tfx_GetGlobalGPUShapes in tfx_GetGlobalParticlePropertiesBuffer
 	float animation_frames;
-	int padding[2];
+	float alpha_threshold;				//Pixels below this alpha are discarded on a layer that writes depth
+	int padding;
 } tfx_gpu_particle_properties_t;
 
 typedef struct tfx_gpu_image_data_s {
@@ -637,6 +638,7 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 last_ribbon_offset;
 	tfxU32 last_segment_offset;
 	tfxU32 sort_key;						//The sort key of every effect whose ribbons are in this bucket, see tfx_SetEffectSortKey
+	tfxU32 layer;							//The layer of every ribbon emitter in this bucket. Draw it with your depth pipeline when tfx_GetLayerFlags says the layer writes depth
 	tfx_ribbon_bucket_globals_t *globals;	//This bucket's push constants, which tfx_GetRibbonDispatchGlobals returns
 	tfxU32 next_bucket;						//Where tfx_NextAnimationRibbonDispatch carries on from, unused for a stage
 } tfx_ribbon_dispatch_t;
@@ -1572,6 +1574,35 @@ loaded, or one whose file had no version line, reports the current format versio
 */
 tfxAPI tfxU32 tfx_GetLibraryFileVersion(tfx_library library);
 
+typedef enum {
+	tfxLayerFlags_none = 0,
+	tfxLayerFlags_writes_depth = 1 << 0,		//Draw with tfx_billboard_cutout_fragment and tfx_ribbon_cutout_fragment, blending off and depth write on, before the layers that don't
+} tfx_layer_flag_bits;
+
+typedef tfxU32 tfxLayerFlags;					//tfx_layer_flag_bits
+
+/*
+Get the flags of one of a library's layers. Each emitter draws on one of tfxLAYERS layers, and the instance buffer is grouped by layer
+(tfx_GetInstanceBufferByLayer). Ribbon emitters have a layer too, which each ribbon dispatch reports in its layer field. Layer 0, Default,
+blends and layer 1, Depth, writes depth in every library. Layers 2 and 3 are set per library in the editor. Draw the layers that write
+depth first, in index order, billboards then ribbons, then the rest, and give those draws your scene's depth buffer so the scene hides the
+particles behind it. When a stage holds effects from more than one library, keep their custom layers the
+same, because the stage has one range per layer whichever library an effect came from. An effect imported into another library keeps
+its layer index. A refresh can change the flags, so read them when you draw.
+* @param library		A handle to the library
+* @param layer			The layer, below tfxLAYERS
+* @returns tfxLayerFlags	The layer's tfx_layer_flag_bits
+*/
+tfxAPI tfxLayerFlags tfx_GetLayerFlags(tfx_library library, tfxU32 layer);
+
+/*
+Get the name a library's layer was given in the editor.
+* @param library		A handle to the library
+* @param layer			The layer, below tfxLAYERS
+* @returns const char*	The layer's name
+*/
+tfxAPI const char *tfx_GetLayerName(tfx_library library, tfxU32 layer);
+
 /*
 Checks the library on disk to see if it's been updated since it was loaded.
 
@@ -2171,7 +2202,7 @@ tfxAPI tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage stage);
 
 /*
 Get the billboard buffer in the stage containing all the sprite instances for a specific layer that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
-You can then use tfx_GetInstanceCountByLayer for the draw call. The instance buffer is grouped by layer, so each layer is one contiguous range across every effect in the stage and can be drawn with its own pipeline.
+You can then use tfx_GetInstanceCountByLayer for the draw call. The instance buffer is grouped by layer, so each layer is one contiguous range across every effect in the stage and can be drawn with its own pipeline, which tfx_GetLayerFlags picks.
 Within a layer, effects are in the same order as the stage's effect list (sorted by depth when auto_order_effects is on).
 * @param stage                    A pointer to an initialised tfx_stage_t.
 */
@@ -2211,14 +2242,15 @@ Get the length of the last update in seconds, or of the last step for tfx_Update
 tfxAPI double tfx_GetUpdateTime(tfx_stage stage);
 
 /*
-Get the ribbon buffer for a given segment size and effect sort key. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
+Get the ribbon buffer for a given segment size, effect sort key and layer. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
 a vertex buffer for rendering.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
-* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count and key
+* @param layer                    The layer of the ribbon emitters you want, 0 to tfxLAYERS - 1.
+* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count, key and layer
 */
-tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key);
+tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
 
 /*
 Call this to determine whether or not any stage has ribbon_emitters to draw this frame.
@@ -2227,13 +2259,14 @@ Call this to determine whether or not any stage has ribbon_emitters to draw this
 tfxAPI bool tfx_HasRibbonsToDraw(tfx_stage stage);
 
 /*
-Get a struct containing the info you need to compute and render ribbon_emitters of a specific length and effect sort key.
+Get a struct containing the info you need to compute and render ribbon_emitters of a specific length, effect sort key and layer.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
-* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count and key
+* @param layer                    The layer of the ribbon emitters you want, 0 to tfxLAYERS - 1.
+* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count, key and layer
 */
-tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key);
+tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
 
 /*
 --------------------------------
@@ -2256,6 +2289,12 @@ Per-frame flow, after tfx_UpdateStage:
      push-constant block; dispatch total_segments tells you how many threads to launch.
   4. Iterate the buckets again the same way to record the draw calls, using dispatch.index_count and
      dispatch.index_offset for the indexed draw.
+
+Each bucket holds ribbons of one layer, which dispatch.layer reports. When tfx_GetLayerFlags says a ribbon's layer writes depth, draw
+it with tfx_ribbon_cutout_fragment, blending off and depth write on, after the depth layers' billboards and before every blended layer.
+To do that, walk the buckets once for the depth writing layers and again for the rest, with a fresh dispatch each time, and skip the
+buckets that aren't in the group, so the offsets still add up over every bucket. Ribbon emitters on different layers that share a path
+get a copy of the path in each layer's bucket, which counts against max_ribbon_segments.
 
 The dispatch iterator advances an internal cursor on the stage, which goes back to the start when
 tfx_NextRibbonDispatch returns false, so you can walk the buckets as many times a frame as you like (compute pass,

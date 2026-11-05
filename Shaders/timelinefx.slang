@@ -51,7 +51,7 @@
 	[Render_math]                       Unpacking and packing, the quaternion matrix and the billboard rotation
 	[Billboard_vertex]                  tfx_billboard_vertex, the live billboard draw
 	[Billboard_baked_vertex]            tfx_billboard_baked_vertex, the baked billboard draw
-	[Particle_shading]                  tfx_billboard_fragment for live and baked billboards, and tfx_ribbon_fragment
+	[Particle_shading]                  tfx_billboard_fragment for live and baked billboards, tfx_ribbon_fragment, and their cutouts for layers that write depth
 	[Ribbon_shape]                      Ribbon graph lookups, gradient noise and path sampling
 	[Ribbon_build]                      tfx_ribbon_compute, a bucket's ribbon vertexes and indexes
 	[Ribbon_draw]                       tfx_ribbon_vertex
@@ -2770,7 +2770,8 @@ struct tfx_emitter_properties {
 	uint flags;							//The billboard alignment in the lowest 2 bits
 	uint start_frame_index;
 	float animation_frames;
-	int padding[2];
+	float alpha_threshold;
+	int padding;
 };
 
 //Mirrors tfx_uniform_buffer_data_t. column_major because the Slang API's sessions default to row major, where slangc defaults to column major
@@ -2829,7 +2830,7 @@ struct tfx_ribbon_emitter {
 	float lag_spine_position_x[tfx_lag_spine_samples];
 	float lag_spine_position_y[tfx_lag_spine_samples];
 	float lag_spine_position_z[tfx_lag_spine_samples];
-	uint lag_spine_padding;
+	float alpha_threshold;
 	uint2 lag_spine_quaternion[tfx_lag_spine_samples];
 };
 
@@ -2847,7 +2848,7 @@ struct tfx_animation_instance {
 	float animation_length_in_time;
 	float tween;
 	uint flags;
-	uint padding0;
+	uint frame;
 	uint padding1;
 };
 
@@ -2886,6 +2887,8 @@ struct tfx_animation_ribbon_properties {
 	float noise_phase_range;
 	float noise_lock_rate;
 	uint noise_packed;
+	uint layer;
+	float alpha_threshold;
 };
 
 //Mirrors the editor's sprite_data_bb, one box per bounds group
@@ -3054,9 +3057,10 @@ static const uint tfx_lag_spine_position_x_offset = 92;
 static const uint tfx_lag_spine_position_y_offset = 156;
 static const uint tfx_lag_spine_position_z_offset = 220;
 static const uint tfx_lag_spine_quaternion_offset = 288;
+static const uint tfx_ribbon_alpha_threshold_offset = 284;
 static const uint tfx_animation_instance_row_bytes = 64;
 static const uint tfx_baked_ribbon_row_bytes = 64;
-static const uint tfx_ribbon_properties_row_bytes = 68;
+static const uint tfx_ribbon_properties_row_bytes = 76;
 
 #if defined(TFX_ENTRY_tfx_billboard_vertex)
 TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
@@ -3082,7 +3086,7 @@ TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERT
 #define TFX_DECLARED_EMITTER_PROPERTIES
 #define TFX_DECLARED_VIEW
 #define TFX_DECLARED_DRAW
-#elif defined(TFX_ENTRY_tfx_billboard_fragment) || defined(TFX_ENTRY_tfx_ribbon_fragment)
+#elif defined(TFX_ENTRY_tfx_billboard_fragment) || defined(TFX_ENTRY_tfx_billboard_cutout_fragment) || defined(TFX_ENTRY_tfx_ribbon_fragment) || defined(TFX_ENTRY_tfx_ribbon_cutout_fragment)
 //Combined samplers take the texture's slot, and the color ramps get a sampler of their own there though they're only loaded
 TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_particle_images, FRAGMENT_TEXTURE, t, 0);				//The shape atlas
 TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_color_ramps, FRAGMENT_TEXTURE, t, 1);
@@ -3426,10 +3430,10 @@ tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint r
 	return tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter_frame>(row * tfx_ribbon_emitter_row_bytes);
 }
 
-//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index
-uint2 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
+//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
+uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
 	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(buffer_index, row);
-	return uint2(emitter.lookup_offset, emitter.start_frame_index);
+	return uint3(emitter.lookup_offset, emitter.start_frame_index, tfx_fixed_ribbon_emitters.Load<uint>(row * tfx_ribbon_emitter_row_bytes + tfx_ribbon_alpha_threshold_offset));
 }
 #else
 TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
@@ -3453,9 +3457,10 @@ TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint 
 	return frame;
 }
 
-//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index
-TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
-	return uint2(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index);
+//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
+TFX_BINDLESS_ACCESS uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
+	return uint3(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index,
+	             asuint(TFX_RIBBON_EMITTER_ROW(buffer_index, row).alpha_threshold));
 }
 #endif
 
@@ -3613,7 +3618,7 @@ struct tfx_billboard_input {
 struct tfx_billboard_output {
 	float4 position : SV_Position;
 	[[vk::location(0)]] float2 uv : TEXCOORD0;
-	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;						//.x = [bindless image << 16 | image layer], .y = [color ramp layer << 8 | color ramp row]
+	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;						//.x = [bindless image << 16 | image layer], .y = [alpha threshold unorm8 << 16 | color ramp layer << 8 | color ramp row]
 	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;	//Intensity, curved alpha, sharpness, gradient map
 };
 
@@ -3622,7 +3627,7 @@ tfx_billboard_output tfx_billboard_varyings(float4 clip_position, uint corner, t
 	tfx_billboard_output output;
 	output.position = clip_position;
 	output.uv = float2((corner & 1u) != 0 ? image.uv.z : image.uv.x, (corner >> 1) != 0 ? image.uv.w : image.uv.y);
-	output.indexes = uint2(image.texture_array_index, properties.color_ramp_indexes & 0xFFFFu);
+	output.indexes = uint2(image.texture_array_index, (properties.color_ramp_indexes & 0xFFFFu) | (uint(saturate(properties.alpha_threshold) * 255.0 + 0.5) << 16));
 	output.intensity_curved_alpha_map = float4(intensity_gradient_map.x * tfx_color_unpack_scale, curved_alpha_life.x, curved_alpha_life.y, intensity_gradient_map.y * tfx_color_unpack_scale);
 	return output;
 }
@@ -3755,48 +3760,95 @@ tfx_billboard_output tfx_billboard_baked_vertex(tfx_billboard_input input, uint 
 
 //--- Particle_shading
 
-//A billboard or ribbon pixel: the image's red picks the color ramp column, and curved alpha fades the image's alpha. Writes premultiplied
-//alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA
-float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+//color is the image times the ramp with intensity, coverage the image's alpha faded by curved alpha, alpha the final alpha with the ramp's
+struct tfx_particle_shade {
+	float3 color;
+	float coverage;
+	float alpha;
+};
+
+//A billboard or ribbon pixel: the image's red picks the color ramp column, and curved alpha fades the image's alpha
+tfx_particle_shade tfx_shade_particle_parts(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
 	const float4 texel = tfx_sample_particle_image(image_index, sampler_index, tex_coord);
 	const int ramp_x = int(saturate(texel.r * intensity_curved_alpha_map.w) * 255);
 	float4 ramp_texel = tfx_load_color_ramp(color_ramp_texture_index, int3(ramp_x, texture_indexes.x, texture_indexes.y)) * intensity_curved_alpha_map.x;
 	ramp_texel.a = min(1.0, ramp_texel.a);
 	const float curved_alpha = 1.0 - smoothstep(texel.a * intensity_curved_alpha_map.z, texel.a, 1.0 - intensity_curved_alpha_map.y);
-	return float4(texel.rgb * ramp_texel.rgb * curved_alpha * texel.a, texel.a * ramp_texel.a * curved_alpha);
+	tfx_particle_shade shade;
+	shade.color = texel.rgb * ramp_texel.rgb;
+	shade.coverage = texel.a * curved_alpha;
+	shade.alpha = shade.coverage * ramp_texel.a;
+	return shade;
+}
+
+//Premultiplied alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA
+float4 tfx_premultiply(tfx_particle_shade shade) {
+	return float4(shade.color * shade.coverage, shade.alpha);
+}
+
+float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+	return tfx_premultiply(tfx_shade_particle_parts(tex_coord, texture_indexes, intensity_curved_alpha_map, image_index, color_ramp_texture_index, sampler_index));
+}
+
+//A billboard pixel from its varyings, for tfx_billboard_fragment, tfx_billboard_cutout_fragment and a host's own billboard fragments
+tfx_particle_shade tfx_shade_billboard_parts(tfx_billboard_output input) {
+	const float3 tex_coord = float3(input.uv, float(input.indexes.x & 0xFFFFu));
+	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int((input.indexes.y >> 8) & 0xFFu), 0);
+	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+#else
+	const tfx_billboard_push push = tfx_billboard_entry_push();
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
+#endif
 }
 
 [shader("fragment")]
 float4 tfx_billboard_fragment(tfx_billboard_output input) : SV_Target {
-	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
-#if !defined(TFX_FIXED_BINDINGS)
-	const tfx_billboard_push push = tfx_billboard_entry_push();
-#endif
-	const float3 tex_coord = float3(input.uv, float(input.indexes.x & 0xFFFFu));
-	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int(input.indexes.y >> 8), 0);
-#if defined(TFX_FIXED_BINDINGS)
-	return tfx_shade_particle(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
-#else
-	return tfx_shade_particle(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
-#endif
+	return tfx_premultiply(tfx_shade_billboard_parts(input));
+}
+
+//Layers that write depth: cut at the emitter's alpha threshold and opaque, so draw with blending off and depth write on, before the rest
+[shader("fragment")]
+float4 tfx_billboard_cutout_fragment(tfx_billboard_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_billboard_parts(input);
+	if (shade.alpha < float(input.indexes.y >> 16) * (1.0 / 255.0)) discard;
+	return float4(shade.color, 1.0);
 }
 
 //Below this many pixels across, a ribbon starts dropping fragments because the rasteriser only covers pixels whose centre falls
 //inside it, and a continuous ribbon breaks into dashes. Fading it out as it nears that width trades a tail that vanishes early for one that disintegrates
 static const float tfx_min_ribbon_pixels = 1.5;
 
-[shader("fragment")]
-float4 tfx_ribbon_fragment(tfx_ribbon_output input) : SV_Target {
+//A ribbon pixel from its varyings, for tfx_ribbon_fragment, tfx_ribbon_cutout_fragment and a host's own ribbon fragments
+tfx_particle_shade tfx_shade_ribbon_parts(tfx_ribbon_output input) {
 #if defined(TFX_FIXED_BINDINGS)
-	const float4 color = tfx_shade_particle(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
 #else
 	const tfx_ribbon_bucket_globals push = tfx_ribbon_push_constants;
-	const float4 color = tfx_shade_particle(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
 #endif
+}
+
+//1 for a ribbon at least tfx_min_ribbon_pixels wide, falling to 0 as it thins
+float tfx_thin_ribbon_fade(float ribbon_across) {
 	//fwidth is how far across the ribbon one pixel steps, so its reciprocal is the ribbon's width in pixels
-	const float across_per_pixel = fwidth(input.ribbon_across);
+	const float across_per_pixel = fwidth(ribbon_across);
 	const float ribbon_pixels = across_per_pixel > 0.0 ? 1.0 / across_per_pixel : tfx_min_ribbon_pixels;
-	return color * smoothstep(0.0, tfx_min_ribbon_pixels, ribbon_pixels);
+	return smoothstep(0.0, tfx_min_ribbon_pixels, ribbon_pixels);
+}
+
+[shader("fragment")]
+float4 tfx_ribbon_fragment(tfx_ribbon_output input) : SV_Target {
+	return tfx_premultiply(tfx_shade_ribbon_parts(input)) * tfx_thin_ribbon_fade(input.ribbon_across);
+}
+
+//Ribbons on layers that write depth: the thin-ribbon fade goes into the alpha before the threshold test, so a tapering ribbon ends instead of dashing
+[shader("fragment")]
+float4 tfx_ribbon_cutout_fragment(tfx_ribbon_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_ribbon_parts(input);
+	if (shade.alpha * tfx_thin_ribbon_fade(input.ribbon_across) < float(input.texture_indexes.z) * (1.0 / 255.0)) discard;
+	return float4(shade.color, 1.0);
 }
 
 //--- Ribbon_shape
@@ -4174,7 +4226,7 @@ tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_inp
 
 	const float ribbon_position = float((input.segment_index & 0x007FF000u) >> 12) / 2047.0;
 	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
-	const uint2 emitter = tfx_load_ribbon_emitter_draw(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
+	const uint3 emitter = tfx_load_ribbon_emitter_draw(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
 	const uint lookup_offset = emitter.x;
 	//The ribbon holds the animation frame, its emitter holds where the image starts
 	const tfx_image_data image = tfx_load_image_data(push.image_data_index, emitter.y + (ribbon.texture_indexes & 0x00001FFFu));
@@ -4207,7 +4259,8 @@ tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_inp
 	output.image_index = image.texture_array_index >> 16;
 #endif
 	output.tex_coord = float3(wrap_fraction * (image.uv.z - image.uv.x) + image.uv.x, ribbon_across * (image.uv.w - image.uv.y) + image.uv.y, float(image.texture_array_index & 0xFFFFu));
-	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(ribbon_position * 255));
+	//.z is the emitter's alpha threshold for tfx_ribbon_cutout_fragment, 0 to 255
+	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(saturate(asfloat(emitter.z)) * 255.0 + 0.5));
 	output.intensity_curved_alpha_map = float4(sampled_intensity * ribbon_intensity_gradient_map.x, sampled_curved_alpha * ribbon_curved_alpha.x,
 		sampled_alpha_sharpness * ribbon_curved_alpha.y, sampled_gradient_map * ribbon_intensity_gradient_map.y);
 	return output;

@@ -48,6 +48,7 @@ The library prints one line tips, starting `TimelineFX tip:`, when it sees a lik
 * Warm up effects so that they start in a steady state rather than empty on the first frame.
 * Fixed time step sub steps with `tfx_UpdateStageSubSteps` and `tfx_UpdateStageSubStep`.
 * Instance buffers are grouped by layer, and effects can be given sort keys so that you can draw them in your own order or batch them by pipeline.
+* Depth layers. A layer that writes depth (`tfx_GetLayerFlags`) draws its particles as opaque cutouts of their shape, so they hide what's behind them and sit properly in the scene's depth buffer. The Depth layer always does, and each library sets its two custom layers in the editor.
 * Plug in your own memory allocation callbacks so that you own all of the memory the library uses.
 * Color ramps are RGBA16F, with the heat response baked into the ramp.
 * Shape images can be PNG (rgba, luminance/alpha, luminance or alpha only) or block compressed KTX2 (BC4, BC5 and BC7) with mipmaps.

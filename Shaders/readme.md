@@ -50,9 +50,11 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 | `simulate_particles` | compute | 256 | Simulates `run_on_gpu` emitters and writes their instances | `tfx_gpu_particle_push_t` |
 | `tfx_billboard_vertex` | vertex | | The live billboard quads, interpolated from the previous update | `tfx_billboard_push` |
 | `tfx_billboard_fragment` | fragment | | Shades live and baked billboards | `tfx_billboard_push` |
+| `tfx_billboard_cutout_fragment` | fragment | | Shades live and baked billboards on a layer that writes depth, cut at the emitter's alpha threshold | `tfx_billboard_push` |
 | `tfx_ribbon_compute` | compute | 256 | Builds a ribbon bucket's vertex and index buffers, one thread per segment | `tfx_ribbon_bucket_globals_t` |
 | `tfx_ribbon_vertex` | vertex | | Transforms the ribbon vertexes and samples the over length shading graphs | `tfx_ribbon_bucket_globals_t` |
 | `tfx_ribbon_fragment` | fragment | | Shades ribbons, fading out the ones thinner than a pixel and a half | `tfx_ribbon_bucket_globals_t` |
+| `tfx_ribbon_cutout_fragment` | fragment | | Shades live and baked ribbons on a layer that writes depth, cut at the emitter's alpha threshold | `tfx_ribbon_bucket_globals_t` |
 | `tfx_sprite_playback` | compute | 128 | Interpolates baked sprite data into billboard instances | `tfx_sprite_data_push_t` |
 | `tfx_billboard_baked_vertex` | vertex | | The billboard quads for the instances `tfx_sprite_playback` writes | `tfx_baked_billboard_push` |
 | `tfx_ribbon_playback` | compute | 128 | Interpolates baked ribbon data into the ribbons `tfx_ribbon_compute` builds | `tfx_ribbon_data_push_t` |
@@ -122,7 +124,7 @@ Compile to DXIL with no defines (`-target dxil -profile <vs_6_0, ps_6_0 or cs_6_
 
 - **One descriptor table covers them all.** Make a range for each space, every one unbounded and starting at offset 0, so all of them see the whole shader visible heap and a descriptor's heap slot is the index the shaders take. Samplers get a table of their own. Unbounded constant buffer and read write ranges need resource binding tier 3.
 - **The push constants are root constants** in space 0: `tfx_gpu_particle_push_t` at `b0`, `tfx_billboard_push` at `b1`, `tfx_baked_billboard_push` at `b2`, `tfx_ribbon_bucket_globals_t` at `b3`, `tfx_sprite_data_push_t` at `b4`, `tfx_ribbon_data_push_t` at `b5` and `tfx_ribbon_bounds_push` at `b6`. Together they're over the 64 DWORD limit, so make a root signature per block. The baked billboard draw takes two: its vertex shader reads `b2` and the fragment shader it shares with the live draw reads `b1`, so set both with the same first seven values. Set the kernel's block once per fetch and only `dispatch_index`, its first DWORD, per dispatch.
-- **A structured view bakes in its stride**, so a buffer read as two row types needs a view of each. The kernel reads its pool through three (hot 32, cold 64 and noise 16 bytes) and the frame's upload through four (dispatches 128, the 64 byte tick rows that the tick, force, spawn block and run arrays all share, spawns 112 and locations 32). Every section starts on a multiple of its own stride, so a view over the whole buffer from element 0 works with the push constants' bases. The ribbon emitters are 416 bytes, the baked ribbons 64, their properties 68 and the animation instances 64.
+- **A structured view bakes in its stride**, so a buffer read as two row types needs a view of each. The kernel reads its pool through three (hot 32, cold 64 and noise 16 bytes) and the frame's upload through four (dispatches 128, the 64 byte tick rows that the tick, force, spawn block and run arrays all share, spawns 112 and locations 32). Every section starts on a multiple of its own stride, so a view over the whole buffer from element 0 works with the push constants' bases. The ribbon emitters are 416 bytes, the baked ribbons 64, their properties 76 and the animation instances 64.
 - **Images** are read by the image index in the upper 16 bits of `texture_array_index`. With one atlas from `tfx_impl_GetUV` that index is 0, so put the atlas's view in heap slot 0.
 - **The billboard draws** take the instances as a vertex buffer, so start each range with the draw's start instance. The input assembler adds it and the shader never reads `SV_InstanceID`.
 
@@ -184,7 +186,7 @@ Each entry point's slots, in the order SDL_gpu wants (textures, then read only b
 | | `VERTEX_READ` 1 | The image data |
 | | `VERTEX_READ` 2 | The emitter properties |
 | | `VERTEX_UNIFORM` 0, 1 | The view and the draw, as above |
-| `tfx_billboard_fragment`, `tfx_ribbon_fragment` | `FRAGMENT_TEXTURE` 0 | The shape atlas, sampled |
+| `tfx_billboard_fragment`, `tfx_billboard_cutout_fragment`, `tfx_ribbon_fragment`, `tfx_ribbon_cutout_fragment` | `FRAGMENT_TEXTURE` 0 | The shape atlas, sampled |
 | | `FRAGMENT_TEXTURE` 1 | The color ramps, a texture array read with an integer load |
 | | `FRAGMENT_SAMPLER` 0 | The atlas's sampler, when samplers are separate |
 | `tfx_ribbon_compute` | `COMPUTE_READ` 0 | The ribbon emitters |
@@ -262,7 +264,7 @@ The render passes use the fixed bindings with `-D TFX_METAL_SLOTS`, the Metal li
 
 Draw 6 vertices per instance with no index buffer: `tfx_billboard_vertex` makes the quad's corners from `SV_VertexID`. Each layer's instances from `tfx_GetInstanceBufferByLayer` (or the key ranges from `tfx_GetNextInstanceKeyRange`) are one instanced draw. Besides the instance, the vertex shader reads:
 * the previous update's instance buffer, so that it can interpolate the position, size and rotation of each sprite using its `captured_index`. A sprite without the capture flag set (the first frame of a particle, or one that has just looped back to the start of a path) isn't drawn that frame.
-* the emitter properties buffer from `tfx_GetParticlePropertiesBuffer` for the image handle, the billboard alignment, the color ramp row and the start frame of the emitter's image.
+* the emitter properties buffer from `tfx_GetParticlePropertiesBuffer` for the image handle, the billboard alignment, the color ramp row, the start frame of the emitter's image and its alpha threshold.
 * the image data buffer for the uvs and the image index.
 * the view, with `timer_lerp`, how far the current frame is between the previous update and the current one. Get it from `tfx_GetStageInterpolation`, not straight from your timer.
 
@@ -270,15 +272,21 @@ It's an all-in-one shader that handles every billboard alignment mode (camera fa
 
 `tfx_billboard_fragment` samples the particle image and then uses the red channel (scaled by the sprite's gradient map value) as a lookup into the emitter's row of the color ramp texture. The color ramps are plotted by the library from the emitter's color graphs, with the heat response already baked in, as RGBA16F, and you upload them from `tfx_GetColorRampBitmap`. The ramp color is multiplied by the sprite's intensity, and the curved alpha / sharpness terms do the dissolve fade. It writes premultiplied alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA.
 
+`tfx_billboard_cutout_fragment` shades the same way, but treats the shape as a mask: a pixel whose final alpha is below the emitter's `alpha_threshold` is discarded, and what's left is written opaque. Use it for the layers whose `tfx_GetLayerFlags` has `tfxLayerFlags_writes_depth`, which always includes layer 1, Depth. Give its pipeline blending off and depth test and write on, and draw those layers first, in index order, then the other layers with `tfx_billboard_fragment`, so the blended particles behind them are hidden. Draw both against your scene's depth buffer. The flags belong to the library, and a refresh can change them, so read them when you draw. It takes the same vertex shaders, push constants and slots as `tfx_billboard_fragment`. Both read their varyings through `tfx_shade_billboard_parts`, which a fragment shader of your own can call too.
+
+The alpha threshold reaches the fragment in bits 16 to 23 of the `indexes.y` varying, as an 8 bit unorm, so read the color ramp layer as `(indexes.y >> 8) & 0xFF` in a fragment shader of your own.
+
 ## Ribbons
 
 Ribbons take an extra step compared to billboards. The library writes out ribbon, segment and ribbon emitter data, and `tfx_ribbon_compute` turns that into actual geometry: one thread per segment, sampling the width/scale/clip/morph/noise/lag graphs, building the ribbon frame (facing the camera, at a fixed angle, or following the curve of the path) and writing out the tessellated triangle strip. The segment index is packed into each vertex so the later stages can recover which ribbon, which segment and which side of the strip a vertex came from.
 
-Ribbons are grouped into buckets, one for each segment count and effect sort key, and each bucket is one compute dispatch and one indexed draw. After `tfx_UpdateStage`, copy the ribbon data into your staging buffers with `tfx_CopyRibbonDataToStagingBuffers` and loop over the buckets with `tfx_CreateRibbonDispatch` and `tfx_NextRibbonDispatch`, which give you the offsets, counts and push constants for each dispatch and draw. To draw the ribbons of several stages with one upload, one compute pass and one draw pass, use a ribbon batch instead: `tfx_BeginRibbonBatch`, `tfx_AddStageToRibbonBatch` for each stage, `tfx_GetRibbonBatchSizes` and `tfx_CreateRibbonBatchDispatch`. Both flows are described in full in timelinefx.h.
+Ribbons are grouped into buckets, one for each segment count, effect sort key and layer, and each bucket is one compute dispatch and one indexed draw. After `tfx_UpdateStage`, copy the ribbon data into your staging buffers with `tfx_CopyRibbonDataToStagingBuffers` and loop over the buckets with `tfx_CreateRibbonDispatch` and `tfx_NextRibbonDispatch`, which give you the offsets, counts and push constants for each dispatch and draw. To draw the ribbons of several stages with one upload, one compute pass and one draw pass, use a ribbon batch instead: `tfx_BeginRibbonBatch`, `tfx_AddStageToRibbonBatch` for each stage, `tfx_GetRibbonBatchSizes` and `tfx_CreateRibbonBatchDispatch`. Both flows are described in full in timelinefx.h.
 
 `tfx_ribbon_vertex` then transforms those vertices, unpacks that segment index, samples the over-length shading graphs (intensity, gradient map, curved alpha, sharpness) and ping-pongs the U coordinate so a texture can wrap repeatedly along the ribbon without a flipped seam at each wrap point.
 
 `tfx_ribbon_fragment` shades a ribbon the same way as a billboard, and fades it out as it gets thinner than about 1.5 pixels. Below that the rasteriser starts dropping fragments and a thin ribbon breaks up into dashes, so fading it gives a tail that thins out smoothly instead.
+
+`tfx_ribbon_cutout_fragment` is the ribbon version of `tfx_billboard_cutout_fragment`, for the buckets whose `dispatch.layer` writes depth. It discards a pixel whose alpha, times the thin ribbon fade, is below the emitter's alpha threshold, and writes the rest opaque, so a tapering ribbon ends cleanly rather than breaking into dashes. Give its pipeline the ribbon pipeline's vertex input with blending off and depth test and write on, and draw those buckets after the depth layers' billboards and before every blended layer. Live and baked ribbons share it, as they share `tfx_ribbon_fragment`. Both read their varyings through `tfx_shade_ribbon_parts`, which a fragment shader of your own can call too. The threshold reaches the fragment in the `texture_indexes.z` varying, 0 to 255.
 
 ## GPU simulated particles
 
@@ -310,7 +318,7 @@ A host entry point with its own push constants does what `simulate_particles` do
 
 For maximum speed you can pre-bake an effect to sprite data and update the instance buffer on the GPU instead of simulating on the CPU.
 
-Every frame, after `tfx_UpdateAnimationManager`, dispatch `tfx_sprite_playback` with `tfx_sprite_data_push_t`. It interpolates each baked sprite between its frame and the one before, resolves the image frame (the emitter's start frame included) and bakes the stretch into `position.w`, then writes a billboard instance. Draw those with `tfx_billboard_baked_vertex` and `tfx_billboard_fragment`. The baked vertex shader reads each instance as it is, with no previous buffer and no timer lerp: `tfx_billboard_vertex` would add the start frame a second time and see no motion to stretch along.
+Every frame, after `tfx_UpdateAnimationManager`, dispatch `tfx_sprite_playback` with `tfx_sprite_data_push_t`. It interpolates each baked sprite between its frame and the one before, resolves the image frame (the emitter's start frame included) and bakes the stretch into `position.w`, then writes a billboard instance. Draw those with `tfx_billboard_baked_vertex` and `tfx_billboard_fragment`. The output isn't grouped by layer across instances, so baked layers that write depth draw like Default. The baked vertex shader reads each instance as it is, with no previous buffer and no timer lerp: `tfx_billboard_vertex` would add the start frame a second time and see no motion to stretch along.
 
 Baked ribbons go through the same `tfx_ribbon_compute` and ribbon draw as live ones. Dispatch `tfx_ribbon_playback` with `tfx_ribbon_data_push_t`, then walk the animation manager's buckets with `tfx_CreateAnimationRibbonDispatch` and `tfx_NextAnimationRibbonDispatch` exactly as you walk a stage's: one `tfx_ribbon_compute` dispatch and one indexed draw per bucket. `tfx_CopyAnimationRibbonEmitters` gives you the emitter buffer `tfx_ribbon_compute` reads for baked ribbons, and `tfx_GetAnimationRibbonBufferSizes` the buffer sizes for the frame. Baked ribbons carry their own graph rows, so bind `tfx_GetAnimationRibbonGraphLookupsBufferPointer` in place of `tfx_GetGPUGraphLookupsBuffer` for their compute and draw. That way sprite data plays back without a library loaded.
 
