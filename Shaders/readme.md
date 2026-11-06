@@ -51,12 +51,19 @@ Compile each entry point on its own with slangc, which comes with the Vulkan SDK
 | `tfx_billboard_vertex` | vertex | | The live billboard quads, interpolated from the previous update | `tfx_billboard_push` |
 | `tfx_billboard_fragment` | fragment | | Shades live and baked billboards | `tfx_billboard_push` |
 | `tfx_billboard_cutout_fragment` | fragment | | Shades live and baked billboards on a layer that writes depth, cut at the emitter's alpha threshold | `tfx_billboard_push` |
+| `tfx_billboard_lit_vertex` | vertex | | `tfx_billboard_vertex` for a lit layer, adding the quad's world axes and the emitter's lighting | `tfx_billboard_push` |
+| `tfx_billboard_lit_fragment` | fragment | | Lights live and baked billboards on a lit layer | `tfx_billboard_push` |
+| `tfx_billboard_lit_cutout_fragment` | fragment | | Lights live and baked billboards on a lit layer that writes depth, cut at the alpha threshold | `tfx_billboard_push` |
 | `tfx_ribbon_compute` | compute | 256 | Builds a ribbon bucket's vertex and index buffers, one thread per segment | `tfx_ribbon_bucket_globals_t` |
 | `tfx_ribbon_vertex` | vertex | | Transforms the ribbon vertexes and samples the over length shading graphs | `tfx_ribbon_bucket_globals_t` |
 | `tfx_ribbon_fragment` | fragment | | Shades ribbons, fading out the ones thinner than a pixel and a half | `tfx_ribbon_bucket_globals_t` |
 | `tfx_ribbon_cutout_fragment` | fragment | | Shades live and baked ribbons on a layer that writes depth, cut at the emitter's alpha threshold | `tfx_ribbon_bucket_globals_t` |
+| `tfx_ribbon_lit_vertex` | vertex | | `tfx_ribbon_vertex` for a lit layer, adding the normal `tfx_ribbon_compute` wrote and the emitter's lighting | `tfx_ribbon_bucket_globals_t` |
+| `tfx_ribbon_lit_fragment` | fragment | | Lights live and baked ribbons on a lit layer | `tfx_ribbon_bucket_globals_t` |
+| `tfx_ribbon_lit_cutout_fragment` | fragment | | Lights live and baked ribbons on a lit layer that writes depth, cut at the alpha threshold | `tfx_ribbon_bucket_globals_t` |
 | `tfx_sprite_playback` | compute | 128 | Interpolates baked sprite data into billboard instances | `tfx_sprite_data_push_t` |
 | `tfx_billboard_baked_vertex` | vertex | | The billboard quads for the instances `tfx_sprite_playback` writes | `tfx_baked_billboard_push` |
+| `tfx_billboard_baked_lit_vertex` | vertex | | `tfx_billboard_baked_vertex` for a lit layer | `tfx_baked_billboard_push` |
 | `tfx_ribbon_playback` | compute | 128 | Interpolates baked ribbon data into the ribbons `tfx_ribbon_compute` builds | `tfx_ribbon_data_push_t` |
 | `tfx_sprite_bounds` | compute | 128 | Optional: the bounding box of a baked frame's sprites | `tfx_sprite_data_push_t` |
 | `tfx_ribbon_bounds` | compute | 128 | Optional: the bounding box of a baked frame's ribbons | `tfx_ribbon_bounds_push` |
@@ -88,7 +95,7 @@ The default. Every resource is indexed out of a descriptor array in set 0 by an 
 | 0 | Samplers |
 | 3 | Images: each shape's `Texture2DArray` of animation frames, and the color ramps |
 | 5 | Storage buffers |
-| 7 | Uniform buffers: the view, with `view`, `projection` (both 4x4), `screen_size`, `milliseconds`, `timer_lerp` and `update_time` |
+| 7 | Uniform buffers: the view, with `view`, `projection` (both 4x4), `screen_size`, `milliseconds`, `timer_lerp` and `update_time`, which the lit fragments read with the light after it (see [Lit layers](#lit-layers)) |
 
 The image data from `tfx_GetLibraryGPUShapes` holds each frame's uv rect and `texture_array_index`, which is the shape's bindless image index in the upper 16 bits and the frame's layer in the lower 16. The image a particle samples can change from one particle to the next within a draw, so it's read with `NonUniformResourceIndex`.
 
@@ -97,7 +104,7 @@ The two vertex inputs are vertex buffers:
 | Draw | Buffer | Locations and formats |
 | --- | --- | --- |
 | Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sint, 3 `alignment` r8g8b8a8_snorm, 4 `intensity_gradient_map` r16g16_sint, 5 `curved_alpha_life` r8g8b8a8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
-| Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint |
+| Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint, and for `tfx_ribbon_lit_vertex` only, 4 `normal` r32_uint |
 
 These formats exist on every API. `size` and `intensity_gradient_map` are signed 16-bit integers the shader converts to float, because D3D, Metal and WebGPU have no scaled formats, and `alignment` and `curved_alpha_life` read four bytes because D3D and WebGPU have no three byte formats. The fourth byte is spare.
 
@@ -117,6 +124,7 @@ Compile to DXIL with no defines (`-target dxil -profile <vs_6_0, ps_6_0 or cs_6_
 | Register | Spaces | Holds |
 | --- | --- | --- |
 | `b0` | 1 | The view uniforms, a constant buffer view of 256 bytes |
+| `b0` | 2 | The same view uniforms as the lit fragments read them, with the light, for a lit layer |
 | `t0` | 1 | Images, `Texture2DArray` |
 | `t0` | 2 to 25 | Read only structured buffers, one space per row type |
 | `u0` | 1 to 8 | Read write structured buffers, one space per row type |
@@ -154,6 +162,7 @@ Each entry point's resources in each class count up from 0. Slot n of a class is
 | `VERTEX_UNIFORM`: vertex shader uniforms | `b` | 0 | 5 |
 | `FRAGMENT_TEXTURE`: fragment shader textures | `t` | 0 | 7 |
 | `FRAGMENT_SAMPLER`: fragment shader samplers, when they're separate | `s` | 0 | 9 |
+| `FRAGMENT_UNIFORM`: fragment shader uniforms, only the lit fragments' view | `b` | 0 | 10 |
 | `COMPUTE_WRITE`: compute read write buffers | `u` | 0 | 0 |
 | `COMPUTE_READ`: compute read only buffers | `t` | 0 | 2 |
 | `COMPUTE_UNIFORM`: compute uniforms | `b` | 0 | 6 |
@@ -163,6 +172,7 @@ The defaults put everything in set and space 0, with no binding shared by two cl
 ```
 -D TFX_VERTEX_UNIFORM_SPACE=1 -D TFX_VERTEX_UNIFORM_BINDING=0
 -D TFX_FRAGMENT_TEXTURE_SPACE=2 -D TFX_FRAGMENT_TEXTURE_BINDING=0 -D TFX_FRAGMENT_SAMPLER_SPACE=2 -D TFX_FRAGMENT_SAMPLER_BINDING=0
+-D TFX_FRAGMENT_UNIFORM_SPACE=3 -D TFX_FRAGMENT_UNIFORM_BINDING=0
 -D TFX_COMPUTE_READ_BINDING=0 -D TFX_COMPUTE_WRITE_SPACE=1 -D TFX_COMPUTE_UNIFORM_SPACE=2 -D TFX_COMPUTE_UNIFORM_BINDING=0
 -D TFX_COMBINED_SAMPLERS
 ```
@@ -189,6 +199,9 @@ Each entry point's slots, in the order SDL_gpu wants (textures, then read only b
 | `tfx_billboard_fragment`, `tfx_billboard_cutout_fragment`, `tfx_ribbon_fragment`, `tfx_ribbon_cutout_fragment` | `FRAGMENT_TEXTURE` 0 | The shape atlas, sampled |
 | | `FRAGMENT_TEXTURE` 1 | The color ramps, a texture array read with an integer load |
 | | `FRAGMENT_SAMPLER` 0 | The atlas's sampler, when samplers are separate |
+| `tfx_billboard_lit_fragment`, `tfx_billboard_lit_cutout_fragment`, `tfx_ribbon_lit_fragment`, `tfx_ribbon_lit_cutout_fragment` | `FRAGMENT_TEXTURE` 0, 1, `FRAGMENT_SAMPLER` 0 | As the unlit fragments |
+| | `FRAGMENT_UNIFORM` 0 | The view with the light, `tfxVIEW_UNIFORMS_SIZE` (224) bytes |
+| `tfx_billboard_lit_vertex`, `tfx_billboard_baked_lit_vertex`, `tfx_ribbon_lit_vertex` | | The slots of `tfx_billboard_vertex`, `tfx_billboard_baked_vertex` and `tfx_ribbon_vertex` |
 | `tfx_ribbon_compute` | `COMPUTE_READ` 0 | The ribbon emitters |
 | | `COMPUTE_READ` 1 | The graph lookups |
 | | `COMPUTE_READ` 2 | The ribbons |
@@ -236,6 +249,7 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
   - The vertex shaders only read storage buffers, which is all WebGPU allows in the vertex stage. The ribbon compute uses the most storage buffers, 6.
   - Bind the color ramps as `unfilterable-float`. They're only loaded, so a 32 bit float ramp works without `float32-filterable`.
   - Make every texture view a 2D array, even of a one layer texture, whose default view is a plain 2D one.
+  - In your own fragment shaders, pass a varyings struct only to `[ForceInline]` functions. Slang's WGSL turns any other into a copy of the struct that keeps `@interpolate(flat)` without a `@location`, and naga rejects the shader with "input/output binding is not consistent". `tfx_shade_billboard_parts` and `tfx_shade_ribbon_parts` are inlined.
 - **Metal:** compile with the Metal line in the compile table. Slang makes HLSL registers `tN`, `uN` and `bN` all `[[buffer(N)]]` and ignores spaces, so the classes a stage uses would collide. `-D TFX_METAL_SLOTS` gives each buffer class its own tens on Metal and changes nothing on any other target. [implementations](../implementations) has a working host, `tfx_impl_metal`.
 
   | Class | Metal slots |
@@ -244,6 +258,7 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
   | `VERTEX_UNIFORM`, `COMPUTE_READ` | `[[buffer(10 + n)]]` |
   | `COMPUTE_UNIFORM` | `[[buffer(20 + n)]]` |
   | `FRAGMENT_TEXTURE`, `FRAGMENT_SAMPLER` | `[[texture(n)]]`, `[[sampler(n)]]` |
+  | `FRAGMENT_UNIFORM` | the fragment stage's `[[buffer(n)]]` |
 
   - Each uniform block is small enough for `setVertexBytes` and `setBytes`, which take up to 4 KB, so no uniform buffers are needed.
   - The buffers come out as `device` pointers, though the vertex shaders only read them, so Metal warns of writable resources in a vertex function when it compiles them. The warning is harmless.
@@ -287,6 +302,29 @@ Ribbons are grouped into buckets, one for each segment count, effect sort key an
 `tfx_ribbon_fragment` shades a ribbon the same way as a billboard, and fades it out as it gets thinner than about 1.5 pixels. Below that the rasteriser starts dropping fragments and a thin ribbon breaks up into dashes, so fading it gives a tail that thins out smoothly instead.
 
 `tfx_ribbon_cutout_fragment` is the ribbon version of `tfx_billboard_cutout_fragment`, for the buckets whose `dispatch.layer` writes depth. It discards a pixel whose alpha, times the thin ribbon fade, is below the emitter's alpha threshold, and writes the rest opaque, so a tapering ribbon ends cleanly rather than breaking into dashes. Give its pipeline the ribbon pipeline's vertex input with blending off and depth test and write on, and draw those buckets after the depth layers' billboards and before every blended layer. Live and baked ribbons share it, as they share `tfx_ribbon_fragment`. Both read their varyings through `tfx_shade_ribbon_parts`, which a fragment shader of your own can call too. The threshold reaches the fragment in the `texture_indexes.z` varying, 0 to 255.
+
+## Lit layers
+
+A layer whose `tfx_GetLayerFlags` has `tfxLayerFlags_lit` draws with the lit entry points: `tfx_billboard_lit_vertex` (live) or `tfx_billboard_baked_lit_vertex` (baked) with `tfx_billboard_lit_fragment`, and `tfx_ribbon_lit_vertex` with `tfx_ribbon_lit_fragment`, or the lit cutouts when the layer writes depth too. Pipeline state, draw order, push constants and the vertex shaders' inputs are the same as the unlit ones', except that the lit ribbon vertex shader also reads `normal` at location 4. The unlit entry points don't change, so a host that never draws a lit layer, or draws one with the unlit pipelines, needs nothing new.
+
+The color the unlit fragments output becomes the albedo, which the fragment lights with wrapped Lambert from one directional light plus a hemisphere ambient: `sky_color` on normals facing +Y and `ground_color` on normals facing down. Color above 1, from heat response or intensity, is added unlit, so a hot particle still glows on its shaded side. Alpha is unchanged.
+
+The light is in the view uniforms, after the fields every vertex shader reads, as `tfx_view_light_t` at `tfxVIEW_LIGHT_OFFSET` (160):
+
+| Offset | Field |
+| --- | --- |
+| 148 | 12 bytes of padding |
+| 160 | `direction`: unit length, towards the light. w unused |
+| 176 | `color`: the light's color times its intensity. w unused |
+| 192 | `sky_color` |
+| 208 | `ground_color` |
+
+The lit fragments read the uniforms as `tfx_lit_view_uniforms`, `tfxVIEW_UNIFORMS_SIZE` (224) bytes, so bind at least that much to them. Fill the light every frame: a zeroed light draws lit particles black. The pads are three floats, not a float3, because std140 and WGSL would put a float3 at 160 where D3D puts it at 148. The unlit shaders still declare the 148 byte `tfx_view_uniforms`, so a 148 byte buffer stays valid for them.
+
+Each emitter's lighting word is `[wrap unorm8 << 16 | roundness unorm8 << 8 | normal mode]`. Billboards keep it in the emitter properties row's `lighting`, and ribbons above the angle type in the ribbon emitter row's `angle_type` (and `shader_type` for baked ribbons), so the angle type is `angle_type & 0xFF`.
+
+- **Billboards:** the vertex shader passes the quad's world space axes, with the normal turned towards the camera. Roundness bends that normal into a sphere across the quad, so at roundness 0 a camera facing billboard lights evenly.
+- **Ribbons:** `tfx_ribbon_compute` writes an octahedral unit normal into each vertex's `normal`. Radial (mode 0) points out from the ribbon's origin, so a ribbon that wraps around it is lit on the side facing the light. Surface (mode 1) is the ribbon's face, turned towards `camera_position`. Roundness bends both towards the edges, so the ribbon shades like a tube.
 
 ## GPU simulated particles
 

@@ -224,7 +224,7 @@ typedef struct tfx_ribbon_vertex_s {
 	tfxU32 segment_index;
 	tfx_float32x2_t uv_offset_scale;
 	tfxU32 ribbon_index;
-	tfxU32 clipped;
+	tfxU32 normal;							//Octahedral unit normal as two snorm16s, which tfx_ribbon_lit_vertex reads
 } tfx_ribbon_vertex_t;
 
 typedef struct tfx_gpu_particle_properties_s {
@@ -234,8 +234,20 @@ typedef struct tfx_gpu_particle_properties_s {
 	tfxU32 start_frame_index;			//First shape frame, an index into tfx_GetGlobalGPUShapes in tfx_GetGlobalParticlePropertiesBuffer
 	float animation_frames;
 	float alpha_threshold;				//Pixels below this alpha are discarded on a layer that writes depth
-	int padding;
+	tfxU32 lighting;					//[wrap unorm8 << 16 | roundness unorm8 << 8], read by the lit entry points on a lit layer
 } tfx_gpu_particle_properties_t;
+
+//The light the lit fragments read from the view uniforms at tfxVIEW_LIGHT_OFFSET. Every member is 16 bytes so std140, D3D and WGSL agree
+typedef struct tfx_view_light_s {
+	tfx_float32x4_t direction;			//Unit length, pointing towards the light. w is unused
+	tfx_float32x4_t color;				//The light's color times its intensity. w is unused
+	tfx_float32x4_t sky_color;			//Ambient light on normals facing up (+Y)
+	tfx_float32x4_t ground_color;		//Ambient light on normals facing down
+} tfx_view_light_t;
+
+//Where tfx_view_light_t starts in the view uniforms, after view, projection, screen_size, milliseconds, timer_lerp, update_time and 12 bytes of padding
+#define tfxVIEW_LIGHT_OFFSET 160
+#define tfxVIEW_UNIFORMS_SIZE (tfxVIEW_LIGHT_OFFSET + 64)
 
 typedef struct tfx_gpu_image_data_s {
 	tfx_float32x4_t uv;
@@ -1577,6 +1589,7 @@ tfxAPI tfxU32 tfx_GetLibraryFileVersion(tfx_library library);
 typedef enum {
 	tfxLayerFlags_none = 0,
 	tfxLayerFlags_writes_depth = 1 << 0,		//Draw with tfx_billboard_cutout_fragment and tfx_ribbon_cutout_fragment, blending off and depth write on, before the layers that don't
+	tfxLayerFlags_lit = 1 << 1,					//Draw with the lit vertex and fragment entry points, which light the particles with the view uniforms' tfx_view_light_t
 } tfx_layer_flag_bits;
 
 typedef tfxU32 tfxLayerFlags;					//tfx_layer_flag_bits
@@ -1589,6 +1602,11 @@ depth first, in index order, billboards then ribbons, then the rest, and give th
 particles behind it. When a stage holds effects from more than one library, keep their custom layers the
 same, because the stage has one range per layer whichever library an effect came from. An effect imported into another library keeps
 its layer index. A refresh can change the flags, so read them when you draw.
+
+A layer with tfxLayerFlags_lit draws with tfx_billboard_lit_vertex, tfx_billboard_baked_lit_vertex and tfx_ribbon_lit_vertex, and with
+tfx_billboard_lit_fragment and tfx_ribbon_lit_fragment, or their cutouts when the layer writes depth as well. Pipeline state is the same as
+the unlit entry points'. The lit fragments light the color with the tfx_view_light_t your view uniforms hold at tfxVIEW_LIGHT_OFFSET, so
+fill it every frame: a zeroed light draws lit particles black. A host that draws a lit layer with the unlit entry points gets it unlit.
 * @param library		A handle to the library
 * @param layer			The layer, below tfxLAYERS
 * @returns tfxLayerFlags	The layer's tfx_layer_flag_bits

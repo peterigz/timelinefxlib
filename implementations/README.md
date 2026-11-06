@@ -233,6 +233,12 @@ one of them, then everything else, against the depth buffer the scene drew into.
 group with a fresh dispatch and skip the buckets that aren't in it. Baked billboards aren't grouped by layer across
 instances, so draw them all with the blended pipeline. Baked ribbon buckets are, so they can take the cutout.
 
+**Lit layers.** The examples also draw a layer with `tfxLayerFlags_lit` unlit. To light it, make pipelines with the lit
+vertex and fragment entry points (`tfx_billboard_lit_vertex` with `tfx_billboard_lit_fragment`, `tfx_ribbon_lit_vertex`
+with `tfx_ribbon_lit_fragment`, and the lit cutouts for a lit layer that writes depth), give the ribbon one the `normal`
+attribute at location 4, and fill a `tfx_view_light_t` at `tfxVIEW_LIGHT_OFFSET` in the view uniforms every frame. Under
+the fixed bindings the lit fragments also take the view at `FRAGMENT_UNIFORM` 0. See Lit layers in `../Shaders/readme.md`.
+
 **Drawing by sort key.** `tfx_impl_GatherFrame` gathers each layer as one range, which is all you need while every
 effect draws the same way. To draw some effects with their own pipeline or resources, give them a key with
 `tfx_SetEffectSortKey` and walk each layer's keys yourself after the gather:

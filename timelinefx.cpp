@@ -4142,6 +4142,12 @@ tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_
 	a.view_mode = tfx_perspective_view;
 	a.camera_speed = 6.f;
 	a.attach_effect_to_camera = false;
+	a.light_yaw = tfx_DegreesToRadians(70.f);
+	a.light_pitch = tfx_DegreesToRadians(40.f);
+	a.light_intensity = 0.85f;
+	a.light_color = tfx_vec3_t(1.f, 1.f, 1.f);
+	a.sky_color = tfx_vec3_t(0.25f, 0.27f, 0.3f);
+	a.ground_color = tfx_vec3_t(0.1f, 0.09f, 0.08f);
 	library->preview_camera_settings.push_back(a);
 	effect->preview_camera_settings = library->preview_camera_settings.size() - 1;
 	return effect->preview_camera_settings;
@@ -4200,6 +4206,7 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	properties.noise_octaves = 1;
 	properties.lag_time = 150.f;
 	properties.alpha_threshold = 0.5f;
+	properties.lighting = tfxLIGHTING_DEFAULT_RIBBON;
 	if (library->free_ribbon_emitter_properties.size()) {
 		tfxU32 index = library->free_ribbon_emitter_properties.pop_back();
 		library->ribbon_properties[index] = properties;
@@ -4221,6 +4228,7 @@ tfxU32 tfx__allocate_library_particle_gpu_properties(tfx_library library) {
 	library->particle_properties_version++;
 	tfx_gpu_particle_properties_t properties{};
 	properties.alpha_threshold = 0.5f;
+	properties.lighting = tfxLIGHTING_DEFAULT_BILLBOARD;
 	if (library->free_particle_gpu_properties.size()) {
 		tfxU32 index = library->free_particle_gpu_properties.pop_back();
 		library->particle_gpu_properties[index] = properties;
@@ -4551,7 +4559,7 @@ bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length) 
 	memcpy(name, cursor, name_length);
 	name[name_length] = '\0';
 	library->layers[layer].name.Set(name);
-	library->layers[layer].flags = flags & tfxLayerFlags_writes_depth;
+	library->layers[layer].flags = flags & (tfxLayerFlags_writes_depth | tfxLayerFlags_lit);
 	return true;
 }
 
@@ -5131,6 +5139,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("disable_billboard", tfxBool);
 	names_and_types.Insert("billboard_option", tfxUInt);
 	names_and_types.Insert("alpha_threshold", tfxFloat);
+	names_and_types.Insert("lighting_roundness", tfxFloat);
+	names_and_types.Insert("lighting_wrap", tfxFloat);
+	names_and_types.Insert("lighting", tfxUInt);
 	names_and_types.Insert("vector_align_type", tfxUInt);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("drag_half_life", tfxFloat);
@@ -5218,6 +5229,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("ribbon_orient_to_surface_normal", tfxBool);
 	names_and_types.Insert("ribbon_lag_time", tfxFloat);
 	names_and_types.Insert("ribbon_alpha_threshold", tfxFloat);
+	names_and_types.Insert("ribbon_lighting_roundness", tfxFloat);
+	names_and_types.Insert("ribbon_lighting_wrap", tfxFloat);
+	names_and_types.Insert("ribbon_normal", tfxUInt);
 	names_and_types.Insert("ribbon_fixed_angle_normal_x", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_y", tfxFloat);
 	names_and_types.Insert("ribbon_fixed_angle_normal_z", tfxFloat);
@@ -5443,6 +5457,18 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("preview_camera_isometric", tfxBool);
 	names_and_types.Insert("preview_camera_isometric_scale", tfxFloat);
 	names_and_types.Insert("preview_camera_speed", tfxFloat);
+	names_and_types.Insert("preview_light_yaw", tfxFloat);
+	names_and_types.Insert("preview_light_pitch", tfxFloat);
+	names_and_types.Insert("preview_light_intensity", tfxFloat);
+	names_and_types.Insert("preview_light_color_r", tfxFloat);
+	names_and_types.Insert("preview_light_color_g", tfxFloat);
+	names_and_types.Insert("preview_light_color_b", tfxFloat);
+	names_and_types.Insert("preview_sky_color_r", tfxFloat);
+	names_and_types.Insert("preview_sky_color_g", tfxFloat);
+	names_and_types.Insert("preview_sky_color_b", tfxFloat);
+	names_and_types.Insert("preview_ground_color_r", tfxFloat);
+	names_and_types.Insert("preview_ground_color_g", tfxFloat);
+	names_and_types.Insert("preview_ground_color_b", tfxFloat);
 	names_and_types.Insert("preview_effect_z_offset", tfxFloat);
 	names_and_types.Insert("preview_camera_hide_floor", tfxBool);
 	names_and_types.Insert("preview_attach_effect_to_camera", tfxBool);
@@ -5892,6 +5918,7 @@ void tfx__assign_animation_emitter_property_float(tfx_gpu_particle_properties_t 
 
 void tfx__assign_animation_emitter_property_u32(tfx_gpu_particle_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "flags") properties->flags = value;
+	if (*field == "lighting") properties->lighting = value;
 	if (*field == "start_frame_index") properties->start_frame_index = value;
 	if (*field == "color_ramp_index") properties->color_ramp_indexes = value;
 }
@@ -6116,6 +6143,8 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 	if (gpu_properties) {
 		if (tfx__property_is(query, "billboard_option")) return tfx__property_u32(out_value, gpu_properties->flags & 0x3);
 		if (tfx__property_is(query, "alpha_threshold")) return tfx__property_float(out_value, gpu_properties->alpha_threshold);
+		if (tfx__property_is(query, "lighting_roundness")) return tfx__property_float(out_value, tfx__lighting_unorm8(gpu_properties->lighting, tfxLIGHTING_ROUNDNESS_SHIFT));
+		if (tfx__property_is(query, "lighting_wrap")) return tfx__property_float(out_value, tfx__lighting_unorm8(gpu_properties->lighting, tfxLIGHTING_WRAP_SHIFT));
 		if (tfx__property_is(query, "image_handle_x")) return tfx__property_float(out_value, gpu_properties->image_handle.x);
 		if (tfx__property_is(query, "image_handle_y")) return tfx__property_float(out_value, gpu_properties->image_handle.y);
 	}
@@ -6131,6 +6160,9 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 		if (tfx__property_is(query, "ribbon_noise_lock_rate")) return tfx__property_float(out_value, ribbon_properties->noise_lock_rate);
 		if (tfx__property_is(query, "ribbon_lag_time")) return tfx__property_float(out_value, ribbon_properties->lag_time);
 		if (tfx__property_is(query, "ribbon_alpha_threshold")) return tfx__property_float(out_value, ribbon_properties->alpha_threshold);
+		if (tfx__property_is(query, "ribbon_lighting_roundness")) return tfx__property_float(out_value, tfx__lighting_unorm8(ribbon_properties->lighting, tfxLIGHTING_ROUNDNESS_SHIFT));
+		if (tfx__property_is(query, "ribbon_lighting_wrap")) return tfx__property_float(out_value, tfx__lighting_unorm8(ribbon_properties->lighting, tfxLIGHTING_WRAP_SHIFT));
+		if (tfx__property_is(query, "ribbon_normal")) return tfx__property_u32(out_value, ribbon_properties->lighting & 0xFFu);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_x")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.x);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_y")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.y);
 		if (tfx__property_is(query, "ribbon_fixed_angle_normal_z")) return tfx__property_float(out_value, ribbon_properties->fixed_angle_normal.z);
@@ -6184,6 +6216,18 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 	if (tfx__property_is(query, "preview_camera_isometric_scale")) return tfx__property_float(out_value, preview_camera.camera_settings.camera_isometric_scale);
 	if (tfx__property_is(query, "preview_effect_z_offset")) return tfx__property_float(out_value, preview_camera.effect_z_offset);
 	if (tfx__property_is(query, "preview_camera_speed")) return tfx__property_float(out_value, preview_camera.camera_speed);
+	if (tfx__property_is(query, "preview_light_yaw")) return tfx__property_float(out_value, preview_camera.light_yaw);
+	if (tfx__property_is(query, "preview_light_pitch")) return tfx__property_float(out_value, preview_camera.light_pitch);
+	if (tfx__property_is(query, "preview_light_intensity")) return tfx__property_float(out_value, preview_camera.light_intensity);
+	if (tfx__property_is(query, "preview_light_color_r")) return tfx__property_float(out_value, preview_camera.light_color.x);
+	if (tfx__property_is(query, "preview_light_color_g")) return tfx__property_float(out_value, preview_camera.light_color.y);
+	if (tfx__property_is(query, "preview_light_color_b")) return tfx__property_float(out_value, preview_camera.light_color.z);
+	if (tfx__property_is(query, "preview_sky_color_r")) return tfx__property_float(out_value, preview_camera.sky_color.x);
+	if (tfx__property_is(query, "preview_sky_color_g")) return tfx__property_float(out_value, preview_camera.sky_color.y);
+	if (tfx__property_is(query, "preview_sky_color_b")) return tfx__property_float(out_value, preview_camera.sky_color.z);
+	if (tfx__property_is(query, "preview_ground_color_r")) return tfx__property_float(out_value, preview_camera.ground_color.x);
+	if (tfx__property_is(query, "preview_ground_color_g")) return tfx__property_float(out_value, preview_camera.ground_color.y);
+	if (tfx__property_is(query, "preview_ground_color_b")) return tfx__property_float(out_value, preview_camera.ground_color.z);
 	if (tfx__property_is(query, "preview_camera_view_mode")) return tfx__property_int(out_value, preview_camera.view_mode);
 	if (tfx__property_is(query, "preview_attach_effect_to_camera")) return tfx__property_bool(out_value, preview_camera.attach_effect_to_camera);
 	if (tfx__property_is(query, "preview_camera_hide_floor")) return tfx__property_bool(out_value, preview_camera.camera_settings.camera_hide_floor);
@@ -6362,6 +6406,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "ribbon_noise_algorithm" && ribbon_properties) ribbon_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "ribbon_noise_octaves" && ribbon_properties) ribbon_properties->noise_octaves = value;
 	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
+	else if (*field == "ribbon_normal" && ribbon_properties) ribbon_properties->lighting = (ribbon_properties->lighting & ~0xFFu) | (value < tfxRibbonNormal_max ? value : (tfxU32)tfxRibbonNormal_radial);
 	else if (*field == "billboard_option" && gpu_particle_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
@@ -6432,6 +6477,8 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		else if (*field == "ribbon_noise_lock_rate") { ribbon_properties->noise_lock_rate = value; return; }
 		else if (*field == "ribbon_lag_time") { ribbon_properties->lag_time = value; return; }
 		else if (*field == "ribbon_alpha_threshold") { ribbon_properties->alpha_threshold = tfx__Clamp(0.f, 1.f, value); return; }
+		else if (*field == "ribbon_lighting_roundness") { ribbon_properties->lighting = tfx__set_lighting_unorm8(ribbon_properties->lighting, tfxLIGHTING_ROUNDNESS_SHIFT, value); return; }
+		else if (*field == "ribbon_lighting_wrap") { ribbon_properties->lighting = tfx__set_lighting_unorm8(ribbon_properties->lighting, tfxLIGHTING_WRAP_SHIFT, value); return; }
 	}
 	if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.x = value;
 	else if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_position.y = value;
@@ -6443,6 +6490,18 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "preview_camera_isometric_scale") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
 	else if (*field == "preview_effect_z_offset") effect->library->preview_camera_settings[effect->preview_camera_settings].effect_z_offset = value;
 	else if (*field == "preview_camera_speed") effect->library->preview_camera_settings[effect->preview_camera_settings].camera_speed = value;
+	else if (*field == "preview_light_yaw") effect->library->preview_camera_settings[effect->preview_camera_settings].light_yaw = value;
+	else if (*field == "preview_light_pitch") effect->library->preview_camera_settings[effect->preview_camera_settings].light_pitch = value;
+	else if (*field == "preview_light_intensity") effect->library->preview_camera_settings[effect->preview_camera_settings].light_intensity = value;
+	else if (*field == "preview_light_color_r") effect->library->preview_camera_settings[effect->preview_camera_settings].light_color.x = value;
+	else if (*field == "preview_light_color_g") effect->library->preview_camera_settings[effect->preview_camera_settings].light_color.y = value;
+	else if (*field == "preview_light_color_b") effect->library->preview_camera_settings[effect->preview_camera_settings].light_color.z = value;
+	else if (*field == "preview_sky_color_r") effect->library->preview_camera_settings[effect->preview_camera_settings].sky_color.x = value;
+	else if (*field == "preview_sky_color_g") effect->library->preview_camera_settings[effect->preview_camera_settings].sky_color.y = value;
+	else if (*field == "preview_sky_color_b") effect->library->preview_camera_settings[effect->preview_camera_settings].sky_color.z = value;
+	else if (*field == "preview_ground_color_r") effect->library->preview_camera_settings[effect->preview_camera_settings].ground_color.x = value;
+	else if (*field == "preview_ground_color_g") effect->library->preview_camera_settings[effect->preview_camera_settings].ground_color.y = value;
+	else if (*field == "preview_ground_color_b") effect->library->preview_camera_settings[effect->preview_camera_settings].ground_color.z = value;
 	else if (*field == "loop_length") effect->state_properties.loop_length = value < 0 ? 0.f : value;
 	else if (*field == "emitter_handle_x") effect->emitter_handle.x = value;
 	else if (*field == "emitter_handle_y") effect->emitter_handle.y = value;
@@ -6497,6 +6556,8 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 		if (*field == "image_handle_x") gpu_properties->image_handle.x = value;
 		else if (*field == "image_handle_y") gpu_properties->image_handle.y = value;
 		else if (*field == "alpha_threshold") gpu_properties->alpha_threshold = tfx__Clamp(0.f, 1.f, value);
+		else if (*field == "lighting_roundness") gpu_properties->lighting = tfx__set_lighting_unorm8(gpu_properties->lighting, tfxLIGHTING_ROUNDNESS_SHIFT, value);
+		else if (*field == "lighting_wrap") gpu_properties->lighting = tfx__set_lighting_unorm8(gpu_properties->lighting, tfxLIGHTING_WRAP_SHIFT, value);
 		else if (*field == "angle_offset") effect->state_properties.angle_offsets.roll = value;
 		else if (*field == "angle_offset_pitch") effect->state_properties.angle_offsets.pitch = value;
 		else if (*field == "angle_offset_yaw") effect->state_properties.angle_offsets.yaw = value;
@@ -8223,6 +8284,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			else if (context == tfxStartEmitter) {
 				tfx_gpu_particle_properties_t emitter_properties{};
 				emitter_properties.alpha_threshold = 0.5f;
+				emitter_properties.lighting = tfxLIGHTING_DEFAULT_BILLBOARD;
 				emitter_properties_stack.push_back_copy(emitter_properties);
 			}
 		}
@@ -9733,7 +9795,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.noise_lock_rate = ribbon_properties.noise_lock_rate;
 		properties.noise_packed = (effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise)
 			? ((tfxU32)ribbon_properties.noise_algorithm | (ribbon_properties.noise_octaves << 4)) : 0;
-		properties.shader_type = ribbon_properties.angle_type;
+		properties.shader_type = ribbon_properties.angle_type | (ribbon_properties.lighting << 8);
 		properties.layer = tfx__get_shared_emitter_properties(effect)->layer;
 		properties.alpha_threshold = ribbon_properties.alpha_threshold;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
@@ -11118,7 +11180,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.state_properties.gpu_property_index = tfx__grab_gpu_ribbon_emitter(pm);
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].lookup_offset = src_emitter->gpu_lookup_offset;
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
-	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type;
+	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type | (ribbon_properties->lighting << 8);
 
 	ribbon_emitter.amount_remainder = 0.f;
 	ribbon_emitter.spawn_ordinal = 0;
@@ -16437,6 +16499,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.noise_phase_range = noise_properties->noise_phase_range;
 	gpu_emitter.noise_lock_rate = noise_properties->noise_lock_rate;
 	gpu_emitter.alpha_threshold = noise_properties->alpha_threshold;
+	gpu_emitter.angle_type = noise_properties->angle_type | (noise_properties->lighting << 8);
 	tfxU32 packed_noise = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
 		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
 	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);

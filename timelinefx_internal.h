@@ -3306,6 +3306,29 @@ typedef enum {
 	tfxRibbonShader_frenet_serret_frame,
 } tfx_ribbon_compute_shader_type;
 
+//Where a lit ribbon's normal points. Radial is 0 so that baked ribbons from before lighting read as the default
+typedef enum {
+	tfxRibbonNormal_radial,					//Out from the ribbon's origin, for ribbons that wrap around it
+	tfxRibbonNormal_surface,				//The ribbon's face, turned towards the camera
+	tfxRibbonNormal_max
+} tfx_ribbon_normal_mode;
+
+//An emitter's lighting word, [wrap unorm8 << 16 | roundness unorm8 << 8 | tfx_ribbon_normal_mode], which the lit entry points read on a lit layer
+#define tfxLIGHTING_NORMAL_SHIFT 0
+#define tfxLIGHTING_ROUNDNESS_SHIFT 8
+#define tfxLIGHTING_WRAP_SHIFT 16
+#define tfxLIGHTING_DEFAULT_BILLBOARD ((128u << tfxLIGHTING_WRAP_SHIFT) | (255u << tfxLIGHTING_ROUNDNESS_SHIFT))
+#define tfxLIGHTING_DEFAULT_RIBBON ((128u << tfxLIGHTING_WRAP_SHIFT) | tfxRibbonNormal_radial)
+
+tfxINTERNAL inline float tfx__lighting_unorm8(tfxU32 lighting, tfxU32 shift) {
+	return (float)((lighting >> shift) & 0xFFu) / 255.f;
+}
+
+tfxINTERNAL inline tfxU32 tfx__set_lighting_unorm8(tfxU32 lighting, tfxU32 shift, float value) {
+	const float clamped = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
+	return (lighting & ~(0xFFu << shift)) | ((tfxU32)(clamped * 255.f + 0.5f) << shift);
+}
+
 typedef enum {
 	tfxEffectStateFlags_none                                    = 0,
 	tfxEffectStateFlags_remove                                  = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
@@ -5859,6 +5882,13 @@ typedef struct tfx_preview_camera_settings_s {
 	float effect_z_offset;
 	float camera_speed;
 	bool attach_effect_to_camera;
+	//The light lit layers are previewed and exported under, in radians and linear colors
+	float light_yaw;
+	float light_pitch;
+	float light_intensity;
+	tfx_vec3_t light_color;
+	tfx_vec3_t sky_color;
+	tfx_vec3_t ground_color;
 } tfx_preview_camera_settings_t;
 
 //This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
@@ -6163,6 +6193,7 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfxU32 noise_octaves;
 	float lag_time;
 	float alpha_threshold;			//Cutout threshold when the emitter's layer writes depth
+	tfxU32 lighting;				//[wrap unorm8 << 16 | roundness unorm8 << 8 | tfx_ribbon_normal_mode], used on a lit layer
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6375,7 +6406,7 @@ typedef struct tfx_ribbon_soa_s {
 typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU64 quaternion;
 	tfxU32 lookup_offset;
-	tfxU32 angle_type;
+	tfxU32 angle_type;						//[lighting << 8 | tfx_ribbon_compute_shader_type]
 	tfx_vec3_t position;
 	float age;
 	tfx_vec3_t captured_position;
@@ -7127,7 +7158,7 @@ typedef struct tfx_animation_ribbon_properties_s {
 	tfxU32 segment_count;
 	tfxU32 sample_count;			//Path samples stored per ribbon, segment_count * samples_per_segment
 	tfxU32 tessellation;
-	tfxRibbonBucketComputeShaderType shader_type;
+	tfxRibbonBucketComputeShaderType shader_type;	//[lighting << 8 | angle type], as tfx_gpu_ribbon_emitter_t's angle_type
 	tfxU32 color_ramp_index;
 	tfxU32 segment_data_offset;
 	float animation_frames;
