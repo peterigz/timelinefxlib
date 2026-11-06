@@ -2790,9 +2790,11 @@ void tfx__clone_effect(tfx_effect_descriptor effect_to_clone, tfx_effect_descrip
 			destination_library->graphs[clone->state_properties.graph_list_index].color_ramp_bitmap_indexes = tfxColorRampIDWithoutEdited(source_ramp_id);
 			clone->effect_flags |= tfxEffectPropertyFlags_shares_color_ramp | tfxEffectPropertyFlags_shares_graph_lookups;
 		} else {
-			tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
+			//Into another library, share an identical ramp there or plot one new row, rather than giving it an edited row first
 			if (destination_library != effect_to_clone->library) {
 				tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->state_properties.graph_list_index]);
+			} else {
+				tfx__update_library_color_graphs(destination_library, clone->state_properties.graph_list_index);
 			}
 			tfx__update_emitter_gpu_properties(clone);
 		}
@@ -7675,7 +7677,7 @@ bool tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_li
 }
 
 void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list) {
-	tfxKey hash = tfx_Hash(&tfxStore->hasher, &graph_list->color_ramps, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	tfxKey hash = tfx__hash_color_graphs(graph_list);
 	if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		graph_list->color_ramp_bitmap_indexes = library->color_ramps.color_ramp_ids.At(hash);
 	} else {
