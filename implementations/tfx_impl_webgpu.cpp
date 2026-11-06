@@ -213,9 +213,11 @@ static tfxU32 tfx_impl_webgpu__add_storage_layout_entries(WGPUBindGroupLayoutEnt
 	return count;
 }
 
-//Every render pipeline ends with the view at 5, the draw's own block at 6, then the atlas, the color ramps and the atlas's sampler at 7, 8 and 9
+//Every render pipeline ends with the view at 5, the draw's own block at 6, then the atlas, the color ramps and the atlas's sampler at 7, 8 and 9,
+//and the view again at 10, where the lit fragments read the light. The unlit pipelines share the layout and leave 10 unread
 static tfxU32 tfx_impl_webgpu__add_render_layout_entries(WGPUBindGroupLayoutEntry *entries, tfxU32 count, uint64_t draw_block_size) {
 	entries[count++] = tfx_impl_webgpu__buffer_layout_entry(5, WGPUShaderStage_Vertex, WGPUBufferBindingType_Uniform, false, sizeof(tfx_impl_uniforms_t));
+	entries[count++] = tfx_impl_webgpu__buffer_layout_entry(10, WGPUShaderStage_Fragment, WGPUBufferBindingType_Uniform, false, sizeof(tfx_impl_uniforms_t));
 	entries[count++] = tfx_impl_webgpu__buffer_layout_entry(6, WGPUShaderStage_Vertex, WGPUBufferBindingType_Uniform, true, draw_block_size);
 	WGPUBindGroupLayoutEntry atlas = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
 	atlas.binding = 7;
@@ -253,6 +255,7 @@ static WGPUBindGroupEntry tfx_impl_webgpu__buffer_entry(tfxU32 binding, WGPUBuff
 
 static tfxU32 tfx_impl_webgpu__add_render_entries(const tfx_impl_webgpu_t *renderer, WGPUBindGroupEntry *entries, tfxU32 count, uint64_t draw_block_size, WGPUTextureView color_ramps_view) {
 	entries[count++] = tfx_impl_webgpu__buffer_entry(5, renderer->uniforms.buffer, sizeof(tfx_impl_uniforms_t));
+	entries[count++] = tfx_impl_webgpu__buffer_entry(10, renderer->uniforms.buffer, sizeof(tfx_impl_uniforms_t));
 	entries[count++] = tfx_impl_webgpu__buffer_entry(6, renderer->uniforms.buffer, draw_block_size);
 	WGPUBindGroupEntry atlas = WGPU_BIND_GROUP_ENTRY_INIT;
 	atlas.binding = 7;
@@ -350,8 +353,9 @@ static WGPUComputePipeline tfx_impl_webgpu__create_compute_pipeline(WGPUDevice d
 }
 
 //Premultiplied blending, depth tested but not written, and no vertex buffers: instances and ribbon vertexes are read from storage buffers
+//Premultiplied blending, depth tested but not written, or for a layer that writes depth, blending off and depth written
 static WGPURenderPipeline tfx_impl_webgpu__create_render_pipeline(WGPUDevice device, WGPUShaderModule vertex_module, const char *vertex_entry_point,
-	WGPUShaderModule fragment_module, const char *fragment_entry_point, WGPUBindGroupLayout layout, WGPUTextureFormat color_format, WGPUTextureFormat depth_format) {
+	WGPUShaderModule fragment_module, const char *fragment_entry_point, WGPUBindGroupLayout layout, WGPUTextureFormat color_format, WGPUTextureFormat depth_format, bool writes_depth) {
 	if (!vertex_module || !fragment_module || !layout) {
 		return NULL;
 	}
@@ -362,7 +366,7 @@ static WGPURenderPipeline tfx_impl_webgpu__create_render_pipeline(WGPUDevice dev
 	blend.alpha = blend.color;
 	WGPUColorTargetState color_target = WGPU_COLOR_TARGET_STATE_INIT;
 	color_target.format = color_format;
-	color_target.blend = &blend;
+	color_target.blend = writes_depth ? NULL : &blend;
 	WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
 	fragment.module = fragment_module;
 	fragment.entryPoint = tfx_impl_webgpu__string(fragment_entry_point);
@@ -370,7 +374,7 @@ static WGPURenderPipeline tfx_impl_webgpu__create_render_pipeline(WGPUDevice dev
 	fragment.targets = &color_target;
 	WGPUDepthStencilState depth_stencil = WGPU_DEPTH_STENCIL_STATE_INIT;
 	depth_stencil.format = depth_format;
-	depth_stencil.depthWriteEnabled = WGPUOptionalBool_False;
+	depth_stencil.depthWriteEnabled = writes_depth ? WGPUOptionalBool_True : WGPUOptionalBool_False;
 	depth_stencil.depthCompare = WGPUCompareFunction_LessEqual;
 	WGPUPipelineLayout pipeline_layout = tfx_impl_webgpu__create_pipeline_layout(device, layout);
 	WGPURenderPipelineDescriptor descriptor = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
@@ -432,22 +436,42 @@ bool tfx_impl_webgpu_Init(tfx_impl_webgpu_t *renderer, WGPUDevice device, WGPUTe
 	entries[count++] = tfx_impl_webgpu__buffer_layout_entry(6, WGPUShaderStage_Compute, WGPUBufferBindingType_Uniform, true, 0);
 	renderer->playback_layout = tfx_impl_webgpu__create_layout(device, entries, count);
 
-	WGPUShaderModule billboard_vertex = tfx_impl_webgpu__load_shader(device, shader_folder, "tfx_billboard_vertex");
+	WGPUShaderModule billboard_vertex_modules[2];
+	WGPUShaderModule ribbon_vertex_modules[2];
+	WGPUShaderModule billboard_fragment_modules[2][2];
+	WGPUShaderModule ribbon_fragment_modules[2][2];
+	for (int lit = 0; lit != 2; ++lit) {
+		billboard_vertex_modules[lit] = tfx_impl_webgpu__load_shader(device, shader_folder, tfx_impl_billboard_vertex_entry_points[lit]);
+		ribbon_vertex_modules[lit] = tfx_impl_webgpu__load_shader(device, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit]);
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			billboard_fragment_modules[writes_depth][lit] = tfx_impl_webgpu__load_shader(device, shader_folder, tfx_impl_billboard_fragment_entry_points[writes_depth][lit]);
+			ribbon_fragment_modules[writes_depth][lit] = tfx_impl_webgpu__load_shader(device, shader_folder, tfx_impl_ribbon_fragment_entry_points[writes_depth][lit]);
+		}
+	}
 	WGPUShaderModule baked_billboard_vertex = tfx_impl_webgpu__load_shader(device, shader_folder, "tfx_billboard_baked_vertex");
-	WGPUShaderModule billboard_fragment = tfx_impl_webgpu__load_shader(device, shader_folder, "tfx_billboard_fragment");
-	WGPUShaderModule ribbon_vertex = tfx_impl_webgpu__load_shader(device, shader_folder, "tfx_ribbon_vertex");
-	WGPUShaderModule ribbon_fragment = tfx_impl_webgpu__load_shader(device, shader_folder, "tfx_ribbon_fragment");
-	renderer->billboard_pipeline = tfx_impl_webgpu__create_render_pipeline(device, billboard_vertex, "tfx_billboard_vertex", billboard_fragment, "tfx_billboard_fragment",
-		renderer->billboard_layout, color_format, depth_format);
-	renderer->baked_billboard_pipeline = tfx_impl_webgpu__create_render_pipeline(device, baked_billboard_vertex, "tfx_billboard_baked_vertex", billboard_fragment, "tfx_billboard_fragment",
-		renderer->baked_billboard_layout, color_format, depth_format);
-	renderer->ribbon_pipeline = tfx_impl_webgpu__create_render_pipeline(device, ribbon_vertex, "tfx_ribbon_vertex", ribbon_fragment, "tfx_ribbon_fragment",
-		renderer->ribbon_layout, color_format, depth_format);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			renderer->billboard_pipelines[writes_depth][lit] = tfx_impl_webgpu__create_render_pipeline(device, billboard_vertex_modules[lit], tfx_impl_billboard_vertex_entry_points[lit],
+				billboard_fragment_modules[writes_depth][lit], tfx_impl_billboard_fragment_entry_points[writes_depth][lit], renderer->billboard_layout, color_format, depth_format, writes_depth != 0);
+			renderer->ribbon_pipelines[writes_depth][lit] = tfx_impl_webgpu__create_render_pipeline(device, ribbon_vertex_modules[lit], tfx_impl_ribbon_vertex_entry_points[lit],
+				ribbon_fragment_modules[writes_depth][lit], tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], renderer->ribbon_layout, color_format, depth_format, writes_depth != 0);
+		}
+	}
+	renderer->baked_billboard_pipeline = tfx_impl_webgpu__create_render_pipeline(device, baked_billboard_vertex, "tfx_billboard_baked_vertex", billboard_fragment_modules[0][0], "tfx_billboard_fragment",
+		renderer->baked_billboard_layout, color_format, depth_format, false);
 	//The pipelines keep what they need from the modules
-	WGPUShaderModule modules[5] = { billboard_vertex, baked_billboard_vertex, billboard_fragment, ribbon_vertex, ribbon_fragment };
-	for (int index = 0; index != 5; ++index) {
+	WGPUShaderModule modules[13] = { baked_billboard_vertex, billboard_vertex_modules[0], billboard_vertex_modules[1], ribbon_vertex_modules[0], ribbon_vertex_modules[1],
+		billboard_fragment_modules[0][0], billboard_fragment_modules[0][1], billboard_fragment_modules[1][0], billboard_fragment_modules[1][1],
+		ribbon_fragment_modules[0][0], ribbon_fragment_modules[0][1], ribbon_fragment_modules[1][0], ribbon_fragment_modules[1][1] };
+	for (int index = 0; index != 13; ++index) {
 		if (modules[index]) {
 			wgpuShaderModuleRelease(modules[index]);
+		}
+	}
+	bool pipelines_created = true;
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			pipelines_created = pipelines_created && renderer->billboard_pipelines[writes_depth][lit] && renderer->ribbon_pipelines[writes_depth][lit];
 		}
 	}
 	renderer->particle_kernel = tfx_impl_webgpu__create_compute_pipeline(device, shader_folder, "simulate_particles", renderer->particle_kernel_layout);
@@ -468,7 +492,7 @@ bool tfx_impl_webgpu_Init(tfx_impl_webgpu_t *renderer, WGPUDevice device, WGPUTe
 	scope_callback.userdata1 = renderer;
 	wgpuDevicePopErrorScope(device, scope_callback);
 
-	if (renderer->init_scope_failed || !renderer->billboard_pipeline || !renderer->baked_billboard_pipeline || !renderer->ribbon_pipeline || !renderer->particle_kernel
+	if (renderer->init_scope_failed || !pipelines_created || !renderer->baked_billboard_pipeline || !renderer->particle_kernel
 		|| !renderer->ribbon_compute_pipeline || !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline || !renderer->atlas_sampler
 		|| !tfx_impl_webgpu__ensure_uniform_blocks(renderer, TFX_IMPL_WEBGPU_INITIAL_UNIFORM_BLOCKS)) {
 		tfx_Print("Could not create the TimelineFX pipelines and samplers");
@@ -789,6 +813,7 @@ static bool tfx_impl_webgpu__upload_library_data(tfx_impl_webgpu_t *renderer) {
 }
 
 bool tfx_impl_webgpu_UploadFrame(tfx_impl_webgpu_t *renderer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_webgpu__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -983,9 +1008,10 @@ void tfx_impl_webgpu_Compute(tfx_impl_webgpu_t *renderer, WGPUCommandEncoder enc
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
+//Only the buckets whose layer is in the group are drawn
 static void tfx_impl_webgpu__render_ribbons(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder render_pass, tfx_impl_webgpu_ribbon_set_t *set,
-	WGPUBuffer image_data, WGPUTextureView color_ramps_view) {
-	WGPUBindGroupEntry entries[10] = {
+	WGPUBuffer image_data, WGPUTextureView color_ramps_view, int writes_depth) {
+	WGPUBindGroupEntry entries[11] = {
 		tfx_impl_webgpu__buffer_entry(0, set->vertices.buffer, WGPU_WHOLE_SIZE),
 		tfx_impl_webgpu__buffer_entry(1, set->instances.buffer, WGPU_WHOLE_SIZE),
 		tfx_impl_webgpu__buffer_entry(2, set->emitters.buffer, WGPU_WHOLE_SIZE),
@@ -994,14 +1020,23 @@ static void tfx_impl_webgpu__render_ribbons(tfx_impl_webgpu_t *renderer, WGPURen
 	};
 	tfxU32 entry_count = tfx_impl_webgpu__add_render_entries(renderer, entries, 5, sizeof(tfx_ribbon_bucket_globals_t), color_ramps_view);
 	WGPUBindGroup bind_group = tfx_impl_webgpu__bind_group(renderer, &set->render_bind_group, renderer->ribbon_layout, entries, entry_count);
-	wgpuRenderPassEncoderSetPipeline(render_pass, renderer->ribbon_pipeline);
 	wgpuRenderPassEncoderSetIndexBuffer(render_pass, set->indices.buffer, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
 
-	//The same walk as the compute, so each bucket finds the globals it wrote
+	//The same walk as the compute, so each bucket finds the globals it wrote, skipped ones included
+	WGPURenderPipeline bound_pipeline = NULL;
 	tfxU32 block = set->first_globals_block;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_webgpu__create_ribbon_dispatch(set);
 	while (tfx_impl_webgpu__next_ribbon_dispatch(set, &dispatch)) {
 		tfxU32 offset = block++ * TFX_IMPL_WEBGPU_UNIFORM_BLOCK_SIZE;
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		WGPURenderPipeline pipeline = renderer->ribbon_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
+			bound_pipeline = pipeline;
+		}
 		wgpuRenderPassEncoderSetBindGroup(render_pass, 0, bind_group, 1, &offset);
 		wgpuRenderPassEncoderDrawIndexed(render_pass, dispatch.index_count, 1, dispatch.index_offset, 0, 0);
 	}
@@ -1021,6 +1056,25 @@ static tfxU32 tfx_impl_webgpu__draw_instance_range(tfx_impl_webgpu_t *renderer, 
 	return block + 1;
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static tfxU32 tfx_impl_webgpu__render_billboards(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder render_pass, WGPUBindGroup bind_group, int writes_depth, tfxU32 block) {
+	WGPURenderPipeline bound_pipeline = NULL;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		WGPURenderPipeline pipeline = renderer->billboard_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			wgpuRenderPassEncoderSetPipeline(render_pass, pipeline);
+			bound_pipeline = pipeline;
+		}
+		block = tfx_impl_webgpu__draw_instance_range(renderer, render_pass, bind_group, renderer->layer_start[layer], renderer->layer_count[layer], block);
+		block = tfx_impl_webgpu__draw_instance_range(renderer, render_pass, bind_group, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer], block);
+	}
+	return block;
+}
+
 void tfx_impl_webgpu_Render(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder render_pass, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_webgpu__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_webgpu__ribbon_set_active(&renderer->baked_ribbons))) {
@@ -1031,31 +1085,35 @@ void tfx_impl_webgpu_Render(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder r
 	tfxU32 block = 1;
 
 	//The live draws need the library data, which goes up with the first update
-	if (renderer->color_ramps && renderer->image_data.buffer) {
-		if (renderer->instance_count > 0) {
-			tfxU32 current = renderer->current_instance_buffer;
-			WGPUBindGroupEntry entries[9] = {
-				tfx_impl_webgpu__buffer_entry(0, renderer->instance_buffers[current].buffer, WGPU_WHOLE_SIZE),
-				tfx_impl_webgpu__buffer_entry(1, renderer->instance_buffers[current ^ 1].buffer, WGPU_WHOLE_SIZE),
-				tfx_impl_webgpu__buffer_entry(2, renderer->image_data.buffer, WGPU_WHOLE_SIZE),
-				tfx_impl_webgpu__buffer_entry(3, renderer->emitter_properties.buffer, WGPU_WHOLE_SIZE),
-			};
-			tfxU32 entry_count = tfx_impl_webgpu__add_render_entries(renderer, entries, 4, sizeof(tfx_impl_webgpu_draw_constants_t), renderer->color_ramps_view);
-			WGPUBindGroup bind_group = tfx_impl_webgpu__bind_group(renderer, &renderer->billboard_bind_groups[current], renderer->billboard_layout, entries, entry_count);
-			wgpuRenderPassEncoderSetPipeline(render_pass, renderer->billboard_pipeline);
-			for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-				block = tfx_impl_webgpu__draw_instance_range(renderer, render_pass, bind_group, renderer->layer_start[layer], renderer->layer_count[layer], block);
-				block = tfx_impl_webgpu__draw_instance_range(renderer, render_pass, bind_group, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer], block);
-			}
-		}
-		if (tfx_impl_webgpu__ribbon_set_active(&renderer->live_ribbons)) {
-			tfx_impl_webgpu__render_ribbons(renderer, render_pass, &renderer->live_ribbons, renderer->image_data.buffer, renderer->color_ramps_view);
-		}
+	const bool live_data = renderer->color_ramps && renderer->image_data.buffer;
+	WGPUBindGroup billboard_bind_group = NULL;
+	if (live_data && renderer->instance_count > 0) {
+		tfxU32 current = renderer->current_instance_buffer;
+		WGPUBindGroupEntry entries[10] = {
+			tfx_impl_webgpu__buffer_entry(0, renderer->instance_buffers[current].buffer, WGPU_WHOLE_SIZE),
+			tfx_impl_webgpu__buffer_entry(1, renderer->instance_buffers[current ^ 1].buffer, WGPU_WHOLE_SIZE),
+			tfx_impl_webgpu__buffer_entry(2, renderer->image_data.buffer, WGPU_WHOLE_SIZE),
+			tfx_impl_webgpu__buffer_entry(3, renderer->emitter_properties.buffer, WGPU_WHOLE_SIZE),
+		};
+		tfxU32 entry_count = tfx_impl_webgpu__add_render_entries(renderer, entries, 4, sizeof(tfx_impl_webgpu_draw_constants_t), renderer->color_ramps_view);
+		billboard_bind_group = tfx_impl_webgpu__bind_group(renderer, &renderer->billboard_bind_groups[current], renderer->billboard_layout, entries, entry_count);
 	}
-	if (renderer->baked_color_ramps) {
-		if (renderer->playback_sprite_count > 0) {
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		if (billboard_bind_group) {
+			block = tfx_impl_webgpu__render_billboards(renderer, render_pass, billboard_bind_group, writes_depth, block);
+		}
+		if (live_data && tfx_impl_webgpu__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_webgpu__render_ribbons(renderer, render_pass, &renderer->live_ribbons, renderer->image_data.buffer, renderer->color_ramps_view, writes_depth);
+		}
+		if (!renderer->baked_color_ramps) {
+			continue;
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
 			//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
-			WGPUBindGroupEntry entries[8] = {
+			WGPUBindGroupEntry entries[9] = {
 				tfx_impl_webgpu__buffer_entry(0, renderer->playback_instances.buffer, WGPU_WHOLE_SIZE),
 				tfx_impl_webgpu__buffer_entry(1, renderer->baked_image_data.buffer, WGPU_WHOLE_SIZE),
 				tfx_impl_webgpu__buffer_entry(2, renderer->baked_emitter_properties.buffer, WGPU_WHOLE_SIZE),
@@ -1066,7 +1124,7 @@ void tfx_impl_webgpu_Render(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder r
 			block = tfx_impl_webgpu__draw_instance_range(renderer, render_pass, bind_group, 0, renderer->playback_sprite_count, block);
 		}
 		if (tfx_impl_webgpu__ribbon_set_active(&renderer->baked_ribbons)) {
-			tfx_impl_webgpu__render_ribbons(renderer, render_pass, &renderer->baked_ribbons, renderer->baked_image_data.buffer, renderer->baked_color_ramps_view);
+			tfx_impl_webgpu__render_ribbons(renderer, render_pass, &renderer->baked_ribbons, renderer->baked_image_data.buffer, renderer->baked_color_ramps_view, writes_depth);
 		}
 	}
 	tfx_impl_webgpu__write_uniform_blocks(renderer, 0, block);
@@ -1116,9 +1174,13 @@ void tfx_impl_webgpu_Shutdown(tfx_impl_webgpu_t *renderer) {
 	tfx_impl_webgpu__release_texture(&renderer->color_ramps, &renderer->color_ramps_view);
 	tfx_impl_webgpu__release_texture(&renderer->baked_color_ramps, &renderer->baked_color_ramps_view);
 	if (renderer->atlas_sampler) wgpuSamplerRelease(renderer->atlas_sampler);
-	if (renderer->billboard_pipeline) wgpuRenderPipelineRelease(renderer->billboard_pipeline);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			if (renderer->billboard_pipelines[writes_depth][lit]) wgpuRenderPipelineRelease(renderer->billboard_pipelines[writes_depth][lit]);
+			if (renderer->ribbon_pipelines[writes_depth][lit]) wgpuRenderPipelineRelease(renderer->ribbon_pipelines[writes_depth][lit]);
+		}
+	}
 	if (renderer->baked_billboard_pipeline) wgpuRenderPipelineRelease(renderer->baked_billboard_pipeline);
-	if (renderer->ribbon_pipeline) wgpuRenderPipelineRelease(renderer->ribbon_pipeline);
 	if (renderer->particle_kernel) wgpuComputePipelineRelease(renderer->particle_kernel);
 	if (renderer->ribbon_compute_pipeline) wgpuComputePipelineRelease(renderer->ribbon_compute_pipeline);
 	if (renderer->sprite_playback_pipeline) wgpuComputePipelineRelease(renderer->sprite_playback_pipeline);

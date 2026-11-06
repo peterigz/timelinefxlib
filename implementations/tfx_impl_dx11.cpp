@@ -243,11 +243,19 @@ bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11D
 	device->AddRef();
 	device_context->AddRef();
 
-	if (!tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_billboard_vertex", &renderer->billboard_vertex_shader)
-		|| !tfx_impl_dx11__create_pixel_shader(device, shader_folder, "tfx_billboard_fragment", &renderer->billboard_pixel_shader)
-		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_ribbon_compute", &renderer->ribbon_compute_shader)
-		|| !tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_ribbon_vertex", &renderer->ribbon_vertex_shader)
-		|| !tfx_impl_dx11__create_pixel_shader(device, shader_folder, "tfx_ribbon_fragment", &renderer->ribbon_pixel_shader)
+	for (int lit = 0; lit != 2; ++lit) {
+		if (!tfx_impl_dx11__create_vertex_shader(device, shader_folder, tfx_impl_billboard_vertex_entry_points[lit], &renderer->billboard_vertex_shaders[lit])
+			|| !tfx_impl_dx11__create_vertex_shader(device, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit], &renderer->ribbon_vertex_shaders[lit])) {
+			return false;
+		}
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			if (!tfx_impl_dx11__create_pixel_shader(device, shader_folder, tfx_impl_billboard_fragment_entry_points[writes_depth][lit], &renderer->billboard_pixel_shaders[writes_depth][lit])
+				|| !tfx_impl_dx11__create_pixel_shader(device, shader_folder, tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], &renderer->ribbon_pixel_shaders[writes_depth][lit])) {
+				return false;
+			}
+		}
+	}
+	if (!tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_ribbon_compute", &renderer->ribbon_compute_shader)
 		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_sprite_playback", &renderer->sprite_playback_shader)
 		|| !tfx_impl_dx11__create_vertex_shader(device, shader_folder, "tfx_billboard_baked_vertex", &renderer->billboard_static_vertex_shader)
 		|| !tfx_impl_dx11__create_compute_shader(device, shader_folder, "tfx_ribbon_playback", &renderer->ribbon_playback_shader)
@@ -269,6 +277,8 @@ bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11D
 	depth_description.DepthEnable = TRUE;
 	depth_description.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
 	depth_description.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	D3D11_DEPTH_STENCIL_DESC depth_write_description = depth_description;
+	depth_write_description.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 
 	D3D11_RASTERIZER_DESC rasterizer_description = {};
 	rasterizer_description.FillMode = D3D11_FILL_SOLID;
@@ -290,6 +300,7 @@ bool tfx_impl_dx11_Init(tfx_impl_dx11_t *renderer, ID3D11Device *device, ID3D11D
 	renderer->ribbon_data_constants = tfx_impl_dx11__create_constant_buffer(device, sizeof(tfx_ribbon_data_push_t));
 	if (FAILED(device->CreateBlendState(&blend_description, &renderer->blend_state))
 		|| FAILED(device->CreateDepthStencilState(&depth_description, &renderer->depth_stencil_state))
+		|| FAILED(device->CreateDepthStencilState(&depth_write_description, &renderer->depth_write_state))
 		|| FAILED(device->CreateRasterizerState(&rasterizer_description, &renderer->rasterizer_state))
 		|| FAILED(device->CreateSamplerState(&sampler_description, &renderer->sampler_state))
 		|| !renderer->frame_constants || !renderer->draw_constants || !renderer->ribbon_constants || !renderer->particle_push || !renderer->sprite_data_constants
@@ -666,6 +677,7 @@ static bool tfx_impl_dx11__upload_library_data(tfx_impl_dx11_t *renderer) {
 }
 
 bool tfx_impl_dx11_UploadFrame(tfx_impl_dx11_t *renderer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_dx11__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -828,19 +840,29 @@ void tfx_impl_dx11_Compute(tfx_impl_dx11_t *renderer, const tfx_impl_uniforms_t 
 	}
 }
 
-//Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
-static void tfx_impl_dx11__render_ribbons(tfx_impl_dx11_t *renderer, const tfx_impl_dx11_ribbon_set_t *set, ID3D11ShaderResourceView *image_data_view, ID3D11ShaderResourceView *color_ramps_view) {
+//Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared. Every bucket is walked, because the
+//dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
+static void tfx_impl_dx11__render_ribbons(tfx_impl_dx11_t *renderer, const tfx_impl_dx11_ribbon_set_t *set, ID3D11ShaderResourceView *image_data_view, ID3D11ShaderResourceView *color_ramps_view, int writes_depth) {
 	ID3D11DeviceContext *device_context = renderer->device_context;
 	device_context->IASetIndexBuffer(set->indices.buffer, DXGI_FORMAT_R32_UINT, 0);
 	ID3D11ShaderResourceView *vertex_views[5] = { set->vertices.view, set->instances.view, set->emitters.view, tfx_impl_dx11__ribbon_graph_lookups(renderer, set), image_data_view };
-	device_context->VSSetShader(renderer->ribbon_vertex_shader, NULL, 0);
 	device_context->VSSetConstantBuffers(1, 1, &renderer->ribbon_constants);
 	device_context->VSSetShaderResources(0, 5, vertex_views);
-	device_context->PSSetShader(renderer->ribbon_pixel_shader, NULL, 0);
 	device_context->PSSetShaderResources(1, 1, &color_ramps_view);
 
+	int bound_lit = -1;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_dx11__create_ribbon_dispatch(set);
 	while (tfx_impl_dx11__next_ribbon_dispatch(set, &dispatch)) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		const int lit = tfx_impl_LayerIsLit(flags);
+		if (lit != bound_lit) {
+			device_context->VSSetShader(renderer->ribbon_vertex_shaders[lit], NULL, 0);
+			device_context->PSSetShader(renderer->ribbon_pixel_shaders[writes_depth][lit], NULL, 0);
+			bound_lit = lit;
+		}
 		tfx_impl_dx11__write_constants(device_context, renderer->ribbon_constants, tfx_GetRibbonDispatchGlobals(&dispatch), sizeof(tfx_ribbon_bucket_globals_t));
 		device_context->DrawIndexed(dispatch.index_count, dispatch.index_offset, 0);
 	}
@@ -861,6 +883,34 @@ static void tfx_impl_dx11__draw_instance_range(tfx_impl_dx11_t *renderer, tfxU32
 	renderer->device_context->DrawInstanced(6, count, 0, 0);
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_dx11__render_billboards(tfx_impl_dx11_t *renderer, int writes_depth) {
+	ID3D11DeviceContext *device_context = renderer->device_context;
+	ID3D11ShaderResourceView *vertex_views[4] = {
+		renderer->instance_buffers[renderer->current_instance_buffer].view,
+		renderer->instance_buffers[renderer->current_instance_buffer ^ 1].view,
+		renderer->image_data.view,
+		renderer->emitter_properties.view,
+	};
+	device_context->VSSetConstantBuffers(1, 1, &renderer->draw_constants);
+	device_context->VSSetShaderResources(0, 4, vertex_views);
+	device_context->PSSetShaderResources(1, 1, &renderer->color_ramps_view);
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		const int lit = tfx_impl_LayerIsLit(flags);
+		device_context->VSSetShader(renderer->billboard_vertex_shaders[lit], NULL, 0);
+		device_context->PSSetShader(renderer->billboard_pixel_shaders[writes_depth][lit], NULL, 0);
+		tfx_impl_dx11__draw_instance_range(renderer, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_dx11__draw_instance_range(renderer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+	//Unbound so the GPU particle kernel can write the current buffer next frame
+	ID3D11ShaderResourceView *no_views[2] = {};
+	device_context->VSSetShaderResources(0, 2, no_views);
+}
+
 void tfx_impl_dx11_Render(tfx_impl_dx11_t *renderer, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas_view || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_dx11__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_dx11__ribbon_set_active(&renderer->baked_ribbons))) {
@@ -872,52 +922,41 @@ void tfx_impl_dx11_Render(tfx_impl_dx11_t *renderer, const tfx_impl_uniforms_t *
 	//Quad corners come from SV_VertexID and the instances and ribbon vertices are read from buffers, so there's no input layout or vertex buffer
 	device_context->IASetInputLayout(NULL);
 	device_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	const float blend_factor[4] = { 0.f, 0.f, 0.f, 0.f };
-	device_context->OMSetBlendState(renderer->blend_state, blend_factor, 0xffffffff);
-	device_context->OMSetDepthStencilState(renderer->depth_stencil_state, 0);
 	device_context->RSSetState(renderer->rasterizer_state);
-	//Every vertex shader takes the frame constants at b0 and its draw's own constants at b1
-	ID3D11Buffer *constant_buffers[2] = { renderer->frame_constants, renderer->draw_constants };
-	ID3D11ShaderResourceView *pixel_views[2] = { renderer->shape_atlas_view, renderer->color_ramps_view };
-	device_context->VSSetConstantBuffers(0, 2, constant_buffers);
-	device_context->PSSetShaderResources(0, 2, pixel_views);
+	//Every vertex shader takes the frame constants at b0, and the lit pixel shaders read the light from them at b0 as well
+	device_context->VSSetConstantBuffers(0, 1, &renderer->frame_constants);
+	device_context->PSSetConstantBuffers(0, 1, &renderer->frame_constants);
+	device_context->PSSetShaderResources(0, 1, &renderer->shape_atlas_view);
 	device_context->PSSetSamplers(0, 1, &renderer->sampler_state);
 
-	if (renderer->instance_count > 0) {
-		ID3D11ShaderResourceView *vertex_views[4] = {
-			renderer->instance_buffers[renderer->current_instance_buffer].view,
-			renderer->instance_buffers[renderer->current_instance_buffer ^ 1].view,
-			renderer->image_data.view,
-			renderer->emitter_properties.view,
-		};
-		device_context->VSSetShader(renderer->billboard_vertex_shader, NULL, 0);
-		device_context->VSSetShaderResources(0, 4, vertex_views);
-		device_context->PSSetShader(renderer->billboard_pixel_shader, NULL, 0);
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			tfx_impl_dx11__draw_instance_range(renderer, renderer->layer_start[layer], renderer->layer_count[layer]);
-			tfx_impl_dx11__draw_instance_range(renderer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	const float blend_factor[4] = { 0.f, 0.f, 0.f, 0.f };
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		device_context->OMSetBlendState(writes_depth ? NULL : renderer->blend_state, blend_factor, 0xffffffff);
+		device_context->OMSetDepthStencilState(writes_depth ? renderer->depth_write_state : renderer->depth_stencil_state, 0);
+		if (renderer->instance_count > 0) {
+			tfx_impl_dx11__render_billboards(renderer, writes_depth);
 		}
-		//Unbound so the GPU particle kernel can write the current buffer next frame
-		ID3D11ShaderResourceView *no_views[2] = {};
-		device_context->VSSetShaderResources(0, 2, no_views);
-	}
-	if (tfx_impl_dx11__ribbon_set_active(&renderer->live_ribbons)) {
-		tfx_impl_dx11__render_ribbons(renderer, &renderer->live_ribbons, renderer->image_data.view, renderer->color_ramps_view);
-	}
-	if (renderer->playback_sprite_count > 0) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
-		ID3D11ShaderResourceView *vertex_views[3] = { renderer->playback_instances.view, renderer->baked_image_data.view, renderer->baked_emitter_properties.view };
-		device_context->VSSetShader(renderer->billboard_static_vertex_shader, NULL, 0);
-		device_context->VSSetConstantBuffers(1, 1, &renderer->draw_constants);
-		device_context->VSSetShaderResources(0, 3, vertex_views);
-		device_context->PSSetShader(renderer->billboard_pixel_shader, NULL, 0);
-		device_context->PSSetShaderResources(1, 1, &renderer->baked_color_ramps_view);
-		tfx_impl_dx11__draw_instance_range(renderer, 0, renderer->playback_sprite_count);
-		ID3D11ShaderResourceView *no_views[1] = {};
-		device_context->VSSetShaderResources(0, 1, no_views);
-	}
-	if (tfx_impl_dx11__ribbon_set_active(&renderer->baked_ribbons)) {
-		tfx_impl_dx11__render_ribbons(renderer, &renderer->baked_ribbons, renderer->baked_image_data.view, renderer->baked_color_ramps_view);
+		if (tfx_impl_dx11__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_dx11__render_ribbons(renderer, &renderer->live_ribbons, renderer->image_data.view, renderer->color_ramps_view, writes_depth);
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
+			//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
+			ID3D11ShaderResourceView *vertex_views[3] = { renderer->playback_instances.view, renderer->baked_image_data.view, renderer->baked_emitter_properties.view };
+			device_context->VSSetShader(renderer->billboard_static_vertex_shader, NULL, 0);
+			device_context->VSSetConstantBuffers(1, 1, &renderer->draw_constants);
+			device_context->VSSetShaderResources(0, 3, vertex_views);
+			device_context->PSSetShader(renderer->billboard_pixel_shaders[0][0], NULL, 0);
+			device_context->PSSetShaderResources(1, 1, &renderer->baked_color_ramps_view);
+			tfx_impl_dx11__draw_instance_range(renderer, 0, renderer->playback_sprite_count);
+			ID3D11ShaderResourceView *no_views[1] = {};
+			device_context->VSSetShaderResources(0, 1, no_views);
+		}
+		if (tfx_impl_dx11__ribbon_set_active(&renderer->baked_ribbons)) {
+			tfx_impl_dx11__render_ribbons(renderer, &renderer->baked_ribbons, renderer->baked_image_data.view, renderer->baked_color_ramps_view, writes_depth);
+		}
 	}
 }
 
@@ -971,13 +1010,18 @@ void tfx_impl_dx11_Shutdown(tfx_impl_dx11_t *renderer) {
 	TFX_IMPL_DX11_RELEASE(renderer->frame_constants);
 	TFX_IMPL_DX11_RELEASE(renderer->sampler_state);
 	TFX_IMPL_DX11_RELEASE(renderer->rasterizer_state);
+	TFX_IMPL_DX11_RELEASE(renderer->depth_write_state);
 	TFX_IMPL_DX11_RELEASE(renderer->depth_stencil_state);
 	TFX_IMPL_DX11_RELEASE(renderer->blend_state);
-	TFX_IMPL_DX11_RELEASE(renderer->ribbon_pixel_shader);
-	TFX_IMPL_DX11_RELEASE(renderer->ribbon_vertex_shader);
 	TFX_IMPL_DX11_RELEASE(renderer->ribbon_compute_shader);
-	TFX_IMPL_DX11_RELEASE(renderer->billboard_pixel_shader);
-	TFX_IMPL_DX11_RELEASE(renderer->billboard_vertex_shader);
+	for (int lit = 0; lit != 2; ++lit) {
+		TFX_IMPL_DX11_RELEASE(renderer->billboard_vertex_shaders[lit]);
+		TFX_IMPL_DX11_RELEASE(renderer->ribbon_vertex_shaders[lit]);
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			TFX_IMPL_DX11_RELEASE(renderer->billboard_pixel_shaders[writes_depth][lit]);
+			TFX_IMPL_DX11_RELEASE(renderer->ribbon_pixel_shaders[writes_depth][lit]);
+		}
+	}
 	TFX_IMPL_DX11_RELEASE(renderer->device_context);
 	TFX_IMPL_DX11_RELEASE(renderer->device);
 }

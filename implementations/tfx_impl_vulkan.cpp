@@ -534,9 +534,10 @@ static VkPipeline tfx_impl_vulkan__create_compute_pipeline(tfx_impl_vulkan_t *re
 	return pipeline;
 }
 
-//Premultiplied blending, depth tested but not written, no culling, and the viewport and scissor left to the caller
+//Premultiplied blending, depth tested but not written, or for a layer that writes depth, blending off and depth written. No culling, and
+//the viewport and scissor left to the caller
 static VkPipeline tfx_impl_vulkan__create_graphics_pipeline(tfx_impl_vulkan_t *renderer, const char *shader_folder, const char *vertex_entry_point, const char *fragment_entry_point,
-	const VkVertexInputBindingDescription *vertex_binding, const VkVertexInputAttributeDescription *attributes, tfxU32 attribute_count, VkFormat color_format, VkFormat depth_format) {
+	const VkVertexInputBindingDescription *vertex_binding, const VkVertexInputAttributeDescription *attributes, tfxU32 attribute_count, VkFormat color_format, VkFormat depth_format, bool writes_depth) {
 	VkShaderModule vertex_module = tfx_impl_vulkan__load_shader(renderer, shader_folder, vertex_entry_point);
 	VkShaderModule fragment_module = tfx_impl_vulkan__load_shader(renderer, shader_folder, fragment_entry_point);
 	VkPipeline pipeline = VK_NULL_HANDLE;
@@ -569,10 +570,10 @@ static VkPipeline tfx_impl_vulkan__create_graphics_pipeline(tfx_impl_vulkan_t *r
 		multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkPipelineDepthStencilStateCreateInfo depth_stencil = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
 		depth_stencil.depthTestEnable = VK_TRUE;
-		depth_stencil.depthWriteEnable = VK_FALSE;
+		depth_stencil.depthWriteEnable = writes_depth ? VK_TRUE : VK_FALSE;
 		depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 		VkPipelineColorBlendAttachmentState blend = {};
-		blend.blendEnable = VK_TRUE;
+		blend.blendEnable = writes_depth ? VK_FALSE : VK_TRUE;
 		blend.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 		blend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		blend.colorBlendOp = VK_BLEND_OP_ADD;
@@ -729,19 +730,27 @@ bool tfx_impl_vulkan_Init(tfx_impl_vulkan_t *renderer, VkPhysicalDevice physical
 		{ 1, 0, VK_FORMAT_R32_UINT, offsetof(tfx_ribbon_vertex_t, segment_index) },
 		{ 2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(tfx_ribbon_vertex_t, uv_offset_scale) },
 		{ 3, 0, VK_FORMAT_R32_UINT, offsetof(tfx_ribbon_vertex_t, ribbon_index) },
+		{ 4, 0, VK_FORMAT_R32_UINT, offsetof(tfx_ribbon_vertex_t, normal) },			//Only the lit vertex shader reads it
 	};
-	renderer->billboard_pipeline = tfx_impl_vulkan__create_graphics_pipeline(renderer, shader_folder, "tfx_billboard_vertex", "tfx_billboard_fragment",
-		&billboard_binding, billboard_attributes, 8, color_format, depth_format);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			renderer->billboard_pipelines[writes_depth][lit] = tfx_impl_vulkan__create_graphics_pipeline(renderer, shader_folder, tfx_impl_billboard_vertex_entry_points[lit],
+				tfx_impl_billboard_fragment_entry_points[writes_depth][lit], &billboard_binding, billboard_attributes, 8, color_format, depth_format, writes_depth != 0);
+			renderer->ribbon_pipelines[writes_depth][lit] = tfx_impl_vulkan__create_graphics_pipeline(renderer, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit],
+				tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], &ribbon_binding, ribbon_attributes, lit ? 5 : 4, color_format, depth_format, writes_depth != 0);
+			if (!renderer->billboard_pipelines[writes_depth][lit] || !renderer->ribbon_pipelines[writes_depth][lit]) {
+				return false;
+			}
+		}
+	}
 	//Baked sprites are already interpolated, so the baked vertex shader has no captured_index input
 	renderer->baked_billboard_pipeline = tfx_impl_vulkan__create_graphics_pipeline(renderer, shader_folder, "tfx_billboard_baked_vertex", "tfx_billboard_fragment",
-		&billboard_binding, billboard_attributes, 7, color_format, depth_format);
-	renderer->ribbon_pipeline = tfx_impl_vulkan__create_graphics_pipeline(renderer, shader_folder, "tfx_ribbon_vertex", "tfx_ribbon_fragment",
-		&ribbon_binding, ribbon_attributes, 4, color_format, depth_format);
+		&billboard_binding, billboard_attributes, 7, color_format, depth_format, false);
 	renderer->particle_kernel = tfx_impl_vulkan__create_compute_pipeline(renderer, shader_folder, "simulate_particles");
 	renderer->ribbon_compute_pipeline = tfx_impl_vulkan__create_compute_pipeline(renderer, shader_folder, "tfx_ribbon_compute");
 	renderer->sprite_playback_pipeline = tfx_impl_vulkan__create_compute_pipeline(renderer, shader_folder, "tfx_sprite_playback");
 	renderer->ribbon_playback_pipeline = tfx_impl_vulkan__create_compute_pipeline(renderer, shader_folder, "tfx_ribbon_playback");
-	if (!renderer->billboard_pipeline || !renderer->baked_billboard_pipeline || !renderer->ribbon_pipeline || !renderer->particle_kernel
+	if (!renderer->baked_billboard_pipeline || !renderer->particle_kernel
 		|| !renderer->ribbon_compute_pipeline || !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline) {
 		return false;
 	}
@@ -1105,6 +1114,7 @@ static bool tfx_impl_vulkan__upload_library_data(tfx_impl_vulkan_t *renderer, Vk
 }
 
 bool tfx_impl_vulkan_UploadFrame(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	tfx_impl_vulkan__begin_transfers(command_buffer);
 	if (!tfx_impl_vulkan__upload_baked(renderer, command_buffer, &frame->baked)) {
 		return false;
@@ -1245,13 +1255,23 @@ void tfx_impl_vulkan_Compute(tfx_impl_vulkan_t *renderer, VkCommandBuffer comman
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
-static void tfx_impl_vulkan__render_ribbons(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, tfx_impl_vulkan_ribbon_set_t *set) {
-	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->ribbon_pipeline);
+//Every bucket is walked, because the dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
+static void tfx_impl_vulkan__render_ribbons(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, tfx_impl_vulkan_ribbon_set_t *set, int writes_depth) {
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(command_buffer, 0, 1, &set->vertices.buffer, &offset);
 	vkCmdBindIndexBuffer(command_buffer, set->indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+	VkPipeline bound_pipeline = VK_NULL_HANDLE;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_vulkan__create_ribbon_dispatch(set);
 	while (tfx_impl_vulkan__next_ribbon_dispatch(set, &dispatch)) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		VkPipeline pipeline = renderer->ribbon_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+			bound_pipeline = pipeline;
+		}
 		tfx_ribbon_bucket_globals_t *globals = tfx_GetRibbonDispatchGlobals(&dispatch);
 		tfx_impl_vulkan__set_ribbon_indexes(renderer, set, globals);
 		tfx_impl_vulkan__push(renderer, command_buffer, globals, sizeof(tfx_ribbon_bucket_globals_t));
@@ -1266,6 +1286,43 @@ static void tfx_impl_vulkan__draw_instance_range(VkCommandBuffer command_buffer,
 	}
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_vulkan__render_billboards(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, const tfx_impl_vulkan_billboard_push_t *push, int writes_depth) {
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(command_buffer, 0, 1, &renderer->instance_buffers[renderer->current_instance_buffer].buffer, &offset);
+	VkPipeline bound_pipeline = VK_NULL_HANDLE;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		VkPipeline pipeline = renderer->billboard_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+			tfx_impl_vulkan__push(renderer, command_buffer, push, sizeof(tfx_impl_vulkan_billboard_push_t));
+			bound_pipeline = pipeline;
+		}
+		tfx_impl_vulkan__draw_instance_range(command_buffer, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_vulkan__draw_instance_range(command_buffer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+}
+
+static void tfx_impl_vulkan__render_baked_billboards(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, const tfx_impl_vulkan_billboard_push_t *push) {
+	//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared. The baked push starts
+	//with the live push's fields, which the shared fragment shader reads
+	tfx_impl_vulkan_baked_billboard_push_t baked_push = {};
+	baked_push.billboard = *push;
+	baked_push.billboard.color_ramp_texture_index = renderer->baked_color_ramps.index;
+	baked_push.billboard.image_data_index = renderer->baked_image_data.index;
+	baked_push.billboard.properties_index = renderer->baked_emitter_properties.index;
+	baked_push.billboard.prev_billboards_index = 0;
+	vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->baked_billboard_pipeline);
+	tfx_impl_vulkan__push(renderer, command_buffer, &baked_push, sizeof(baked_push));
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(command_buffer, 0, 1, &renderer->playback_instances.buffer, &offset);
+	tfx_impl_vulkan__draw_instance_range(command_buffer, 0, renderer->playback_sprite_count);
+}
+
 void tfx_impl_vulkan_Render(tfx_impl_vulkan_t *renderer, VkCommandBuffer command_buffer, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas.image || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_vulkan__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_vulkan__ribbon_set_active(&renderer->baked_ribbons))) {
@@ -1278,41 +1335,26 @@ void tfx_impl_vulkan_Render(tfx_impl_vulkan_t *renderer, VkCommandBuffer command
 	tfx_impl_vulkan_billboard_push_t push = {};
 	push.sampler_index = 0;
 	push.uniform_index = renderer->frame_index;
-	if (renderer->instance_count > 0) {
-		tfx_impl_vulkan_buffer_t *current = &renderer->instance_buffers[renderer->current_instance_buffer];
-		push.color_ramp_texture_index = renderer->color_ramps.index;
-		push.image_data_index = renderer->image_data.index;
-		push.properties_index = renderer->emitter_properties.index;
-		push.prev_billboards_index = renderer->instance_buffers[renderer->current_instance_buffer ^ 1].index;
-		vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->billboard_pipeline);
-		tfx_impl_vulkan__push(renderer, command_buffer, &push, sizeof(push));
-		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(command_buffer, 0, 1, &current->buffer, &offset);
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			tfx_impl_vulkan__draw_instance_range(command_buffer, renderer->layer_start[layer], renderer->layer_count[layer]);
-			tfx_impl_vulkan__draw_instance_range(command_buffer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	push.color_ramp_texture_index = renderer->color_ramps.index;
+	push.image_data_index = renderer->image_data.index;
+	push.properties_index = renderer->emitter_properties.index;
+	push.prev_billboards_index = renderer->instance_buffers[renderer->current_instance_buffer ^ 1].index;
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		if (renderer->instance_count > 0) {
+			tfx_impl_vulkan__render_billboards(renderer, command_buffer, &push, writes_depth);
 		}
-	}
-	if (tfx_impl_vulkan__ribbon_set_active(&renderer->live_ribbons)) {
-		tfx_impl_vulkan__render_ribbons(renderer, command_buffer, &renderer->live_ribbons);
-	}
-	if (renderer->playback_sprite_count > 0) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared. The baked push starts
-		//with the live push's fields, which the shared fragment shader reads
-		tfx_impl_vulkan_baked_billboard_push_t baked_push = {};
-		baked_push.billboard = push;
-		baked_push.billboard.color_ramp_texture_index = renderer->baked_color_ramps.index;
-		baked_push.billboard.image_data_index = renderer->baked_image_data.index;
-		baked_push.billboard.properties_index = renderer->baked_emitter_properties.index;
-		baked_push.billboard.prev_billboards_index = 0;
-		vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->baked_billboard_pipeline);
-		tfx_impl_vulkan__push(renderer, command_buffer, &baked_push, sizeof(baked_push));
-		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(command_buffer, 0, 1, &renderer->playback_instances.buffer, &offset);
-		tfx_impl_vulkan__draw_instance_range(command_buffer, 0, renderer->playback_sprite_count);
-	}
-	if (tfx_impl_vulkan__ribbon_set_active(&renderer->baked_ribbons)) {
-		tfx_impl_vulkan__render_ribbons(renderer, command_buffer, &renderer->baked_ribbons);
+		if (tfx_impl_vulkan__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_vulkan__render_ribbons(renderer, command_buffer, &renderer->live_ribbons, writes_depth);
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
+			tfx_impl_vulkan__render_baked_billboards(renderer, command_buffer, &push);
+		}
+		if (tfx_impl_vulkan__ribbon_set_active(&renderer->baked_ribbons)) {
+			tfx_impl_vulkan__render_ribbons(renderer, command_buffer, &renderer->baked_ribbons, writes_depth);
+		}
 	}
 }
 
@@ -1356,10 +1398,15 @@ void tfx_impl_vulkan_Shutdown(tfx_impl_vulkan_t *renderer) {
 	renderer->color_ramp_layer_versions = NULL;
 	memset(&renderer->free_buffer_indexes, 0, sizeof(tfx_impl_vulkan_index_list_t));
 	memset(&renderer->free_image_indexes, 0, sizeof(tfx_impl_vulkan_index_list_t));
-	VkPipeline pipelines[] = { renderer->particle_kernel, renderer->billboard_pipeline, renderer->baked_billboard_pipeline, renderer->ribbon_pipeline,
-		renderer->ribbon_compute_pipeline, renderer->sprite_playback_pipeline, renderer->ribbon_playback_pipeline };
+	VkPipeline pipelines[] = { renderer->particle_kernel, renderer->baked_billboard_pipeline, renderer->ribbon_compute_pipeline, renderer->sprite_playback_pipeline, renderer->ribbon_playback_pipeline };
 	for (tfxU32 index = 0; index != sizeof(pipelines) / sizeof(pipelines[0]); ++index) {
 		vkDestroyPipeline(renderer->device, pipelines[index], NULL);
+	}
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			vkDestroyPipeline(renderer->device, renderer->billboard_pipelines[writes_depth][lit], NULL);
+			vkDestroyPipeline(renderer->device, renderer->ribbon_pipelines[writes_depth][lit], NULL);
+		}
 	}
 	vkDestroyPipelineLayout(renderer->device, renderer->pipeline_layout, NULL);
 	vkDestroyDescriptorPool(renderer->device, renderer->descriptor_pool, NULL);

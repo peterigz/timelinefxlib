@@ -44,9 +44,10 @@ typedef struct tfx_impl_gl_ribbon_set_s {
 } tfx_impl_gl_ribbon_set_t;
 
 typedef struct tfx_impl_gl_s {
-	tfxU32 billboard_program;
+	//Each layer picks its programs from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	tfxU32 billboard_programs[2][2];
 	tfxU32 billboard_baked_program;
-	tfxU32 ribbon_program;
+	tfxU32 ribbon_programs[2][2];
 	tfxU32 particle_kernel;			//simulate_particles from timelinefx.slang
 	tfxU32 ribbon_compute_program;
 	tfxU32 sprite_playback_program;
@@ -54,7 +55,7 @@ typedef struct tfx_impl_gl_s {
 	tfxU32 empty_vertex_array;		//Core profile draws need one bound, though nothing reads vertex attributes
 	tfxU32 max_storage_block_size;
 
-	tfx_impl_gl_buffer_t frame_constants;	//tfx_impl_uniforms_t, uniform binding 5
+	tfx_impl_gl_buffer_t frame_constants;	//tfx_impl_uniforms_t, uniform binding 5, and 10 for the lit fragments
 	tfx_impl_gl_buffer_t draw_constants;	//The draw's instance offsets, or a ribbon bucket's globals, uniform binding 6
 	tfx_impl_gl_buffer_t compute_constants;	//Each dispatch's block, uniform binding 6
 
@@ -83,6 +84,7 @@ typedef struct tfx_impl_gl_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	tfx_impl_gl_buffer_t particle_pool;		//The hot, cold and noise sections in one buffer
 	tfx_impl_gl_buffer_t particle_upload;	//The frame's tfx_CopyGPUParticleUpload

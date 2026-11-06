@@ -11,6 +11,7 @@
 	[Impl_shapes]		Shape loader callback that decodes every shape format to RGBA8 frames
 	[Impl_atlas]		Packs a shape list's frames into a range of layers of a texture array, and the uv lookup callback
 	[Impl_frame]		What a backend uploads and draws each frame: instances and the shader uniforms
+	[Impl_layers]		Which group each layer draws in and which shaders it takes
 */
 
 #include "timelinefx.h"
@@ -149,6 +150,7 @@ typedef struct tfx_impl_uniforms_s {
 	float timer_lerp;
 	float update_time;
 	float camera_position[3];		//Faces baked ribbons to the camera, a stage's ribbons take it from tfx_SetStageCamera
+	tfx_view_light_t light;			//At tfxVIEW_LIGHT_OFFSET for the lit fragments, tfx_impl_SetUniforms sets the editor's default preview light
 } tfx_impl_uniforms_t;
 
 //CPU memory a frame's ribbons are packed into before they're uploaded. It grows to fit the stages that exist
@@ -191,6 +193,7 @@ typedef struct tfx_impl_frame_s {
 	tfxU32 instance_count;
 	tfxU32 layer_start[tfxLAYERS];	//The CPU instances of each layer
 	tfxU32 layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];	//Gathered every frame, because a refresh can change them
 	tfx_impl_ribbon_frame_t ribbons;
 	//Only fetched when asked for, because every fetch has to be dispatched. The GPU instances go after the CPU ones
 	bool has_gpu_particles;
@@ -201,13 +204,25 @@ typedef struct tfx_impl_frame_s {
 
 //Call every frame after any stage update and waits for it to finish. stage_updated is true when a tfx_UpdateStage* call ran this frame,
 //including tfx_UpdateStage(stage, 0) after freeing a library on a paused frame. Pass null ribbon staging if the backend doesn't
-//draw ribbons, and only fetch the GPU particles if the backend dispatches them
-void tfx_impl_GatherFrame(tfx_stage stage, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame);
+//draw ribbons, and only fetch the GPU particles if the backend dispatches them. The layer flags come from layer_library, because the stage
+//has one range per layer whichever library an effect came from, so keep every library's custom layers the same
+void tfx_impl_GatherFrame(tfx_stage stage, tfx_library layer_library, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame);
 void tfx_impl_FreeRibbonStaging(tfx_impl_ribbon_staging_t *ribbon_staging);
 //Call every frame after tfx_UpdateAnimationManager
 void tfx_impl_GatherBakedFrame(tfx_animation_manager animation_manager, tfx_impl_baked_frame_t *baked);
 //Call every frame from the thread that updates the stage, timer_lerp comes from tfx_GetStageInterpolation
 void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t *camera, float screen_width, float screen_height, const tfx_impl_timer_t *timer, tfx_stage stage);
+
+//--- Impl_layers
+
+//A frame draws its layers in two groups: the ones that write depth first, with blending off and depth writes on, then the rest
+//blended over them. Index a backend's shader or pipeline tables with these, vertex shaders by [lit] and fragments by [writes depth][lit]
+static inline int tfx_impl_LayerWritesDepth(tfxLayerFlags flags) { return (flags & tfxLayerFlags_writes_depth) != 0; }
+static inline int tfx_impl_LayerIsLit(tfxLayerFlags flags) { return (flags & tfxLayerFlags_lit) != 0; }
+extern const char *const tfx_impl_billboard_vertex_entry_points[2];
+extern const char *const tfx_impl_billboard_fragment_entry_points[2][2];
+extern const char *const tfx_impl_ribbon_vertex_entry_points[2];
+extern const char *const tfx_impl_ribbon_fragment_entry_points[2][2];
 
 #ifdef __cplusplus
 }

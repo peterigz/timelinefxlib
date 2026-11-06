@@ -110,9 +110,10 @@ typedef struct tfx_impl_vulkan_s {
 	//Every pipeline shares one layout, whose push constant range fits the largest block
 	VkPipelineLayout pipeline_layout;
 	VkPipeline particle_kernel;				//simulate_particles from timelinefx.slang
-	VkPipeline billboard_pipeline;
+	//Each layer picks its pipelines from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	VkPipeline billboard_pipelines[2][2];
 	VkPipeline baked_billboard_pipeline;
-	VkPipeline ribbon_pipeline;
+	VkPipeline ribbon_pipelines[2][2];
 	VkPipeline ribbon_compute_pipeline;
 	VkPipeline sprite_playback_pipeline;
 	VkPipeline ribbon_playback_pipeline;
@@ -138,6 +139,7 @@ typedef struct tfx_impl_vulkan_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	//The pool's hot, cold and noise sections in one buffer, and the frame's tfx_CopyGPUParticleUpload in another. Storage buffers
 	//are untyped, so one index each serves every row type, with the push constants' bases

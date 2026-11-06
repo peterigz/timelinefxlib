@@ -41,9 +41,17 @@ if (WIN32)
 		tfx_billboard_vertex vs_5_0
 		tfx_billboard_baked_vertex vs_5_0
 		tfx_billboard_fragment ps_5_0
+		tfx_billboard_cutout_fragment ps_5_0
+		tfx_billboard_lit_vertex vs_5_0
+		tfx_billboard_lit_fragment ps_5_0
+		tfx_billboard_lit_cutout_fragment ps_5_0
 		tfx_ribbon_compute cs_5_0
 		tfx_ribbon_vertex vs_5_0
 		tfx_ribbon_fragment ps_5_0
+		tfx_ribbon_cutout_fragment ps_5_0
+		tfx_ribbon_lit_vertex vs_5_0
+		tfx_ribbon_lit_fragment ps_5_0
+		tfx_ribbon_lit_cutout_fragment ps_5_0
 		tfx_sprite_playback cs_5_0
 		tfx_ribbon_playback cs_5_0
 	)
@@ -100,6 +108,7 @@ if (TFX_EXAMPLE_SDL3)
 	set(TFX_SDL_SHADER_DEFINES -D TFX_FIXED_BINDINGS
 		-D TFX_VERTEX_UNIFORM_SPACE=1 -D TFX_VERTEX_UNIFORM_BINDING=0
 		-D TFX_FRAGMENT_TEXTURE_SPACE=2 -D TFX_FRAGMENT_TEXTURE_BINDING=0 -D TFX_FRAGMENT_SAMPLER_SPACE=2 -D TFX_FRAGMENT_SAMPLER_BINDING=0
+		-D TFX_FRAGMENT_UNIFORM_SPACE=3 -D TFX_FRAGMENT_UNIFORM_BINDING=0
 		-D TFX_COMPUTE_READ_BINDING=0 -D TFX_COMPUTE_WRITE_SPACE=1 -D TFX_COMPUTE_UNIFORM_SPACE=2 -D TFX_COMPUTE_UNIFORM_BINDING=0
 		-D TFX_COMBINED_SAMPLERS)
 	set(TFX_SDL_SHADER_FOLDER ${CMAKE_CURRENT_BINARY_DIR}/sdl_shaders)
@@ -111,6 +120,14 @@ if (TFX_EXAMPLE_SDL3)
 		tfx_ribbon_compute cs_6_0
 		tfx_ribbon_vertex vs_6_0
 		tfx_ribbon_fragment ps_6_0
+		tfx_billboard_cutout_fragment ps_6_0
+		tfx_billboard_lit_vertex vs_6_0
+		tfx_billboard_lit_fragment ps_6_0
+		tfx_billboard_lit_cutout_fragment ps_6_0
+		tfx_ribbon_cutout_fragment ps_6_0
+		tfx_ribbon_lit_vertex vs_6_0
+		tfx_ribbon_lit_fragment ps_6_0
+		tfx_ribbon_lit_cutout_fragment ps_6_0
 		tfx_sprite_playback cs_6_0
 		tfx_ribbon_playback cs_6_0
 	)
@@ -202,6 +219,14 @@ if (TFX_EXAMPLE_GL)
 		tfx_ribbon_compute
 		tfx_ribbon_vertex
 		tfx_ribbon_fragment
+		tfx_billboard_cutout_fragment
+		tfx_billboard_lit_vertex
+		tfx_billboard_lit_fragment
+		tfx_billboard_lit_cutout_fragment
+		tfx_ribbon_cutout_fragment
+		tfx_ribbon_lit_vertex
+		tfx_ribbon_lit_fragment
+		tfx_ribbon_lit_cutout_fragment
 		tfx_sprite_playback
 		tfx_ribbon_playback
 	)
@@ -250,6 +275,14 @@ if (WIN32 AND TFX_EXAMPLE_DX12)
 		tfx_ribbon_compute cs_6_0
 		tfx_ribbon_vertex vs_6_0
 		tfx_ribbon_fragment ps_6_0
+		tfx_billboard_cutout_fragment ps_6_0
+		tfx_billboard_lit_vertex vs_6_0
+		tfx_billboard_lit_fragment ps_6_0
+		tfx_billboard_lit_cutout_fragment ps_6_0
+		tfx_ribbon_cutout_fragment ps_6_0
+		tfx_ribbon_lit_vertex vs_6_0
+		tfx_ribbon_lit_fragment ps_6_0
+		tfx_ribbon_lit_cutout_fragment ps_6_0
 		tfx_sprite_playback cs_6_0
 		tfx_ribbon_playback cs_6_0
 	)
@@ -303,6 +336,14 @@ if (TFX_EXAMPLE_VULKAN)
 		tfx_ribbon_compute
 		tfx_ribbon_vertex
 		tfx_ribbon_fragment
+		tfx_billboard_cutout_fragment
+		tfx_billboard_lit_vertex
+		tfx_billboard_lit_fragment
+		tfx_billboard_lit_cutout_fragment
+		tfx_ribbon_cutout_fragment
+		tfx_ribbon_lit_vertex
+		tfx_ribbon_lit_fragment
+		tfx_ribbon_lit_cutout_fragment
 		tfx_sprite_playback
 		tfx_ribbon_playback
 	)
@@ -391,6 +432,14 @@ if (TFX_EXAMPLE_WEBGPU)
 		tfx_ribbon_compute
 		tfx_ribbon_vertex
 		tfx_ribbon_fragment
+		tfx_billboard_cutout_fragment
+		tfx_billboard_lit_vertex
+		tfx_billboard_lit_fragment
+		tfx_billboard_lit_cutout_fragment
+		tfx_ribbon_cutout_fragment
+		tfx_ribbon_lit_vertex
+		tfx_ribbon_lit_fragment
+		tfx_ribbon_lit_cutout_fragment
 		tfx_sprite_playback
 		tfx_ribbon_playback
 	)
@@ -442,6 +491,14 @@ if (APPLE AND TFX_EXAMPLE_METAL)
 		tfx_ribbon_compute
 		tfx_ribbon_vertex
 		tfx_ribbon_fragment
+		tfx_billboard_cutout_fragment
+		tfx_billboard_lit_vertex
+		tfx_billboard_lit_fragment
+		tfx_billboard_lit_cutout_fragment
+		tfx_ribbon_cutout_fragment
+		tfx_ribbon_lit_vertex
+		tfx_ribbon_lit_fragment
+		tfx_ribbon_lit_cutout_fragment
 		tfx_sprite_playback
 		tfx_ribbon_playback
 	)

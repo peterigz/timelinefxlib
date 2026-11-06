@@ -449,12 +449,15 @@ static void *tfx_impl_dx12__load_shader_code(const char *shader_folder, const ch
 //The descriptor table covers the whole heap once per bindless array: every range starts at the heap's first slot, so a slot's index is
 //the same whichever array a shader reads it through. Then the sampler table, then one root constant block per push constant register
 static ID3D12RootSignature *tfx_impl_dx12__create_root_signature(ID3D12Device *device, const tfx_impl_dx12_push_register *registers, const tfxU32 *dword_counts, tfxU32 push_count, bool graphics) {
-	D3D12_DESCRIPTOR_RANGE ranges[1 + TFX_IMPL_DX12_READ_SPACES + TFX_IMPL_DX12_WRITE_SPACES] = {};
+	D3D12_DESCRIPTOR_RANGE ranges[2 + TFX_IMPL_DX12_READ_SPACES + TFX_IMPL_DX12_WRITE_SPACES] = {};
 	tfxU32 range_count = 0;
-	ranges[range_count].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-	ranges[range_count].NumDescriptors = UINT_MAX;
-	ranges[range_count].RegisterSpace = 1;
-	range_count++;
+	//Space 1 is the view the vertex shaders read and space 2 the same view as the lit fragments read it, with the light
+	for (tfxU32 space = 1; space <= 2; ++space) {
+		ranges[range_count].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+		ranges[range_count].NumDescriptors = UINT_MAX;
+		ranges[range_count].RegisterSpace = space;
+		range_count++;
+	}
 	for (tfxU32 space = 1; space <= TFX_IMPL_DX12_READ_SPACES; ++space) {
 		ranges[range_count].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 		ranges[range_count].NumDescriptors = UINT_MAX;
@@ -524,8 +527,9 @@ static ID3D12PipelineState *tfx_impl_dx12__create_compute_pipeline(ID3D12Device 
 }
 
 //Premultiplied blending, depth tested but not written, no culling
+//Premultiplied blending, depth tested but not written, or for a layer that writes depth, blending off and depth written
 static ID3D12PipelineState *tfx_impl_dx12__create_graphics_pipeline(ID3D12Device *device, ID3D12RootSignature *root_signature, const char *shader_folder, const char *vertex_entry_point,
-	const char *fragment_entry_point, const D3D12_INPUT_ELEMENT_DESC *elements, tfxU32 element_count, DXGI_FORMAT render_target_format, DXGI_FORMAT depth_format) {
+	const char *fragment_entry_point, const D3D12_INPUT_ELEMENT_DESC *elements, tfxU32 element_count, DXGI_FORMAT render_target_format, DXGI_FORMAT depth_format, bool writes_depth) {
 	size_t vertex_size = 0;
 	size_t fragment_size = 0;
 	void *vertex_code = tfx_impl_dx12__load_shader_code(shader_folder, vertex_entry_point, &vertex_size);
@@ -539,7 +543,7 @@ static ID3D12PipelineState *tfx_impl_dx12__create_graphics_pipeline(ID3D12Device
 		description.PS.pShaderBytecode = fragment_code;
 		description.PS.BytecodeLength = fragment_size;
 		D3D12_RENDER_TARGET_BLEND_DESC *blend = &description.BlendState.RenderTarget[0];
-		blend->BlendEnable = TRUE;
+		blend->BlendEnable = writes_depth ? FALSE : TRUE;
 		blend->SrcBlend = D3D12_BLEND_ONE;
 		blend->DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 		blend->BlendOp = D3D12_BLEND_OP_ADD;
@@ -553,7 +557,7 @@ static ID3D12PipelineState *tfx_impl_dx12__create_graphics_pipeline(ID3D12Device
 		description.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 		description.RasterizerState.DepthClipEnable = TRUE;
 		description.DepthStencilState.DepthEnable = TRUE;
-		description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+		description.DepthStencilState.DepthWriteMask = writes_depth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		description.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 		description.InputLayout.pInputElementDescs = elements;
 		description.InputLayout.NumElements = element_count;
@@ -655,18 +659,26 @@ bool tfx_impl_dx12_Init(tfx_impl_dx12_t *renderer, ID3D12Device *device, DXGI_FO
 		{ "SEGMENT_INDEX", 0, DXGI_FORMAT_R32_UINT, 0, offsetof(tfx_ribbon_vertex_t, segment_index), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "UV_OFFSET_SCALE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof(tfx_ribbon_vertex_t, uv_offset_scale), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "RIBBON_INDEX", 0, DXGI_FORMAT_R32_UINT, 0, offsetof(tfx_ribbon_vertex_t, ribbon_index), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32_UINT, 0, offsetof(tfx_ribbon_vertex_t, normal), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },	//Only the lit vertex shader reads it
 	};
-	renderer->billboard_pipeline = tfx_impl_dx12__create_graphics_pipeline(device, renderer->billboard_root_signature, shader_folder, "tfx_billboard_vertex", "tfx_billboard_fragment",
-		billboard_elements, 8, render_target_format, depth_format);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			renderer->billboard_pipelines[writes_depth][lit] = tfx_impl_dx12__create_graphics_pipeline(device, renderer->billboard_root_signature, shader_folder, tfx_impl_billboard_vertex_entry_points[lit],
+				tfx_impl_billboard_fragment_entry_points[writes_depth][lit], billboard_elements, 8, render_target_format, depth_format, writes_depth != 0);
+			renderer->ribbon_pipelines[writes_depth][lit] = tfx_impl_dx12__create_graphics_pipeline(device, renderer->ribbon_root_signature, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit],
+				tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], ribbon_elements, lit ? 5 : 4, render_target_format, depth_format, writes_depth != 0);
+			if (!renderer->billboard_pipelines[writes_depth][lit] || !renderer->ribbon_pipelines[writes_depth][lit]) {
+				return false;
+			}
+		}
+	}
 	renderer->baked_billboard_pipeline = tfx_impl_dx12__create_graphics_pipeline(device, renderer->baked_billboard_root_signature, shader_folder, "tfx_billboard_baked_vertex", "tfx_billboard_fragment",
-		billboard_elements, 8, render_target_format, depth_format);
-	renderer->ribbon_pipeline = tfx_impl_dx12__create_graphics_pipeline(device, renderer->ribbon_root_signature, shader_folder, "tfx_ribbon_vertex", "tfx_ribbon_fragment",
-		ribbon_elements, 4, render_target_format, depth_format);
+		billboard_elements, 8, render_target_format, depth_format, false);
 	renderer->particle_kernel = tfx_impl_dx12__create_compute_pipeline(device, renderer->particle_root_signature, shader_folder, "simulate_particles");
 	renderer->ribbon_compute_pipeline = tfx_impl_dx12__create_compute_pipeline(device, renderer->ribbon_root_signature, shader_folder, "tfx_ribbon_compute");
 	renderer->sprite_playback_pipeline = tfx_impl_dx12__create_compute_pipeline(device, renderer->sprite_playback_root_signature, shader_folder, "tfx_sprite_playback");
 	renderer->ribbon_playback_pipeline = tfx_impl_dx12__create_compute_pipeline(device, renderer->ribbon_playback_root_signature, shader_folder, "tfx_ribbon_playback");
-	if (!renderer->billboard_pipeline || !renderer->baked_billboard_pipeline || !renderer->ribbon_pipeline || !renderer->particle_kernel
+	if (!renderer->baked_billboard_pipeline || !renderer->particle_kernel
 		|| !renderer->ribbon_compute_pipeline || !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline) {
 		return false;
 	}
@@ -1086,6 +1098,7 @@ static bool tfx_impl_dx12__upload_library_data(tfx_impl_dx12_t *renderer, ID3D12
 }
 
 bool tfx_impl_dx12_UploadFrame(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_dx12__upload_baked(renderer, command_list, &frame->baked)) {
 		return false;
 	}
@@ -1266,14 +1279,24 @@ void tfx_impl_dx12_Compute(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList 
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
-static void tfx_impl_dx12__render_ribbons(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, tfx_impl_dx12_ribbon_set_t *set, const tfx_impl_dx12_buffer_t *image_data, tfxU32 color_ramps_index) {
-	tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->ribbon_root_signature, renderer->ribbon_pipeline);
+//Every bucket is walked, because the dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
+static void tfx_impl_dx12__render_ribbons(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, tfx_impl_dx12_ribbon_set_t *set, const tfx_impl_dx12_buffer_t *image_data, tfxU32 color_ramps_index, int writes_depth) {
 	D3D12_VERTEX_BUFFER_VIEW vertex_view = { set->vertices.resource->GetGPUVirtualAddress(), set->vertices.capacity, TFX_IMPL_DX12_RIBBON_VERTEX_STRIDE };
 	D3D12_INDEX_BUFFER_VIEW index_view = { set->indices.resource->GetGPUVirtualAddress(), set->indices.capacity, DXGI_FORMAT_R32_UINT };
 	command_list->IASetVertexBuffers(0, 1, &vertex_view);
 	command_list->IASetIndexBuffer(&index_view);
+	ID3D12PipelineState *bound_pipeline = NULL;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_dx12__create_ribbon_dispatch(set);
 	while (tfx_impl_dx12__next_ribbon_dispatch(set, &dispatch)) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		ID3D12PipelineState *pipeline = renderer->ribbon_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->ribbon_root_signature, pipeline);
+			bound_pipeline = pipeline;
+		}
 		tfx_ribbon_bucket_globals_t *globals = tfx_GetRibbonDispatchGlobals(&dispatch);
 		tfx_impl_dx12__set_ribbon_indexes(renderer, set, globals, image_data, color_ramps_index);
 		command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER, sizeof(tfx_ribbon_bucket_globals_t) / 4, globals, 0);
@@ -1300,6 +1323,46 @@ static void tfx_impl_dx12__draw_instance_range(ID3D12GraphicsCommandList *comman
 	}
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_dx12__render_billboards(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, const tfx_impl_dx12_billboard_push_t *push, int writes_depth) {
+	tfx_impl_dx12_buffer_t *current = &renderer->instance_buffers[renderer->current_instance_buffer];
+	D3D12_VERTEX_BUFFER_VIEW vertex_view = { current->resource->GetGPUVirtualAddress(), current->capacity, TFX_IMPL_DX12_INSTANCE_STRIDE };
+	command_list->IASetVertexBuffers(0, 1, &vertex_view);
+	ID3D12PipelineState *bound_pipeline = NULL;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		ID3D12PipelineState *pipeline = renderer->billboard_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			//Setting the root signature clears the root constants, so they go again with each pipeline
+			tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->billboard_root_signature, pipeline);
+			command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER, sizeof(tfx_impl_dx12_billboard_push_t) / 4, push, 0);
+			bound_pipeline = pipeline;
+		}
+		tfx_impl_dx12__draw_instance_range(command_list, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_dx12__draw_instance_range(command_list, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+}
+
+static void tfx_impl_dx12__render_baked_billboards(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, const tfx_impl_dx12_billboard_push_t *push) {
+	//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared. The fragment shader reads
+	//the live push at b1 and the vertex shader the baked one at b2
+	tfx_impl_dx12_baked_billboard_push_t baked_push = {};
+	baked_push.billboard = *push;
+	baked_push.billboard.color_ramp_texture_index = renderer->baked_color_ramps_index;
+	baked_push.billboard.image_data_index = renderer->baked_image_data.shader_read_index;
+	baked_push.billboard.properties_index = renderer->baked_emitter_properties.shader_read_index;
+	baked_push.billboard.prev_billboards_index = 0;
+	tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->baked_billboard_root_signature, renderer->baked_billboard_pipeline);
+	command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER, sizeof(tfx_impl_dx12_billboard_push_t) / 4, &baked_push.billboard, 0);
+	command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER + 1, sizeof(baked_push) / 4, &baked_push, 0);
+	D3D12_VERTEX_BUFFER_VIEW vertex_view = { renderer->playback_instances.resource->GetGPUVirtualAddress(), renderer->playback_instances.capacity, TFX_IMPL_DX12_INSTANCE_STRIDE };
+	command_list->IASetVertexBuffers(0, 1, &vertex_view);
+	tfx_impl_dx12__draw_instance_range(command_list, 0, renderer->playback_sprite_count);
+}
+
 void tfx_impl_dx12_Render(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_dx12__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_dx12__ribbon_set_active(&renderer->baked_ribbons))) {
@@ -1315,42 +1378,26 @@ void tfx_impl_dx12_Render(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *
 	tfx_impl_dx12_billboard_push_t push = {};
 	push.sampler_index = 0;
 	push.uniform_index = renderer->view_uniforms.shader_read_index;
-	if (renderer->instance_count > 0) {
-		tfx_impl_dx12_buffer_t *current = &renderer->instance_buffers[renderer->current_instance_buffer];
-		push.color_ramp_texture_index = renderer->color_ramps_index;
-		push.image_data_index = renderer->image_data.shader_read_index;
-		push.properties_index = renderer->emitter_properties.shader_read_index;
-		push.prev_billboards_index = renderer->instance_buffers[renderer->current_instance_buffer ^ 1].shader_read_index;
-		tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->billboard_root_signature, renderer->billboard_pipeline);
-		command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER, sizeof(push) / 4, &push, 0);
-		D3D12_VERTEX_BUFFER_VIEW vertex_view = { current->resource->GetGPUVirtualAddress(), current->capacity, TFX_IMPL_DX12_INSTANCE_STRIDE };
-		command_list->IASetVertexBuffers(0, 1, &vertex_view);
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			tfx_impl_dx12__draw_instance_range(command_list, renderer->layer_start[layer], renderer->layer_count[layer]);
-			tfx_impl_dx12__draw_instance_range(command_list, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	push.color_ramp_texture_index = renderer->color_ramps_index;
+	push.image_data_index = renderer->image_data.shader_read_index;
+	push.properties_index = renderer->emitter_properties.shader_read_index;
+	push.prev_billboards_index = renderer->instance_buffers[renderer->current_instance_buffer ^ 1].shader_read_index;
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		if (renderer->instance_count > 0) {
+			tfx_impl_dx12__render_billboards(renderer, command_list, &push, writes_depth);
 		}
-	}
-	if (tfx_impl_dx12__ribbon_set_active(&renderer->live_ribbons)) {
-		tfx_impl_dx12__render_ribbons(renderer, command_list, &renderer->live_ribbons, &renderer->image_data, renderer->color_ramps_index);
-	}
-	if (renderer->playback_sprite_count > 0) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared. The fragment shader reads
-		//the live push at b1 and the vertex shader the baked one at b2
-		tfx_impl_dx12_baked_billboard_push_t baked_push = {};
-		baked_push.billboard = push;
-		baked_push.billboard.color_ramp_texture_index = renderer->baked_color_ramps_index;
-		baked_push.billboard.image_data_index = renderer->baked_image_data.shader_read_index;
-		baked_push.billboard.properties_index = renderer->baked_emitter_properties.shader_read_index;
-		baked_push.billboard.prev_billboards_index = 0;
-		tfx_impl_dx12__bind_graphics(renderer, command_list, renderer->baked_billboard_root_signature, renderer->baked_billboard_pipeline);
-		command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER, sizeof(tfx_impl_dx12_billboard_push_t) / 4, &baked_push.billboard, 0);
-		command_list->SetGraphicsRoot32BitConstants(TFX_IMPL_DX12_PUSH_PARAMETER + 1, sizeof(baked_push) / 4, &baked_push, 0);
-		D3D12_VERTEX_BUFFER_VIEW vertex_view = { renderer->playback_instances.resource->GetGPUVirtualAddress(), renderer->playback_instances.capacity, TFX_IMPL_DX12_INSTANCE_STRIDE };
-		command_list->IASetVertexBuffers(0, 1, &vertex_view);
-		tfx_impl_dx12__draw_instance_range(command_list, 0, renderer->playback_sprite_count);
-	}
-	if (tfx_impl_dx12__ribbon_set_active(&renderer->baked_ribbons)) {
-		tfx_impl_dx12__render_ribbons(renderer, command_list, &renderer->baked_ribbons, &renderer->baked_image_data, renderer->baked_color_ramps_index);
+		if (tfx_impl_dx12__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_dx12__render_ribbons(renderer, command_list, &renderer->live_ribbons, &renderer->image_data, renderer->color_ramps_index, writes_depth);
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
+			tfx_impl_dx12__render_baked_billboards(renderer, command_list, &push);
+		}
+		if (tfx_impl_dx12__ribbon_set_active(&renderer->baked_ribbons)) {
+			tfx_impl_dx12__render_ribbons(renderer, command_list, &renderer->baked_ribbons, &renderer->baked_image_data, renderer->baked_color_ramps_index, writes_depth);
+		}
 	}
 }
 
@@ -1394,9 +1441,13 @@ void tfx_impl_dx12_Shutdown(tfx_impl_dx12_t *renderer) {
 	renderer->color_ramp_layer_versions = NULL;
 	renderer->free_descriptors = NULL;
 	TFX_IMPL_DX12_RELEASE(renderer->particle_kernel);
-	TFX_IMPL_DX12_RELEASE(renderer->billboard_pipeline);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			TFX_IMPL_DX12_RELEASE(renderer->billboard_pipelines[writes_depth][lit]);
+			TFX_IMPL_DX12_RELEASE(renderer->ribbon_pipelines[writes_depth][lit]);
+		}
+	}
 	TFX_IMPL_DX12_RELEASE(renderer->baked_billboard_pipeline);
-	TFX_IMPL_DX12_RELEASE(renderer->ribbon_pipeline);
 	TFX_IMPL_DX12_RELEASE(renderer->ribbon_compute_pipeline);
 	TFX_IMPL_DX12_RELEASE(renderer->sprite_playback_pipeline);
 	TFX_IMPL_DX12_RELEASE(renderer->ribbon_playback_pipeline);

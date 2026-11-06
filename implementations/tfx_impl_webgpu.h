@@ -62,9 +62,10 @@ typedef struct tfx_impl_webgpu_s {
 	WGPUBindGroupLayout particle_kernel_layout;
 	WGPUBindGroupLayout ribbon_compute_layout;
 	WGPUBindGroupLayout playback_layout;			//Sprite and ribbon playback read and write the same slots
-	WGPURenderPipeline billboard_pipeline;
+	//Each layer picks its pipelines from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	WGPURenderPipeline billboard_pipelines[2][2];
 	WGPURenderPipeline baked_billboard_pipeline;
-	WGPURenderPipeline ribbon_pipeline;
+	WGPURenderPipeline ribbon_pipelines[2][2];
 	WGPUComputePipeline particle_kernel;			//simulate_particles from timelinefx.slang
 	WGPUComputePipeline ribbon_compute_pipeline;
 	WGPUComputePipeline sprite_playback_pipeline;
@@ -108,6 +109,7 @@ typedef struct tfx_impl_webgpu_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	tfx_impl_webgpu_buffer_t particle_pool;			//The hot, cold and noise sections in one buffer
 	tfx_impl_webgpu_buffer_t particle_upload;		//The frame's tfx_CopyGPUParticleUpload

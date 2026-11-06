@@ -259,11 +259,15 @@ static SDL_GPUComputePipeline *tfx_impl_sdlgpu__create_compute_pipeline(SDL_GPUD
 }
 
 //Premultiplied blending, depth tested but not written, and no vertex input: instances and ribbon vertexes are read from storage buffers
+//Premultiplied blending, depth tested but not written, or for a layer that writes depth, blending off and depth written
 static SDL_GPUGraphicsPipeline *tfx_impl_sdlgpu__create_graphics_pipeline(SDL_GPUDevice *device, SDL_GPUShader *vertex_shader, SDL_GPUShader *fragment_shader,
-	SDL_GPUTextureFormat color_format, SDL_GPUTextureFormat depth_format) {
+	SDL_GPUTextureFormat color_format, SDL_GPUTextureFormat depth_format, bool writes_depth) {
+	if (!vertex_shader || !fragment_shader) {
+		return NULL;
+	}
 	SDL_GPUColorTargetDescription color_target = {};
 	color_target.format = color_format;
-	color_target.blend_state.enable_blend = true;
+	color_target.blend_state.enable_blend = !writes_depth;
 	color_target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
 	color_target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 	color_target.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
@@ -278,7 +282,7 @@ static SDL_GPUGraphicsPipeline *tfx_impl_sdlgpu__create_graphics_pipeline(SDL_GP
 	create_info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
 	create_info.rasterizer_state.enable_depth_clip = true;
 	create_info.depth_stencil_state.enable_depth_test = true;
-	create_info.depth_stencil_state.enable_depth_write = false;
+	create_info.depth_stencil_state.enable_depth_write = writes_depth;
 	create_info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
 	create_info.target_info.color_target_descriptions = &color_target;
 	create_info.target_info.num_color_targets = 1;
@@ -340,23 +344,36 @@ bool tfx_impl_sdlgpu_Init(tfx_impl_sdlgpu_t *renderer, SDL_GPUDevice *device, SD
 	memset(renderer, 0, sizeof(tfx_impl_sdlgpu_t));
 	renderer->device = device;
 
-	SDL_GPUShader *billboard_vertex = tfx_impl_sdlgpu__create_shader(device, shader_folder, "tfx_billboard_vertex", SDL_GPU_SHADERSTAGE_VERTEX, 0, 4, 2);
+	//The lit fragments take the frame's uniforms in fragment slot 0 for the light
+	SDL_GPUShader *billboard_vertex_shaders[2];
+	SDL_GPUShader *ribbon_vertex_shaders[2];
+	SDL_GPUShader *billboard_fragment_shaders[2][2];
+	SDL_GPUShader *ribbon_fragment_shaders[2][2];
+	for (int lit = 0; lit != 2; ++lit) {
+		billboard_vertex_shaders[lit] = tfx_impl_sdlgpu__create_shader(device, shader_folder, tfx_impl_billboard_vertex_entry_points[lit], SDL_GPU_SHADERSTAGE_VERTEX, 0, 4, 2);
+		ribbon_vertex_shaders[lit] = tfx_impl_sdlgpu__create_shader(device, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit], SDL_GPU_SHADERSTAGE_VERTEX, 0, 5, 2);
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			billboard_fragment_shaders[writes_depth][lit] = tfx_impl_sdlgpu__create_shader(device, shader_folder, tfx_impl_billboard_fragment_entry_points[writes_depth][lit], SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 0, lit);
+			ribbon_fragment_shaders[writes_depth][lit] = tfx_impl_sdlgpu__create_shader(device, shader_folder, tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 0, lit);
+		}
+	}
 	SDL_GPUShader *baked_billboard_vertex = tfx_impl_sdlgpu__create_shader(device, shader_folder, "tfx_billboard_baked_vertex", SDL_GPU_SHADERSTAGE_VERTEX, 0, 3, 2);
-	SDL_GPUShader *billboard_fragment = tfx_impl_sdlgpu__create_shader(device, shader_folder, "tfx_billboard_fragment", SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 0, 0);
-	SDL_GPUShader *ribbon_vertex = tfx_impl_sdlgpu__create_shader(device, shader_folder, "tfx_ribbon_vertex", SDL_GPU_SHADERSTAGE_VERTEX, 0, 5, 2);
-	SDL_GPUShader *ribbon_fragment = tfx_impl_sdlgpu__create_shader(device, shader_folder, "tfx_ribbon_fragment", SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 0, 0);
-	if (billboard_vertex && billboard_fragment) {
-		renderer->billboard_pipeline = tfx_impl_sdlgpu__create_graphics_pipeline(device, billboard_vertex, billboard_fragment, color_format, depth_format);
+	bool pipelines_created = true;
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			renderer->billboard_pipelines[writes_depth][lit] = tfx_impl_sdlgpu__create_graphics_pipeline(device, billboard_vertex_shaders[lit], billboard_fragment_shaders[writes_depth][lit],
+				color_format, depth_format, writes_depth != 0);
+			renderer->ribbon_pipelines[writes_depth][lit] = tfx_impl_sdlgpu__create_graphics_pipeline(device, ribbon_vertex_shaders[lit], ribbon_fragment_shaders[writes_depth][lit],
+				color_format, depth_format, writes_depth != 0);
+			pipelines_created = pipelines_created && renderer->billboard_pipelines[writes_depth][lit] && renderer->ribbon_pipelines[writes_depth][lit];
+		}
 	}
-	if (baked_billboard_vertex && billboard_fragment) {
-		renderer->baked_billboard_pipeline = tfx_impl_sdlgpu__create_graphics_pipeline(device, baked_billboard_vertex, billboard_fragment, color_format, depth_format);
-	}
-	if (ribbon_vertex && ribbon_fragment) {
-		renderer->ribbon_pipeline = tfx_impl_sdlgpu__create_graphics_pipeline(device, ribbon_vertex, ribbon_fragment, color_format, depth_format);
-	}
+	renderer->baked_billboard_pipeline = tfx_impl_sdlgpu__create_graphics_pipeline(device, baked_billboard_vertex, billboard_fragment_shaders[0][0], color_format, depth_format, false);
 	//The pipelines keep what they need from the shaders
-	SDL_GPUShader *shaders[5] = { billboard_vertex, baked_billboard_vertex, billboard_fragment, ribbon_vertex, ribbon_fragment };
-	for (int index = 0; index != 5; ++index) {
+	SDL_GPUShader *shaders[13] = { baked_billboard_vertex, billboard_vertex_shaders[0], billboard_vertex_shaders[1], ribbon_vertex_shaders[0], ribbon_vertex_shaders[1],
+		billboard_fragment_shaders[0][0], billboard_fragment_shaders[0][1], billboard_fragment_shaders[1][0], billboard_fragment_shaders[1][1],
+		ribbon_fragment_shaders[0][0], ribbon_fragment_shaders[0][1], ribbon_fragment_shaders[1][0], ribbon_fragment_shaders[1][1] };
+	for (int index = 0; index != 13; ++index) {
 		if (shaders[index]) {
 			SDL_ReleaseGPUShader(device, shaders[index]);
 		}
@@ -381,7 +398,7 @@ bool tfx_impl_sdlgpu_Init(tfx_impl_sdlgpu_t *renderer, SDL_GPUDevice *device, SD
 	sampler_info.max_lod = 0.f;
 	renderer->color_ramp_sampler = SDL_CreateGPUSampler(device, &sampler_info);
 
-	if (!renderer->billboard_pipeline || !renderer->baked_billboard_pipeline || !renderer->ribbon_pipeline || !renderer->particle_kernel || !renderer->ribbon_compute_pipeline
+	if (!pipelines_created || !renderer->baked_billboard_pipeline || !renderer->particle_kernel || !renderer->ribbon_compute_pipeline
 		|| !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline || !renderer->atlas_sampler || !renderer->color_ramp_sampler) {
 		tfx_Print("Could not create the TimelineFX pipelines and samplers");
 		return false;
@@ -750,6 +767,7 @@ static bool tfx_impl_sdlgpu__upload_library_data(tfx_impl_sdlgpu_t *renderer) {
 }
 
 static bool tfx_impl_sdlgpu__queue_frame(tfx_impl_sdlgpu_t *renderer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_sdlgpu__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -896,10 +914,12 @@ void tfx_impl_sdlgpu_Compute(tfx_impl_sdlgpu_t *renderer, SDL_GPUCommandBuffer *
 	}
 }
 
-//Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
+//Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared. Every bucket is walked, because the
+//dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
 static void tfx_impl_sdlgpu__render_ribbons(tfx_impl_sdlgpu_t *renderer, SDL_GPUCommandBuffer *command_buffer, SDL_GPURenderPass *render_pass,
-	const tfx_impl_sdlgpu_ribbon_set_t *set, SDL_GPUBuffer *image_data, SDL_GPUTexture *color_ramps) {
-	SDL_BindGPUGraphicsPipeline(render_pass, renderer->ribbon_pipeline);
+	const tfx_impl_sdlgpu_ribbon_set_t *set, SDL_GPUBuffer *image_data, SDL_GPUTexture *color_ramps, int writes_depth) {
+	SDL_BindGPUGraphicsPipeline(render_pass, renderer->ribbon_pipelines[writes_depth][0]);
+	SDL_GPUGraphicsPipeline *bound_pipeline = renderer->ribbon_pipelines[writes_depth][0];
 	SDL_GPUBufferBinding index_binding = { set->indices.buffer, 0 };
 	SDL_BindGPUIndexBuffer(render_pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_32BIT);
 	SDL_GPUBuffer *vertex_reads[5] = { set->vertices.buffer, set->instances.buffer, set->emitters.buffer, tfx_impl_sdlgpu__ribbon_graph_lookups(renderer, set), image_data };
@@ -909,6 +929,15 @@ static void tfx_impl_sdlgpu__render_ribbons(tfx_impl_sdlgpu_t *renderer, SDL_GPU
 
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_sdlgpu__create_ribbon_dispatch(set);
 	while (tfx_impl_sdlgpu__next_ribbon_dispatch(set, &dispatch)) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		SDL_GPUGraphicsPipeline *pipeline = renderer->ribbon_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
+			bound_pipeline = pipeline;
+		}
 		SDL_PushGPUVertexUniformData(command_buffer, 1, tfx_GetRibbonDispatchGlobals(&dispatch), sizeof(tfx_ribbon_bucket_globals_t));
 		SDL_DrawGPUIndexedPrimitives(render_pass, dispatch.index_count, 1, dispatch.index_offset, 0, 0);
 	}
@@ -925,50 +954,70 @@ static void tfx_impl_sdlgpu__draw_instance_range(SDL_GPUCommandBuffer *command_b
 	SDL_DrawGPUPrimitives(render_pass, 6, count, 0, 0);
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_sdlgpu__render_billboards(tfx_impl_sdlgpu_t *renderer, SDL_GPUCommandBuffer *command_buffer, SDL_GPURenderPass *render_pass, int writes_depth) {
+	SDL_BindGPUGraphicsPipeline(render_pass, renderer->billboard_pipelines[writes_depth][0]);
+	SDL_GPUGraphicsPipeline *bound_pipeline = renderer->billboard_pipelines[writes_depth][0];
+	SDL_GPUBuffer *vertex_reads[4] = {
+		renderer->instance_buffers[renderer->current_instance_buffer].buffer,
+		renderer->instance_buffers[renderer->current_instance_buffer ^ 1].buffer,
+		renderer->image_data.buffer,
+		renderer->emitter_properties.buffer,
+	};
+	SDL_BindGPUVertexStorageBuffers(render_pass, 0, vertex_reads, 4);
+	SDL_GPUTextureSamplerBinding samplers[2] = { { renderer->shape_atlas, renderer->atlas_sampler }, { renderer->color_ramps, renderer->color_ramp_sampler } };
+	SDL_BindGPUFragmentSamplers(render_pass, 0, samplers, 2);
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		SDL_GPUGraphicsPipeline *pipeline = renderer->billboard_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			SDL_BindGPUGraphicsPipeline(render_pass, pipeline);
+			bound_pipeline = pipeline;
+		}
+		tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+}
+
 void tfx_impl_sdlgpu_Render(tfx_impl_sdlgpu_t *renderer, SDL_GPUCommandBuffer *command_buffer, SDL_GPURenderPass *render_pass, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_sdlgpu__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_sdlgpu__ribbon_set_active(&renderer->baked_ribbons))) {
 		return;
 	}
-	//Every vertex shader takes the frame's uniforms at slot 0 and its draw's own at slot 1
+	//Every vertex shader takes the frame's uniforms at slot 0 and its draw's own at slot 1, and the lit fragments take the frame's at fragment slot 0
 	SDL_PushGPUVertexUniformData(command_buffer, 0, uniforms, sizeof(tfx_impl_uniforms_t));
+	SDL_PushGPUFragmentUniformData(command_buffer, 0, uniforms, sizeof(tfx_impl_uniforms_t));
 
 	//The live draws need the library data, which goes up with the first update
-	if (renderer->color_ramps && renderer->image_data.buffer) {
-		if (renderer->instance_count > 0) {
-			SDL_BindGPUGraphicsPipeline(render_pass, renderer->billboard_pipeline);
-			SDL_GPUBuffer *vertex_reads[4] = {
-				renderer->instance_buffers[renderer->current_instance_buffer].buffer,
-				renderer->instance_buffers[renderer->current_instance_buffer ^ 1].buffer,
-				renderer->image_data.buffer,
-				renderer->emitter_properties.buffer,
-			};
-			SDL_BindGPUVertexStorageBuffers(render_pass, 0, vertex_reads, 4);
-			SDL_GPUTextureSamplerBinding samplers[2] = { { renderer->shape_atlas, renderer->atlas_sampler }, { renderer->color_ramps, renderer->color_ramp_sampler } };
+	const bool live_data = renderer->color_ramps && renderer->image_data.buffer;
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		if (live_data && renderer->instance_count > 0) {
+			tfx_impl_sdlgpu__render_billboards(renderer, command_buffer, render_pass, writes_depth);
+		}
+		if (live_data && tfx_impl_sdlgpu__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_sdlgpu__render_ribbons(renderer, command_buffer, render_pass, &renderer->live_ribbons, renderer->image_data.buffer, renderer->color_ramps, writes_depth);
+		}
+		if (!renderer->baked_color_ramps) {
+			continue;
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
+			//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
+			SDL_BindGPUGraphicsPipeline(render_pass, renderer->baked_billboard_pipeline);
+			SDL_GPUBuffer *vertex_reads[3] = { renderer->playback_instances.buffer, renderer->baked_image_data.buffer, renderer->baked_emitter_properties.buffer };
+			SDL_BindGPUVertexStorageBuffers(render_pass, 0, vertex_reads, 3);
+			SDL_GPUTextureSamplerBinding samplers[2] = { { renderer->shape_atlas, renderer->atlas_sampler }, { renderer->baked_color_ramps, renderer->color_ramp_sampler } };
 			SDL_BindGPUFragmentSamplers(render_pass, 0, samplers, 2);
-			for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-				tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, renderer->layer_start[layer], renderer->layer_count[layer]);
-				tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
-			}
+			tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, 0, renderer->playback_sprite_count);
 		}
-		if (tfx_impl_sdlgpu__ribbon_set_active(&renderer->live_ribbons)) {
-			tfx_impl_sdlgpu__render_ribbons(renderer, command_buffer, render_pass, &renderer->live_ribbons, renderer->image_data.buffer, renderer->color_ramps);
+		if (tfx_impl_sdlgpu__ribbon_set_active(&renderer->baked_ribbons)) {
+			tfx_impl_sdlgpu__render_ribbons(renderer, command_buffer, render_pass, &renderer->baked_ribbons, renderer->baked_image_data.buffer, renderer->baked_color_ramps, writes_depth);
 		}
-	}
-	if (!renderer->baked_color_ramps) {
-		return;
-	}
-	if (renderer->playback_sprite_count > 0) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
-		SDL_BindGPUGraphicsPipeline(render_pass, renderer->baked_billboard_pipeline);
-		SDL_GPUBuffer *vertex_reads[3] = { renderer->playback_instances.buffer, renderer->baked_image_data.buffer, renderer->baked_emitter_properties.buffer };
-		SDL_BindGPUVertexStorageBuffers(render_pass, 0, vertex_reads, 3);
-		SDL_GPUTextureSamplerBinding samplers[2] = { { renderer->shape_atlas, renderer->atlas_sampler }, { renderer->baked_color_ramps, renderer->color_ramp_sampler } };
-		SDL_BindGPUFragmentSamplers(render_pass, 0, samplers, 2);
-		tfx_impl_sdlgpu__draw_instance_range(command_buffer, render_pass, 0, renderer->playback_sprite_count);
-	}
-	if (tfx_impl_sdlgpu__ribbon_set_active(&renderer->baked_ribbons)) {
-		tfx_impl_sdlgpu__render_ribbons(renderer, command_buffer, render_pass, &renderer->baked_ribbons, renderer->baked_image_data.buffer, renderer->baked_color_ramps);
 	}
 }
 
@@ -1014,9 +1063,13 @@ void tfx_impl_sdlgpu_Shutdown(tfx_impl_sdlgpu_t *renderer) {
 	if (renderer->transfer_buffer) SDL_ReleaseGPUTransferBuffer(device, renderer->transfer_buffer);
 	if (renderer->atlas_sampler) SDL_ReleaseGPUSampler(device, renderer->atlas_sampler);
 	if (renderer->color_ramp_sampler) SDL_ReleaseGPUSampler(device, renderer->color_ramp_sampler);
-	if (renderer->billboard_pipeline) SDL_ReleaseGPUGraphicsPipeline(device, renderer->billboard_pipeline);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			if (renderer->billboard_pipelines[writes_depth][lit]) SDL_ReleaseGPUGraphicsPipeline(device, renderer->billboard_pipelines[writes_depth][lit]);
+			if (renderer->ribbon_pipelines[writes_depth][lit]) SDL_ReleaseGPUGraphicsPipeline(device, renderer->ribbon_pipelines[writes_depth][lit]);
+		}
+	}
 	if (renderer->baked_billboard_pipeline) SDL_ReleaseGPUGraphicsPipeline(device, renderer->baked_billboard_pipeline);
-	if (renderer->ribbon_pipeline) SDL_ReleaseGPUGraphicsPipeline(device, renderer->ribbon_pipeline);
 	if (renderer->particle_kernel) SDL_ReleaseGPUComputePipeline(device, renderer->particle_kernel);
 	if (renderer->ribbon_compute_pipeline) SDL_ReleaseGPUComputePipeline(device, renderer->ribbon_compute_pipeline);
 	if (renderer->sprite_playback_pipeline) SDL_ReleaseGPUComputePipeline(device, renderer->sprite_playback_pipeline);

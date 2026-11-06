@@ -279,7 +279,7 @@ void example_scene_Update(example_scene_t *scene, double elapsed_milliseconds, f
 		//One call per frame that writes the instances once, so the previous instance buffer is always the one drawn last
 		tfx_UpdateStageSubSteps(scene->stage, scene->timer.update_length, ticks);
 	}
-	tfx_impl_GatherFrame(scene->stage, ticks > 0, (scene->features & example_scene_feature_ribbons) ? &scene->ribbon_staging : NULL,
+	tfx_impl_GatherFrame(scene->stage, scene->library, ticks > 0, (scene->features & example_scene_feature_ribbons) ? &scene->ribbon_staging : NULL,
 		(scene->features & example_scene_feature_gpu_simulation) != 0, frame);
 
 	if (scene->animation_manager) {

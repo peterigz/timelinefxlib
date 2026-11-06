@@ -44,13 +44,15 @@ typedef struct tfx_impl_dx11_s {
 	ID3D11Device *device;
 	ID3D11DeviceContext *device_context;
 
-	ID3D11VertexShader *billboard_vertex_shader;
-	ID3D11PixelShader *billboard_pixel_shader;
+	//Each layer picks its shaders from its tfx_GetLayerFlags: vertex shaders by [lit], pixel shaders by [writes depth][lit]
+	ID3D11VertexShader *billboard_vertex_shaders[2];
+	ID3D11PixelShader *billboard_pixel_shaders[2][2];
 	ID3D11BlendState *blend_state;
 	ID3D11DepthStencilState *depth_stencil_state;
+	ID3D11DepthStencilState *depth_write_state;	//The layers that write depth draw first with it, and with blending off
 	ID3D11RasterizerState *rasterizer_state;
 	ID3D11SamplerState *sampler_state;
-	ID3D11Buffer *frame_constants;	//tfx_impl_uniforms_t at b0
+	ID3D11Buffer *frame_constants;	//tfx_impl_uniforms_t at b0, in the pixel shader too for the lit fragments
 	ID3D11Buffer *draw_constants;	//The draw's instance offsets at b1
 
 	ID3D11Texture2D *shape_atlas;
@@ -80,6 +82,7 @@ typedef struct tfx_impl_dx11_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	ID3D11ComputeShader *particle_kernel;		//simulate_particles from timelinefx.slang
 	ID3D11Buffer *particle_push;				//tfx_gpu_particle_push_t at b0
@@ -113,8 +116,8 @@ typedef struct tfx_impl_dx11_s {
 	tfxU32 playback_ribbon_count;
 
 	ID3D11ComputeShader *ribbon_compute_shader;
-	ID3D11VertexShader *ribbon_vertex_shader;
-	ID3D11PixelShader *ribbon_pixel_shader;
+	ID3D11VertexShader *ribbon_vertex_shaders[2];
+	ID3D11PixelShader *ribbon_pixel_shaders[2][2];
 	ID3D11Buffer *ribbon_constants;	//A bucket's tfx_ribbon_bucket_globals_t at b2
 	tfx_impl_dx11_buffer_t graph_lookups;		//Raw, tfx_GetGPUGraphLookupsBuffer
 	tfx_impl_dx11_ribbon_set_t live_ribbons;	//Uploaded when an update ran

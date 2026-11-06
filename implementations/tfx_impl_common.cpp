@@ -1,5 +1,6 @@
 #include "tfx_impl_common.h"
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,8 @@ extern "C" unsigned ZSTD_isError(size_t code);
 #define TFX_IMPL_VK_FORMAT_BC4_UNORM 139
 #define TFX_IMPL_VK_FORMAT_BC5_UNORM 141
 #define TFX_IMPL_VK_FORMAT_BC7_UNORM 145
+
+static_assert(offsetof(tfx_impl_uniforms_t, light) == tfxVIEW_LIGHT_OFFSET && sizeof(tfx_impl_uniforms_t) == tfxVIEW_UNIFORMS_SIZE, "tfx_impl_uniforms_t must match tfx_lit_view_uniforms in timelinefx.slang");
 
 //--- Impl_math
 
@@ -623,9 +626,12 @@ static void tfx_impl__gather_ribbons(tfx_stage stage, tfx_impl_ribbon_staging_t 
 	ribbon_frame->emitters = staging->emitters;
 }
 
-void tfx_impl_GatherFrame(tfx_stage stage, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame) {
+void tfx_impl_GatherFrame(tfx_stage stage, tfx_library layer_library, bool stage_updated, tfx_impl_ribbon_staging_t *ribbon_staging, bool fetch_gpu_particles, tfx_impl_frame_t *frame) {
 	memset(frame, 0, sizeof(tfx_impl_frame_t));
 	frame->stage_updated = stage_updated;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		frame->layer_flags[layer] = tfx_GetLayerFlags(layer_library, layer);
+	}
 	if (!stage_updated) {
 		return;
 	}
@@ -678,4 +684,25 @@ void tfx_impl_SetUniforms(tfx_impl_uniforms_t *uniforms, const tfx_impl_camera_t
 	uniforms->camera_position[0] = camera->position.x;
 	uniforms->camera_position[1] = camera->position.y;
 	uniforms->camera_position[2] = camera->position.z;
+	//The editor's default preview light: 70 degrees of yaw and 40 of pitch, a white light at 0.85, so lit layers look as they do there. A game sets its own after this
+	const float light_pitch = tfx_DegreesToRadians(40.f);
+	const float light_yaw = tfx_DegreesToRadians(70.f);
+	const float light_intensity = 0.85f;
+	uniforms->light.direction = { cosf(light_pitch) * sinf(light_yaw), sinf(light_pitch), cosf(light_pitch) * cosf(light_yaw), 0.f };
+	uniforms->light.color = { light_intensity, light_intensity, light_intensity, 0.f };
+	uniforms->light.sky_color = { 0.25f, 0.27f, 0.3f, 0.f };
+	uniforms->light.ground_color = { 0.1f, 0.09f, 0.08f, 0.f };
 }
+
+//--- Impl_layers
+
+const char *const tfx_impl_billboard_vertex_entry_points[2] = { "tfx_billboard_vertex", "tfx_billboard_lit_vertex" };
+const char *const tfx_impl_billboard_fragment_entry_points[2][2] = {
+	{ "tfx_billboard_fragment", "tfx_billboard_lit_fragment" },
+	{ "tfx_billboard_cutout_fragment", "tfx_billboard_lit_cutout_fragment" },
+};
+const char *const tfx_impl_ribbon_vertex_entry_points[2] = { "tfx_ribbon_vertex", "tfx_ribbon_lit_vertex" };
+const char *const tfx_impl_ribbon_fragment_entry_points[2][2] = {
+	{ "tfx_ribbon_fragment", "tfx_ribbon_lit_fragment" },
+	{ "tfx_ribbon_cutout_fragment", "tfx_ribbon_lit_cutout_fragment" },
+};

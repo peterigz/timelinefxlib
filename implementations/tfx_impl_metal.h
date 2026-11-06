@@ -70,14 +70,16 @@ typedef struct tfx_impl_metal_s {
 	tfxU32 frame_index;
 	tfx_impl_metal_frame_slot_t frame_slots[TFX_IMPL_METAL_MAX_FRAMES_IN_FLIGHT];
 
-	id<MTLRenderPipelineState> billboard_pipeline;
+	//Each layer picks its pipelines from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	id<MTLRenderPipelineState> billboard_pipelines[2][2];
 	id<MTLRenderPipelineState> baked_billboard_pipeline;
-	id<MTLRenderPipelineState> ribbon_pipeline;
+	id<MTLRenderPipelineState> ribbon_pipelines[2][2];
 	id<MTLComputePipelineState> particle_kernel;			//simulate_particles from timelinefx.slang
 	id<MTLComputePipelineState> ribbon_compute_pipeline;
 	id<MTLComputePipelineState> sprite_playback_pipeline;
 	id<MTLComputePipelineState> ribbon_playback_pipeline;
 	id<MTLDepthStencilState> depth_state;					//Tested, not written
+	id<MTLDepthStencilState> depth_write_state;			//Tested and written, for the layers that write depth
 	id<MTLSamplerState> atlas_sampler;
 
 	id<MTLTexture> shape_atlas;
@@ -106,6 +108,7 @@ typedef struct tfx_impl_metal_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	//The hot, cold and noise sections in one buffer, reached through the kernel's gpuAddress table like everything else it reads
 	tfx_impl_metal_buffer_t particle_pool;

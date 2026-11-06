@@ -17,8 +17,10 @@
 #define TFX_IMPL_METAL_RING_SIZE (4 * 1024 * 1024)
 //Every upload starts on 256 bytes, which suits buffer offsets, texture copies and the kernel's sections
 #define TFX_IMPL_METAL_UPLOAD_ALIGNMENT 256
-//The [[buffer]] indexes -D TFX_METAL_SLOTS gives: vertex reads and compute writes from 0, vertex uniforms and compute reads from 10, the compute uniform at 20
+//The [[buffer]] indexes -D TFX_METAL_SLOTS gives: vertex reads and compute writes from 0, vertex uniforms and compute reads from 10, the compute uniform at 20,
+//and the lit fragments' view at fragment buffer 0
 #define TFX_IMPL_METAL_VERTEX_UNIFORM_SLOT 10
+#define TFX_IMPL_METAL_FRAGMENT_UNIFORM_SLOT 0
 #define TFX_IMPL_METAL_COMPUTE_READ_SLOT 10
 #define TFX_IMPL_METAL_COMPUTE_UNIFORM_SLOT 20
 //simulate_particles, compiled without the defines, takes its push constants at [[buffer(0)]] and its gpuAddress table at [[buffer(1)]]
@@ -292,9 +294,9 @@ static id<MTLComputePipelineState> tfx_impl_metal__create_compute_pipeline(id<MT
 	return pipeline;
 }
 
-//Premultiplied blending and no vertex descriptor: instances and ribbon vertexes are read from buffers
+//Premultiplied blending, or none for a layer that writes depth, and no vertex descriptor: instances and ribbon vertexes are read from buffers
 static id<MTLRenderPipelineState> tfx_impl_metal__create_render_pipeline(id<MTLDevice> device, id<MTLFunction> vertex_function, id<MTLFunction> fragment_function,
-	MTLPixelFormat color_format, MTLPixelFormat depth_format) {
+	MTLPixelFormat color_format, MTLPixelFormat depth_format, bool writes_depth) {
 	if (!vertex_function || !fragment_function) {
 		return nil;
 	}
@@ -304,7 +306,7 @@ static id<MTLRenderPipelineState> tfx_impl_metal__create_render_pipeline(id<MTLD
 	descriptor.depthAttachmentPixelFormat = depth_format;
 	MTLRenderPipelineColorAttachmentDescriptor *color = descriptor.colorAttachments[0];
 	color.pixelFormat = color_format;
-	color.blendingEnabled = YES;
+	color.blendingEnabled = writes_depth ? NO : YES;
 	color.rgbBlendOperation = MTLBlendOperationAdd;
 	color.alphaBlendOperation = MTLBlendOperationAdd;
 	color.sourceRGBBlendFactor = MTLBlendFactorOne;
@@ -332,19 +334,39 @@ bool tfx_impl_metal_Init(tfx_impl_metal_t *renderer, id<MTLDevice> device, MTLPi
 	renderer->device = [device retain];
 	renderer->frames_in_flight = frames_in_flight < 1 ? 1 : frames_in_flight > TFX_IMPL_METAL_MAX_FRAMES_IN_FLIGHT ? TFX_IMPL_METAL_MAX_FRAMES_IN_FLIGHT : frames_in_flight;
 
-	id<MTLFunction> billboard_vertex = tfx_impl_metal__load_function(device, shader_folder, "tfx_billboard_vertex");
+	id<MTLFunction> billboard_vertex_functions[2];
+	id<MTLFunction> ribbon_vertex_functions[2];
+	id<MTLFunction> billboard_fragment_functions[2][2];
+	id<MTLFunction> ribbon_fragment_functions[2][2];
+	for (int lit = 0; lit != 2; ++lit) {
+		billboard_vertex_functions[lit] = tfx_impl_metal__load_function(device, shader_folder, tfx_impl_billboard_vertex_entry_points[lit]);
+		ribbon_vertex_functions[lit] = tfx_impl_metal__load_function(device, shader_folder, tfx_impl_ribbon_vertex_entry_points[lit]);
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			billboard_fragment_functions[writes_depth][lit] = tfx_impl_metal__load_function(device, shader_folder, tfx_impl_billboard_fragment_entry_points[writes_depth][lit]);
+			ribbon_fragment_functions[writes_depth][lit] = tfx_impl_metal__load_function(device, shader_folder, tfx_impl_ribbon_fragment_entry_points[writes_depth][lit]);
+		}
+	}
 	id<MTLFunction> baked_billboard_vertex = tfx_impl_metal__load_function(device, shader_folder, "tfx_billboard_baked_vertex");
-	id<MTLFunction> billboard_fragment = tfx_impl_metal__load_function(device, shader_folder, "tfx_billboard_fragment");
-	id<MTLFunction> ribbon_vertex = tfx_impl_metal__load_function(device, shader_folder, "tfx_ribbon_vertex");
-	id<MTLFunction> ribbon_fragment = tfx_impl_metal__load_function(device, shader_folder, "tfx_ribbon_fragment");
-	renderer->billboard_pipeline = tfx_impl_metal__create_render_pipeline(device, billboard_vertex, billboard_fragment, color_format, depth_format);
-	renderer->baked_billboard_pipeline = tfx_impl_metal__create_render_pipeline(device, baked_billboard_vertex, billboard_fragment, color_format, depth_format);
-	renderer->ribbon_pipeline = tfx_impl_metal__create_render_pipeline(device, ribbon_vertex, ribbon_fragment, color_format, depth_format);
-	[billboard_vertex release];
+	bool pipelines_created = true;
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			renderer->billboard_pipelines[writes_depth][lit] = tfx_impl_metal__create_render_pipeline(device, billboard_vertex_functions[lit], billboard_fragment_functions[writes_depth][lit],
+				color_format, depth_format, writes_depth != 0);
+			renderer->ribbon_pipelines[writes_depth][lit] = tfx_impl_metal__create_render_pipeline(device, ribbon_vertex_functions[lit], ribbon_fragment_functions[writes_depth][lit],
+				color_format, depth_format, writes_depth != 0);
+			pipelines_created = pipelines_created && renderer->billboard_pipelines[writes_depth][lit] && renderer->ribbon_pipelines[writes_depth][lit];
+		}
+	}
+	renderer->baked_billboard_pipeline = tfx_impl_metal__create_render_pipeline(device, baked_billboard_vertex, billboard_fragment_functions[0][0], color_format, depth_format, false);
 	[baked_billboard_vertex release];
-	[billboard_fragment release];
-	[ribbon_vertex release];
-	[ribbon_fragment release];
+	for (int lit = 0; lit != 2; ++lit) {
+		[billboard_vertex_functions[lit] release];
+		[ribbon_vertex_functions[lit] release];
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			[billboard_fragment_functions[writes_depth][lit] release];
+			[ribbon_fragment_functions[writes_depth][lit] release];
+		}
+	}
 	renderer->particle_kernel = tfx_impl_metal__create_compute_pipeline(device, shader_folder, "simulate_particles", TFX_IMPL_METAL_KERNEL_GROUP_SIZE);
 	renderer->ribbon_compute_pipeline = tfx_impl_metal__create_compute_pipeline(device, shader_folder, "tfx_ribbon_compute", TFX_IMPL_METAL_RIBBON_GROUP_SIZE);
 	renderer->sprite_playback_pipeline = tfx_impl_metal__create_compute_pipeline(device, shader_folder, "tfx_sprite_playback", TFX_IMPL_METAL_PLAYBACK_GROUP_SIZE);
@@ -354,6 +376,8 @@ bool tfx_impl_metal_Init(tfx_impl_metal_t *renderer, id<MTLDevice> device, MTLPi
 	depth_descriptor.depthCompareFunction = MTLCompareFunctionLessEqual;
 	depth_descriptor.depthWriteEnabled = NO;
 	renderer->depth_state = [device newDepthStencilStateWithDescriptor:depth_descriptor];
+	depth_descriptor.depthWriteEnabled = YES;
+	renderer->depth_write_state = [device newDepthStencilStateWithDescriptor:depth_descriptor];
 	[depth_descriptor release];
 
 	MTLSamplerDescriptor *sampler_descriptor = [MTLSamplerDescriptor new];
@@ -365,8 +389,8 @@ bool tfx_impl_metal_Init(tfx_impl_metal_t *renderer, id<MTLDevice> device, MTLPi
 	renderer->atlas_sampler = [device newSamplerStateWithDescriptor:sampler_descriptor];
 	[sampler_descriptor release];
 
-	if (!renderer->billboard_pipeline || !renderer->baked_billboard_pipeline || !renderer->ribbon_pipeline || !renderer->particle_kernel || !renderer->ribbon_compute_pipeline
-		|| !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline || !renderer->depth_state || !renderer->atlas_sampler) {
+	if (!pipelines_created || !renderer->baked_billboard_pipeline || !renderer->particle_kernel || !renderer->ribbon_compute_pipeline
+		|| !renderer->sprite_playback_pipeline || !renderer->ribbon_playback_pipeline || !renderer->depth_state || !renderer->depth_write_state || !renderer->atlas_sampler) {
 		tfx_Print("Could not create the TimelineFX pipelines and samplers");
 		return false;
 	}
@@ -734,6 +758,7 @@ static bool tfx_impl_metal__upload_stage(tfx_impl_metal_t *renderer, id<MTLComma
 }
 
 bool tfx_impl_metal_UploadFrame(tfx_impl_metal_t *renderer, id<MTLCommandBuffer> command_buffer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_metal__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -869,18 +894,25 @@ void tfx_impl_metal_Compute(tfx_impl_metal_t *renderer, id<MTLCommandBuffer> com
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
-static void tfx_impl_metal__render_ribbons(tfx_impl_metal_t *renderer, id<MTLRenderCommandEncoder> render_encoder, tfx_impl_metal_ribbon_set_t *set, id<MTLBuffer> image_data) {
-	[render_encoder setRenderPipelineState:renderer->ribbon_pipeline];
+//Every bucket is walked, because the dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
+static void tfx_impl_metal__render_ribbons(tfx_impl_metal_t *renderer, id<MTLRenderCommandEncoder> render_encoder, tfx_impl_metal_ribbon_set_t *set, id<MTLBuffer> image_data, int writes_depth) {
 	[render_encoder setVertexBuffer:set->vertices.buffer offset:0 atIndex:0];
 	[render_encoder setVertexBuffer:set->instances.buffer offset:0 atIndex:1];
 	[render_encoder setVertexBuffer:set->emitters.buffer offset:0 atIndex:2];
 	[render_encoder setVertexBuffer:tfx_impl_metal__ribbon_graph_lookups(renderer, set) offset:0 atIndex:3];
 	[render_encoder setVertexBuffer:image_data offset:0 atIndex:4];
 	//The vertex shader doesn't read the lerp or the camera position, so the globals go as the library gives them
+	id<MTLRenderPipelineState> bound_pipeline = nil;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_metal__create_ribbon_dispatch(set);
 	while (tfx_impl_metal__next_ribbon_dispatch(set, &dispatch)) {
-		if (dispatch.index_count == 0) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (dispatch.index_count == 0 || tfx_impl_LayerWritesDepth(flags) != writes_depth) {
 			continue;
+		}
+		id<MTLRenderPipelineState> pipeline = renderer->ribbon_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			[render_encoder setRenderPipelineState:pipeline];
+			bound_pipeline = pipeline;
 		}
 		[render_encoder setVertexBytes:tfx_GetRibbonDispatchGlobals(&dispatch) length:sizeof(tfx_ribbon_bucket_globals_t) atIndex:TFX_IMPL_METAL_VERTEX_UNIFORM_SLOT + 1];
 		[render_encoder drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexCount:dispatch.index_count indexType:MTLIndexTypeUInt32 indexBuffer:set->indices.buffer
@@ -898,47 +930,68 @@ static void tfx_impl_metal__draw_instance_range(id<MTLRenderCommandEncoder> rend
 	[render_encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6 instanceCount:count];
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_metal__render_billboards(tfx_impl_metal_t *renderer, id<MTLRenderCommandEncoder> render_encoder, int writes_depth) {
+	tfxU32 current = renderer->current_instance_buffer;
+	[render_encoder setVertexBuffer:renderer->instance_buffers[current].buffer offset:0 atIndex:0];
+	[render_encoder setVertexBuffer:renderer->instance_buffers[current ^ 1].buffer offset:0 atIndex:1];
+	[render_encoder setVertexBuffer:renderer->image_data.buffer offset:0 atIndex:2];
+	[render_encoder setVertexBuffer:renderer->emitter_properties.buffer offset:0 atIndex:3];
+	id<MTLRenderPipelineState> bound_pipeline = nil;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		id<MTLRenderPipelineState> pipeline = renderer->billboard_pipelines[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (pipeline != bound_pipeline) {
+			[render_encoder setRenderPipelineState:pipeline];
+			bound_pipeline = pipeline;
+		}
+		tfx_impl_metal__draw_instance_range(render_encoder, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_metal__draw_instance_range(render_encoder, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+}
+
 void tfx_impl_metal_Render(tfx_impl_metal_t *renderer, id<MTLRenderCommandEncoder> render_encoder, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_metal__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_metal__ribbon_set_active(&renderer->baked_ribbons))) {
 		return;
 	}
-	[render_encoder setDepthStencilState:renderer->depth_state];
 	[render_encoder setVertexBytes:uniforms length:sizeof(tfx_impl_uniforms_t) atIndex:TFX_IMPL_METAL_VERTEX_UNIFORM_SLOT];
+	//The lit fragments read the light from the same uniforms
+	[render_encoder setFragmentBytes:uniforms length:sizeof(tfx_impl_uniforms_t) atIndex:TFX_IMPL_METAL_FRAGMENT_UNIFORM_SLOT];
 	[render_encoder setFragmentTexture:renderer->shape_atlas atIndex:0];
 	[render_encoder setFragmentSamplerState:renderer->atlas_sampler atIndex:0];
-
 	//The live draws need the library data, which goes up with the first update
-	if (renderer->color_ramps && renderer->image_data.buffer) {
-		[render_encoder setFragmentTexture:renderer->color_ramps atIndex:1];
-		if (renderer->instance_count > 0) {
-			tfxU32 current = renderer->current_instance_buffer;
-			[render_encoder setRenderPipelineState:renderer->billboard_pipeline];
-			[render_encoder setVertexBuffer:renderer->instance_buffers[current].buffer offset:0 atIndex:0];
-			[render_encoder setVertexBuffer:renderer->instance_buffers[current ^ 1].buffer offset:0 atIndex:1];
-			[render_encoder setVertexBuffer:renderer->image_data.buffer offset:0 atIndex:2];
-			[render_encoder setVertexBuffer:renderer->emitter_properties.buffer offset:0 atIndex:3];
-			for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-				tfx_impl_metal__draw_instance_range(render_encoder, renderer->layer_start[layer], renderer->layer_count[layer]);
-				tfx_impl_metal__draw_instance_range(render_encoder, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	const bool live_data = renderer->color_ramps && renderer->image_data.buffer;
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		[render_encoder setDepthStencilState:writes_depth ? renderer->depth_write_state : renderer->depth_state];
+		if (live_data) {
+			[render_encoder setFragmentTexture:renderer->color_ramps atIndex:1];
+			if (renderer->instance_count > 0) {
+				tfx_impl_metal__render_billboards(renderer, render_encoder, writes_depth);
+			}
+			if (tfx_impl_metal__ribbon_set_active(&renderer->live_ribbons)) {
+				tfx_impl_metal__render_ribbons(renderer, render_encoder, &renderer->live_ribbons, renderer->image_data.buffer, writes_depth);
 			}
 		}
-		if (tfx_impl_metal__ribbon_set_active(&renderer->live_ribbons)) {
-			tfx_impl_metal__render_ribbons(renderer, render_encoder, &renderer->live_ribbons, renderer->image_data.buffer);
-		}
-	}
-	if (renderer->baked_color_ramps) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
-		[render_encoder setFragmentTexture:renderer->baked_color_ramps atIndex:1];
-		if (renderer->playback_sprite_count > 0) {
-			[render_encoder setRenderPipelineState:renderer->baked_billboard_pipeline];
-			[render_encoder setVertexBuffer:renderer->playback_instances.buffer offset:0 atIndex:0];
-			[render_encoder setVertexBuffer:renderer->baked_image_data.buffer offset:0 atIndex:1];
-			[render_encoder setVertexBuffer:renderer->baked_emitter_properties.buffer offset:0 atIndex:2];
-			tfx_impl_metal__draw_instance_range(render_encoder, 0, renderer->playback_sprite_count);
-		}
-		if (tfx_impl_metal__ribbon_set_active(&renderer->baked_ribbons)) {
-			tfx_impl_metal__render_ribbons(renderer, render_encoder, &renderer->baked_ribbons, renderer->baked_image_data.buffer);
+		if (renderer->baked_color_ramps) {
+			//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
+			[render_encoder setFragmentTexture:renderer->baked_color_ramps atIndex:1];
+			//Baked billboards come as one range across their layers, so they all draw blended and unlit
+			if (!writes_depth && renderer->playback_sprite_count > 0) {
+				[render_encoder setRenderPipelineState:renderer->baked_billboard_pipeline];
+				[render_encoder setVertexBuffer:renderer->playback_instances.buffer offset:0 atIndex:0];
+				[render_encoder setVertexBuffer:renderer->baked_image_data.buffer offset:0 atIndex:1];
+				[render_encoder setVertexBuffer:renderer->baked_emitter_properties.buffer offset:0 atIndex:2];
+				tfx_impl_metal__draw_instance_range(render_encoder, 0, renderer->playback_sprite_count);
+			}
+			if (tfx_impl_metal__ribbon_set_active(&renderer->baked_ribbons)) {
+				tfx_impl_metal__render_ribbons(renderer, render_encoder, &renderer->baked_ribbons, renderer->baked_image_data.buffer, writes_depth);
+			}
 		}
 	}
 }
@@ -984,9 +1037,14 @@ void tfx_impl_metal_Shutdown(tfx_impl_metal_t *renderer) {
 	[renderer->baked_color_ramps release];
 	[renderer->atlas_sampler release];
 	[renderer->depth_state release];
-	[renderer->billboard_pipeline release];
+	[renderer->depth_write_state release];
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			[renderer->billboard_pipelines[writes_depth][lit] release];
+			[renderer->ribbon_pipelines[writes_depth][lit] release];
+		}
+	}
 	[renderer->baked_billboard_pipeline release];
-	[renderer->ribbon_pipeline release];
 	[renderer->particle_kernel release];
 	[renderer->ribbon_compute_pipeline release];
 	[renderer->sprite_playback_pipeline release];

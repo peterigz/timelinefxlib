@@ -17,6 +17,7 @@
 #define TFX_IMPL_GL_VERTEX_READ_BINDING 0
 #define TFX_IMPL_GL_VERTEX_UNIFORM_BINDING 5
 #define TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING 7
+#define TFX_IMPL_GL_FRAGMENT_UNIFORM_BINDING 10
 #define TFX_IMPL_GL_COMPUTE_WRITE_BINDING 0
 #define TFX_IMPL_GL_COMPUTE_READ_BINDING 2
 #define TFX_IMPL_GL_COMPUTE_UNIFORM_BINDING 6
@@ -385,25 +386,49 @@ bool tfx_impl_gl_Init(tfx_impl_gl_t *renderer, tfx_impl_gl_loader loader, const 
 	tfx_gl.GetIntegerv(TFX_GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &max_block_size);
 	renderer->max_storage_block_size = (tfxU32)max_block_size;
 
-	//Both fragment shaders read the same interface, so one compiled fragment shader serves each pair
-	tfx_gl_uint billboard_fragment = tfx_impl_gl__compile_shader(shader_folder, "tfx_billboard_fragment", TFX_GL_FRAGMENT_SHADER);
-	tfx_gl_uint ribbon_fragment = tfx_impl_gl__compile_shader(shader_folder, "tfx_ribbon_fragment", TFX_GL_FRAGMENT_SHADER);
-	if (billboard_fragment && ribbon_fragment) {
-		renderer->billboard_program = tfx_impl_gl__create_render_program(shader_folder, "tfx_billboard_vertex", billboard_fragment);
-		renderer->billboard_baked_program = tfx_impl_gl__create_render_program(shader_folder, "tfx_billboard_baked_vertex", billboard_fragment);
-		renderer->ribbon_program = tfx_impl_gl__create_render_program(shader_folder, "tfx_ribbon_vertex", ribbon_fragment);
+	//Each shader is compiled once and linked into every program that uses it, the live and baked billboards share their fragment shaders
+	tfx_gl_uint billboard_vertex_shaders[2] = {};
+	tfx_gl_uint ribbon_vertex_shaders[2] = {};
+	tfx_gl_uint billboard_fragment_shaders[2][2] = {};
+	tfx_gl_uint ribbon_fragment_shaders[2][2] = {};
+	bool compiled = true;
+	for (int lit = 0; lit != 2; ++lit) {
+		billboard_vertex_shaders[lit] = tfx_impl_gl__compile_shader(shader_folder, tfx_impl_billboard_vertex_entry_points[lit], TFX_GL_VERTEX_SHADER);
+		ribbon_vertex_shaders[lit] = tfx_impl_gl__compile_shader(shader_folder, tfx_impl_ribbon_vertex_entry_points[lit], TFX_GL_VERTEX_SHADER);
+		compiled = compiled && billboard_vertex_shaders[lit] && ribbon_vertex_shaders[lit];
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			billboard_fragment_shaders[writes_depth][lit] = tfx_impl_gl__compile_shader(shader_folder, tfx_impl_billboard_fragment_entry_points[writes_depth][lit], TFX_GL_FRAGMENT_SHADER);
+			ribbon_fragment_shaders[writes_depth][lit] = tfx_impl_gl__compile_shader(shader_folder, tfx_impl_ribbon_fragment_entry_points[writes_depth][lit], TFX_GL_FRAGMENT_SHADER);
+			compiled = compiled && billboard_fragment_shaders[writes_depth][lit] && ribbon_fragment_shaders[writes_depth][lit];
+		}
 	}
-	if (billboard_fragment) {
-		tfx_gl.DeleteShader(billboard_fragment);
+	bool linked = compiled;
+	if (compiled) {
+		for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+			for (int lit = 0; lit != 2; ++lit) {
+				renderer->billboard_programs[writes_depth][lit] = tfx_impl_gl__link_program(tfx_impl_billboard_fragment_entry_points[writes_depth][lit],
+					billboard_vertex_shaders[lit], billboard_fragment_shaders[writes_depth][lit]);
+				renderer->ribbon_programs[writes_depth][lit] = tfx_impl_gl__link_program(tfx_impl_ribbon_fragment_entry_points[writes_depth][lit],
+					ribbon_vertex_shaders[lit], ribbon_fragment_shaders[writes_depth][lit]);
+				linked = linked && renderer->billboard_programs[writes_depth][lit] && renderer->ribbon_programs[writes_depth][lit];
+			}
+		}
+		renderer->billboard_baked_program = tfx_impl_gl__create_render_program(shader_folder, "tfx_billboard_baked_vertex", billboard_fragment_shaders[0][0]);
 	}
-	if (ribbon_fragment) {
-		tfx_gl.DeleteShader(ribbon_fragment);
+	for (int lit = 0; lit != 2; ++lit) {
+		tfx_gl_uint shaders[6] = { billboard_vertex_shaders[lit], ribbon_vertex_shaders[lit], billboard_fragment_shaders[0][lit], billboard_fragment_shaders[1][lit],
+			ribbon_fragment_shaders[0][lit], ribbon_fragment_shaders[1][lit] };
+		for (int index = 0; index != 6; ++index) {
+			if (shaders[index]) {
+				tfx_gl.DeleteShader(shaders[index]);
+			}
+		}
 	}
 	renderer->particle_kernel = tfx_impl_gl__create_compute_program(shader_folder, "simulate_particles");
 	renderer->ribbon_compute_program = tfx_impl_gl__create_compute_program(shader_folder, "tfx_ribbon_compute");
 	renderer->sprite_playback_program = tfx_impl_gl__create_compute_program(shader_folder, "tfx_sprite_playback");
 	renderer->ribbon_playback_program = tfx_impl_gl__create_compute_program(shader_folder, "tfx_ribbon_playback");
-	if (!renderer->billboard_program || !renderer->billboard_baked_program || !renderer->ribbon_program || !renderer->particle_kernel
+	if (!linked || !renderer->billboard_baked_program || !renderer->particle_kernel
 		|| !renderer->ribbon_compute_program || !renderer->sprite_playback_program || !renderer->ribbon_playback_program) {
 		return false;
 	}
@@ -734,6 +759,7 @@ static bool tfx_impl_gl__upload_library_data(tfx_impl_gl_t *renderer) {
 }
 
 bool tfx_impl_gl_UploadFrame(tfx_impl_gl_t *renderer, const tfx_impl_frame_t *frame) {
+	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
 	if (!tfx_impl_gl__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -881,8 +907,8 @@ void tfx_impl_gl_Compute(tfx_impl_gl_t *renderer, const tfx_impl_uniforms_t *uni
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
-static void tfx_impl_gl__render_ribbons(tfx_impl_gl_t *renderer, const tfx_impl_gl_ribbon_set_t *set, const tfx_impl_gl_buffer_t *image_data, tfx_gl_uint color_ramps) {
-	tfx_gl.UseProgram(renderer->ribbon_program);
+//Every bucket is walked, because the dispatch carries the offsets from one to the next, and only the ones whose layer is in the group are drawn
+static void tfx_impl_gl__render_ribbons(tfx_impl_gl_t *renderer, const tfx_impl_gl_ribbon_set_t *set, const tfx_impl_gl_buffer_t *image_data, tfx_gl_uint color_ramps, int writes_depth) {
 	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 0, &set->vertices);
 	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 1, &set->instances);
 	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 2, &set->emitters);
@@ -893,8 +919,18 @@ static void tfx_impl_gl__render_ribbons(tfx_impl_gl_t *renderer, const tfx_impl_
 	//The element buffer binding belongs to the vertex array
 	tfx_gl.BindBuffer(TFX_GL_ELEMENT_ARRAY_BUFFER, set->indices.buffer);
 
+	tfx_gl_uint bound_program = 0;
 	tfx_ribbon_dispatch_t dispatch = tfx_impl_gl__create_ribbon_dispatch(set);
 	while (tfx_impl_gl__next_ribbon_dispatch(set, &dispatch)) {
+		const tfxLayerFlags flags = renderer->layer_flags[dispatch.layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth) {
+			continue;
+		}
+		tfx_gl_uint program = renderer->ribbon_programs[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (program != bound_program) {
+			tfx_gl.UseProgram(program);
+			bound_program = program;
+		}
 		tfx_impl_gl__write_uniforms(&renderer->draw_constants, TFX_IMPL_GL_VERTEX_UNIFORM_BINDING + 1, tfx_GetRibbonDispatchGlobals(&dispatch), sizeof(tfx_ribbon_bucket_globals_t));
 		tfx_gl.DrawElements(TFX_GL_TRIANGLES, (tfx_gl_sizei)dispatch.index_count, TFX_GL_UNSIGNED_INT, (const void *)((uintptr_t)dispatch.index_offset * sizeof(tfxU32)));
 	}
@@ -912,52 +948,78 @@ static void tfx_impl_gl__draw_instance_range(tfx_impl_gl_t *renderer, tfxU32 sta
 	tfx_gl.DrawArraysInstanced(TFX_GL_TRIANGLES, 0, 6, (tfx_gl_sizei)count);
 }
 
+//Each layer in the group as its CPU instances then its GPU instances
+static void tfx_impl_gl__render_billboards(tfx_impl_gl_t *renderer, int writes_depth) {
+	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 0, &renderer->instance_buffers[renderer->current_instance_buffer]);
+	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 1, &renderer->instance_buffers[renderer->current_instance_buffer ^ 1]);
+	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 2, &renderer->image_data);
+	tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 3, &renderer->emitter_properties);
+	tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING + 1);
+	tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->color_ramps);
+	tfx_gl_uint bound_program = 0;
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+		const tfxLayerFlags flags = renderer->layer_flags[layer];
+		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
+			continue;
+		}
+		tfx_gl_uint program = renderer->billboard_programs[writes_depth][tfx_impl_LayerIsLit(flags)];
+		if (program != bound_program) {
+			tfx_gl.UseProgram(program);
+			bound_program = program;
+		}
+		tfx_impl_gl__draw_instance_range(renderer, renderer->layer_start[layer], renderer->layer_count[layer]);
+		tfx_impl_gl__draw_instance_range(renderer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	}
+}
+
 void tfx_impl_gl_Render(tfx_impl_gl_t *renderer, const tfx_impl_uniforms_t *uniforms) {
 	if (!renderer->shape_atlas || (renderer->instance_count == 0 && renderer->playback_sprite_count == 0
 		&& !tfx_impl_gl__ribbon_set_active(&renderer->live_ribbons) && !tfx_impl_gl__ribbon_set_active(&renderer->baked_ribbons))) {
 		return;
 	}
 	tfx_impl_gl__write_uniforms(&renderer->frame_constants, TFX_IMPL_GL_VERTEX_UNIFORM_BINDING, uniforms, sizeof(tfx_impl_uniforms_t));
+	//The lit fragments read the light from the same block
+	tfx_gl.BindBufferBase(TFX_GL_UNIFORM_BUFFER, TFX_IMPL_GL_FRAGMENT_UNIFORM_BINDING, renderer->frame_constants.buffer);
 
 	//Quad corners come from gl_VertexID and the instances and ribbon vertices are read from buffers, so the vertex array is empty
 	tfx_gl.BindVertexArray(renderer->empty_vertex_array);
-	tfx_gl.Enable(TFX_GL_BLEND);
 	tfx_gl.BlendFunc(TFX_GL_ONE, TFX_GL_ONE_MINUS_SRC_ALPHA);
 	tfx_gl.Enable(TFX_GL_DEPTH_TEST);
 	tfx_gl.DepthFunc(TFX_GL_LEQUAL);
-	tfx_gl.DepthMask(0);
 	tfx_gl.Disable(TFX_GL_CULL_FACE);
 	tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING);
 	tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->shape_atlas);
 
-	if (renderer->instance_count > 0) {
-		tfx_gl.UseProgram(renderer->billboard_program);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 0, &renderer->instance_buffers[renderer->current_instance_buffer]);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 1, &renderer->instance_buffers[renderer->current_instance_buffer ^ 1]);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 2, &renderer->image_data);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 3, &renderer->emitter_properties);
-		tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING + 1);
-		tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->color_ramps);
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			tfx_impl_gl__draw_instance_range(renderer, renderer->layer_start[layer], renderer->layer_count[layer]);
-			tfx_impl_gl__draw_instance_range(renderer, renderer->gpu_layer_start[layer], renderer->gpu_layer_count[layer]);
+	//The layers that write depth draw first with blending off, so they hide the blended layers behind them
+	for (int group = 0; group != 2; ++group) {
+		const int writes_depth = group == 0;
+		if (writes_depth) {
+			tfx_gl.Disable(TFX_GL_BLEND);
+			tfx_gl.DepthMask(1);
+		} else {
+			tfx_gl.Enable(TFX_GL_BLEND);
+			tfx_gl.DepthMask(0);
 		}
-	}
-	if (tfx_impl_gl__ribbon_set_active(&renderer->live_ribbons)) {
-		tfx_impl_gl__render_ribbons(renderer, &renderer->live_ribbons, &renderer->image_data, renderer->color_ramps);
-	}
-	if (renderer->playback_sprite_count > 0) {
-		//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
-		tfx_gl.UseProgram(renderer->billboard_baked_program);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 0, &renderer->playback_instances);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 1, &renderer->baked_image_data);
-		tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 2, &renderer->baked_emitter_properties);
-		tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING + 1);
-		tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->baked_color_ramps);
-		tfx_impl_gl__draw_instance_range(renderer, 0, renderer->playback_sprite_count);
-	}
-	if (tfx_impl_gl__ribbon_set_active(&renderer->baked_ribbons)) {
-		tfx_impl_gl__render_ribbons(renderer, &renderer->baked_ribbons, &renderer->baked_image_data, renderer->baked_color_ramps);
+		if (renderer->instance_count > 0) {
+			tfx_impl_gl__render_billboards(renderer, writes_depth);
+		}
+		if (tfx_impl_gl__ribbon_set_active(&renderer->live_ribbons)) {
+			tfx_impl_gl__render_ribbons(renderer, &renderer->live_ribbons, &renderer->image_data, renderer->color_ramps, writes_depth);
+		}
+		//Baked billboards come as one range across their layers, so they all draw blended and unlit
+		if (!writes_depth && renderer->playback_sprite_count > 0) {
+			//Baked sprites come with their own shape frames, emitter properties and color ramps, the atlas is shared
+			tfx_gl.UseProgram(renderer->billboard_baked_program);
+			tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 0, &renderer->playback_instances);
+			tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 1, &renderer->baked_image_data);
+			tfx_impl_gl__bind_storage(TFX_IMPL_GL_VERTEX_READ_BINDING + 2, &renderer->baked_emitter_properties);
+			tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING + 1);
+			tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->baked_color_ramps);
+			tfx_impl_gl__draw_instance_range(renderer, 0, renderer->playback_sprite_count);
+		}
+		if (tfx_impl_gl__ribbon_set_active(&renderer->baked_ribbons)) {
+			tfx_impl_gl__render_ribbons(renderer, &renderer->baked_ribbons, &renderer->baked_image_data, renderer->baked_color_ramps, writes_depth);
+		}
 	}
 	//glClear doesn't clear depth while depth writes are off
 	tfx_gl.DepthMask(1);
@@ -1020,9 +1082,13 @@ void tfx_impl_gl_Shutdown(tfx_impl_gl_t *renderer) {
 	free(renderer->color_ramp_layer_versions);
 	renderer->color_ramp_layer_versions = NULL;
 	renderer->color_ramp_layer_capacity = 0;
-	tfx_impl_gl__delete_program(&renderer->billboard_program);
+	for (int writes_depth = 0; writes_depth != 2; ++writes_depth) {
+		for (int lit = 0; lit != 2; ++lit) {
+			tfx_impl_gl__delete_program(&renderer->billboard_programs[writes_depth][lit]);
+			tfx_impl_gl__delete_program(&renderer->ribbon_programs[writes_depth][lit]);
+		}
+	}
 	tfx_impl_gl__delete_program(&renderer->billboard_baked_program);
-	tfx_impl_gl__delete_program(&renderer->ribbon_program);
 	tfx_impl_gl__delete_program(&renderer->particle_kernel);
 	tfx_impl_gl__delete_program(&renderer->ribbon_compute_program);
 	tfx_impl_gl__delete_program(&renderer->sprite_playback_program);

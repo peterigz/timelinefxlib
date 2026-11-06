@@ -66,9 +66,10 @@ typedef struct tfx_impl_sdlgpu_ribbon_set_s {
 typedef struct tfx_impl_sdlgpu_s {
 	SDL_GPUDevice *device;
 
-	SDL_GPUGraphicsPipeline *billboard_pipeline;
+	//Each layer picks its pipelines from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	SDL_GPUGraphicsPipeline *billboard_pipelines[2][2];
 	SDL_GPUGraphicsPipeline *baked_billboard_pipeline;
-	SDL_GPUGraphicsPipeline *ribbon_pipeline;
+	SDL_GPUGraphicsPipeline *ribbon_pipelines[2][2];
 	SDL_GPUComputePipeline *particle_kernel;		//simulate_particles from timelinefx.slang
 	SDL_GPUComputePipeline *ribbon_compute_pipeline;
 	SDL_GPUComputePipeline *sprite_playback_pipeline;
@@ -113,6 +114,7 @@ typedef struct tfx_impl_sdlgpu_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	tfx_impl_sdlgpu_buffer_t particle_pool;		//The hot, cold and noise sections in one buffer
 	tfx_impl_sdlgpu_buffer_t particle_upload;	//The frame's tfx_CopyGPUParticleUpload

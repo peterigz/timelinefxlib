@@ -88,9 +88,10 @@ typedef struct tfx_impl_dx12_s {
 	ID3D12RootSignature *sprite_playback_root_signature;
 	ID3D12RootSignature *ribbon_playback_root_signature;
 	ID3D12PipelineState *particle_kernel;		//simulate_particles from timelinefx.slang
-	ID3D12PipelineState *billboard_pipeline;
+	//Each layer picks its pipelines from its tfx_GetLayerFlags, by [writes depth][lit]. Baked billboards are always blended and unlit
+	ID3D12PipelineState *billboard_pipelines[2][2];
 	ID3D12PipelineState *baked_billboard_pipeline;
-	ID3D12PipelineState *ribbon_pipeline;
+	ID3D12PipelineState *ribbon_pipelines[2][2];
 	ID3D12PipelineState *ribbon_compute_pipeline;
 	ID3D12PipelineState *sprite_playback_pipeline;
 	ID3D12PipelineState *ribbon_playback_pipeline;
@@ -125,6 +126,7 @@ typedef struct tfx_impl_dx12_s {
 	tfxU32 layer_count[tfxLAYERS];
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
+	tfxLayerFlags layer_flags[tfxLAYERS];
 
 	//The pool's hot, cold and noise sections in one buffer, a view at each section's stride
 	tfx_impl_dx12_buffer_t particle_pool;

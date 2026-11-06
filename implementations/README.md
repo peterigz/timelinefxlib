@@ -37,7 +37,7 @@ project can call a backend that was built as C++. The examples only include `tim
 `tfx_Print`, so they reach the same `tfx_SetPrintCallback` log as the library's own messages. Do the same in yours.
 
 Status: D3D11, D3D12 (bindless), Vulkan (bindless), WebGPU (wgpu-native), SDL_gpu (Vulkan and D3D12), OpenGL 4.3 and Metal draw CPU simulated billboards and ribbons, GPU simulated particles, and
-baked billboard and ribbon playback. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
+baked billboard and ribbon playback, and layers that write depth and lit layers. Every other API is still to come, see [Porting to a new API](#porting-to-a-new-api).
 
 ## Building and running
 
@@ -90,8 +90,8 @@ any rate. The examples size the GPU rings for it with `tfx_SetGPUSizingUpdateRat
 | --- | --- |
 | Spitting Torch | Animated flames and smoke on the CPU, and embers on the GPU, trailing behind it. Because it has a Run on GPU emitter it spawns at a user location, which the scene moves around a circle with `tfx_UpdateSpawnLocation` every frame |
 | Burst Sparks | Fire and forget: every burst (every so often, and on Space) adds a new effect at a random spot, and each one frees itself once it's finished. Stretched sparks |
-| Leaf Explosion | One effect that spawns at user locations: every burst adds a location at a random spot, and each location removes itself once the effect has played out there. Cheaper than an effect per burst, and what Run on GPU effects need. Freely aligned, tumbling leaves |
-| Space Weed | Ribbons |
+| Leaf Explosion | One effect that spawns at user locations: every burst adds a location at a random spot, and each location removes itself once the effect has played out there. Cheaper than an effect per burst, and what Run on GPU effects need. Freely aligned, tumbling leaves, on layer 2, which writes depth and is lit |
+| Space Weed | Ribbons, on layer 2 with the leaves |
 | GPU Simulated | 100,000 particles simulated on the GPU, spawning at one location the scene moves around |
 | Burst | Baked sprite data playback, billboards and a ribbon: an animation instance every 250 ms at a random spot at the back, each one interpolated by a compute shader with no simulation at all |
 | Fireflies | From `example_second.tfx`. It shares the stage, the draw ranges and the buffers with the effects from `example.tfx`, see [Setting up a library](#setting-up-a-library) |
@@ -188,7 +188,8 @@ if (ticks > 0) {
 }
 //Waits for the update and does nothing without one. Pass true after tfx_UpdateStage(stage, 0) too, see "Freeing and reloading a library"
 //Only fetch GPU particles if the backend dispatches them
-tfx_impl_GatherFrame(stage, ticks > 0, &ribbon_staging, fetch_gpu_particles, &frame);
+//The layer flags come from library, see "Layers that write depth and lit layers" below
+tfx_impl_GatherFrame(stage, library, ticks > 0, &ribbon_staging, fetch_gpu_particles, &frame);
 //Baked playback runs on the real frame time rather than the stage's ticks
 tfx_UpdateAnimationManager(animation_manager, (float)elapsed_milliseconds);
 tfx_impl_GatherBakedFrame(animation_manager, &frame.baked);
@@ -224,20 +225,36 @@ Rules the loop depends on:
   and frees libraries, and never while another thread is loading one. Upload the global data on the frames you upload
   instances, because the instances drawn between updates were written with the layout you uploaded last.
 
-**Layers that write depth.** The examples draw every layer with the one blended billboard pipeline and every ribbon with
-the one blended ribbon pipeline, so a layer whose `tfx_GetLayerFlags` has `tfxLayerFlags_writes_depth`, layer 1 included,
-draws like Default in them. To draw it as the editor does, make a second billboard pipeline with
-`tfx_billboard_cutout_fragment` and a second ribbon pipeline with `tfx_ribbon_cutout_fragment`, both with blending off and
-depth test and write on. Draw those layers' billboards with them first, then the ribbon buckets whose `dispatch.layer` is
-one of them, then everything else, against the depth buffer the scene drew into. Walk the ribbon dispatches once for each
-group with a fresh dispatch and skip the buckets that aren't in it. Baked billboards aren't grouped by layer across
-instances, so draw them all with the blended pipeline. Baked ribbon buckets are, so they can take the cutout.
+**Layers that write depth and lit layers.** Every example draws a layer whose `tfx_GetLayerFlags` has
+`tfxLayerFlags_writes_depth` (layer 1 included) or `tfxLayerFlags_lit` as the editor does. A backend that draws every
+layer with one blended, unlit pipeline still shows them, like Default. To add them to a backend, follow
+`tfx_impl_dx11_Render`:
+- Pick each layer's shaders from `frame.layer_flags`, which `tfx_impl_GatherFrame` reads from the library you pass it.
+  The stage has one range per layer whichever library an effect came from, so keep every library's custom layers the
+  same. The vertex shaders go by lit and the fragments by writes depth and lit: `tfx_impl_LayerWritesDepth` and
+  `tfx_impl_LayerIsLit` give the indexes, and `tfx_impl_billboard_vertex_entry_points`,
+  `tfx_impl_billboard_fragment_entry_points` and the ribbon pair name the entry points at each. On an API with pipeline
+  objects that's four pipelines per draw type, plus the baked billboards' one.
+- Draw in two groups against the depth buffer the scene drew into: the layers that write depth first, with blending off
+  and depth writes on, then the rest blended over them. Walk the ribbon dispatches once for each group with a fresh
+  dispatch and skip the buckets whose `dispatch.layer` isn't in it.
+- Baked billboards aren't grouped by layer across instances, so they all draw blended and unlit. Baked ribbon buckets
+  are, so they take the cutout and lit shaders.
+- The lit fragments read `light` in `tfx_impl_uniforms_t`, which is at `tfxVIEW_LIGHT_OFFSET` because `camera_position`
+  fills the 12 bytes before it. `tfx_impl_SetUniforms` sets the editor's default preview light, so set your own after
+  it. See Lit layers in `../Shaders/readme.md`. Where each example gives the lit fragments the view:
 
-**Lit layers.** The examples also draw a layer with `tfxLayerFlags_lit` unlit. To light it, make pipelines with the lit
-vertex and fragment entry points (`tfx_billboard_lit_vertex` with `tfx_billboard_lit_fragment`, `tfx_ribbon_lit_vertex`
-with `tfx_ribbon_lit_fragment`, and the lit cutouts for a lit layer that writes depth), give the ribbon one the `normal`
-attribute at location 4, and fill a `tfx_view_light_t` at `tfxVIEW_LIGHT_OFFSET` in the view uniforms every frame. Under
-the fixed bindings the lit fragments also take the view at `FRAGMENT_UNIFORM` 0. See Lit layers in `../Shaders/readme.md`.
+  | Backend | The lit fragments' view |
+  | --- | --- |
+  | D3D11 | The frame constants at `b0` in the pixel shader as well |
+  | D3D12 (bindless) | A second constant buffer range over the heap in the root signature, at `b0` space 2 |
+  | Vulkan (bindless) | Nothing extra: the uniform buffer array at binding 7 is visible to the fragment stage |
+  | WebGPU | Binding 10 in every render layout, fragment visible, the same block as binding 5 |
+  | SDL_gpu | Fragment uniform slot 0 (space 3), pushed once a frame, and one uniform buffer on the lit fragment shaders |
+  | OpenGL | The frame constants at uniform binding 10 as well |
+  | Metal | `setFragmentBytes` at fragment buffer 0. Depth writes are a second `MTLDepthStencilState` |
+
+  The bindless lit ribbon pipelines (Vulkan, D3D12) also read the `normal` attribute at location 4.
 
 **Drawing by sort key.** `tfx_impl_GatherFrame` gathers each layer as one range, which is all you need while every
 effect draws the same way. To draw some effects with their own pipeline or resources, give them a key with
@@ -309,8 +326,12 @@ Every key switches from the billboard pipeline to the ribbon one and back, so ke
   one `UpdateSubresource`, because the library lays the buffer out layer by layer. Each layer is then one
   `DrawInstanced(6, count)`. When the buffers grow, both copy their old contents across, since the previous buffer is
   still what `captured_index` points into.
-- **Blending:** the pixel shader writes premultiplied alpha, so it blends with ONE / INV_SRC_ALPHA, with the depth test
-  on and depth writes off.
+- **Blending:** the pixel shaders write premultiplied alpha, so the blended layers use ONE / INV_SRC_ALPHA, with the
+  depth test on and depth writes off. The layers that write depth draw before them with the default blend state, which
+  has blending off, and a depth stencil state with writes on.
+- **Shaders per layer:** `billboard_vertex_shaders[lit]` and `billboard_pixel_shaders[writes depth][lit]`, and the same
+  for ribbons, set for each layer that has instances and each ribbon bucket. The frame constants are bound to the pixel
+  shader's b0 too, where the lit fragments read the light.
 - **Views are unbound after each pass.** D3D11 won't bind a buffer for writing while it's bound for reading, so every
   compute pass and draw unbinds what the next one writes. That keeps the debug layer quiet, which is the test every
   part of the example has passed.
@@ -725,7 +746,17 @@ with `-D TFX_METAL_SLOTS`, as the Metal backend does.
       ribbons, with the animation manager's graph lookups and buckets.
 - [ ] Check: the Bursts at the back of the scene play their billboards and their electricity ribbon.
 
-**Done when** the new example looks the same as the D3D11 one side by side, with a silent validation layer.
+**5. Layers that write depth and lit layers** (any time after step 1, see "Layers that write depth and lit layers" in
+[The frame loop](#the-frame-loop))
+- [ ] The cutout and lit entry points compiled, and each layer's shaders or pipelines picked from `frame.layer_flags`.
+- [ ] Two groups a frame: the layers that write depth first, blending off and depth writes on, then the rest.
+- [ ] The frame uniforms, all `tfxVIEW_UNIFORMS_SIZE` bytes, bound to the lit fragments as well as the vertex shaders.
+- [ ] Check: Space Weed's ribbons shade like tubes, bright where they face the light at the upper right and dark on the
+      far side, and the leaves are opaque and lit. Flat ribbons mean the layer is drawn unlit, and black ones a zeroed
+      light.
+
+**Done when** the new example looks the same as the D3D11 one side by side, with a silent validation layer. Without
+step 5, Space Weed and the leaves draw flat and blended.
 
 ## Engines with their own instance buffers
 
