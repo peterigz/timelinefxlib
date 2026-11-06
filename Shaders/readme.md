@@ -268,7 +268,7 @@ With the defaults, `tfx_billboard_vertex` is t0 to t3 and b0, b1 in HLSL, and SP
 
 The kernel has its own path, chosen when Slang targets Metal. Each buffer index in the push constants is a slot in `tfx_metal_buffers`, an argument buffer of `TFX_METAL_BUFFER_COUNT` (default 16, override with `-D`) 64 bit `gpuAddress` values. The accessors read and write every row through it as raw bytes packed exactly like the C structs, because a Metal `float3` is 16 bytes rather than 12. The host:
 - fills the table with the addresses and points each push constant index at its slot. A section can be its own slot with its address offset and a base of 0, or share one address with the bases. The table is 128 bytes, so it can go with `setBytes` rather than in an `MTLBuffer`.
-- binds the push constants and the table at the `[[buffer(n)]]` slots Slang gives them. `simulate_particles` compiled without defines uses 0 and 1. Under `TFX_FIXED_BINDINGS` the unused fixed buffers take slots first and move them, so compile the kernel without the defines. A host entry point with its own push constants gets its own slots, so read them from Slang's reflection.
+- binds the push constants and the table at the `[[buffer(n)]]` slots Slang gives them. `simulate_particles` compiled without defines uses 0 and 1. Under `TFX_FIXED_BINDINGS` the unused fixed buffers take slots first and move them, so compile the kernel without the defines. A host entry point's push constants take the same slot when declared with `TFX_BINDLESS_REGISTER(b0, space0)`, see [Adding your own behaviour](#adding-your-own-behaviour).
 - calls `useResource` on every buffer the table points to: read for the frame's upload and the graph lookups, read and write for the pool and the instance buffer. Metal's shader validation checks these too, so a buffer left out is reported.
 
 `gpuAddress` needs Metal 3 (macOS 13).
@@ -287,7 +287,7 @@ It's an all-in-one shader that handles every billboard alignment mode (camera fa
 
 `tfx_billboard_fragment` samples the particle image and then uses the red channel (scaled by the sprite's gradient map value) as a lookup into the emitter's row of the color ramp texture. The color ramps are plotted by the library from the emitter's color graphs, with the heat response already baked in, as RGBA16F, and you upload them from `tfx_GetColorRampBitmap`. The ramp color is multiplied by the sprite's intensity, and the curved alpha / sharpness terms do the dissolve fade. It writes premultiplied alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA.
 
-`tfx_billboard_cutout_fragment` shades the same way, but treats the shape as a mask: a pixel whose final alpha is below the emitter's `alpha_threshold` is discarded, and what's left is written opaque. Use it for the layers whose `tfx_GetLayerFlags` has `tfxLayerFlags_writes_depth`, which always includes layer 1, Depth. Give its pipeline blending off and depth test and write on, and draw those layers first, in index order, then the other layers with `tfx_billboard_fragment`, so the blended particles behind them are hidden. Draw both against your scene's depth buffer. The flags belong to the library, and a refresh can change them, so read them when you draw. It takes the same vertex shaders, push constants and slots as `tfx_billboard_fragment`. Both read their varyings through `tfx_shade_billboard_parts`, which a fragment shader of your own can call too.
+`tfx_billboard_cutout_fragment` shades the same way, but treats the shape as a mask: a pixel whose final alpha is below the emitter's `alpha_threshold` is discarded, and what's left is written opaque. Use it for the layers whose `tfx_GetLayerFlags` has `tfxLayerFlags_writes_depth`, which always includes layer 1, Depth. Give its pipeline blending off and depth test and write on, and draw those layers first, in index order, then the other layers with `tfx_billboard_fragment`, so the blended particles behind them are hidden. Draw both against your scene's depth buffer. The flags belong to the library, and a refresh can change them, so read them when you draw. It takes the same vertex shaders, push constants and slots as `tfx_billboard_fragment`. Both read their varyings through `tfx_shade_billboard_parts`, which a fragment shader of your own can call too, see [Your own fragment shaders](#your-own-fragment-shaders).
 
 The alpha threshold reaches the fragment in bits 16 to 23 of the `indexes.y` varying, as an 8 bit unorm, so read the color ramp layer as `(indexes.y >> 8) & 0xFF` in a fragment shader of your own.
 
@@ -301,7 +301,7 @@ Ribbons are grouped into buckets, one for each segment count, effect sort key an
 
 `tfx_ribbon_fragment` shades a ribbon the same way as a billboard, and fades it out as it gets thinner than about 1.5 pixels. Below that the rasteriser starts dropping fragments and a thin ribbon breaks up into dashes, so fading it gives a tail that thins out smoothly instead.
 
-`tfx_ribbon_cutout_fragment` is the ribbon version of `tfx_billboard_cutout_fragment`, for the buckets whose `dispatch.layer` writes depth. It discards a pixel whose alpha, times the thin ribbon fade, is below the emitter's alpha threshold, and writes the rest opaque, so a tapering ribbon ends cleanly rather than breaking into dashes. Give its pipeline the ribbon pipeline's vertex input with blending off and depth test and write on, and draw those buckets after the depth layers' billboards and before every blended layer. Live and baked ribbons share it, as they share `tfx_ribbon_fragment`. Both read their varyings through `tfx_shade_ribbon_parts`, which a fragment shader of your own can call too. The threshold reaches the fragment in the `texture_indexes.z` varying, 0 to 255.
+`tfx_ribbon_cutout_fragment` is the ribbon version of `tfx_billboard_cutout_fragment`, for the buckets whose `dispatch.layer` writes depth. It discards a pixel whose alpha, times the thin ribbon fade, is below the emitter's alpha threshold, and writes the rest opaque, so a tapering ribbon ends cleanly rather than breaking into dashes. Give its pipeline the ribbon pipeline's vertex input with blending off and depth test and write on, and draw those buckets after the depth layers' billboards and before every blended layer. Live and baked ribbons share it, as they share `tfx_ribbon_fragment`. Both read their varyings through `tfx_shade_ribbon_parts`, which a fragment shader of your own can call too, see [Your own fragment shaders](#your-own-fragment-shaders). The threshold reaches the fragment in the `texture_indexes.z` varying, 0 to 255.
 
 ## Lit layers
 
@@ -321,10 +321,53 @@ The light is in the view uniforms, after the fields every vertex shader reads, a
 
 The lit fragments read the uniforms as `tfx_lit_view_uniforms`, `tfxVIEW_UNIFORMS_SIZE` (224) bytes, so bind at least that much to them. Fill the light every frame: a zeroed light draws lit particles black. The pads are three floats, not a float3, because std140 and WGSL would put a float3 at 160 where D3D puts it at 148. The unlit shaders still declare the 148 byte `tfx_view_uniforms`, so a 148 byte buffer stays valid for them.
 
-Each emitter's lighting word is `[wrap unorm8 << 16 | roundness unorm8 << 8 | normal mode]`. Billboards keep it in the emitter properties row's `lighting`, and ribbons above the angle type in the ribbon emitter row's `angle_type` (and `shader_type` for baked ribbons), so the angle type is `angle_type & 0xFF`.
+Each emitter's lighting word is `[wrap unorm8 << 16 | roundness unorm8 << 8 | normal mode]`. Billboards keep it in the emitter properties row's `lighting`, and ribbons above the angle type in the ribbon emitter row's `angle_type` (and `shader_type` for baked ribbons), so the angle type is `angle_type & 0xFF`. In a ribbon's word the library also sets bit 7 when the emitter's layer isn't lit, and `tfx_ribbon_compute` then skips the normals. Live ribbons read the layer's flags every update, and baked ribbons keep the flags their layer had when they were recorded.
 
 - **Billboards:** the vertex shader passes the quad's world space axes, with the normal turned towards the camera. Roundness bends that normal into a sphere across the quad, so at roundness 0 a camera facing billboard lights evenly.
-- **Ribbons:** `tfx_ribbon_compute` writes an octahedral unit normal into each vertex's `normal`. Radial (mode 0) points out from the ribbon's origin, so a ribbon that wraps around it is lit on the side facing the light. Surface (mode 1) is the ribbon's face, turned towards `camera_position`. Roundness bends both towards the edges, so the ribbon shades like a tube.
+- **Ribbons:** `tfx_ribbon_compute` writes an octahedral unit normal into each vertex's `normal` on a lit layer, and 0 on the others. Radial (mode 0) points out from the ribbon's origin, so a ribbon that wraps around it is lit on the side facing the light. Surface (mode 1) is the ribbon's face, turned towards `camera_position`. Roundness bends both towards the edges, so the ribbon shades like a tube.
+
+## Your own fragment shaders
+
+A layer can mean whatever your game wants. Name it in the editor, match it in your renderer by index or `tfx_GetLayerName`, and draw its range with a fragment shader of your own. The vertex shader, push constants and slots stay the library's, and your fragment starts from the same shading the built-in ones use. The editor previews the layer by its flags, so set Writes Depth and Lit to the nearest look. This one draws a billboard as `tfx_billboard_fragment` does, and also writes the color that heat response and intensity push past 1 to a second target, for a bloom pass that only particles feed:
+
+```slang
+#include "timelinefx.slang"
+
+struct my_glow_targets {
+	float4 color : SV_Target0;
+	float4 glow : SV_Target1;
+};
+
+[shader("fragment")]
+my_glow_targets my_glow_billboard_fragment(tfx_billboard_output input) {
+	const tfx_particle_shade shade = tfx_shade_billboard_parts(input);
+	my_glow_targets targets;
+	targets.color = tfx_premultiply(shade);
+	//Alpha 0, so the color target's ONE, ONE_MINUS_SRC_ALPHA blend adds it
+	targets.glow = float4(max(shade.color - 1.0, 0.0) * shade.coverage, 0.0);
+	return targets;
+}
+```
+
+Compile it with your target's line from the compile table, adding `-I` with this folder, with `-entry my_glow_billboard_fragment` and `-D TFX_ENTRY_tfx_billboard_fragment`: under the fixed bindings, the entry point named in `TFX_ENTRY_` gives yours its slots. Its pipeline is the `tfx_billboard_fragment` one with a second color target, blended the same way.
+
+- **`#include`, not `import`.** Slang checks every entry point of an imported module against the one profile, which fails on DXIL and DXBC, and the library's macros, `TFX_FIXED_DECLARE` among them, don't reach a file that imports it.
+- **Each draw has its own varyings and helpers:**
+
+  | Your fragment takes | From | Shade with | `TFX_ENTRY_` |
+  | --- | --- | --- | --- |
+  | `tfx_billboard_output` | `tfx_billboard_vertex`, `tfx_billboard_baked_vertex` | `tfx_shade_billboard_parts(input)` | `tfx_billboard_fragment` |
+  | `tfx_lit_billboard_output` | `tfx_billboard_lit_vertex`, `tfx_billboard_baked_lit_vertex` | `tfx_shade_billboard_parts(tfx_unlit_billboard(input))`, then `tfx_light_particle(tfx_lit_billboard_view(), shade.color, tfx_lit_billboard_normal(input), input.lighting)` | `tfx_billboard_lit_fragment` |
+  | `tfx_ribbon_output` | `tfx_ribbon_vertex` | `tfx_shade_ribbon_parts(input)`, times `tfx_thin_ribbon_fade(input.ribbon_across)` | `tfx_ribbon_fragment` |
+  | `tfx_lit_ribbon_output` | `tfx_ribbon_lit_vertex` | `tfx_shade_ribbon_parts(tfx_unlit_ribbon(input))`, then `tfx_light_particle(tfx_lit_ribbon_view(), shade.color, tfx_safe_normalize(input.normal), input.lighting)`, times the fade | `tfx_ribbon_lit_fragment` |
+
+  The lit billboard varyings also carry the quad's world space `tangent`, `bitangent` and `normal`, the frame a normal map needs.
+- **`tfx_particle_shade`** has `color`, the image times the ramp and intensity, which can pass 1, `coverage`, the image's alpha faded by curved alpha, and `alpha`, the coverage times the ramp's alpha. `tfx_premultiply` gives what the built-in fragments write. On a layer that writes depth, discard below the alpha threshold as the cutouts do: `float(input.indexes.y >> 16) / 255.0` for billboards and `float(input.texture_indexes.z) / 255.0` for ribbons.
+- **WGSL:** pass a varyings struct only to `[ForceInline]` functions, see the WGSL notes under the fixed bindings. The helpers above that take varyings are inlined.
+- **Your own resources** need bindings the library's don't use:
+  - Fixed bindings on D3D11, Metal and SDL_gpu: `TFX_FIXED_DECLARE(Texture2D, my_mask, FRAGMENT_TEXTURE, t, 2);` takes the fragment texture slot after the library's two, and follows the class's `-D` overrides.
+  - Fixed bindings with the default SPIR-V and WGSL bases: that slot's binding, 9, is the sampler's, so give yours one above 10, `[[vk::binding(11, 0)]] Texture2D my_mask : register(t2);`. On OpenGL make it a `Sampler2D`, because spirv-cross drops the binding of a texture it has to pair with a dummy sampler.
+  - Bindless: set 1 on Vulkan and a space above 25 on D3D12, `[[vk::binding(0, 1)]] Texture2D my_mask : register(t0, space26);`.
 
 ## GPU simulated particles
 
@@ -340,7 +383,7 @@ The pool has hot, cold and noise sections, and each section starts on a 256 byte
 
 ### Adding your own behaviour
 
-You can add custom forces, collision, spawn placement or changes to how particles are drawn without changing `timelinefx.slang`. Import it into your own Slang module and implement any of the three hook interfaces:
+You can add custom forces, collision, spawn placement or changes to how particles are drawn without changing `timelinefx.slang`. `#include` it in a Slang file of your own, not `import`, see [Your own fragment shaders](#your-own-fragment-shaders) for why, and implement any of the three hook interfaces:
 
 | Interface | What it lets you do |
 | --- | --- |
@@ -348,9 +391,61 @@ You can add custom forces, collision, spawn placement or changes to how particle
 | `ITfxParticleSpawn` | `after_spawn` places the particles of User emitters that the kernel generates, the GPU side of `tfx_SetStageSpawnCallback` |
 | `ITfxParticleWrite` | `before_write` changes a live particle's position, rotation, size, color ramp position, alpha or image frame just before its instance is written |
 
-Then write your own `[numthreads(tfx_group_size, 1, 1)]` entry point with `tfx_gpu_particle_push` as the first member of your push constants and call `tfx_simulate` with your hooks, using `tfx_no_particle_update`, `tfx_no_particle_spawn` and `tfx_no_particle_write` for the ones you don't need. The GPU particle simulation section of timelinefx.h walks through it step by step. Your hooks only run on the GPU, so emitters that fall back to the CPU (during warmup, for example) simulate without them.
+Then write your own `[numthreads(tfx_group_size, 1, 1)]` entry point that calls `tfx_simulate` with your hooks. `tfx_simulate(thread_index, push, update)` takes an update hook, and a fourth and fifth argument add a spawn hook and a write hook, with `tfx_no_particle_update`, `tfx_no_particle_spawn` and `tfx_no_particle_write` for the ones you don't need. The GPU particle simulation section of timelinefx.h walks through each hook's arguments. Your hooks only run on the GPU, so emitters that fall back to the CPU (during warmup, for example) simulate without them. This one bounces particles off a floor whose height and bounce come from its own push constants:
 
-A host entry point with its own push constants does what `simulate_particles` does: declare them twice, `[[vk::push_constant]] ConstantBuffer<my_push> my_push_constants;` and `TFX_UNIFORM_PUSH(my_push, my_uniform_push);`, which is the uniform buffer twin at the kernel's uniform slot, and read them through a function that picks with `__target_switch`: `TFX_UNIFORM_PUSH_CASES` returns the uniform one, `default:` the push constant one.
+```slang
+#include "timelinefx.slang"
+
+struct my_push {
+	tfx_gpu_particle_push tfx;
+	float ground_height;
+	float bounce;
+};
+
+[[vk::push_constant]] ConstantBuffer<my_push> my_push_constants TFX_BINDLESS_REGISTER(b0, space0);
+TFX_UNIFORM_PUSH(my_push, my_uniform_push);
+
+my_push my_entry_push() {
+	__target_switch {
+	TFX_UNIFORM_PUSH_CASES return my_uniform_push;
+	default: return my_push_constants;
+	}
+}
+
+//In world space, so the particles of relative rings land on the floor too
+struct my_floor_update : ITfxParticleUpdate {
+	float ground_height;
+	float bounce;
+	float3 acceleration(tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_particle_context context) {
+		return float3(0.0, 0.0, 0.0);
+	}
+	void after_move(inout tfx_gpu_particle_hot hot, tfx_gpu_particle_cold cold, tfx_particle_context context) {
+		const tfx_ring_transform transform = context.ring_transform(cold);
+		float3 world = transform.to_world(hot.position);
+		if (world.y >= ground_height) return;
+		world.y = ground_height;
+		float3 velocity = transform.direction_to_world(hot.velocity);
+		velocity.y = -velocity.y * bounce;
+		hot.position = transform.to_ring(world);
+		hot.velocity = transform.direction_to_ring(velocity);
+	}
+};
+
+[shader("compute")]
+[numthreads(tfx_group_size, 1, 1)]
+void my_simulate_particles(uint3 thread_id : SV_DispatchThreadID) {
+	const my_push push = my_entry_push();
+	my_floor_update update;
+	update.ground_height = push.ground_height;
+	update.bounce = push.bounce;
+	tfx_simulate(thread_id.x, push.tfx, update);
+}
+```
+
+- **Compile it** with the kernel's line from the compile table for your target, adding `-I` with this folder and `-entry my_simulate_particles`. It needs no `TFX_ENTRY_`, and on Metal no defines, as `simulate_particles` doesn't.
+- **The push constants are declared twice**, as `simulate_particles`' are: the push constant block, and `TFX_UNIFORM_PUSH`'s uniform twin at the kernel's uniform slot for WGSL and the fixed bindings, with `__target_switch` picking between them. `tfx_gpu_particle_push` comes first, so your own members start at offset 64 on every target.
+- **`TFX_BINDLESS_REGISTER(b0, space0)`** gives the block the register `simulate_particles`' has on D3D12, `b0`, and its slot on Metal, buffer 0, with the buffer table still at 1. Without it Slang gives your block the next free ones, `b7` and buffer 12.
+- **Dispatch it as you dispatch `simulate_particles`**, with the same buffers and slots. Only the block's size changes: on D3D12 its root constants, and where it's a uniform buffer, each dispatch's block.
 
 ## Pre-baked effects
 

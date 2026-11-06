@@ -224,7 +224,7 @@ typedef struct tfx_ribbon_vertex_s {
 	tfxU32 segment_index;
 	tfx_float32x2_t uv_offset_scale;
 	tfxU32 ribbon_index;
-	tfxU32 normal;							//Octahedral unit normal as two snorm16s, which tfx_ribbon_lit_vertex reads
+	tfxU32 normal;							//Octahedral unit normal as two snorm16s, which tfx_ribbon_lit_vertex reads. 0 on a layer that isn't lit
 } tfx_ribbon_vertex_t;
 
 typedef struct tfx_gpu_particle_properties_s {
@@ -2522,8 +2522,9 @@ Buffer_access section, which handles each binding model. By default it indexes b
 of gpuAddress values (tfx_metal_buffers). WGSL, and every target compiled with -D TFX_FIXED_BINDINGS (D3D11, SDL_gpu,
 OpenGL), binds the pool, instances, graph lookups and upload as four fixed raw buffers. See Shaders/readme.md for each.
 To add custom forces, collision or anything else per particle without forking it, write your own
-entry point in your own Slang module:
-  1. import timelinefx and declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
+entry point in a Slang file of your own. Shaders/readme.md has a worked example under Adding your own behaviour:
+  1. #include "timelinefx.slang", not import: an import fails on DXIL and DXBC, and hides the library's macros from
+     your file. Declare a struct that implements ITfxParticleUpdate. Every tick, acceleration is
      added to the particle's acceleration before drag and integration, like the built-in forces, and after_move runs
      once the particle has moved, before its instance is written. hot.position is in the ring's space: build the
      transform with context.ring_transform(cold) and use to_world/to_ring, and direction_to_world/direction_to_ring
@@ -2543,7 +2544,9 @@ entry point in your own Slang module:
   2. Declare your own push constants with tfx_gpu_particle_push_t's twin, tfx_gpu_particle_push, as the first member.
      It takes 64 bytes of the 128 Vulkan guarantees, so your own members start at offset 64. WGSL and TFX_FIXED_BINDINGS
      builds have no push constants, so also declare a uniform twin with TFX_UNIFORM_PUSH(your_push, name) and pick with
-     __target_switch on TFX_UNIFORM_PUSH_CASES, as the library's simulate_particles does (Shaders/readme.md).
+     __target_switch on TFX_UNIFORM_PUSH_CASES, as the library's simulate_particles does (Shaders/readme.md). Give
+     the push constant block TFX_BINDLESS_REGISTER(b0, space0), so it takes simulate_particles' register on D3D12 and
+     its buffer slot on Metal.
   3. In a [numthreads(tfx_group_size, 1, 1)] entry point, fill your update from your push constants and call
      tfx_simulate(thread_id.x, your_push.tfx, update), tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook)
      with a spawn hook, or tfx_simulate(thread_id.x, your_push.tfx, update, spawn_hook, write_hook) with a write hook.

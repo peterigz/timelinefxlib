@@ -4002,6 +4002,8 @@ static const uint tfx_angle_type_frenet_serret = 2;
 //tfx_ribbon_normal_mode
 static const uint tfx_ribbon_normal_radial = 0;
 static const uint tfx_ribbon_normal_surface = 1;
+//tfxLIGHTING_UNLIT_LAYER, in the lighting word of a ribbon emitter whose layer isn't lit
+static const uint tfx_lighting_unlit_layer = 1u << 7;
 
 //Hash axes of the ribbon noise phase offset, one per field axis. They must differ from each other and from every other axis, or the offsets correlate
 static const uint tfx_ribbon_noise_phase_x_axis = 0x27d4eb2du;
@@ -4160,6 +4162,14 @@ uint tfx_pack_segment_data(uint segment_index, uint ribbon_lerp, uint tessellati
 	return (tessellation << 29) | (tessellation_index << 26) | (side << 25) | (ribbon_lerp << 12) | segment_index;
 }
 
+//face_normal turned towards right by angle, packed for tfx_ribbon_lit_vertex
+uint tfx_bent_ribbon_normal(float3 face_normal, float3 right, float angle) {
+	float bend_sin;
+	float bend_cos;
+	sincos(angle, bend_sin, bend_cos);
+	return tfx_pack_octahedral_normal(tfx_safe_normalize(face_normal * bend_cos + right * bend_sin));
+}
+
 void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index) {
 	//The library counts no indexes for an untessellated ribbon, so there's nothing to build
 	if (global_index >= push.segment_count * push.ribbon_count || push.tessellation == 0) return;
@@ -4260,14 +4270,17 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 		right = tfx_safe_normalize(cross(tfx_safe_normalize(cross(world_forward, up)), world_forward));
 	}
 
-	//For the lit entry points: the face turned towards the camera, or out from the ribbon's origin, bent towards the edges by the roundness
+	//For the lit entry points, 0 on a layer that isn't lit: the face turned towards the camera, or out from the ribbon's origin, bent towards the edges by the roundness
 	const uint lighting = emitter.angle_type >> 8;
-	float3 face_normal;
-	if ((lighting & 0xFFu) == tfx_ribbon_normal_radial) {
-		face_normal = tfx_safe_normalize(current_position - (tfx_rotate_vector(ribbon.position, emitter_quaternion) + emitter_position));
-	} else {
-		face_normal = tfx_safe_normalize(cross(right, world_forward));
-		face_normal *= dot(face_normal, push.camera_position.xyz - current_position) < 0.0 ? -1.0 : 1.0;
+	const bool lit = (lighting & tfx_lighting_unlit_layer) == 0;
+	float3 face_normal = float3(0.0, 0.0, 0.0);
+	if (lit) {
+		if ((lighting & 0xFFu) == tfx_ribbon_normal_radial) {
+			face_normal = tfx_safe_normalize(current_position - (tfx_rotate_vector(ribbon.position, emitter_quaternion) + emitter_position));
+		} else {
+			face_normal = tfx_safe_normalize(cross(right, world_forward));
+			face_normal *= dot(face_normal, push.camera_position.xyz - current_position) < 0.0 ? -1.0 : 1.0;
+		}
 	}
 	const float bend = float((lighting >> 8) & 0xFFu) * (tfx_two_pi * 0.25 / 255.0);
 
@@ -4281,24 +4294,25 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 	vertex.uv_offset_scale = float2(tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_uv_offset_y, ribbon_age),
 	                                tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_uv_scale_y, ribbon_age));
 	vertex.ribbon_index = global_ribbon_index;
+	vertex.normal = 0u;
 
 	const uint vertices_per_segment = (push.tessellation + 1) * 2;
 	const uint vertex_base_index = local_ribbon_index * push.segment_count * vertices_per_segment + local_segment_index * vertices_per_segment + push.vertex_offset;
 	//One side's vertexes from the edge in to the centre line, then the other's from the centre line out
 	for (uint tessellation_step = 0; tessellation_step <= push.tessellation; tessellation_step++) {
 		const float t = float(tessellation_step) / float(push.tessellation);
-		float bend_sin;
-		float bend_cos;
-		sincos(lerp(1.0, 0.0, t) * bend, bend_sin, bend_cos);
 		vertex.position = current_position + right * lerp(0.5, 0.0, t) * width;
 		vertex.segment_index = tfx_pack_segment_data(global_segment_index, ribbon_lerp_packed, push.tessellation, tessellation_step, 0);
-		vertex.normal = tfx_pack_octahedral_normal(tfx_safe_normalize(face_normal * bend_cos + right * bend_sin));
+		if (lit) {
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(1.0, 0.0, t) * bend);
+		}
 		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + tessellation_step, vertex);
 
-		sincos(lerp(0.0, -1.0, t) * bend, bend_sin, bend_cos);
 		vertex.position = current_position + right * lerp(0.0, -0.5, t) * width;
 		vertex.segment_index = tfx_pack_segment_data(global_segment_index, ribbon_lerp_packed, push.tessellation, tessellation_step, 1);
-		vertex.normal = tfx_pack_octahedral_normal(tfx_safe_normalize(face_normal * bend_cos + right * bend_sin));
+		if (lit) {
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(0.0, -1.0, t) * bend);
+		}
 		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + push.tessellation + 1 + tessellation_step, vertex);
 	}
 

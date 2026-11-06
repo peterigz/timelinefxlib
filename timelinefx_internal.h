@@ -3319,6 +3319,8 @@ typedef enum {
 #define tfxLIGHTING_WRAP_SHIFT 16
 #define tfxLIGHTING_DEFAULT_BILLBOARD ((128u << tfxLIGHTING_WRAP_SHIFT) | (255u << tfxLIGHTING_ROUNDNESS_SHIFT))
 #define tfxLIGHTING_DEFAULT_RIBBON ((128u << tfxLIGHTING_WRAP_SHIFT) | tfxRibbonNormal_radial)
+//Only in the GPU ribbon emitter rows, set when the emitter's layer isn't lit so tfx_ribbon_compute skips the normals
+#define tfxLIGHTING_UNLIT_LAYER (1u << 7)
 
 tfxINTERNAL inline float tfx__lighting_unorm8(tfxU32 lighting, tfxU32 shift) {
 	return (float)((lighting >> shift) & 0xFFu) / 255.f;
@@ -8047,6 +8049,8 @@ tfxAPI_EDITOR void tfx__build_path_nodes(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_arc_lengths(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__migrate_ribbon_clip_graphs(tfx_library library);
 tfxINTERNAL tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs);
+//tfx_gpu_ribbon_emitter_t's angle_type: [lighting << 8 | angle type], with tfxLIGHTING_UNLIT_LAYER from the layer's flags
+tfxINTERNAL tfxU32 tfx__ribbon_gpu_angle_type(tfx_library library, tfxU32 layer, const tfx_ribbon_emitter_properties_t *ribbon_properties);
 tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 //An initialised, empty path slot, reused from the free list when there is one

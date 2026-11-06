@@ -8923,6 +8923,11 @@ tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs) {
 	return samples_per_segment;
 }
 
+tfxU32 tfx__ribbon_gpu_angle_type(tfx_library library, tfxU32 layer, const tfx_ribbon_emitter_properties_t *ribbon_properties) {
+	const tfxU32 unlit_layer = (library->layers[layer].flags & tfxLayerFlags_lit) ? 0 : tfxLIGHTING_UNLIT_LAYER;
+	return ribbon_properties->angle_type | ((ribbon_properties->lighting | unlit_layer) << 8);
+}
+
 /*
 Convert Pre version 4 clip graphs from start/end to size/offset
 */
@@ -9795,8 +9800,8 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.noise_lock_rate = ribbon_properties.noise_lock_rate;
 		properties.noise_packed = (effect->ribbon_flags & tfxRibbonPropertyFlags_enable_noise)
 			? ((tfxU32)ribbon_properties.noise_algorithm | (ribbon_properties.noise_octaves << 4)) : 0;
-		properties.shader_type = ribbon_properties.angle_type | (ribbon_properties.lighting << 8);
 		properties.layer = tfx__get_shared_emitter_properties(effect)->layer;
+		properties.shader_type = tfx__ribbon_gpu_angle_type(effect->library, properties.layer, &ribbon_properties);
 		properties.alpha_threshold = ribbon_properties.alpha_threshold;
 		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
 		properties.flags = effect->state_properties.property_flags;
@@ -11180,7 +11185,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.state_properties.gpu_property_index = tfx__grab_gpu_ribbon_emitter(pm);
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].lookup_offset = src_emitter->gpu_lookup_offset;
 	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].fixed_angle_normal = ribbon_properties->fixed_angle_normal;
-	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = ribbon_properties->angle_type | (ribbon_properties->lighting << 8);
+	pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index].angle_type = tfx__ribbon_gpu_angle_type(src_emitter->library, shared_properties->layer, ribbon_properties);
 
 	ribbon_emitter.amount_remainder = 0.f;
 	ribbon_emitter.spawn_ordinal = 0;
@@ -16499,7 +16504,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.noise_phase_range = noise_properties->noise_phase_range;
 	gpu_emitter.noise_lock_rate = noise_properties->noise_lock_rate;
 	gpu_emitter.alpha_threshold = noise_properties->alpha_threshold;
-	gpu_emitter.angle_type = noise_properties->angle_type | (noise_properties->lighting << 8);
+	//Every update, so a layer's lit flag can change while its ribbons play
+	gpu_emitter.angle_type = tfx__ribbon_gpu_angle_type(library, ribbon_work_entry->shared_properties->layer, noise_properties);
 	tfxU32 packed_noise = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_noise)
 		? ((tfxU32)noise_properties->noise_algorithm | (noise_properties->noise_octaves << 4)) : 0;
 	gpu_emitter.sample_count_noise = (ribbon_emitter.stored_sample_count & 0xFFFFFF) | (packed_noise << 24);
