@@ -7578,6 +7578,24 @@ void tfx__color_ramp_layer_changed(tfx_library library, tfxU32 layer) {
 	library->color_ramp_layer_versions[layer] = library->color_ramps_version;
 }
 
+//A graph the plot samples with tfx__sample_multi_node_graph, which reads the handles and the oscillator
+tfxINTERNAL void tfx__push_curve_hash_values(tfx_vector_t<float> *values, tfx_graph_t *graph) {
+	values->push_back((float)graph->flags);
+	values->push_back((float)graph->easing_type);
+	values->push_back(graph->oscillator.frequency);
+	values->push_back(graph->oscillator.amplitude);
+	values->push_back(graph->oscillator.offset_x);
+	values->push_back(graph->oscillator.offset_y);
+	for(tfxBucketLoop(graph->nodes, i)) {
+		values->push_back(graph->nodes[i].frame);
+		values->push_back(graph->nodes[i].value);
+		values->push_back(graph->nodes[i].left.x);
+		values->push_back(graph->nodes[i].left.y);
+		values->push_back(graph->nodes[i].right.x);
+		values->push_back(graph->nodes[i].right.y);
+	}
+}
+
 tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
 	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
 	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
@@ -7599,24 +7617,8 @@ tfxKey tfx__hash_color_graphs(tfx_graph_list_t *graph_list) {
 		values.push_back(blue->nodes[i].frame);
 		values.push_back(blue->nodes[i].value);
 	}
-	values.push_back((float)blendfactor->flags);
-	for(tfxBucketLoop(blendfactor->nodes, i)) {
-		values.push_back(blendfactor->nodes[i].frame);
-		values.push_back(blendfactor->nodes[i].value);
-		values.push_back(blendfactor->nodes[i].left.x);
-		values.push_back(blendfactor->nodes[i].left.y);
-		values.push_back(blendfactor->nodes[i].right.x);
-		values.push_back(blendfactor->nodes[i].right.y);
-	}
-	values.push_back((float)heat_response->flags);
-	for(tfxBucketLoop(heat_response->nodes, i)) {
-		values.push_back(heat_response->nodes[i].frame);
-		values.push_back(heat_response->nodes[i].value);
-		values.push_back(heat_response->nodes[i].left.x);
-		values.push_back(heat_response->nodes[i].left.y);
-		values.push_back(heat_response->nodes[i].right.x);
-		values.push_back(heat_response->nodes[i].right.y);
-	}
+	tfx__push_curve_hash_values(&values, blendfactor);
+	tfx__push_curve_hash_values(&values, heat_response);
 	tfxKey hash = tfx_Hash(&tfxStore->hasher, values.data, values.size_in_bytes(), 0);
 	values.free();
 	return hash;
