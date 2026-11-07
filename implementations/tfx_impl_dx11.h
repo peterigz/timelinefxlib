@@ -83,6 +83,7 @@ typedef struct tfx_impl_dx11_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 	tfxLayerFlags layer_flags[tfxLAYERS];
+	tfxU32 library_layer_count;
 
 	ID3D11ComputeShader *particle_kernel;		//simulate_particles from timelinefx.slang
 	ID3D11Buffer *particle_push;				//tfx_gpu_particle_push_t at b0

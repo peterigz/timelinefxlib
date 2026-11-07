@@ -361,6 +361,14 @@ static inline unsigned int tfx__count_bits(unsigned int number) {
 	return __popcnt(number);
 }
 
+static inline unsigned int tfx__count_bits64(tfxU64 number) {
+	#if defined(tfx__64BIT)
+	return (unsigned int)__popcnt64(number);
+	#else
+	return __popcnt((unsigned int)number) + __popcnt((unsigned int)(number >> 32));
+	#endif
+}
+
 static inline int tfx__scan_forward(tfx_size bitmap)
 {
 	unsigned long index;
@@ -409,6 +417,10 @@ static inline unsigned int tfx__count_bits(unsigned int number) {
 	return __builtin_popcount(number);
 }
 
+static inline unsigned int tfx__count_bits64(tfxU64 number) {
+	return (unsigned int)__builtin_popcountll(number);
+}
+
 static inline int tfx__scan_forward(tfx_size bitmap)
 {
 	#if defined(tfx__64BIT)
@@ -437,6 +449,15 @@ static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_th
 #else
 
 static inline unsigned int tfx__count_bits(unsigned int n) {
+	unsigned int count = 0;
+	while (n > 0) {
+		n &= (n - 1);
+		count++;
+	}
+	return count;
+}
+
+static inline unsigned int tfx__count_bits64(tfxU64 n) {
 	unsigned int count = 0;
 	while (n > 0) {
 		n &= (n - 1);
@@ -1639,10 +1660,10 @@ tfx_allocator *tfxGetAllocator();
 #define tfxFREE(memory) free(memory)
 #endif
 
-//Override this for more layers, although currently the editor is fixed at 4
+//The most layers a library can define, see timelinefx.h
 #ifndef tfxLAYERS
-#define tfxLAYERS 4
-#endif 
+#define tfxLAYERS 64
+#endif
 
 /*
 Helper macro to place inside a for loop, for example:
@@ -5578,7 +5599,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 8;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold.
+const tfxU32 tfxFILE_VERSION = 9;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -5671,17 +5692,29 @@ typedef struct tfx_depth_index_s {
 	float depth;
 }tfx_depth_index_t;
 
+//One layer an effect's emitters draw on
+typedef struct tfx_effect_layer_s {
+#ifdef __cplusplus
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[2];
+#else
+	tfx_vector_t depth_indexes[2];
+#endif
+	tfxU32 layer;
+	tfxU32 sprite_index_point;
+	tfxU32 layer_offset;						//Where this effect's instances start within the layer of the instance buffer
+	tfxU32 depth_starting_index;
+	tfxU32 current_depth_buffer_index;
+} tfx_effect_layer_t;
+
 //Used when a effect manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 typedef struct tfx_effect_instance_data_s {
+	tfxU64 layer_mask;
 #ifdef __cplusplus
-	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfx_vector_t<tfx_effect_layer_t> layers;	//One per bit of layer_mask in layer order. Entries past layer_count keep their depth lists for reuse
 #else
-	tfx_vector_t depth_indexes[tfxLAYERS][2];
+	tfx_vector_t layers;
 #endif
-	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 layer_offset[tfxLAYERS];				//Where this effect's instances start within each layer of the instance buffer
-	tfxU32 depth_starting_index[tfxLAYERS];
-	tfxU32 current_depth_buffer_index[tfxLAYERS];
+	tfxU32 layer_count;
 	tfxU32 instance_count;
 } tfx_effect_instance_data_t;
 
@@ -6276,6 +6309,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfxIndex particles_index;
 
 	tfxU32 sprites_count;
+	tfxU32 layer;						//Cached when the effect builds its emitters, so a live edit can't move it out of step with layer_slot
+	tfxU32 layer_slot;					//The emitter's entry in its effect's instance_data.layers
 
 	tfx_effect_descriptor source_emitter;
 	tfx_library library;
@@ -6775,9 +6810,7 @@ typedef struct tfx_sprite_transform_s {
 
 //When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
 typedef struct tfx_frame_meta_s {
-	tfxU32 index_offset[tfxLAYERS];					//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
-	tfxU32 sprite_count[tfxLAYERS];					//The number of instance_data in the frame for each layer
-	tfxU32 cumulative_offset[tfxLAYERS];			//The cumulative number of instance_data in the frame for each layer
+	tfxU32 index_offset;							//All sprite data is contained in a single buffer and this is the offset to the frame's first sprite. The metrics' layer_offsets split it by layer
 	tfxU32 total_sprites;							//The total number of instance_data for all layers in the frame
 	tfxU32 captured_offset;							//The amount to offset the captured index by
 	tfx_vec3_t min_corner;							//Bounding box min corner
@@ -6830,12 +6863,16 @@ typedef struct tfx_sprite_data_metrics_s {
 	float animation_length_in_time;
 	tfxU32 total_sprites;
 	tfxU32 total_memory_for_sprites;
+	tfxU64 layer_mask;								//The layers the effect's particles draw on
+	tfxU32 layer_count;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_frame_meta_t> frame_meta;
 	tfx_vector_t<tfx_ribbon_frame_meta_t> ribbon_frame_meta;
+	tfx_vector_t<tfxU32> layer_offsets;			//layer_count + 1 per frame: where each of the effect's layers starts in the frame, then where the frame ends
 #else
 	tfx_vector_t frame_meta;
 	tfx_vector_t ribbon_frame_meta;
+	tfx_vector_t layer_offsets;
 #endif
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
@@ -6852,6 +6889,27 @@ typedef struct tfx_sprite_data_metrics_s {
 	tfxU32 ribbon_property_start;
 	tfxU32 ribbon_property_count;
 } tfx_sprite_data_metrics_t;
+
+#ifdef __cplusplus
+//Where a layer's sprites start in a frame of baked sprite data. A layer the effect doesn't use gives an empty range at the next layer's start
+inline tfxU32 tfx__frame_layer_start(const tfx_sprite_data_metrics_t *metrics, tfxU32 frame, tfxU32 layer) {
+	return metrics->layer_offsets[frame * (metrics->layer_count + 1) + tfx__count_bits64(metrics->layer_mask & ((1ull << layer) - 1))];
+}
+
+inline tfxU32 tfx__frame_layer_end(const tfx_sprite_data_metrics_t *metrics, tfxU32 frame, tfxU32 layer) {
+	const tfxU32 offset_index = frame * (metrics->layer_count + 1) + tfx__count_bits64(metrics->layer_mask & ((1ull << layer) - 1));
+	return metrics->layer_offsets[offset_index + ((metrics->layer_mask >> layer) & 1)];
+}
+
+//The same by slot, the layer's rank in layer_mask
+inline tfxU32 tfx__frame_slot_start(const tfx_sprite_data_metrics_t *metrics, tfxU32 frame, tfxU32 slot) {
+	return metrics->layer_offsets[frame * (metrics->layer_count + 1) + slot];
+}
+
+inline tfxU32 tfx__frame_slot_end(const tfx_sprite_data_metrics_t *metrics, tfxU32 frame, tfxU32 slot) {
+	return metrics->layer_offsets[frame * (metrics->layer_count + 1) + slot + 1];
+}
+#endif
 
 typedef struct tfx_ribbon_segment_s {
 	tfx_vec4_t position;
@@ -7487,8 +7545,6 @@ typedef struct tfx_stage_s {
 	//The maximum number of effects that can be updated per frame in the effect manager. If you're running effects with particles that have sub effects then this number might need 
 	//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 	tfxU32 max_effects;
-	//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-	tfxU32 max_cpu_particles_per_layer[tfxLAYERS];
 	//The current effect buffer in use, can be either 0 or 1
 	tfxU32 current_ebuff;
 	//For looping through active effects with GetNextEffect function
@@ -7500,6 +7556,9 @@ typedef struct tfx_stage_s {
 
 	tfxU32 layer_sizes[tfxLAYERS];
 	tfxU32 layer_start[tfxLAYERS];
+	//The layer limits' budget. Last update's size is never less than what's still alive on the layer
+	tfxU32 previous_layer_sizes[tfxLAYERS];
+	tfxU32 layer_spawns[tfxLAYERS];
 	//Stage wide totals across every ribbon bucket, reserved atomically by the per bucket spawn threads. Rows and path
 	//blocks are never reclaimed before a stage clear, so these only grow and bound what the staging copy can write.
 	volatile tfxU32 ribbon_rows_allocated;
@@ -7611,15 +7670,18 @@ typedef struct tfx_spawn_map_s {
 	float coverage;
 } tfx_spawn_map_t;
 
+//A deleted layer is a gap: an empty name, no flags and no limit
 typedef struct tfx_layer_settings_s {
 	tfx_str32_t name;
 	tfxLayerFlags flags;
+	tfxU32 max_particles;			//CPU particles the layer can hold across the stage, 0 for no limit beyond the stage's
 } tfx_layer_settings_t;
 
 typedef struct tfx_library_s {
 	tfxU32 magic;
 	tfxErrorFlags error_flags;
 	tfx_layer_settings_t layers[tfxLAYERS];
+	tfxU32 layer_count;				//Gaps included, at least 2
 	//Names this library in the stages' ribbon path caches. Never reused, unlike the address of a freed library.
 	//A refresh needs no new one: an updated effect is given new path slots, so its old blocks can't be matched.
 	tfxU32 path_cache_id;
@@ -7799,7 +7861,7 @@ tfxAPI_EDITOR tfx_spawn_map_t *tfx__get_spawn_map(tfx_library library, tfxKey sp
 tfxINTERNAL void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map);
 tfxAPI_EDITOR bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 length);
 tfxINTERNAL void tfx__set_default_layers(tfx_library library);
-tfxINTERNAL bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length);
+tfxINTERNAL bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length, tfxU32 file_version);
 tfxINTERNAL void tfx__copy_spawn_map(tfx_library source_library, tfx_library destination_library, tfxKey spawn_map_hash);
 tfxINTERNAL void tfx__free_spawn_maps(tfx_library library);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
@@ -10169,6 +10231,7 @@ tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_insta
 //--------------------------------
 tfxINTERNAL tfx_effect_index_t tfx__get_effect_slot(tfx_stage pm);
 tfxINTERNAL void tfx__reset_effect_instance_data(tfx_effect_instance_data_t *instance_data);
+tfxINTERNAL void tfx__free_effect_instance_data(tfx_effect_instance_data_t *instance_data);
 tfxINTERNAL tfxU32 tfx__get_emitter_slot(tfx_stage pm);
 tfxINTERNAL tfxU32 tfx__get_ribbon_slot(tfx_stage pm);
 tfxINTERNAL void tfx__add_warmup_effect(tfx_stage pm, tfxEffectID, float millisecs);
@@ -10182,7 +10245,7 @@ tfxINTERNAL void tfx__free_all_spawn_location_lists(tfx_stage pm);
 tfxINTERNAL void tfx__free_all_user_spawn_locations(tfx_stage pm);
 tfxAPI_EDITOR void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length);
 tfxINTERNAL void tfx__clear_user_spawn_locations(struct tfx_user_spawn_locations_s *user_locations);
-tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_stage pm);
+tfxINTERNAL void tfx__order_effect_sprites(tfx_effect_layer_t *effect_layer, tfx_stage pm);
 
 tfxINTERNAL void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int effects_limit, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
 tfxINTERNAL bool tfx__valid_effect_id(tfx_stage pm, tfxEffectID id);

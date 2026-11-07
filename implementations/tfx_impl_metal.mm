@@ -759,6 +759,7 @@ static bool tfx_impl_metal__upload_stage(tfx_impl_metal_t *renderer, id<MTLComma
 
 bool tfx_impl_metal_UploadFrame(tfx_impl_metal_t *renderer, id<MTLCommandBuffer> command_buffer, const tfx_impl_frame_t *frame) {
 	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
+	renderer->library_layer_count = frame->library_layer_count;
 	if (!tfx_impl_metal__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -938,7 +939,7 @@ static void tfx_impl_metal__render_billboards(tfx_impl_metal_t *renderer, id<MTL
 	[render_encoder setVertexBuffer:renderer->image_data.buffer offset:0 atIndex:2];
 	[render_encoder setVertexBuffer:renderer->emitter_properties.buffer offset:0 atIndex:3];
 	id<MTLRenderPipelineState> bound_pipeline = nil;
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != renderer->library_layer_count; ++layer) {
 		const tfxLayerFlags flags = renderer->layer_flags[layer];
 		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
 			continue;

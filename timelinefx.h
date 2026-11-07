@@ -40,9 +40,12 @@
 //#define TFX_EXTRA_DEBUGGING
 #define SSE41		//Steam survey currently has this at 99.83% coverage 12 April 2025. I will probably make this the minimum requirement
 
-//Override this for more layers, although currently the editor is fixed at 4
+//The most layers a library can define. Define it lower to shrink a stage's per layer arrays, but never above 64
 #ifndef tfxLAYERS
-#define tfxLAYERS 4
+#define tfxLAYERS 64
+#endif
+#if tfxLAYERS > 64
+#error tfxLAYERS must be 64 or less
 #endif
 
 //Enable this to process 8 particles at a time.
@@ -1595,20 +1598,30 @@ typedef enum {
 typedef tfxU32 tfxLayerFlags;					//tfx_layer_flag_bits
 
 /*
-Get the flags of one of a library's layers. Each emitter draws on one of tfxLAYERS layers, and the instance buffer is grouped by layer
+Get the number of layers a library defines, which is at most tfxLAYERS. Loop your layers up to this count. Deleting a layer in the editor
+leaves a gap rather than moving the layers after it, so a gap has an empty name, no flags and no instances, and it still counts.
+* @param library		A handle to the library
+* @returns tfxU32		The library's layer count, at least 2
+*/
+tfxAPI tfxU32 tfx_GetLayerCount(tfx_library library);
+
+/*
+Get the flags of one of a library's layers. Each emitter draws on one of the library's layers, and the instance buffer is grouped by layer
 (tfx_GetInstanceBufferByLayer). Ribbon emitters have a layer too, which each ribbon dispatch reports in its layer field. Layer 0, Default,
-blends and layer 1, Depth, writes depth in every library. Layers 2 and 3 are set per library in the editor. Draw the layers that write
+blends and layer 1, Depth, writes depth in every library. The other layers are set per library in the editor. Draw the layers that write
 depth first, in index order, billboards then ribbons, then the rest, and give those draws your scene's depth buffer so the scene hides the
-particles behind it. When a stage holds effects from more than one library, keep their custom layers the
-same, because the stage has one range per layer whichever library an effect came from. An effect imported into another library keeps
-its layer index. A refresh can change the flags, so read them when you draw.
+particles behind it. When a stage holds effects from more than one library, give them the same layer table (the editor's Copy Layers does
+that), because the stage has one range per layer index whichever library an effect came from. Layer names are unique within a library, so a
+host that gives a custom layer its own pipeline can find its index once at load by looping over tfx_GetLayerName, rather than hard coding it.
+A refresh can change the flags, so read them when you draw. A layer can also have a particle limit, set in the editor: once that many CPU
+particles are alive on the layer across the stage, nothing new spawns on it until some die.
 
 A layer with tfxLayerFlags_lit draws with tfx_billboard_lit_vertex, tfx_billboard_baked_lit_vertex and tfx_ribbon_lit_vertex, and with
 tfx_billboard_lit_fragment and tfx_ribbon_lit_fragment, or their cutouts when the layer writes depth as well. Pipeline state is the same as
 the unlit entry points'. The lit fragments light the color with the tfx_view_light_t your view uniforms hold at tfxVIEW_LIGHT_OFFSET, so
 fill it every frame: a zeroed light draws lit particles black. A host that draws a lit layer with the unlit entry points gets it unlit.
 * @param library		A handle to the library
-* @param layer			The layer, below tfxLAYERS
+* @param layer			The layer, below tfx_GetLayerCount
 * @returns tfxLayerFlags	The layer's tfx_layer_flag_bits
 */
 tfxAPI tfxLayerFlags tfx_GetLayerFlags(tfx_library library, tfxU32 layer);
@@ -1616,8 +1629,8 @@ tfxAPI tfxLayerFlags tfx_GetLayerFlags(tfx_library library, tfxU32 layer);
 /*
 Get the name a library's layer was given in the editor.
 * @param library		A handle to the library
-* @param layer			The layer, below tfxLAYERS
-* @returns const char*	The layer's name
+* @param layer			The layer, below tfx_GetLayerCount
+* @returns const char*	The layer's name, empty for a deleted layer
 */
 tfxAPI const char *tfx_GetLayerName(tfx_library library, tfxU32 layer);
 
@@ -2221,8 +2234,9 @@ tfxAPI tfx_instance_t *tfx_GetInstanceBuffer(tfx_stage stage);
 /*
 Get the billboard buffer in the stage containing all the sprite instances for a specific layer that were created in the most recent frame. You can use this to copy to a staging buffer to upload to the gpu.
 You can then use tfx_GetInstanceCountByLayer for the draw call. The instance buffer is grouped by layer, so each layer is one contiguous range across every effect in the stage and can be drawn with its own pipeline, which tfx_GetLayerFlags picks.
-Within a layer, effects are in the same order as the stage's effect list (sorted by depth when auto_order_effects is on).
+Within a layer, effects are in the same order as the stage's effect list (sorted by depth when auto_order_effects is on). Loop the layers up to tfx_GetLayerCount.
 * @param stage                    A pointer to an initialised tfx_stage_t.
+* @param layer                    The layer, below tfxLAYERS
 */
 tfxAPI tfx_instance_t *tfx_GetInstanceBufferByLayer(tfx_stage stage, tfxU32 layer);
 
@@ -2265,7 +2279,7 @@ a vertex buffer for rendering.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
-* @param layer                    The layer of the ribbon emitters you want, 0 to tfxLAYERS - 1.
+* @param layer                    The layer of the ribbon emitters you want, below tfx_GetLayerCount.
 * @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count, key and layer
 */
 tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
@@ -2281,7 +2295,7 @@ Get a struct containing the info you need to compute and render ribbon_emitters 
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
-* @param layer                    The layer of the ribbon emitters you want, 0 to tfxLAYERS - 1.
+* @param layer                    The layer of the ribbon emitters you want, below tfx_GetLayerCount.
 * @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count, key and layer
 */
 tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
@@ -3499,15 +3513,16 @@ You can use this function to get the instances of a specific effect on one layer
 contiguous within each layer; call this once per layer to get all of them.
 * @param stage						A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_id			The id of the effect, returned when you added it to the stage
-* @param layer					The layer to get the instances for
-* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
+* @param layer					The layer to get the instances for, below tfx_GetLayerCount
+* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer, 0 on a layer the effect doesn't use.
 * @return						tfx_instance_t pointer to the buffer
 */
 tfxAPI tfx_instance_t *tfx_GetEffectInstanceBuffer(tfx_stage stage, tfxEffectID effect_id, tfxU32 layer, tfxU32 *sprite_count);
 
 /*
 You can use this function to get each effect's instances on one layer for every effect that is currently active in the stage. Generally you would call this
-in a while loop inside a for loop over each layer, calling tfx_ResetInstanceBufferLoopIndex before each layer.
+in a while loop inside a for loop over each layer up to tfx_GetLayerCount, calling tfx_ResetInstanceBufferLoopIndex before each layer. It returns false
+straight away on a layer with no instances.
 * @param stage						A pointer to a tfx_stage_t where the effect is being managed
 * @param layer					The layer to get the instances for
 * @param tfx_sprite_billboard_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
@@ -3529,7 +3544,7 @@ its CPU instances, and the instances its Run on GPU emitters write after the CPU
 CPU range then the GPU range, so within a key and layer an effect's GPU particles draw over its CPU ones. Either range can be empty.
 This shares its loop index with tfx_GetNextInstanceBuffer, so don't interleave the two.
 * @param stage                    A pointer to an initialised tfx_stage_t.
-* @param layer                    The layer to get the ranges for
+* @param layer                    The layer to get the ranges for, below tfx_GetLayerCount
 * @param range                    Set to the key and its two ranges
 * @returns bool                   true while there is another range, false when there are no more on this layer
 */

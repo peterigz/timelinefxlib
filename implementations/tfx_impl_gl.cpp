@@ -760,6 +760,7 @@ static bool tfx_impl_gl__upload_library_data(tfx_impl_gl_t *renderer) {
 
 bool tfx_impl_gl_UploadFrame(tfx_impl_gl_t *renderer, const tfx_impl_frame_t *frame) {
 	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
+	renderer->library_layer_count = frame->library_layer_count;
 	if (!tfx_impl_gl__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -957,7 +958,7 @@ static void tfx_impl_gl__render_billboards(tfx_impl_gl_t *renderer, int writes_d
 	tfx_gl.ActiveTexture(TFX_GL_TEXTURE0 + TFX_IMPL_GL_FRAGMENT_TEXTURE_BINDING + 1);
 	tfx_gl.BindTexture(TFX_GL_TEXTURE_2D_ARRAY, renderer->color_ramps);
 	tfx_gl_uint bound_program = 0;
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != renderer->library_layer_count; ++layer) {
 		const tfxLayerFlags flags = renderer->layer_flags[layer];
 		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
 			continue;

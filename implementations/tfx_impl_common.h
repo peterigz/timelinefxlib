@@ -194,6 +194,7 @@ typedef struct tfx_impl_frame_s {
 	tfxU32 layer_start[tfxLAYERS];	//The CPU instances of each layer
 	tfxU32 layer_count[tfxLAYERS];
 	tfxLayerFlags layer_flags[tfxLAYERS];	//Gathered every frame, because a refresh can change them
+	tfxU32 library_layer_count;		//tfx_GetLayerCount of the layer library, which bounds the layer loops
 	tfx_impl_ribbon_frame_t ribbons;
 	//Only fetched when asked for, because every fetch has to be dispatched. The GPU instances go after the CPU ones
 	bool has_gpu_particles;

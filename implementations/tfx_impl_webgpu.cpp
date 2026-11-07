@@ -10,8 +10,6 @@
 #define TFX_IMPL_WEBGPU_RIBBON_GROUP_SIZE 256
 //Dynamic offsets have to be multiples of minUniformBufferOffsetAlignment, which is never more than 256
 #define TFX_IMPL_WEBGPU_UNIFORM_BLOCK_SIZE 256
-//Render's blocks: the view, then the draw constants of each layer's CPU and GPU range and of the baked billboards
-#define TFX_IMPL_WEBGPU_RENDER_BLOCKS (2 + tfxLAYERS * 2)
 #define TFX_IMPL_WEBGPU_INITIAL_UNIFORM_BLOCKS 64
 
 //timelinefx.slang mirrors these structs by hand, in its [Render_rows] section
@@ -183,6 +181,11 @@ static bool tfx_impl_webgpu__ensure_uniform_blocks(tfx_impl_webgpu_t *renderer, 
 	}
 	renderer->uniform_block_capacity = capacity;
 	return true;
+}
+
+//Render's blocks: the view, then the draw constants of each layer's CPU and GPU range and of the baked billboards
+static tfxU32 tfx_impl_webgpu__render_blocks(const tfx_impl_webgpu_t *renderer) {
+	return 2 + renderer->library_layer_count * 2;
 }
 
 static void *tfx_impl_webgpu__uniform_block(tfx_impl_webgpu_t *renderer, tfxU32 block) {
@@ -814,6 +817,11 @@ static bool tfx_impl_webgpu__upload_library_data(tfx_impl_webgpu_t *renderer) {
 
 bool tfx_impl_webgpu_UploadFrame(tfx_impl_webgpu_t *renderer, const tfx_impl_frame_t *frame) {
 	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
+	renderer->library_layer_count = frame->library_layer_count;
+	//Grown here because Render can't replace the buffer its bind groups use
+	if (!tfx_impl_webgpu__ensure_uniform_blocks(renderer, tfx_impl_webgpu__render_blocks(renderer))) {
+		return false;
+	}
 	if (!tfx_impl_webgpu__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -960,14 +968,15 @@ void tfx_impl_webgpu_Compute(tfx_impl_webgpu_t *renderer, WGPUCommandEncoder enc
 	block_count += renderer->playback_ribbon_count > 0 ? 1 : 0;
 	block_count += tfx_impl_webgpu__count_ribbon_buckets(&renderer->live_ribbons);
 	block_count += tfx_impl_webgpu__count_ribbon_buckets(&renderer->baked_ribbons);
-	if (block_count == 0 || !tfx_impl_webgpu__ensure_uniform_blocks(renderer, TFX_IMPL_WEBGPU_RENDER_BLOCKS + block_count)) {
+	const tfxU32 render_blocks = tfx_impl_webgpu__render_blocks(renderer);
+	if (block_count == 0 || !tfx_impl_webgpu__ensure_uniform_blocks(renderer, render_blocks + block_count)) {
 		renderer->particle_dispatch_count = 0;
 		return;
 	}
 
 	//One pass: WebGPU puts a barrier between dispatches that write what a later one reads
 	WGPUComputePassEncoder compute_pass = wgpuCommandEncoderBeginComputePass(encoder, NULL);
-	tfxU32 block = TFX_IMPL_WEBGPU_RENDER_BLOCKS;
+	tfxU32 block = render_blocks;
 	if (renderer->particle_dispatch_count > 0) {
 		block = tfx_impl_webgpu__simulate_gpu_particles(renderer, compute_pass, block);
 	}
@@ -1004,7 +1013,7 @@ void tfx_impl_webgpu_Compute(tfx_impl_webgpu_t *renderer, WGPUCommandEncoder enc
 	wgpuComputePassEncoderEnd(compute_pass);
 	wgpuComputePassEncoderRelease(compute_pass);
 	//Before the submit, so the queue writes the blocks ahead of the pass that reads them
-	tfx_impl_webgpu__write_uniform_blocks(renderer, TFX_IMPL_WEBGPU_RENDER_BLOCKS, block);
+	tfx_impl_webgpu__write_uniform_blocks(renderer, render_blocks, block);
 }
 
 //Live and baked ribbons each have their own shape frames and color ramps, the atlas is shared
@@ -1059,7 +1068,7 @@ static tfxU32 tfx_impl_webgpu__draw_instance_range(tfx_impl_webgpu_t *renderer, 
 //Each layer in the group as its CPU instances then its GPU instances
 static tfxU32 tfx_impl_webgpu__render_billboards(tfx_impl_webgpu_t *renderer, WGPURenderPassEncoder render_pass, WGPUBindGroup bind_group, int writes_depth, tfxU32 block) {
 	WGPURenderPipeline bound_pipeline = NULL;
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != renderer->library_layer_count; ++layer) {
 		const tfxLayerFlags flags = renderer->layer_flags[layer];
 		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
 			continue;

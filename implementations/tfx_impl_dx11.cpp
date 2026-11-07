@@ -678,6 +678,7 @@ static bool tfx_impl_dx11__upload_library_data(tfx_impl_dx11_t *renderer) {
 
 bool tfx_impl_dx11_UploadFrame(tfx_impl_dx11_t *renderer, const tfx_impl_frame_t *frame) {
 	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
+	renderer->library_layer_count = frame->library_layer_count;
 	if (!tfx_impl_dx11__upload_baked(renderer, &frame->baked)) {
 		return false;
 	}
@@ -895,7 +896,7 @@ static void tfx_impl_dx11__render_billboards(tfx_impl_dx11_t *renderer, int writ
 	device_context->VSSetConstantBuffers(1, 1, &renderer->draw_constants);
 	device_context->VSSetShaderResources(0, 4, vertex_views);
 	device_context->PSSetShaderResources(1, 1, &renderer->color_ramps_view);
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != renderer->library_layer_count; ++layer) {
 		const tfxLayerFlags flags = renderer->layer_flags[layer];
 		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
 			continue;

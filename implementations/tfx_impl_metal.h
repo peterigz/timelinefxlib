@@ -109,6 +109,7 @@ typedef struct tfx_impl_metal_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 	tfxLayerFlags layer_flags[tfxLAYERS];
+	tfxU32 library_layer_count;
 
 	//The hot, cold and noise sections in one buffer, reached through the kernel's gpuAddress table like everything else it reads
 	tfx_impl_metal_buffer_t particle_pool;

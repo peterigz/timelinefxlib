@@ -140,6 +140,7 @@ typedef struct tfx_impl_vulkan_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 	tfxLayerFlags layer_flags[tfxLAYERS];
+	tfxU32 library_layer_count;
 
 	//The pool's hot, cold and noise sections in one buffer, and the frame's tfx_CopyGPUParticleUpload in another. Storage buffers
 	//are untyped, so one index each serves every row type, with the push constants' bases

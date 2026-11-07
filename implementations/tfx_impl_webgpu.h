@@ -110,6 +110,7 @@ typedef struct tfx_impl_webgpu_s {
 	tfxU32 gpu_layer_start[tfxLAYERS];
 	tfxU32 gpu_layer_count[tfxLAYERS];
 	tfxLayerFlags layer_flags[tfxLAYERS];
+	tfxU32 library_layer_count;
 
 	tfx_impl_webgpu_buffer_t particle_pool;			//The hot, cold and noise sections in one buffer
 	tfx_impl_webgpu_buffer_t particle_upload;		//The frame's tfx_CopyGPUParticleUpload

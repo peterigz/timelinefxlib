@@ -1099,6 +1099,7 @@ static bool tfx_impl_dx12__upload_library_data(tfx_impl_dx12_t *renderer, ID3D12
 
 bool tfx_impl_dx12_UploadFrame(tfx_impl_dx12_t *renderer, ID3D12GraphicsCommandList *command_list, const tfx_impl_frame_t *frame) {
 	memcpy(renderer->layer_flags, frame->layer_flags, sizeof(renderer->layer_flags));
+	renderer->library_layer_count = frame->library_layer_count;
 	if (!tfx_impl_dx12__upload_baked(renderer, command_list, &frame->baked)) {
 		return false;
 	}
@@ -1329,7 +1330,7 @@ static void tfx_impl_dx12__render_billboards(tfx_impl_dx12_t *renderer, ID3D12Gr
 	D3D12_VERTEX_BUFFER_VIEW vertex_view = { current->resource->GetGPUVirtualAddress(), current->capacity, TFX_IMPL_DX12_INSTANCE_STRIDE };
 	command_list->IASetVertexBuffers(0, 1, &vertex_view);
 	ID3D12PipelineState *bound_pipeline = NULL;
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != renderer->library_layer_count; ++layer) {
 		const tfxLayerFlags flags = renderer->layer_flags[layer];
 		if (tfx_impl_LayerWritesDepth(flags) != writes_depth || renderer->layer_count[layer] + renderer->gpu_layer_count[layer] == 0) {
 			continue;

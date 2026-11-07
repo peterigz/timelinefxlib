@@ -261,7 +261,7 @@ effect draws the same way. To draw some effects with their own pipeline or resou
 `tfx_SetEffectSortKey` and walk each layer's keys yourself after the gather:
 
 ```c
-for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+for (tfxU32 layer = 0; layer != tfx_GetLayerCount(library); ++layer) {
 	tfx_instance_key_range_t range;
 	while (tfx_GetNextInstanceKeyRange(stage, layer, &range)) {
 		//Bind what range.sort_key draws with, then draw the CPU instances and after them the GPU ones
@@ -271,6 +271,10 @@ for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 	tfx_ResetInstanceBufferLoopIndex(stage);
 }
 ```
+
+A library defines up to `tfxLAYERS` (64) layers, so loop them up to `tfx_GetLayerCount`, as `tfx_impl_GatherFrame` does
+with the library you pass it. A stage matches layers by index whichever library an effect came from, so give libraries
+that share a stage the same layer table. The editor's Copy Layers, in the import window, does that.
 
 Ribbons aren't in those ranges. Each ribbon bucket holds one key's ribbons and reports it in `dispatch.sort_key`, and
 the buckets come in the order they were made, not by key. Drawing every billboard and then every ribbon, as the D3D11
@@ -282,7 +286,7 @@ bucket and draw only the matching ones, because the dispatch offsets count up th
 //keys: the sort keys you gave out, lowest first
 for (tfxU32 key_index = 0; key_index != key_count; ++key_index) {
 	tfxU32 key = keys[key_index];
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != tfx_GetLayerCount(library); ++layer) {
 		tfx_instance_key_range_t range;
 		while (tfx_GetNextInstanceKeyRange(stage, layer, &range)) {
 			if (range.sort_key == key) {
