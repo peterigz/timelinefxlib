@@ -8602,6 +8602,10 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	tmpStack(tfx_str256_t, pair);
 
 	tfx_effect_descriptor current_effect = nullptr;
+	//Sub effects from older versions are dropped and their emitters put into the root effect. A sub effect's own lines
+	//come before its first emitter and would otherwise land on the emitter that holds it
+	tfxU32 sub_effect_depth = 0;
+	bool in_sub_effect_header = false;
 
 	bool version_read = false;
 
@@ -8636,10 +8640,12 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEffect) {
-				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
 				if (current_effect) {
-					continue;	//ignore any sub effects from older versions. All sub emitters will be put into the root effect.
+					sub_effect_depth++;
+					in_sub_effect_header = true;
+					continue;
 				}
+				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
 				current_effect = effect;
 				effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				effect->library = lib;
@@ -8655,6 +8661,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				effect->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEmitter) {
+				in_sub_effect_header = false;
 				tfx_effect_descriptor emitter = tfx_CreateEffectDescriptor(tfxEmitterType);
 				emitter->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				emitter->state_properties.path_attributes = tfxINVALID;
@@ -8675,6 +8682,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter->uid = uid++;
 				effect_stack.push_back(emitter);
 			} else if (context == tfxStartRibbonEmitter) {
+				in_sub_effect_header = false;
 				tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
 				ribbon->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
 				ribbon->state_properties.path_attributes = tfxINVALID;
@@ -8710,7 +8718,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 		}
 
 		if (context_set == false) {
-			if (context == tfxStartEffect && !current_effect) {
+			if (in_sub_effect_header || (context == tfxStartEffect && !current_effect)) {
 				continue;
 			}
 			//Read whole, the split below would cut the grid data at a field's 256 characters
@@ -8875,7 +8883,10 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			effect_stack.pop();
 		}
 
-		if (context == tfxEndEffect) {
+		if (context == tfxEndEffect && sub_effect_depth) {
+			sub_effect_depth--;
+			in_sub_effect_header = false;
+		} else if (context == tfxEndEffect) {
 			//The writer packs and sorts them, but a hand edited file could leave a hole or an out of order
 			//row, and everything downstream reads the list as sorted and terminated by the first empty slot.
 			tfx__repack_effect_bookmarks(effect_stack.back());
