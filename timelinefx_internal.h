@@ -3325,7 +3325,12 @@ typedef enum {
 	tfxRibbonShader_always_face_camera,
 	tfxRibbonShader_fixed_angle,
 	tfxRibbonShader_frenet_serret_frame,
+	tfxRibbonShader_half_pipe,				//Faces the camera with a semicircle cross section that bulges towards it, depth from the lighting roundness
 } tfx_ribbon_compute_shader_type;
+
+//Tessellation is packed into 3 bits of each ribbon vertex
+#define tfxRIBBON_MAX_TESSELLATION 7
+#define tfxRIBBON_DEFAULT_TESSELLATION 3
 
 //Where a lit ribbon's normal points. Radial is 0 so that baked ribbons from before lighting read as the default
 typedef enum {
@@ -6214,6 +6219,7 @@ typedef struct tfx_shared_emitter_properties_s {
 
 typedef struct tfx_ribbon_bucket_info_s {
 	tfxU32 segment_count;
+	tfxU32 tessellation;			//Subdivisions across the width, only used by tfxRibbonShader_half_pipe, see tfx__ribbon_effective_tessellation
 } tfx_ribbon_bucket_info_t;
 
 typedef struct tfx_ribbon_emitter_properties_s {
@@ -7808,7 +7814,16 @@ typedef struct tfx_data_entry_s {
 #define tfxColorRampIDWithoutEdited(id) (id & 0x7FFFFFFF)
 #define tfxColorRampIsEdited(id) (id & 0x80000000)
 //A stage keeps a separate bucket per effect sort key and layer, so ribbons from differently keyed effects or layers are never dispatched together
-tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) { return ((tfxKey)sort_key << 32) | ((tfxKey)layer << 24) | segment_count; }
+tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 tessellation, tfxU32 sort_key, tfxU32 layer) {
+	TFX_ASSERT(segment_count < (1u << 21) && tessellation <= tfxRIBBON_MAX_TESSELLATION);
+	return ((tfxKey)sort_key << 32) | ((tfxKey)layer << 24) | ((tfxKey)tessellation << 21) | segment_count;
+}
+tfxINTERNAL inline tfxKey tfx__animation_ribbon_bucket_key(tfxU32 segment_count, tfxU32 tessellation, tfxU32 layer) { return ((tfxKey)layer << 32) | ((tfxKey)tessellation << 24) | segment_count; }
+//Only a half pipe has anything to put across its width, every other ribbon builds with 1
+tfxINTERNAL inline tfxU32 tfx__ribbon_effective_tessellation(const tfx_ribbon_emitter_properties_t *ribbon_properties) {
+	if (ribbon_properties->angle_type != tfxRibbonShader_half_pipe) return 1u;
+	return (tfx__Clamp(1u, (tfxU32)tfxRIBBON_MAX_TESSELLATION, ribbon_properties->bucket_info.tessellation));
+}
 tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
@@ -7828,7 +7843,7 @@ tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor ef
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, int tessellation);
+tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, tfxU32 tessellation);
 tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
 

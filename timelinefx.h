@@ -627,7 +627,8 @@ typedef struct tfx_stage_info_s {
 											//nearest multiple of 32. Must be less than 16777215. Default 32768.
 	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this stage. Ribbons stop spawning once it is reached. Default 1000.
 	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this stage, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit fails, see tfx_EffectIDIsValid. Default 0.
-	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases. Default 1.
+	tfxU32 ribbon_tessellation;				//The tessellation tfx_GetSegmentVertexBufferMaxSizeInBytes and tfx_GetSegmentIndexBufferMaxSizeInBytes size for. A half pipe ribbon emitter tessellated more than this
+											//spends whole multiples of its segment count from max_ribbon_segments, so the buffers never overflow. Clamped to at least 1. Default 1.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater. Default 4096.
 	tfxU32 gpu_particle_capacity;			//Pool slots across every run_on_gpu emitter on the stage, fixed for the stage's life. 0, the default, runs those emitters on the CPU. Add up tfx_GetTemplateGPUPoolSlots or tfx_SetTemplateGPUCapacityForLocations for each effect instance that plays at once. Spawn locations share their effect's rings, so size those with tfx_SetTemplateGPUCapacityForLocations rather than by adding more. That exact sum fits at a steady 60 updates a second, slower rates and single call catch-up updates need tfx_SetGPUSizingUpdateRate. It fits when every ring is allocated once, but a stage that keeps adding and expiring effects should leave room for about one more of its largest ring, since freed rings can leave the space in pieces. Each slot is 112 bytes of GPU memory, and tfx_GetGPUParticleBufferSizes gives the exact pool size. See tfx_GetGPUParticleFrame.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations. Default true.
@@ -2274,15 +2275,16 @@ Get the length of the last update in seconds, or of the last step for tfx_Update
 tfxAPI double tfx_GetUpdateTime(tfx_stage stage);
 
 /*
-Get the ribbon buffer for a given segment size, effect sort key and layer. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
+Get the ribbon buffer for a given segment size, tessellation, effect sort key and layer. This will give you all the necessary info and buffer pointers for uploading the ribbon data to the GPU for processing and converting into
 a vertex buffer for rendering.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
+* @param tessellation             Subdivisions across the ribbon's width, 1 to 7. Only half pipe ribbon emitters build with more than 1.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
 * @param layer                    The layer of the ribbon emitters you want, below tfx_GetLayerCount.
-* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count, key and layer
+* @returns						  A pointer to a tfx_ribbon_bucket_t, or null if the stage has no bucket for that segment count, tessellation, key and layer
 */
-tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
+tfxAPI tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage stage, tfxU32 segment_count, tfxU32 tessellation, tfxU32 sort_key, tfxU32 layer);
 
 /*
 Call this to determine whether or not any stage has ribbon_emitters to draw this frame.
@@ -2291,14 +2293,15 @@ Call this to determine whether or not any stage has ribbon_emitters to draw this
 tfxAPI bool tfx_HasRibbonsToDraw(tfx_stage stage);
 
 /*
-Get a struct containing the info you need to compute and render ribbon_emitters of a specific length, effect sort key and layer.
+Get a struct containing the info you need to compute and render ribbon_emitters of a specific length, tessellation, effect sort key and layer.
 * @param stage                    A pointer to an initialised tfx_stage_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
+* @param tessellation             Subdivisions across the ribbon's width, 1 to 7. Only half pipe ribbon emitters build with more than 1.
 * @param sort_key                 The sort key of the effects whose ribbons you want, see tfx_SetEffectSortKey. Pass 0 if you don't use sort keys.
 * @param layer                    The layer of the ribbon emitters you want, below tfx_GetLayerCount.
-* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count, key and layer
+* @returns						  A tfx_ribbon_buffer_info_t struct, zeroed if the stage has no bucket for that segment count, tessellation, key and layer
 */
-tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage stage, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer);
+tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage stage, tfxU32 segment_count, tfxU32 tessellation, tfxU32 sort_key, tfxU32 layer);
 
 /*
 --------------------------------

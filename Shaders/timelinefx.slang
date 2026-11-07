@@ -3998,6 +3998,7 @@ static const uint tfx_ribbon_start_index_mask = 0x00FFFFFFu;
 static const uint tfx_angle_type_face_camera = 0;
 static const uint tfx_angle_type_fixed_angle = 1;
 static const uint tfx_angle_type_frenet_serret = 2;
+static const uint tfx_angle_type_half_pipe = 3;
 
 //tfx_ribbon_normal_mode
 static const uint tfx_ribbon_normal_radial = 0;
@@ -4242,7 +4243,8 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 	float3 right;
 
 	const uint angle_type = emitter.angle_type & 0xFFu;
-	if (angle_type == tfx_angle_type_face_camera) {
+	const bool half_pipe = angle_type == tfx_angle_type_half_pipe;
+	if (angle_type == tfx_angle_type_face_camera || half_pipe) {
 		const float3 to_camera = normalize(push.camera_position.xyz - current_position);
 		right = tfx_safe_normalize(cross(world_forward, normalize(to_camera + world_forward)));
 	} else if (angle_type == tfx_angle_type_fixed_angle) {
@@ -4268,19 +4270,19 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 		right = tfx_safe_normalize(cross(tfx_safe_normalize(cross(world_forward, up)), world_forward));
 	}
 
-	//For the lit entry points, 0 on a layer that isn't lit: the face turned towards the camera, or out from the ribbon's origin, bent towards the edges by the roundness
+	//The face turned towards the camera, or out from the ribbon's origin, bent towards the edges by the roundness. A half pipe always
+	//uses the face, which is also the way it bulges, and is the only one that needs it on a layer that isn't lit
 	const uint lighting = emitter.angle_type >> 8;
 	const bool lit = (lighting & tfx_lighting_unlit_layer) == 0;
 	float3 face_normal = float3(0.0, 0.0, 0.0);
-	if (lit) {
-		if ((lighting & 0xFFu) == tfx_ribbon_normal_radial) {
-			face_normal = tfx_safe_normalize(current_position - (tfx_rotate_vector(ribbon.position, emitter_quaternion) + emitter_position));
-		} else {
-			face_normal = tfx_safe_normalize(cross(right, world_forward));
-			face_normal *= dot(face_normal, push.camera_position.xyz - current_position) < 0.0 ? -1.0 : 1.0;
-		}
+	if (half_pipe || (lit && (lighting & 0xFFu) != tfx_ribbon_normal_radial)) {
+		face_normal = tfx_safe_normalize(cross(right, world_forward));
+		face_normal *= dot(face_normal, push.camera_position.xyz - current_position) < 0.0 ? -1.0 : 1.0;
+	} else if (lit) {
+		face_normal = tfx_safe_normalize(current_position - (tfx_rotate_vector(ribbon.position, emitter_quaternion) + emitter_position));
 	}
-	const float bend = float((lighting >> 8) & 0xFFu) * (tfx_two_pi * 0.25 / 255.0);
+	const float roundness = float((lighting >> 8) & 0xFFu) * (1.0 / 255.0);
+	const float quarter_turn = tfx_two_pi * 0.25;
 
 	const uint ribbon_lerp_packed = uint(ribbon_lerp * 2047);
 	const float ribbon_is_active = float(ribbon_flags & tfx_ribbon_active);
@@ -4294,22 +4296,38 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 	vertex.ribbon_index = global_ribbon_index;
 	vertex.normal = 0u;
 
+	//A half pipe bulges towards the camera by up to half its width, whichever way a negative width graph flips it
+	const float bulge = half_pipe ? abs(width) * 0.5 * roundness : 0.0;
+	//A negative width swaps the edges, so the normals bend the other way to stay facing out of them
+	const float3 bend_right = width < 0.0 ? -right : right;
+
 	const uint vertices_per_segment = (push.tessellation + 1) * 2;
 	const uint vertex_base_index = local_ribbon_index * push.segment_count * vertices_per_segment + local_segment_index * vertices_per_segment + push.vertex_offset;
 	//One side's vertexes from the edge in to the centre line, then the other's from the centre line out
 	for (uint tessellation_step = 0; tessellation_step <= push.tessellation; tessellation_step++) {
 		const float t = float(tessellation_step) / float(push.tessellation);
-		vertex.position = current_position + right * lerp(0.5, 0.0, t) * width;
+		//A quarter turn from the edge to the centre line on the first side. The second side runs the complementary angle, so it swaps sin and cos
+		const float angle = lerp(quarter_turn, 0.0, t);
+		float2 across = float2(1.0 - t, t);
+		float2 depth_offset = float2(0.0, 0.0);
+		if (half_pipe) {
+			float angle_sin;
+			float angle_cos;
+			sincos(angle, angle_sin, angle_cos);
+			across = float2(angle_sin, angle_cos);
+			depth_offset = float2(angle_cos, angle_sin) * bulge;
+		}
+		vertex.position = current_position + right * (across.x * 0.5 * width) + face_normal * depth_offset.x;
 		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 0);
 		if (lit) {
-			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(1.0, 0.0, t) * bend);
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, bend_right, angle * roundness);
 		}
 		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + tessellation_step, vertex);
 
-		vertex.position = current_position + right * lerp(0.0, -0.5, t) * width;
+		vertex.position = current_position - right * (across.y * 0.5 * width) + face_normal * depth_offset.y;
 		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 1);
 		if (lit) {
-			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(0.0, -1.0, t) * bend);
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, bend_right, (angle - quarter_turn) * roundness);
 		}
 		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + push.tessellation + 1 + tessellation_step, vertex);
 	}

@@ -4198,6 +4198,7 @@ tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	TFX_ASSERT_HANDLE(library);		//Not a valid library handle
 	tfx_ribbon_emitter_properties_t properties{};
 	properties.fixed_angle_normal = { 0.f, 1.f, 0.f };
+	properties.bucket_info.tessellation = tfxRIBBON_DEFAULT_TESSELLATION;
 	properties.noise_frequency = 4.f;
 	properties.noise_speed = 1.f;
 	properties.noise_phase_range = 8.f;
@@ -5226,6 +5227,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 
 	//Ribbon properties
 	names_and_types.Insert("ribbon_segment_count", tfxUInt);
+	names_and_types.Insert("ribbon_tessellation", tfxUInt);
 	names_and_types.Insert("ribbon_shader_type", tfxUInt);
 	names_and_types.Insert("static_ribbon", tfxBool);
 	names_and_types.Insert("ribbon_path_morph", tfxBool);
@@ -6163,6 +6165,7 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 
 	if (ribbon_properties) {
 		if (tfx__property_is(query, "ribbon_segment_count")) return tfx__property_u32(out_value, ribbon_properties->bucket_info.segment_count);
+		if (tfx__property_is(query, "ribbon_tessellation")) return tfx__property_u32(out_value, ribbon_properties->bucket_info.tessellation);
 		if (tfx__property_is(query, "ribbon_shader_type")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->angle_type);
 		if (tfx__property_is(query, "ribbon_noise_algorithm")) return tfx__property_u32(out_value, (tfxU32)ribbon_properties->noise_algorithm);
 		if (tfx__property_is(query, "ribbon_noise_octaves")) return tfx__property_u32(out_value, ribbon_properties->noise_octaves);
@@ -6415,6 +6418,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
+	else if (*field == "ribbon_tessellation" && ribbon_properties) ribbon_properties->bucket_info.tessellation = tfx__Clamp((tfxU32)1, (tfxU32)tfxRIBBON_MAX_TESSELLATION, value);
 	else if (*field == "ribbon_noise_algorithm" && ribbon_properties) ribbon_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "ribbon_noise_octaves" && ribbon_properties) ribbon_properties->noise_octaves = value;
 	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
@@ -8141,7 +8145,7 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 void tfx__rebuild_animation_ribbon_buckets(tfx_animation_manager animation_manager) {
 	animation_manager->animation_ribbon_buckets.clear();
 	for (tfx_animation_ribbon_properties_t &properties : animation_manager->ribbon_properties) {
-		tfxKey bucket_id = ((tfxKey)properties.layer << 32) | properties.segment_count;
+		tfxKey bucket_id = tfx__animation_ribbon_bucket_key(properties.segment_count, properties.tessellation, properties.layer);
 		tfxU32 found_bucket_index = tfxINVALID;
 		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
 			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
@@ -9862,7 +9866,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 		properties.layer = tfx__get_shared_emitter_properties(effect)->layer;
 		properties.shader_type = tfx__ribbon_gpu_angle_type(effect->library, properties.layer, &ribbon_properties);
 		properties.alpha_threshold = ribbon_properties.alpha_threshold;
-		properties.tessellation = 1;	//todo: should be configurable in the ribbon emitter properties
+		properties.tessellation = tfx__ribbon_effective_tessellation(&ribbon_properties);
 		properties.flags = effect->state_properties.property_flags;
 		//Sprite data can be played without the library, so the manager keeps its own copy of the rows in the same order as the global table
 		properties.graph_lookup_offset = animation_manager->ribbon_graph_data.current_size;
@@ -9881,7 +9885,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			properties.start_frame_index = image.compute_shape_index;
 		}
 		//Find or create a compatible animation ribbon bucket
-		tfxKey bucket_id = ((tfxKey)properties.layer << 32) | properties.segment_count;
+		tfxKey bucket_id = tfx__animation_ribbon_bucket_key(properties.segment_count, properties.tessellation, properties.layer);
 		tfxU32 found_bucket_index = tfxINVALID;
 		for (tfxU32 b = 0; b < animation_manager->animation_ribbon_buckets.current_size; b++) {
 			if (animation_manager->animation_ribbon_buckets[b].bucket_id == bucket_id) {
@@ -11212,14 +11216,15 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	}
 }
 
-//Puts a ribbon emitter in the bucket for its segment count, sort key and layer, picking up any path blocks that bucket already holds for it.
+//Puts a ribbon emitter in the bucket for its segment count, tessellation, sort key and layer, picking up any path blocks that bucket already holds for it.
 //Needs the emitter's source ribbon, library, path attributes and samples_per_segment set first. Inserting a bucket can move the others.
 tfxINTERNAL tfx_ribbon_bucket_t *tfx__attach_ribbon_emitter_to_bucket(tfx_stage pm, tfx_ribbon_emitter_state_t &ribbon_emitter, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxU32 sort_key) {
 	tfxU32 layer = tfx__get_shared_emitter_properties(ribbon_emitter.source_ribbon)->layer;
 	TFX_ASSERT(layer < tfxLAYERS);
-	tfxKey bucket_id = tfx__ribbon_bucket_key(ribbon_properties->bucket_info.segment_count, sort_key, layer);
+	tfxU32 tessellation = tfx__ribbon_effective_tessellation(ribbon_properties);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(ribbon_properties->bucket_info.segment_count, tessellation, sort_key, layer);
 	if (!pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
-		tfx__init_ribbon_segment_buffer(pm, bucket_id, &ribbon_properties->bucket_info, sort_key, layer, 1);
+		tfx__init_ribbon_segment_buffer(pm, bucket_id, &ribbon_properties->bucket_info, sort_key, layer, tessellation);
 	}
 	ribbon_emitter.ribbon_bucket_id = bucket_id;
 	tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets.At(bucket_id);
@@ -15137,10 +15142,10 @@ double tfx_GetUpdateTime(tfx_stage pm) {
 	return pm->update_time;
 }
 
-tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) {
+tfx_ribbon_bucket_t *tfx_GetRibbonBuffers(tfx_stage pm, tfxU32 segment_count, tfxU32 tessellation, tfxU32 sort_key, tfxU32 layer) {
 	tfx_ribbon_bucket_t *bucket = nullptr;
 	tfx__wait_for_stage_update(pm);
-	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key, layer);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, tessellation, sort_key, layer);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
 		bucket = &pm->ribbon_segment_buckets.At(bucket_id);
 	}
@@ -15164,9 +15169,9 @@ bool tfx_HasRibbonsToDraw(tfx_stage pm) {
 	return false;
 }
 
-tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer) {
+tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_stage pm, tfxU32 segment_count, tfxU32 tessellation, tfxU32 sort_key, tfxU32 layer) {
 	tfx_ribbon_buffer_info_t info{};
-	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, sort_key, layer);
+	tfxKey bucket_id = tfx__ribbon_bucket_key(segment_count, tessellation, sort_key, layer);
 	if (pm->ribbon_segment_buckets.ValidKey(bucket_id)) {
 		info = pm->ribbon_segment_buckets.At(bucket_id).buffer_info;
 	}
@@ -15920,7 +15925,9 @@ tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_em
 	if (!tfx__reserve_ribbon_budget(&pm->ribbon_rows_allocated, 1, pm->info.max_ribbons)) {
 		return tfxINVALID;
 	}
-	if (!tfx__reserve_ribbon_budget(&pm->ribbon_spine_segments_allocated, ribbon_emitter->segment_count, pm->info.max_ribbon_segments)) {
+	//Host buffers are sized for ribbon_tessellation, so a more tessellated row costs whole multiples of its segments
+	tfxU32 tessellation_cost = (bucket->globals.tessellation + pm->info.ribbon_tessellation - 1) / pm->info.ribbon_tessellation;
+	if (!tfx__reserve_ribbon_budget(&pm->ribbon_spine_segments_allocated, ribbon_emitter->segment_count * tessellation_cost, pm->info.max_ribbon_segments)) {
 		tfx_AtomicAdd32(&pm->ribbon_rows_allocated, 0u - 1u);
 		return tfxINVALID;
 	}
@@ -16079,7 +16086,7 @@ tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, t
 	return tfx_Hash(&hasher, key_parts, sizeof(key_parts), 0);
 }
 
-void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, int tessellation) {
+void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, tfxU32 tessellation) {
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
 	bucket.sort_key = sort_key;
 	bucket.layer = layer;
@@ -24769,6 +24776,7 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	//tfx_ribbon_t packs the GPU emitter index into 16 bits and the segment start index into 24
 	TFX_ASSERT(pm->info.max_ribbon_emitters <= 0xFFFF);
 	TFX_ASSERT(pm->info.max_ribbon_segments < tfxRIBBON_START_INDEX_MASK);
+	pm->info.ribbon_tessellation = tfx__Max(pm->info.ribbon_tessellation, 1u);
 	pm->warmup_delta_time = info.warmup_delta_time;
 	tfx__init_common_stage(pm, info.max_particles, info.max_effects, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.multi_threaded_batch_size);
 
