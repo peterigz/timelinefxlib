@@ -8577,12 +8577,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	//path for the length of that block and this holds the real one until tfxEndMorphPath
 	tfxU32 morph_path_swap = tfxINVALID;
 
-	if (!data)
-		error |= tfxErrorCode_data_could_not_be_loaded;
-
-	if (error != 0) {
-		tfx__free_package(package);
-		return error;
+	//The caller owns the package and frees it
+	if (!data) {
+		return tfxErrorCode_data_could_not_be_loaded;
 	}
 
 	tfxKey first_shape_hash = 0;
@@ -16101,6 +16098,9 @@ void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
 	bucket.sort_key = sort_key;
 	bucket.layer = layer;
+	//Buckets are only ever cleared all together, so the count is a unique number until the stage is cleared
+	bucket.uid_prefix = (pm->ribbon_segment_buckets.Size() - 1) << 24;
+	bucket.spawned_ribbons = 0;
 	memset(&bucket.ribbons, 0, sizeof(tfx_ribbon_soa_t));
 	bucket.segments.init();
 	bucket.segments.set_alignment(16);
@@ -17537,7 +17537,8 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		}
 	}
 	else {
-		work_entry->amount_to_spawn = (tfxU32)emitter.spawn_quantity;
+		//Clamped like the rest, since a layer limit or a full instance buffer can leave less room than the burst
+		work_entry->amount_to_spawn = tfxMin((tfxU32)emitter.spawn_quantity, work_entry->max_spawn_count);
 	}
 
 	if (work_entry->emission_type == tfxOtherEmitter) {
@@ -21105,7 +21106,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max((life + tfx_RandomRangeZeroToMax(&random, life_variation)) * location_life, 1.f);
 			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
 			ribbon_bucket->ribbons.grid_index[ribbon_index] = 0.f;
-			ribbon_bucket->ribbons.uid[ribbon_index] = pm.unique_ribbon_id++;
+			ribbon_bucket->ribbons.uid[ribbon_index] = ribbon_bucket->uid_prefix | (ribbon_bucket->spawned_ribbons++ & 0x00FFFFFF);
 			ribbon.emitter_index_phase_seed = emitter_index | (ribbon_bucket->ribbons.uid[ribbon_index] << 16);
 			ribbon_emitter.active_ribbons++;
 		}
@@ -24683,8 +24684,8 @@ tfx_stage_info_t tfx_CreateStageInfo(tfx_stage_setup setup) {
 	info.max_particles = 5000;
 	info.max_effects = 1000;
 	info.max_emitters = 0;
-	info.max_ribbon_segments = 32768;
-	info.max_ribbons = 1000;
+	info.max_ribbon_segments = 131072;
+	info.max_ribbons = 4000;
 	info.max_ribbon_emitters = 0;
 	info.ribbon_tessellation = 1;
 	info.multi_threaded_batch_size = 4096;
@@ -24709,7 +24710,6 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 	pm->current_sprite_buffer = 0;
 	pm->max_frame_length = 240.f;
 	pm->unique_particle_id = 0;
-	pm->unique_ribbon_id = 0;
 
 	tfx_SetStageSeed(pm, tfx_Millisecs());
 	pm->max_effects = effects_limit;

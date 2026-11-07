@@ -624,8 +624,8 @@ typedef struct tfx_stage_info_s {
 	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
 											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferMaxSizeInBytes after creating the stage to get the byte
 											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
-											//nearest multiple of 32. Must be less than 16777215. Default 32768.
-	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this stage. Ribbons stop spawning once it is reached. Default 1000.
+											//nearest multiple of 32. Must be less than 16777215. Default 131072, about 25MB of ribbon vertex, index and segment buffers if you size them all from it at tessellation 1.
+	tfxU32 max_ribbons;						//The maximum number of ribbon instances that can exist at the same time across all emitters in this stage. Ribbons stop spawning once it is reached. Default 4000.
 	tfxU32 max_ribbon_emitters;				//The maximum number of ribbon emitters across all effects in this stage, 0 to match max_effects. Must be 65535 or less. Adding an effect whose ribbon emitters won't fit fails, see tfx_EffectIDIsValid. Default 0.
 	tfxU32 ribbon_tessellation;				//The tessellation tfx_GetSegmentVertexBufferMaxSizeInBytes and tfx_GetSegmentIndexBufferMaxSizeInBytes size for. A half pipe ribbon emitter tessellated more than this
 											//spends whole multiples of its segment count from max_ribbon_segments, so the buffers never overflow. Clamped to at least 1. Default 1.

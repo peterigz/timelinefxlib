@@ -6988,6 +6988,9 @@ typedef struct tfx_ribbon_bucket_s {
 	tfxRibbonBucketFlags flags;
 	tfxU32 sort_key;
 	tfxU32 layer;
+	//Ribbon uids are [uid_prefix | spawned_ribbons], the bucket's creation order in the top 8 bits, so buckets updating in parallel hand out stage unique ids deterministically
+	tfxU32 uid_prefix;
+	tfxU32 spawned_ribbons;
 } tfx_ribbon_bucket_t;
 
 #ifdef __cplusplus
@@ -7609,7 +7612,6 @@ typedef struct tfx_stage_s {
 	tfx_vec3_t camera_position;
 
 	tfxU32 unique_particle_id;    //Used when recording sprite data
-	tfxU32 unique_ribbon_id;      //Used when recording ribbon data
 	//When using single particles, you can flag the emitter to set the max_age of the particle to the 
 	//length in time of the animation so that it maps nicely to the animation
 	float animation_length_in_time;
