@@ -2826,7 +2826,7 @@ struct tfx_ribbon {
 //Mirrors tfx_ribbon_vertex_t
 struct tfx_ribbon_vertex_row {
 	float3 position;
-	uint segment_index;					//[tessellation << 29 | tessellation index << 26 | side << 25 | position along the ribbon << 12 | segment]
+	uint segment_index;					//[tessellation << 29 | tessellation index << 26 | side << 25 | position along the ribbon << 12], low 12 bits unused
 	float2 uv_offset_scale;
 	uint ribbon_index;
 	uint normal;						//Octahedral unit normal as two snorm16s, for tfx_ribbon_lit_vertex
@@ -4158,8 +4158,8 @@ float3 tfx_safe_normalize(float3 v) {
 	return v * rsqrt(dot(v, v) + 1e-16);
 }
 
-uint tfx_pack_segment_data(uint segment_index, uint ribbon_lerp, uint tessellation, uint tessellation_index, uint side) {
-	return (tessellation << 29) | (tessellation_index << 26) | (side << 25) | (ribbon_lerp << 12) | segment_index;
+uint tfx_pack_segment_data(uint ribbon_lerp, uint tessellation, uint tessellation_index, uint side) {
+	return (tessellation << 29) | (tessellation_index << 26) | (side << 25) | (ribbon_lerp << 12);
 }
 
 //face_normal turned towards right by angle, packed for tfx_ribbon_lit_vertex
@@ -4190,8 +4190,6 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 
 	//All of a bucket's ribbon segments are in one array, so the segment offset is where this bucket's start
 	const uint base_segment_index = push.segment_offset + (ribbon.start_index_flags & tfx_ribbon_start_index_mask);
-	//A unique id per segment for the packed vertex attribute
-	const uint global_segment_index = base_segment_index + local_segment_index;
 
 	const float clip_offset = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_clip_offset, ribbon_age);
 	const float clip_size = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_clip_size, ribbon_age);
@@ -4302,14 +4300,14 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 	for (uint tessellation_step = 0; tessellation_step <= push.tessellation; tessellation_step++) {
 		const float t = float(tessellation_step) / float(push.tessellation);
 		vertex.position = current_position + right * lerp(0.5, 0.0, t) * width;
-		vertex.segment_index = tfx_pack_segment_data(global_segment_index, ribbon_lerp_packed, push.tessellation, tessellation_step, 0);
+		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 0);
 		if (lit) {
 			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(1.0, 0.0, t) * bend);
 		}
 		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + tessellation_step, vertex);
 
 		vertex.position = current_position + right * lerp(0.0, -0.5, t) * width;
-		vertex.segment_index = tfx_pack_segment_data(global_segment_index, ribbon_lerp_packed, push.tessellation, tessellation_step, 1);
+		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 1);
 		if (lit) {
 			vertex.normal = tfx_bent_ribbon_normal(face_normal, right, lerp(0.0, -1.0, t) * bend);
 		}
