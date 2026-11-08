@@ -3247,7 +3247,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_use_path_from_another_emitter	    = 1 << 0,
 	tfxRibbonPropertyFlags_static							    = 1 << 1,
 	tfxRibbonPropertyFlags_always_face_camera				    = 1 << 2,
-	tfxRibbonPropertyFlags_frenet_serret_frame				    = 1 << 3,
+	tfxRibbonPropertyFlags_minimal_twist				    = 1 << 3,
 	tfxRibbonPropertyFlags_fixed_angle						    = 1 << 4,
 	tfxRibbonPropertyFlags_enable_morph    						= 1 << 5,
 	tfxRibbonPropertyFlags_enable_noise    						= 1 << 6,
@@ -3324,7 +3324,7 @@ typedef enum {
 typedef enum {
 	tfxRibbonShader_always_face_camera,
 	tfxRibbonShader_fixed_angle,
-	tfxRibbonShader_frenet_serret_frame,
+	tfxRibbonShader_minimal_twist,
 	tfxRibbonShader_half_pipe,				//Faces the camera with a semicircle cross section that bulges towards it, depth from the lighting roundness
 } tfx_ribbon_compute_shader_type;
 
@@ -6918,8 +6918,10 @@ inline tfxU32 tfx__frame_slot_end(const tfx_sprite_data_metrics_t *metrics, tfxU
 #endif
 
 typedef struct tfx_ribbon_segment_s {
-	tfx_vec4_t position;
+	tfx_vec3_t position;
+	tfxU32 frame;			//The path's rotation minimising frame normal, octahedral packed as two snorm16s. Never 0, which is sprite data saved before frames
 } tfx_ribbon_segment_t;
+tfx__static_assert(sizeof(tfx_ribbon_segment_t) == 16);
 
 
 typedef struct tfx_sprite_data_s {
@@ -8131,6 +8133,8 @@ tfxINTERNAL tfxU32 tfx__get_ribbon_samples_per_segment(tfx_graph_list_t *graphs)
 //tfx_gpu_ribbon_emitter_t's angle_type: [lighting << 8 | angle type], with tfxLIGHTING_UNLIT_LAYER from the layer's flags
 tfxINTERNAL tfxU32 tfx__ribbon_gpu_angle_type(tfx_library library, tfxU32 layer, const tfx_ribbon_emitter_properties_t *ribbon_properties);
 tfxAPI_EDITOR void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment_t *segments, tfxU32 segment_count);
+tfxINTERNAL tfxU32 tfx__pack_octahedral_normal(tfx_vec3_t normal);
+tfxINTERNAL void tfx__compute_ribbon_segment_frames(tfx_ribbon_segment_t *segments, tfxU32 sample_count);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 //An initialised, empty path slot, reused from the free list when there is one
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_path(tfx_library library);

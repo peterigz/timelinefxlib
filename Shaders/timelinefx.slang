@@ -3045,7 +3045,7 @@ struct tfx_ribbon_bounds_push {
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_emitter_properties> tfx_emitter_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space18);
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon> tfx_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space19);
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_emitter> tfx_ribbon_emitter_buffers[] TFX_BINDLESS_REGISTER(t0, space20);
-[[vk::binding(5, 0)]] StructuredBuffer<float4> tfx_ribbon_segment_buffers[] TFX_BINDLESS_REGISTER(t0, space21);
+[[vk::binding(5, 0)]] StructuredBuffer<uint4> tfx_ribbon_segment_buffers[] TFX_BINDLESS_REGISTER(t0, space21);
 [[vk::binding(5, 0)]] StructuredBuffer<uint> tfx_offset_buffers[] TFX_BINDLESS_REGISTER(t0, space22);
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_instance> tfx_animation_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space23);
 [[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_instance_data> tfx_baked_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space24);
@@ -3076,6 +3076,7 @@ static const uint tfx_image_data_row_bytes = 48;
 static const uint tfx_emitter_properties_row_bytes = 32;
 static const uint tfx_ribbon_row_bytes = 48;
 static const uint tfx_ribbon_segment_row_bytes = 16;
+static const uint tfx_ribbon_segment_frame_offset = 12;
 static const uint tfx_ribbon_vertex_row_bytes = 32;
 static const uint tfx_ribbon_emitter_row_bytes = 416;
 //Where tfx_gpu_ribbon_emitter_t's lag spine arrays start, which timelinefx_internal.h asserts. Loading them by offset reads one sample, where
@@ -3317,6 +3318,10 @@ float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
 	return tfx_fixed_ribbon_segments.Load<float3>(row * tfx_ribbon_segment_row_bytes);
 }
 
+uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_segments.Load<uint>(row * tfx_ribbon_segment_row_bytes + tfx_ribbon_segment_frame_offset);
+}
+
 void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
 	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
 }
@@ -3405,7 +3410,11 @@ TFX_BINDLESS_ACCESS void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbo
 }
 
 TFX_BINDLESS_ACCESS float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
-	return tfx_ribbon_segment_buffers[buffer_index][row].xyz;
+	return asfloat(tfx_ribbon_segment_buffers[buffer_index][row].xyz);
+}
+
+TFX_BINDLESS_ACCESS uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
+	return tfx_ribbon_segment_buffers[buffer_index][row].w;
 }
 
 TFX_BINDLESS_ACCESS void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
@@ -3997,7 +4006,7 @@ static const uint tfx_ribbon_start_index_mask = 0x00FFFFFFu;
 
 static const uint tfx_angle_type_face_camera = 0;
 static const uint tfx_angle_type_fixed_angle = 1;
-static const uint tfx_angle_type_frenet_serret = 2;
+static const uint tfx_angle_type_minimal_twist = 2;
 static const uint tfx_angle_type_half_pipe = 3;
 
 //tfx_ribbon_normal_mode
@@ -4093,12 +4102,22 @@ float3 tfx_ribbon_noise_sample_offset(float age, uint phase_seed, float phase_ra
 }
 
 //With a clip size only the clip window from the clip offset is sampled, and all of the ribbon's segments are squeezed into it
-float3 tfx_sample_ribbon_path(uint segments_index, int segment, uint segment_count, uint base_index, uint sample_count, float clip_offset, float clip_size) {
+float tfx_ribbon_path_sample_fraction(int segment, uint segment_count, uint sample_count, float clip_offset, float clip_size, out uint first_sample) {
 	const float segment_lerp = float(segment) / float(segment_count - 1);
 	const float stored = clamp(clip_offset + segment_lerp * clip_size, 0.0, 1.0) * float(sample_count - 1);
-	const uint first_sample = min(uint(stored), sample_count - 2);
-	const float fraction = clamp(stored - float(first_sample), 0.0, 1.0);
+	first_sample = min(uint(stored), sample_count - 2);
+	return clamp(stored - float(first_sample), 0.0, 1.0);
+}
+
+float3 tfx_sample_ribbon_path(uint segments_index, int segment, uint segment_count, uint base_index, uint sample_count, float clip_offset, float clip_size) {
+	uint first_sample;
+	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
 	return lerp(tfx_load_ribbon_segment(segments_index, base_index + first_sample), tfx_load_ribbon_segment(segments_index, base_index + first_sample + 1), fraction);
+}
+
+float3 tfx_sample_ribbon_path_frame(uint segments_index, uint base_index, uint first_sample, float fraction) {
+	return lerp(tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample)),
+	            tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample + 1)), fraction);
 }
 
 //Path, then morph, then noise. Both paths are stored at the same density, so one sample pair addresses either. The bias is looked up
@@ -4118,6 +4137,19 @@ float3 tfx_sample_ribbon_shape(uint segments_index, int segment, uint segment_co
 	const float envelope = tfx_sample_graph(noise_envelope_graph, clamp(segment_lerp, 0.0, 1.0));
 	const float3 sample_position = noise_sample_offset + float3(segment_lerp * noise_frequency, 0.0, 0.0);
 	return position + noise_amplitude * envelope * tfx_ribbon_noise_octaves(sample_position, noise_packed & 0xFu, (noise_packed >> 4) & 0xFu);
+}
+
+//The path's rotation minimising frame normal where tfx_sample_ribbon_shape samples, morphed the same way. Not unit length
+float3 tfx_sample_ribbon_frame(uint segments_index, int segment, uint segment_count, uint base_index, uint morph_base_index, uint sample_count,
+                               float clip_offset, float clip_size, float morph_amount, tfx_gpu_graph_data morph_bias_graph) {
+	uint first_sample;
+	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
+	const float3 frame = tfx_sample_ribbon_path_frame(segments_index, base_index, first_sample, fraction);
+	if (morph_base_index == tfx_invalid_index) {
+		return frame;
+	}
+	const float morph = clamp(morph_amount + tfx_sample_graph(morph_bias_graph, clamp(float(segment) / float(segment_count - 1), 0.0, 1.0)), 0.0, 1.0);
+	return lerp(frame, tfx_sample_ribbon_path_frame(segments_index, morph_base_index, first_sample, fraction), morph);
 }
 
 //--- Ribbon_build
@@ -4263,11 +4295,11 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 			right = tfx_safe_normalize(tfx_rotate_vector(right, tfx_multiply_quaternions(ribbon_quaternion, emitter_quaternion)));
 		}
 	} else {
-		float3 up = float3(0.0, 1.0, 0.0);
-		if (abs(dot(world_forward, up)) > 0.999) {
-			up = float3(1.0, 0.0, 0.0);
-		}
-		right = tfx_safe_normalize(cross(tfx_safe_normalize(cross(world_forward, up)), world_forward));
+		//The path's rotation minimising frame, turned with the ribbon like its positions, then made square to the forward that noise and lag bend
+		const float3 path_frame = tfx_sample_ribbon_frame(push.ribbon_segments_index, int(local_segment_index), push.segment_count, base_segment_index, morph_base_segment_index,
+			sample_count, clip_offset, clip_size, morph_amount, morph_bias_graph);
+		const float3 frame = tfx_rotate_vector(tfx_rotate_vector(path_frame, ribbon_quaternion), emitter_quaternion);
+		right = tfx_safe_normalize(frame - world_forward * dot(world_forward, frame));
 	}
 
 	//The face turned towards the camera, or out from the ribbon's origin, bent towards the edges by the roundness. A half pipe always

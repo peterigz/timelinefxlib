@@ -8243,6 +8243,20 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		}
 	}
 
+	//Sprite data saved before ribbon frames has 0 in every frame, so they're worked out from the positions, once per block
+	tfx_vector_t<tfx_ribbon_segment_t> &loaded_segments = animation_manager->ribbon_segment_data;
+	for (tfx_ribbon_instance_data_t &ribbon : animation_manager->ribbon_data) {
+		const tfxU32 property_index = ribbon.additional >> 16;
+		if (property_index >= animation_manager->ribbon_properties.current_size) continue;
+		const tfx_animation_ribbon_properties_t &properties = animation_manager->ribbon_properties[property_index];
+		const tfxU32 block_starts[2] = { ribbon.start_index, properties.morph_segment_start_index };
+		for (tfxU32 block_start : block_starts) {
+			if (block_start != tfxINVALID && block_start + properties.sample_count <= loaded_segments.current_size && loaded_segments[block_start].frame == 0) {
+				tfx__compute_ribbon_segment_frames(&loaded_segments[block_start], properties.sample_count);
+			}
+		}
+	}
+
 	tfx_package_entry_info_t *ribbon_graph_data = tfx__get_package_file(package, "ribbon_graph_data");
 	if (ribbon_graph_data && ribbon_graph_data->file_size > 0) {
 		animation_manager->ribbon_graph_data.resize((tfxU32)(ribbon_graph_data->file_size / sizeof(tfx_gpu_graph_data_t)));
@@ -20817,8 +20831,54 @@ void tfx__sample_path_into_segments(tfx_emitter_path_t *path, tfx_ribbon_segment
 
 		for (tfxU32 j = 0; j != tfxDataWidth; ++j) {
 			tfxU32 segment_index = s + j;
-			segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j], 0.f };
+			segments[segment_index].position = tfx_vec3_t(point_x.a[j], point_y.a[j], point_z.a[j]);
 		}
+	}
+	tfx__compute_ribbon_segment_frames(segments, segment_count);
+}
+
+//Two snorm16s folded onto the octahedron, as tfx_pack_octahedral_normal in timelinefx.slang
+tfxU32 tfx__pack_octahedral_normal(tfx_vec3_t normal) {
+	normal = normal * (1.f / (fabsf(normal.x) + fabsf(normal.y) + fabsf(normal.z)));
+	float folded_x = normal.x;
+	float folded_y = normal.y;
+	if (normal.z < 0.f) {
+		folded_x = (1.f - fabsf(normal.y)) * (normal.x >= 0.f ? 1.f : -1.f);
+		folded_y = (1.f - fabsf(normal.x)) * (normal.y >= 0.f ? 1.f : -1.f);
+	}
+	const int quantised_x = (int)roundf(fminf(fmaxf(folded_x, -1.f), 1.f) * 32767.f);
+	const int quantised_y = (int)roundf(fminf(fmaxf(folded_y, -1.f), 1.f) * 32767.f);
+	return ((tfxU32)quantised_x & 0xFFFF) | ((tfxU32)quantised_y << 16);
+}
+
+//Rotation minimising frames by double reflection (Wang et al. 2008) from up made square to the first tangent, so ribbons never fold
+void tfx__compute_ribbon_segment_frames(tfx_ribbon_segment_t *segments, tfxU32 sample_count) {
+	const float coincident = 1e-12f;
+	tfx_vec3_t tangent(0.f, 0.f, 1.f);
+	tfx_vec3_t reference;
+	for (tfxU32 index = 0; index < sample_count; ++index) {
+		const tfx_vec3_t across = segments[tfxMin(index + 1, sample_count - 1)].position - segments[index ? index - 1 : 0].position;
+		const float across_squared = tfx__dot_product_vec3(&across, &across);
+		const tfx_vec3_t next_tangent = across_squared > coincident ? across * (1.f / sqrtf(across_squared)) : tangent;
+		if (index == 0) {
+			const tfx_vec3_t up = fabsf(next_tangent.y) > 0.999f ? tfx_vec3_t(1.f, 0.f, 0.f) : tfx_vec3_t(0.f, 1.f, 0.f);
+			const tfx_vec3_t square_up = up - next_tangent * tfx__dot_product_vec3(&next_tangent, &up);
+			reference = tfx__normalize_vec3(&square_up);
+		} else {
+			//Reflect in the step, then onto the new tangent. A step with no length reflects in the tangent, as one reflection alone flips the frame
+			const tfx_vec3_t step = segments[index].position - segments[index - 1].position;
+			const float step_squared = tfx__dot_product_vec3(&step, &step);
+			const tfx_vec3_t mirror = step_squared > coincident ? step : tangent;
+			const float mirror_squared = step_squared > coincident ? step_squared : 1.f;
+			const tfx_vec3_t reflected_reference = reference - mirror * (2.f * tfx__dot_product_vec3(&mirror, &reference) / mirror_squared);
+			const tfx_vec3_t reflected_tangent = tangent - mirror * (2.f * tfx__dot_product_vec3(&mirror, &tangent) / mirror_squared);
+			const tfx_vec3_t correction = next_tangent - reflected_tangent;
+			const float correction_squared = tfx__dot_product_vec3(&correction, &correction);
+			reference = correction_squared > coincident ? reflected_reference - correction * (2.f * tfx__dot_product_vec3(&correction, &reflected_reference) / correction_squared) : reflected_reference;
+		}
+		tangent = next_tangent;
+		const tfxU32 packed = tfx__pack_octahedral_normal(reference);
+		segments[index].frame = packed ? packed : 1;
 	}
 }
 
