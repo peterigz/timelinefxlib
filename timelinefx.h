@@ -640,6 +640,12 @@ typedef struct tfx_stage_info_s {
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_stage stage, void *user_data);
 } tfx_stage_info_t;
 
+//Bind tfx_ribbon_compute for a path dispatch and tfx_trail_compute for a trail one. Both write the same vertexes, so the draw is the same
+typedef enum {
+	tfxRibbonDispatch_path = 0,
+	tfxRibbonDispatch_trail = 1,
+} tfx_ribbon_dispatch_type;
+
 typedef struct tfx_ribbon_dispatch_s {
 	tfx_ribbon_bucket_t *ribbon_data;
 	tfxU32 index_offset;
@@ -657,6 +663,7 @@ typedef struct tfx_ribbon_dispatch_s {
 	tfxU32 layer;							//The layer of every ribbon emitter in this bucket. Draw it with your depth pipeline when tfx_GetLayerFlags says the layer writes depth
 	tfx_ribbon_bucket_globals_t *globals;	//This bucket's push constants, which tfx_GetRibbonDispatchGlobals returns
 	tfxU32 next_bucket;						//Where tfx_NextAnimationRibbonDispatch carries on from, unused for a stage
+	tfxU32 type;							//tfx_ribbon_dispatch_type: which compute entry point builds this bucket. Trail buckets come after every path bucket
 } tfx_ribbon_dispatch_t;
 
 //Every instance on one layer with one sort key, see tfx_GetNextInstanceKeyRange. Both starts index the instance buffer you draw from

@@ -3253,6 +3253,9 @@ typedef enum {
 	tfxRibbonPropertyFlags_enable_noise    						= 1 << 6,
 	tfxRibbonPropertyFlags_enable_lag      						= 1 << 7,
 	tfxRibbonPropertyFlags_orient_to_surface_normal			    = 1 << 8,
+	tfxRibbonPropertyFlags_trail							    = 1 << 9,		//A trail behind each source rather than path ribbons. Not static_ribbon = 0, which the loader turns back on for old libraries
+	tfxRibbonPropertyFlags_trail_by_length					    = 1 << 10,		//The over length graphs span the live trail instead of the trail time
+	tfxRibbonPropertyFlags_trail_tile_uv					    = 1 << 11,		//The texture stays with the trail points instead of stretching over the trail
 } tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
@@ -3304,6 +3307,8 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonEmitterStateFlags_none                             = 0,
+	tfxRibbonEmitterStateFlags_trail                            = 1 << 0,       //Latched when the emitter is built, so a live edit of the property can't move it between bucket maps
+	tfxRibbonEmitterStateFlags_settled                          = 1 << 1,       //A trail emitter has had a tick outside warmup, so a no tween from then on is a teleport rather than the build's
 	tfxRibbonEmitterStateFlags_remove                           = 1 << 4,       //Tells the effect/emitter to remove itself from the effect manager immediately
 	tfxRibbonEmitterStateFlags_no_tween_this_update             = 1 << 7,       //Same bit as tfxEffectStateFlags_no_tween_this_update so it can be inherited from the effect
 	tfxRibbonEmitterStateFlags_single_shot_done                 = 1 << 17,
@@ -3331,6 +3336,20 @@ typedef enum {
 //Tessellation is packed into 3 bits of each ribbon vertex
 #define tfxRIBBON_MAX_TESSELLATION 7
 #define tfxRIBBON_DEFAULT_TESSELLATION 3
+
+//One ring slot holds the live head, so the interval is trail_time / (points - 2) and a full ring reaches back the whole trail time
+#define tfxTRAIL_MIN_POINTS 8
+#define tfxTRAIL_MAX_POINTS 256
+#define tfxTRAIL_DEFAULT_POINTS 32
+#define tfxTRAIL_DEFAULT_TIME 400.f
+
+typedef enum {
+	tfxTrailFlags_none = 0,
+	tfxTrailFlags_attached = 1 << 0,		//Still following its source and committing points, otherwise draining
+	tfxTrailFlags_seen = 1 << 1,			//Its source emitted this tick, an attached trail that isn't seen lets go
+} tfx_trail_flag_bits;
+
+typedef tfxU32 tfxTrailFlags;
 
 //Where a lit ribbon's normal points. Radial is 0 so that baked ribbons from before lighting read as the default
 typedef enum {
@@ -6235,6 +6254,8 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	float lag_time;
 	float alpha_threshold;			//Cutout threshold when the emitter's layer writes depth
 	tfxU32 lighting;				//[wrap unorm8 << 16 | roundness unorm8 << 8 | tfx_ribbon_normal_mode], used on a lit layer
+	float trail_time;				//Milliseconds a trail point lives
+	tfxU32 trail_points;			//Ring size of each trail, a power of two from tfxTRAIL_MIN_POINTS to tfxTRAIL_MAX_POINTS
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6283,6 +6304,12 @@ typedef struct tfx_location_spawn_ordinal_s {
 	tfxU32 generation;
 	tfxU32 ordinal;
 } tfx_location_spawn_ordinal_t;
+
+//The trail a user spawn location is drawing for one trail emitter, stale once the slot's generation moves on
+typedef struct tfx_location_trail_s {
+	tfxU32 generation;
+	tfxU32 row;
+} tfx_location_trail_t;
 
 typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_common_state_properties_t state_properties;
@@ -6411,6 +6438,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 #define tfxRIBBON_START_INDEX_MASK 0x00FFFFFF
 #define tfxRIBBON_FLAGS_SHIFT 24
 
+//A trail row reuses position, age_width, quaternion and the high half of scale for its ring state, see tfx__update_trail_emitter
 typedef struct tfx_ribbon_s {	//48 bytes
 	tfx_vec3_t position;
 	tfxU32 age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
@@ -6446,6 +6474,7 @@ typedef struct tfx_ribbon_soa_s {
 #define tfxRIBBON_LAG_HISTORY_ENTRIES (tfxRIBBON_LAG_SPINE_SAMPLES + 4)
 #define tfxRIBBON_LAG_CLOCK_REBASE 1000000.f
 
+//A trail emitter's row carries [trail flags << 24 | trail points] in sample_count_noise, the trail time in lag_time and the commit interval in lag_span
 typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU64 quaternion;
 	tfxU32 lookup_offset;
@@ -6634,10 +6663,13 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 #ifdef __cplusplus
 	tfx_vector_t<tfxU32> ribbon_indexes[2];
 	tfx_vector_t<tfx_location_spawn_ordinal_t> location_spawn_ordinals;	//Indexed by user spawn location slot
+	tfx_vector_t<tfx_location_trail_t> location_trails;					//Indexed by user spawn location slot
 #else
 	tfx_vector_t ribbon_indexes[2];
 	tfx_vector_t location_spawn_ordinals;
+	tfx_vector_t location_trails;
 #endif
+	tfxU32 own_trail_row;							//The trail the emitter draws from its own position, tfxINVALID when it has none
 
 	//Control Data
 	tfxKey ribbon_bucket_id;
@@ -6960,6 +6992,22 @@ typedef struct tfx_user_spawn_run_s {
 	tfx_vec3_t offset;						//The emitter's user_spawn_offset turned by the location, added to the anchor of non relative spawns
 } tfx_user_spawn_run_t;
 
+//The CPU side of one trail row, parallel to the bucket's ribbon rows. Row r's ring is segments [r * trail_points, (r + 1) * trail_points)
+typedef struct tfx_trail_state_s {
+	tfxU32 source_slot;				//User spawn location slot, tfxINVALID for the emitter's own trail
+	tfxU32 source_generation;
+	tfxU32 newest;					//Ring slot of the newest committed point, the live head is the slot after it
+	tfxU32 count;					//Committed points, at most trail_points - 1
+	float since_commit;				//Milliseconds since the newest commit
+	float released;					//Milliseconds since the trail let go of its source, 0 while attached
+	float uv_phase;					//Tile by time: the head's place in the texture, kept in [0, 2) for the ping pong wrap
+	float random_age;
+	float image_frame;
+	float intensity_factor;			//The location's intensity multiplier, kept so a released trail doesn't change brightness
+	tfx_vec3_t head_axis;			//The live head's blade axis, kept unpacked so the next tick can blend from it
+	tfxTrailFlags flags;
+} tfx_trail_state_t;
+
 typedef struct tfx_ribbon_bucket_s {
 	tfx_ribbon_bucket_globals_t globals;
 	tfx_ribbon_buffer_info_t buffer_info;
@@ -6979,6 +7027,7 @@ typedef struct tfx_ribbon_bucket_s {
 	//pm->user_spawn_runs that the particle side fills from the single threaded emitter update
 	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_storage_map_t<tfxU32> cached_static_path_segments;
+	tfx_vector_t<tfx_trail_state_t> trail_states;		//One per row in a trail bucket, empty in a static one
 #else
 	tfx_vector_t segments;
 	tfx_vector_t free_ribbons;
@@ -6986,10 +7035,12 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t control_ribbon_queue;
 	tfx_vector_t user_spawn_runs;
 	tfx_storage_map_t cached_static_path_segments;
+	tfx_vector_t trail_states;
 #endif
 	tfxRibbonBucketFlags flags;
 	tfxU32 sort_key;
 	tfxU32 layer;
+	tfxU32 trail_points;				//Ring size of every trail in a trail bucket, part of its key
 	//Ribbon uids are [uid_prefix | spawned_ribbons], the bucket's creation order in the top 8 bits, so buckets updating in parallel hand out stage unique ids deterministically
 	tfxU32 uid_prefix;
 	tfxU32 spawned_ribbons;
@@ -7364,6 +7415,7 @@ typedef enum {
 	tfxUserSpawnLocationFlags_expiring = 1 << 5,		//Soft expired: counting down AND not spawning, so looping singles stop looping
 	tfxUserSpawnLocationFlags_has_shape_scale = 1 << 6,	//An emitter width, height or depth multiplier isn't 1
 	tfxUserSpawnLocationFlags_fresh = 1 << 7,			//Added or restarted, so its first tick sees age 0 and fires single shots at delay 0
+	tfxUserSpawnLocationFlags_teleported = 1 << 8,		//Teleported in the last apply step, so a trail starts again rather than joining up the jump
 } tfx_user_spawn_location_flag_bits;
 
 typedef enum {
@@ -7481,6 +7533,7 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfxU32> empty_particle_location_banks;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segment_buckets;
+	tfx_storage_map_t<tfx_ribbon_bucket_t> trail_buckets;		//Trail emitters only, dispatched after ribbon_segment_buckets
 	//GPU particle simulation, only used when info.gpu_particle_capacity is set
 	tfx_vector_t<tfx_gpu_particle_group_t> gpu_groups;		//One per run_on_gpu emitter instance, indexed by state_properties.gpu_group_index
 	tfx_vector_t<tfxU32> free_gpu_groups;
@@ -7822,7 +7875,25 @@ tfxINTERNAL inline tfxKey tfx__ribbon_bucket_key(tfxU32 segment_count, tfxU32 te
 	TFX_ASSERT(segment_count < (1u << 21) && tessellation <= tfxRIBBON_MAX_TESSELLATION);
 	return ((tfxKey)sort_key << 32) | ((tfxKey)layer << 24) | ((tfxKey)tessellation << 21) | segment_count;
 }
-tfxINTERNAL inline tfxKey tfx__animation_ribbon_bucket_key(tfxU32 segment_count, tfxU32 tessellation, tfxU32 layer) { return ((tfxKey)layer << 32) | ((tfxKey)tessellation << 24) | segment_count; }
+//trail_points is a power of two, so its log2 fits in 4 bits
+tfxINTERNAL inline tfxKey tfx__trail_bucket_key(tfxU32 segment_count, tfxU32 tessellation, tfxU32 trail_points, tfxU32 sort_key, tfxU32 layer) {
+	TFX_ASSERT(segment_count < (1u << 11) && tessellation <= tfxRIBBON_MAX_TESSELLATION && layer < tfxLAYERS);
+	TFX_ASSERT(trail_points >= tfxTRAIL_MIN_POINTS && trail_points <= tfxTRAIL_MAX_POINTS && (trail_points & (trail_points - 1)) == 0);
+	tfxU32 points_log2 = 0;
+	while ((1u << points_log2) < trail_points) {
+		points_log2++;
+	}
+	return ((tfxKey)sort_key << 32) | ((tfxKey)layer << 18) | ((tfxKey)points_log2 << 14) | ((tfxKey)tessellation << 11) | segment_count;
+}
+//Rounded up to a power of two within the allowed range, so a hand edited library can't break the ring
+tfxINTERNAL inline tfxU32 tfx__sanitize_trail_points(tfxU32 trail_points) {
+	tfxU32 points = tfxTRAIL_MIN_POINTS;
+	while (points < trail_points && points < tfxTRAIL_MAX_POINTS) {
+		points <<= 1;
+	}
+	return points;
+}
+tfxINTERNAL inline tfxU32 tfx__animation_ribbon_bucket_key(tfxU32 segment_count, tfxU32 tessellation, tfxU32 layer) { return ((tfxKey)layer << 32) | ((tfxKey)tessellation << 24) | segment_count; }
 //Only a half pipe has anything to put across its width, every other ribbon builds with 1
 tfxINTERNAL inline tfxU32 tfx__ribbon_effective_tessellation(const tfx_ribbon_emitter_properties_t *ribbon_properties) {
 	if (ribbon_properties->angle_type != tfxRibbonShader_half_pipe) return 1u;
@@ -7845,9 +7916,9 @@ tfxINTERNAL void tfx__free_gpu_emitter(tfx_stage pm, tfxU32 index);
 tfxINTERNAL bool tfx__reserve_ribbon_budget(volatile tfxU32 *allocated, tfxU32 amount, tfxU32 limit);
 tfxINTERNAL bool tfx__effect_emitters_fit(tfx_stage pm, tfx_effect_descriptor effect);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *segment_count);
-tfxINTERNAL void tfx__free_ribbon(tfx_stage pm, tfxKey bucket_id, tfxU32 ribbon_index);
+tfxINTERNAL void tfx__free_ribbon(tfx_ribbon_bucket_t *bucket, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_stage pm, tfxKey emitter_hash, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, tfxU32 tessellation);
+tfxINTERNAL tfx_ribbon_bucket_t *tfx__init_ribbon_segment_buffer(tfx_storage_map_t<tfx_ribbon_bucket_t> *buckets, tfxKey bucket_id, tfxU32 segment_count, tfxU32 sort_key, tfxU32 layer, tfxU32 tessellation);
 tfxINTERNAL tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, tfxU32 samples_per_segment);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
 
@@ -8221,6 +8292,7 @@ tfxAPI_EDITOR bool tfx__is_descriptor_hidden(tfx_effect_descriptor descriptor);
 tfxAPI_EDITOR bool tfx__is_finite_effect(tfx_effect_descriptor effect);
 tfxAPI_EDITOR float tfx__get_effect_lifetime(tfx_effect_descriptor effect, float step_size);
 tfxAPI_EDITOR bool tfx__is_emitter_type(tfx_effect_descriptor emitter);
+tfxAPI_EDITOR bool tfx__is_trail_emitter(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR bool tfx__has_emission_range(tfx_effect_descriptor emitter);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor effect);
 
@@ -10049,6 +10121,7 @@ tfxINTERNAL tfx_vec3_t tfx__vector_in_cone(tfx_vec3_t cone_direction, float z, f
 tfxINTERNAL void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
+tfxINTERNAL void tfx__update_trail_bucket(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon_emitter, float frame_length);
 tfxINTERNAL void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);

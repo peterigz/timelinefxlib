@@ -53,7 +53,7 @@
 	[Billboard_baked_vertex]            tfx_billboard_baked_vertex, the baked billboard draw
 	[Particle_shading]                  tfx_billboard_fragment for live and baked billboards, tfx_ribbon_fragment, and their cutouts for layers that write depth
 	[Ribbon_shape]                      Ribbon graph lookups, gradient noise and path sampling
-	[Ribbon_build]                      tfx_ribbon_compute, a bucket's ribbon vertexes and indexes
+	[Ribbon_build]                      tfx_ribbon_compute and tfx_trail_compute, a bucket's ribbon or trail vertexes and indexes
 	[Ribbon_draw]                       tfx_ribbon_vertex
 	[Lit_particles]                     The lit vertex and fragment entry points, for layers with tfxLayerFlags_lit
 	[Sprite_playback]                   tfx_sprite_playback, a baked frame's sprites into billboard instances
@@ -2810,7 +2810,7 @@ struct tfx_lit_view_uniforms {
 	float4 ground_color;
 };
 
-//Mirrors tfx_ribbon_t
+//Mirrors tfx_ribbon_t. A trail row reuses position, age_width, quaternion and the high half of scale, see tfx_build_trail_segment
 struct tfx_ribbon {
 	float3 position;
 	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
@@ -2830,6 +2830,12 @@ struct tfx_ribbon_vertex_row {
 	float2 uv_offset_scale;
 	uint ribbon_index;
 	uint normal;						//Octahedral unit normal as two snorm16s, for tfx_ribbon_lit_vertex
+};
+
+//A trail ring point, tfx_ribbon_segment_t read as a trail: where the source was, and its blade axis octahedral packed (0 for a camera facing trail)
+struct tfx_trail_point {
+	float3 position;
+	uint axis;
 };
 
 //tfxRIBBON_LAG_SPINE_SAMPLES
@@ -3131,7 +3137,7 @@ TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_color_ramps, FRAGMENT_TEXTU
 TFX_FIXED_DECLARE(ConstantBuffer<tfx_lit_view_uniforms>, tfx_fixed_lit_view, FRAGMENT_UNIFORM, b, 0);
 #define TFX_DECLARED_LIT_VIEW
 #endif
-#elif defined(TFX_ENTRY_tfx_ribbon_compute)
+#elif defined(TFX_ENTRY_tfx_ribbon_compute) || defined(TFX_ENTRY_tfx_trail_compute)
 TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, COMPUTE_READ, t, 0);
 TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, COMPUTE_READ, t, 1);
 TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, COMPUTE_READ, t, 2);
@@ -3322,6 +3328,14 @@ uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
 	return tfx_fixed_ribbon_segments.Load<uint>(row * tfx_ribbon_segment_row_bytes + tfx_ribbon_segment_frame_offset);
 }
 
+tfx_trail_point tfx_load_trail_point(uint buffer_index, uint row) {
+	const uint4 row_words = tfx_fixed_ribbon_segments.Load<uint4>(row * tfx_ribbon_segment_row_bytes);
+	tfx_trail_point point;
+	point.position = asfloat(row_words.xyz);
+	point.axis = row_words.w;
+	return point;
+}
+
 void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
 	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
 }
@@ -3415,6 +3429,14 @@ TFX_BINDLESS_ACCESS float3 tfx_load_ribbon_segment(uint buffer_index, uint row) 
 
 TFX_BINDLESS_ACCESS uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
 	return tfx_ribbon_segment_buffers[buffer_index][row].w;
+}
+
+TFX_BINDLESS_ACCESS tfx_trail_point tfx_load_trail_point(uint buffer_index, uint row) {
+	const uint4 row_words = tfx_ribbon_segment_buffers[buffer_index][row];
+	tfx_trail_point point;
+	point.position = asfloat(row_words.xyz);
+	point.axis = row_words.w;
+	return point;
 }
 
 TFX_BINDLESS_ACCESS void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
@@ -4385,6 +4407,232 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 [numthreads(tfx_ribbon_group_size, 1, 1)]
 void tfx_ribbon_compute(uint3 thread_id : SV_DispatchThreadID) {
 	tfx_build_ribbon_segment(tfx_ribbon_push_constants, thread_id.x);
+}
+
+//tfx_trail_compute: one thread per segment like tfx_ribbon_compute, spread over the ages of the ring points still visible. Row layout in tfx__update_trail_emitter
+
+//The top 8 bits of the emitter row's sample_count_noise on a trail emitter
+static const uint tfx_trail_by_length = 1u;		//The over length graphs span the live trail rather than the trail time
+static const uint tfx_trail_tile_uv = 2u;		//The texture stays with the points rather than stretching over the trail
+
+//The render head and the committed points older than it, which the trail's curve runs through. Control 0 is the head
+struct tfx_trail_controls {
+	uint segments_index;
+	uint ring_base;
+	uint newest;
+	uint mask;
+	uint first_point;			//The newest committed point that's older than the render head
+	uint last_control;
+	float3 head_position;
+	uint head_axis;
+	float head_age;
+	float newest_age;			//The age the newest committed point has at render time
+	float interval;
+};
+
+float tfx_trail_control_age(tfx_trail_controls controls, uint control) {
+	return control == 0 ? controls.head_age : controls.newest_age + float(controls.first_point + control - 1) * controls.interval;
+}
+
+tfx_trail_point tfx_trail_control_point(tfx_trail_controls controls, uint control) {
+	if (control == 0) {
+		tfx_trail_point head;
+		head.position = controls.head_position;
+		head.axis = controls.head_axis;
+		return head;
+	}
+	const uint point_index = controls.first_point + control - 1;
+	return tfx_load_trail_point(controls.segments_index, controls.ring_base + ((controls.newest - point_index) & controls.mask));
+}
+
+struct tfx_trail_sample {
+	float3 position;
+	float3 direction;			//Towards the tail, not normalised
+	float3 axis;
+};
+
+//Centripetal Catmull-Rom between controls i and i + 1, which can't cusp or loop where a source sped up or stopped. A missing end neighbour is reflected
+tfx_trail_sample tfx_sample_trail(tfx_trail_controls controls, uint i, float t, bool blade) {
+	const tfx_trail_point point1 = tfx_trail_control_point(controls, i);
+	const tfx_trail_point point2 = tfx_trail_control_point(controls, i + 1);
+	const float3 p1 = point1.position;
+	const float3 p2 = point2.position;
+	const float3 p0 = i > 0 ? tfx_trail_control_point(controls, i - 1).position : p1 * 2.0 - p2;
+	const float3 p3 = i + 2 <= controls.last_control ? tfx_trail_control_point(controls, i + 2).position : p2 * 2.0 - p1;
+	//Clamped so a source that stood still doesn't divide by zero
+	const float span01 = max(sqrt(sqrt(dot(p1 - p0, p1 - p0))), 1e-4);
+	const float span12 = max(sqrt(sqrt(dot(p2 - p1, p2 - p1))), 1e-4);
+	const float span23 = max(sqrt(sqrt(dot(p3 - p2, p3 - p2))), 1e-4);
+	const float3 tangent1 = ((p1 - p0) / span01 - (p2 - p0) / (span01 + span12) + (p2 - p1) / span12) * span12;
+	const float3 tangent2 = ((p2 - p1) / span12 - (p3 - p1) / (span12 + span23) + (p3 - p2) / span23) * span12;
+	const float t2 = t * t;
+	const float t3 = t2 * t;
+	tfx_trail_sample trail_sample;
+	trail_sample.position = (2.0 * t3 - 3.0 * t2 + 1.0) * p1 + (t3 - 2.0 * t2 + t) * tangent1 + (3.0 * t2 - 2.0 * t3) * p2 + (t3 - t2) * tangent2;
+	trail_sample.direction = (6.0 * t2 - 6.0 * t) * p1 + (3.0 * t2 - 4.0 * t + 1.0) * tangent1 + (6.0 * t - 6.0 * t2) * p2 + (3.0 * t2 - 2.0 * t) * tangent2;
+	trail_sample.axis = blade ? tfx_safe_normalize(lerp(tfx_unpack_octahedral_normal(point1.axis), tfx_unpack_octahedral_normal(point2.axis), t)) : float3(0.0, 0.0, 0.0);
+	return trail_sample;
+}
+
+void tfx_build_trail_segment(tfx_ribbon_bucket_globals push, uint global_index) {
+	if (global_index >= push.segment_count * push.ribbon_count || push.tessellation == 0) return;
+
+	const uint local_ribbon_index = global_index / push.segment_count;
+	const uint global_ribbon_index = local_ribbon_index + push.ribbon_offset;
+	const uint local_segment_index = global_index % push.segment_count;
+	const float segment_lerp = float(local_segment_index) / float(push.segment_count - 1);
+	const bool has_next = local_segment_index < push.segment_count - 1;
+
+	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, global_ribbon_index);
+	const uint emitter_index = (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset;
+	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(push.emitters_index, emitter_index);
+	const uint lookup_offset = emitter.lookup_offset;
+	const uint trail_flags = emitter.sample_count_noise >> 24;
+	const float trail_time = emitter.lag_time;
+	const float release = float(ribbon.age_width & 0xFFFFu) * (1.0 / 65535.0);
+	const float effect_scale = tfx_half_to_float(ribbon.scale & 0xFFFFu);
+	//The render time is this far behind the update, so the head and every point are that much younger
+	const float shift = (1.0 - push.lerp) * tfx_half_to_float(ribbon.scale >> 16);
+	const uint ribbon_flags = ribbon.start_index_flags >> tfx_ribbon_flags_shift;
+	const uint committed_count = ribbon.quaternion.x >> 16;
+
+	tfx_trail_controls controls;
+	controls.segments_index = push.ribbon_segments_index;
+	controls.ring_base = push.segment_offset + (ribbon.start_index_flags & tfx_ribbon_start_index_mask);
+	controls.newest = ribbon.quaternion.x & 0xFFFFu;
+	controls.mask = (emitter.sample_count_noise & 0xFFFFFFu) - 1;
+	controls.interval = emitter.lag_span;
+	controls.newest_age = tfx_half_to_float(ribbon.quaternion.y & 0xFFFFu) - shift;
+	controls.head_age = max(release * trail_time - shift, 0.0);
+	//The live head sits in the slot after the newest point. A trail that has let go carries it in position too, so it stays put
+	const tfx_trail_point live_head = tfx_load_trail_point(controls.segments_index, controls.ring_base + ((controls.newest + 1) & controls.mask));
+	controls.head_position = lerp(ribbon.position, live_head.position, push.lerp);
+	controls.head_axis = live_head.axis;
+	//Points committed after the render time would be ahead of the head
+	const float points_ahead = (controls.head_age - controls.newest_age) / controls.interval;
+	controls.first_point = min(points_ahead < 0.0 ? 0u : uint(points_ahead) + 1u, committed_count);
+	controls.last_control = committed_count - controls.first_point;
+
+	const uint angle_type = emitter.angle_type & 0xFFu;
+	const bool half_pipe = angle_type == tfx_angle_type_half_pipe;
+	const bool blade = angle_type == tfx_angle_type_fixed_angle;
+	float3 current_position = controls.head_position;
+	float3 world_forward = float3(0.0, 0.0, 0.0);
+	float3 axis = float3(0.0, 0.0, 0.0);
+	float age = controls.head_age;
+	float ribbon_lerp = segment_lerp;
+	if (controls.last_control > 0) {
+		const float tail_age = max(min(trail_time, tfx_trail_control_age(controls, controls.last_control)), controls.head_age);
+		age = lerp(controls.head_age, tail_age, segment_lerp);
+		ribbon_lerp = (trail_flags & tfx_trail_by_length) != 0 ? segment_lerp : saturate(age / trail_time);
+		const float first_point_age = tfx_trail_control_age(controls, 1);
+		uint control = 0;
+		float fraction = 0.0;
+		if (age <= first_point_age) {
+			fraction = saturate((age - controls.head_age) / max(first_point_age - controls.head_age, 1e-4));
+		} else {
+			control = min(1u + uint((age - first_point_age) / controls.interval), controls.last_control - 1);
+			fraction = saturate((age - tfx_trail_control_age(controls, control)) / controls.interval);
+		}
+		const tfx_trail_sample trail_sample = tfx_sample_trail(controls, control, fraction, blade);
+		current_position = trail_sample.position;
+		world_forward = tfx_safe_normalize(trail_sample.direction);
+		axis = trail_sample.axis;
+	}
+
+	float3 right;
+	if (blade) {
+		//The edges are where the blade's edges were, so a thrust along the blade sweeps nothing
+		right = tfx_safe_normalize(axis - world_forward * dot(world_forward, axis));
+	} else {
+		const float3 to_camera = normalize(push.camera_position.xyz - current_position);
+		right = tfx_safe_normalize(cross(world_forward, normalize(to_camera + world_forward)));
+	}
+
+	//A trail has no origin for the radial normal, so a lit trail always takes the face
+	const uint lighting = emitter.angle_type >> 8;
+	const bool lit = (lighting & tfx_lighting_unlit_layer) == 0;
+	float3 face_normal = float3(0.0, 0.0, 0.0);
+	if (half_pipe || lit) {
+		face_normal = tfx_safe_normalize(cross(right, world_forward));
+		face_normal *= dot(face_normal, push.camera_position.xyz - current_position) < 0.0 ? -1.0 : 1.0;
+	}
+	const float roundness = float((lighting >> 8) & 0xFFu) * (1.0 / 255.0);
+	const float quarter_turn = tfx_two_pi * 0.25;
+
+	const uint ribbon_lerp_packed = uint(ribbon_lerp * 2047);
+	//Nothing to draw until a point is older than the head
+	const float ribbon_is_active = controls.last_control > 0 ? float(ribbon_flags & tfx_ribbon_active) : 0.0;
+	const float width = tfx_half_to_float(ribbon.age_width >> 16) * tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_width_overlength, ribbon_lerp) * effect_scale
+		* tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_width, release) * ribbon_is_active;
+
+	tfx_ribbon_vertex_row vertex;
+	const float uv_offset = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_uv_offset_y, release);
+	if ((trail_flags & tfx_trail_tile_uv) != 0) {
+		//The draw computes ribbon_lerp * scale + offset, so a zero scale hands it the point's own texture coordinate
+		const float uv_phase = tfx_half_to_float(ribbon.quaternion.y >> 16);
+		const float tiles = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_uv_scale_y, 0.0);
+		vertex.uv_offset_scale = float2(uv_phase - (age + shift) / trail_time * tiles + uv_offset, 0.0);
+	} else {
+		vertex.uv_offset_scale = float2(uv_offset, tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_uv_scale_y, release));
+	}
+	vertex.ribbon_index = global_ribbon_index;
+	vertex.normal = 0u;
+
+	//From here on it's tfx_build_ribbon_segment's cross section, kept as a copy because sharing it changed tfx_ribbon_compute's output
+	const float bulge = half_pipe ? abs(width) * 0.5 * roundness : 0.0;
+	const float3 bend_right = width < 0.0 ? -right : right;
+
+	const uint vertices_per_segment = (push.tessellation + 1) * 2;
+	const uint vertex_base_index = local_ribbon_index * push.segment_count * vertices_per_segment + local_segment_index * vertices_per_segment + push.vertex_offset;
+	for (uint tessellation_step = 0; tessellation_step <= push.tessellation; tessellation_step++) {
+		const float t = float(tessellation_step) / float(push.tessellation);
+		const float angle = lerp(quarter_turn, 0.0, t);
+		float2 across = float2(1.0 - t, t);
+		float2 depth_offset = float2(0.0, 0.0);
+		if (half_pipe) {
+			float angle_sin;
+			float angle_cos;
+			sincos(angle, angle_sin, angle_cos);
+			across = float2(angle_sin, angle_cos);
+			depth_offset = float2(angle_cos, angle_sin) * bulge;
+		}
+		vertex.position = current_position + right * (across.x * 0.5 * width) + face_normal * depth_offset.x;
+		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 0);
+		if (lit) {
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, bend_right, angle * roundness);
+		}
+		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + tessellation_step, vertex);
+
+		vertex.position = current_position - right * (across.y * 0.5 * width) + face_normal * depth_offset.y;
+		vertex.segment_index = tfx_pack_segment_data(ribbon_lerp_packed, push.tessellation, tessellation_step, 1);
+		if (lit) {
+			vertex.normal = tfx_bent_ribbon_normal(face_normal, bend_right, (angle - quarter_turn) * roundness);
+		}
+		tfx_store_ribbon_vertex(push.vertexes_index, vertex_base_index + push.tessellation + 1 + tessellation_step, vertex);
+	}
+
+	if (has_next) {
+		const uint indexes_per_segment = push.tessellation * 12;
+		const uint indexes_per_ribbon = push.segment_count * indexes_per_segment - indexes_per_segment;
+		const uint index_base = push.index_offset + local_ribbon_index * indexes_per_ribbon + local_segment_index * indexes_per_segment;
+		const uint next_base_vertex = vertex_base_index + vertices_per_segment;
+		for (uint quad = 0; quad < push.tessellation; quad++) {
+			const uint quad_index = index_base + quad * 12;
+			const uint4 first_side = uint4(vertex_base_index + quad, vertex_base_index + quad + 1, next_base_vertex + quad, next_base_vertex + quad + 1);
+			const uint4 second_side = first_side + push.tessellation + 1;
+			tfx_store_ribbon_triangle(push.indexes_index, quad_index, first_side.xyz);
+			tfx_store_ribbon_triangle(push.indexes_index, quad_index + 3, first_side.zyw);
+			tfx_store_ribbon_triangle(push.indexes_index, quad_index + 6, second_side.xyz);
+			tfx_store_ribbon_triangle(push.indexes_index, quad_index + 9, second_side.zyw);
+		}
+	}
+}
+
+[shader("compute")]
+[numthreads(tfx_ribbon_group_size, 1, 1)]
+void tfx_trail_compute(uint3 thread_id : SV_DispatchThreadID) {
+	tfx_build_trail_segment(tfx_ribbon_push_constants, thread_id.x);
 }
 
 //--- Ribbon_draw
