@@ -4,70 +4,76 @@
 	The library's reference shaders, one file a host can copy into its renderer and compile with Slang, one entry point at a time: the
 	compute kernel for Run on GPU emitters, which compiles for Vulkan, D3D12, D3D11, Metal, OpenGL or WebGPU, and the billboard, ribbon,
 	baked playback and bounds passes. Every render pass compiles for the bindless model, and all but the bounds for the fixed bindings.
+	Each entry point has a section of its own, and whatever more than one of them uses is in the shared code at the top.
 	Search for a keyword below to jump to its section (in Vim, * on the keyword):
 
-	[About_the_kernel]                  What the kernel does, one dispatch per ring and one thread per ring slot
+	[Shared_Code]                               Everything more than one entry point uses, and every resource declaration
+		[Shared_hashes]                         Two pi, the seed hash and its unit draws
+		[Shared_math]                           Packing constants, quaternions, half floats, vertex formats, the billboard rotation and octahedral normals
+		[Graph_lookups]                         Graph sampling, the twin of tfx__sample_wide_graph
+		[Value_noise]                           tfx__wide_value_noise_3d, for the kernel's noise force and the ribbon noise
+		[Render_rows]                           The instance, render row and push constant structs, byte for byte mirrors of their C structs
+		[Binding_macros]                        TFX_FIXED_BINDINGS, the per target cases and the fixed binding classes
+		[Resource_bindings]                     Every buffer, image and push constant block, the kernel's first so Metal's buffer slots hold
+			[Fixed_render_bindings]             Each render entry point's slots under TFX_FIXED_BINDINGS
+		[Render_access]                         The accessors every render pass read and write goes through
+		[Billboard_draw]                        Billboard varyings, and the live and baked billboard draws the vertex shaders build on
+		[Ribbon_shape]                          Ribbon graph slots, gradient noise and path sampling, for the ribbon build and bounds
+		[Ribbon_draw]                           Ribbon varyings and tfx_ribbon_draw
+		[Particle_shading]                      Billboard and ribbon shading, and the lighting for layers with tfxLayerFlags_lit
+		[Playback_helpers]                      The baked playback passes' instance search and frame lerp
 
-	--Mirrors of the library, change these together with the C functions they name
-	[Shared_hashes]                     Two pi, the seed hash and its unit draws
-	[Buffer_rows]                       Row structs, byte for byte mirrors of the C structs in timelinefx.h
-	[Graph_lookups]                     Graph sampling, the twin of tfx__sample_wide_graph
-	[Noise_fields]                      White, simplex, curl and value noise, ports of the CPU's wide noise
-	[Spawn_generation]                  One particle from a tick's spawn block, the twin of tfx__generate_gpu_spawn
-		[Spawn_constants]               Block flags, hash axes, emission types
-		[Spawn_rows]                    The block's five rows, runs, multipliers and the generated spawn
-		[Spawn_math]                    Packing, quaternions, the fast inverse square root and cone draws
-		[Grid_and_sequences]            Uniform distribution sequences and grid marching
-		[Stepped_angles]                Stepped emission and roll divisions
-		[Spawn_shapes]                  Area, line, ellipse, disc and cylinder positions and directions
-		[Generate_spawn]                The whole particle
+	[Compute_Shaders]
+		[GPU_Simulation]                        simulate_particles, the kernel for Run on GPU emitters
+			[Buffer_rows]                       The kernel's row structs, byte for byte mirrors of the C structs in timelinefx.h
+			[Noise_fields]                      White, simplex and curl noise, ports of the CPU's wide noise
+			[Spawn_generation]                  One particle from a tick's spawn block, the twin of tfx__generate_gpu_spawn
+				[Spawn_constants]               Block flags, hash axes, emission types
+				[Spawn_rows]                    The block's five rows, runs, multipliers and the generated spawn
+				[Spawn_math]                    Packing, Euler spins, the fast inverse square root and cone draws
+				[Grid_and_sequences]            Uniform distribution sequences and grid marching
+				[Stepped_angles]                Stepped emission and roll divisions
+				[Spawn_shapes]                  Area, line, ellipse, disc and cylinder positions and directions
+				[Generate_spawn]                The whole particle
+			[Buffer_access]                     The kernel's tfx_load_* and tfx_store_* functions, for each binding model
+			[Kernel_constants]                  Graph slots, dispatch, particle, tick and force flags
+			[Instance_packing]                  Pack helpers and the spin quaternion
+			[Emitter_forces]                    Wind, attract, vortex, shockwave and noise from one force row
+			[Ring_space]                        Ring space to world, the particle context and the location frame
+			[Force_rows]                        Location timed forces and tfx_force_medium over the tick's rows
+			[Host_hooks]                        ITfxParticleUpdate, ITfxParticleSpawn and ITfxParticleWrite
+			[Particle_control]                  Velocity, forces, weight, drag, integration and age
+			[Instance_write]                    Spin, image frame and the instance write
+			[Spawn_ingest]                      A tick's spawns, generated from its block or loaded from rows
+			[Kernel_body]                       tfx_simulate and its overloads
+			[Entry_point]                       Picking the push constants per target, and simulate_particles
+		[Ribbon_Generation]                     tfx_ribbon_compute, a bucket's ribbon vertexes and indexes
+		[Billboard_Baked_Playback]              tfx_sprite_playback, a baked frame's sprites into billboard instances
+		[Ribbon_Baked_Playback]                 tfx_ribbon_playback, a baked frame's ribbons into the ribbons tfx_ribbon_compute builds
+		[Baked_Bounding_boxes]                  tfx_sprite_bounds and tfx_ribbon_bounds, a baked frame's bounding box
 
-	--Binding
-	[Buffer_access]                     Every buffer read and write, for each binding model
-		[Binding_macros]                TFX_FIXED_BINDINGS, the per target cases and the fixed binding classes
-		[Push_constants]                The library's push constants, and their uniform buffer twin for WGSL and OpenGL
-		[Bindless_arrays]               Vulkan and D3D12
-		[Metal_buffer_table]            Metal's argument buffer of gpuAddress values
-		[Fixed_raw_buffers]             WGSL, and every target compiled with TFX_FIXED_BINDINGS
-		[Buffer_accessors]              The tfx_load_* and tfx_store_* functions
+	[Vertex_Shaders]
+		[Billboard_Vertex]                      tfx_billboard_vertex, the live billboard draw
+		[Billboard_Lit_Vertex]                  tfx_billboard_lit_vertex, the live billboard draw for a lit layer
+		[Billboard_Baked_Vertex]                tfx_billboard_baked_vertex, the baked billboard draw
+		[Billboard_Baked_Lit_Vertex]            tfx_billboard_baked_lit_vertex, the baked billboard draw for a lit layer
+		[Ribbon_Vertex]                         tfx_ribbon_vertex, for live and baked ribbons
+		[Ribbon_Lit_Vertex]                     tfx_ribbon_lit_vertex, for live and baked ribbons on a lit layer
 
-	--The kernel
-	[Kernel_constants]                  Graph slots, dispatch, particle, tick and force flags
-	[Instance_packing]                  Pack helpers and the spin quaternion
-	[Emitter_forces]                    Wind, attract, vortex, shockwave and noise from one force row
-	[Ring_space]                        Ring space to world, the particle context and the location frame
-	[Force_rows]                        Location timed forces and tfx_force_medium over the tick's rows
-	[Host_hooks]                        ITfxParticleUpdate, ITfxParticleSpawn and ITfxParticleWrite
-	[Particle_control]                  Velocity, forces, weight, drag, integration and age
-	[Instance_write]                    Spin, image frame and the instance write
-	[Spawn_ingest]                      A tick's spawns, generated from its block or loaded from rows
-	[Kernel_body]                       tfx_simulate and its overloads
-	[Entry_point]                       Picking the push constants per target, and simulate_particles
-
-	--The render passes
-	[Render_rows]                       Row and push constant structs, byte for byte mirrors of their C structs
-	[Render_access]                     Push constant blocks, bindless arrays and the accessors every read and write goes through
-		[Fixed_render_bindings]         Each render entry point's slots under TFX_FIXED_BINDINGS
-	[Render_math]                       Unpacking and packing, the quaternion matrix and the billboard rotation
-	[Billboard_vertex]                  tfx_billboard_vertex, the live billboard draw
-	[Billboard_baked_vertex]            tfx_billboard_baked_vertex, the baked billboard draw
-	[Particle_shading]                  tfx_billboard_fragment for live and baked billboards, tfx_ribbon_fragment, and their cutouts for layers that write depth
-	[Ribbon_shape]                      Ribbon graph lookups, gradient noise and path sampling
-	[Ribbon_build]                      tfx_ribbon_compute, a bucket's ribbon vertexes and indexes
-	[Ribbon_draw]                       tfx_ribbon_vertex
-	[Lit_particles]                     The lit vertex and fragment entry points, for layers with tfxLayerFlags_lit
-	[Sprite_playback]                   tfx_sprite_playback, a baked frame's sprites into billboard instances
-	[Ribbon_playback]                   tfx_ribbon_playback, a baked frame's ribbons into the ribbons tfx_ribbon_compute builds
-	[Bounds_reduction]                  tfx_sprite_bounds and tfx_ribbon_bounds, a baked frame's bounding box
+	[Fragment_Shaders]
+		[Billboard_Fragment]                    tfx_billboard_fragment, for live and baked billboards
+		[Billboard_Cutout_Fragment]             tfx_billboard_cutout_fragment, for layers that write depth
+		[Billboard_Lit_Fragment]                tfx_billboard_lit_fragment
+		[Billboard_Lit_Cutout_Fragment]         tfx_billboard_lit_cutout_fragment
+		[Ribbon_Fragment]                       tfx_ribbon_fragment
+		[Ribbon_Cutout_Fragment]                tfx_ribbon_cutout_fragment, for layers that write depth
+		[Ribbon_Lit_Fragment]                   tfx_ribbon_lit_fragment
+		[Ribbon_Lit_Cutout_Fragment]            tfx_ribbon_lit_cutout_fragment
 */
 
-//--- About_the_kernel
-
-//The reference GPU particle kernel. One dispatch per tfx_gpu_particle_dispatch_t from tfx_GetGPUParticleFrame, one thread per ring
-//slot. Each thread runs every tick record of the fetch in registers, mirroring the CPU's control, instance and age passes in their
-//order, and writes its instance on the last tick. Ring positions count from the tick's head, so a slot that is bumped and reused
-//within one fetch just ingests its new occupant at the tick it was spawned: from a spawn row, or generated from the tick's spawn block
-//when the tick is flagged generated (see the spawn generation section).
+//==================================================================================================================================
+//        Shared_Code
+//==================================================================================================================================
 
 //--- Shared_hashes
 
@@ -95,6 +101,1861 @@ float tfx_white_unit(uint seed, uint axis) {
 float tfx_hash_unit(uint seed, uint axis) {
 	return float(tfx_seedgen(seed ^ axis) >> 8) * (1.0 / 16777216.0);
 }
+
+//--- Shared_math
+
+static const uint tfx_invalid_index = 0xFFFFFFFFu;
+static const uint tfx_quad_indexes[6] = { 0, 1, 2, 2, 1, 3 };
+//The epsilon keeps cross(up, alignment) from reaching zero for an alignment straight up or down, which is why the alignment frame needs no fallback
+static const float3 tfx_billboard_up = float3(0, 1, 0.00001);
+static const float tfx_size_packed_scale = 32767.0 / 64.0;
+static const float tfx_color_packed_scale = 32767.0 / 128.0;
+static const float tfx_size_unpack_scale = 64.0 / 32767.0;
+static const float tfx_color_unpack_scale = 128.0 / 32767.0;
+static const uint tfx_capture_bit = 1 << 15;
+
+//tfx__wide_unpack16bit: each lane sign extended, x and y from .x, z and w from .y
+float4 tfx_unpack16bit_quaternion(uint2 packed) {
+	const int4 values = int4(int(packed.x << 16) >> 16, int(packed.x) >> 16, int(packed.y << 16) >> 16, int(packed.y) >> 16);
+	return float4(values) * (1.0 / 32767.0);
+}
+
+//f16tof32 and f32tof16 lower to 16 bit types on SPIR-V, which need shaderInt16 and shaderFloat16. The GLSL.std.450 pair needs neither
+float tfx_half_to_float(uint value) {
+	__target_switch {
+	case spirv:
+		return spirv_asm {
+			%unpacked:$$float2 = OpExtInst glsl450 UnpackHalf2x16 $value;
+			result:$$float = OpCompositeExtract %unpacked 0
+		};
+	default:
+		return f16tof32(value);
+	}
+}
+
+//The half in the low 16 bits, the high 16 bits zero
+uint tfx_float_to_half(float value) {
+	__target_switch {
+	case spirv:
+		float2 packing = float2(value, 0.0);
+		return spirv_asm {
+			result:$$uint = OpExtInst glsl450 PackHalf2x16 $packing
+		};
+	default:
+		return f32tof16(value);
+	}
+}
+
+//The CPU's rotate by quaternion, tfx__wide_transform_quaternion_vec3
+float3 tfx_rotate_vector(float3 v, float4 q) {
+	return v + 2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
+}
+
+//tfx_quaternion_t's operator*, xyzw
+float4 tfx_multiply_quaternions(float4 a, float4 b) {
+	return float4(
+		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z);
+}
+
+//The r16g16_sscaled vertex format: two sign extended 16 bit halves
+float2 tfx_unpack_sscaled16x2(uint packed) {
+	return float2(float(int(packed << 16) >> 16), float(int(packed) >> 16));
+}
+
+//The r16g16_sint vertex format
+int2 tfx_unpack_sint16x2(uint packed) {
+	return int2(int(packed << 16) >> 16, int(packed) >> 16);
+}
+
+//Two unsigned 16 bit halves
+float2 tfx_unpack_uscaled16x2(uint packed) {
+	return float2(float(packed & 0xFFFFu), float(packed >> 16));
+}
+
+//GLSL's unpackSnorm4x8, xyz of it
+float3 tfx_unpack_snorm8x3(uint packed) {
+	const int3 value = int3(int(packed << 24) >> 24, int(packed << 16) >> 24, int(packed << 8) >> 24);
+	return max(float3(value) / 127.0, -1.0);
+}
+
+//GLSL's unpackUnorm4x8
+float4 tfx_unpack_unorm8x4(uint packed) {
+	return float4(float(packed & 0xFFu), float((packed >> 8) & 0xFFu), float((packed >> 16) & 0xFFu), float(packed >> 24)) / 255.0;
+}
+
+//GLSL's packUnorm4x8
+uint tfx_pack_unorm8x4(float4 value) {
+	const uint4 scaled = uint4(round(saturate(value) * 255.0));
+	return scaled.x | (scaled.y << 8) | (scaled.z << 16) | (scaled.w << 24);
+}
+
+//GLSL's packSnorm4x8
+uint tfx_pack_snorm8x4(float4 value) {
+	const int4 scaled = int4(round(clamp(value, -1.0, 1.0) * 127.0));
+	return (uint(scaled.x) & 0xFFu) | ((uint(scaled.y) & 0xFFu) << 8) | ((uint(scaled.z) & 0xFFu) << 16) | ((uint(scaled.w) & 0xFFu) << 24);
+}
+
+//GLSL's packSnorm2x16
+uint tfx_pack_snorm16x2(float2 value) {
+	const int2 scaled = int2(round(clamp(value, -1.0, 1.0) * 32767.0));
+	return (uint(scaled.x) & 0xFFFFu) | (uint(scaled.y) << 16);
+}
+
+//GLSL's mat3(a, b, c) takes columns, Slang's float3x3(a, b, c) takes rows. Built element by element, because Metal's vertex stage has no transpose
+float3x3 tfx_matrix_from_columns(float3 first, float3 second, float3 third) {
+	return float3x3(first.x, second.x, third.x,
+	                first.y, second.y, third.y,
+	                first.z, second.z, third.z);
+}
+
+float3x3 tfx_view_rotation(float4x4 view) {
+	return float3x3(view[0].xyz, view[1].xyz, view[2].xyz);
+}
+
+float3x3 tfx_quaternion_to_matrix(float4 q) {
+	const float xx = q.x * q.x; const float xy = q.x * q.y; const float xz = q.x * q.z; const float xw = q.x * q.w;
+	const float yy = q.y * q.y; const float yz = q.y * q.z; const float yw = q.y * q.w;
+	const float zz = q.z * q.z; const float zw = q.z * q.w;
+	return float3x3(
+		1.0 - 2.0 * (yy + zz), 2.0 * (xy - zw), 2.0 * (xz + yw),
+		2.0 * (xy + zw), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - xw),
+		2.0 * (xz - yw), 2.0 * (yz + xw), 1.0 - 2.0 * (xx + yy));
+}
+
+//The world frame of a quad aligned to the vector: tangent, bitangent and the alignment as its columns
+float3x3 tfx_alignment_frame(float3 alignment) {
+	const float3 normal = normalize(alignment);
+	const float3 tangent = normalize(cross(tfx_billboard_up, normal));
+	const float3 bitangent = normalize(cross(normal, tangent));
+	return tfx_matrix_from_columns(tangent, bitangent, normal);
+}
+
+//The quad's rotation for its alignment mode, from the lowest 2 bits of the emitter properties flags:
+//00 faces the camera, 01 doesn't, 10 faces the camera and rolls to the alignment, 11 aligns to the vector with no camera facing
+float3x3 tfx_billboard_rotation(float4 quaternion, float3 alignment, float3 camera_relative_alignment, uint align_flags) {
+	const float3x3 spin = tfx_quaternion_to_matrix(quaternion);
+	const float3x3 align_matrix = tfx_alignment_frame(alignment);
+	//The roll that turns the view's up, (0, 1), to the alignment projected onto the view plane
+	const float2 align_xy = normalize(camera_relative_alignment.xy + 0.00001);
+	const float roll_cos = align_xy.y;
+	const float roll_sin = -align_xy.x;
+	const float3x3 roll_matrix = tfx_matrix_from_columns(float3(roll_cos, roll_sin, 0.0), float3(-roll_sin, roll_cos, 0.0), float3(0.0, 0.0, 1.0));
+	if (align_flags == 0x3u) {
+		return mul(align_matrix, spin);
+	} else if (align_flags == 0x2u) {
+		return mul(roll_matrix, spin);
+	}
+	return spin;
+}
+
+//A quad corner before rotation, corners 0 to 3 being top left, top right, bottom left, bottom right
+float3 tfx_billboard_corner(uint corner, float2 size, float2 handle) {
+	const float2 corner_position = float2(float(corner & 1u), float(corner >> 1));
+	return float3(size.x * (corner_position.x - handle.x), -size.y * (corner_position.y - handle.y), 0);
+}
+
+//A unit normal folded onto the octahedron as two snorm16s, x in the low half
+uint tfx_pack_octahedral_normal(float3 normal) {
+	normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
+	float2 folded = normal.xy;
+	if (normal.z < 0.0) {
+		folded = (1.0 - abs(normal.yx)) * float2(normal.x >= 0.0 ? 1.0 : -1.0, normal.y >= 0.0 ? 1.0 : -1.0);
+	}
+	const int2 quantised = int2(round(clamp(folded, -1.0, 1.0) * 32767.0));
+	return (uint(quantised.x) & 0xFFFFu) | (uint(quantised.y) << 16);
+}
+
+float3 tfx_unpack_octahedral_normal(uint packed) {
+	const float2 folded = float2(float(int(packed << 16) >> 16), float(int(packed) >> 16)) * (1.0 / 32767.0);
+	float3 normal = float3(folded, 1.0 - abs(folded.x) - abs(folded.y));
+	const float under = saturate(-normal.z);
+	normal.xy += float2(normal.x >= 0.0 ? -under : under, normal.y >= 0.0 ? -under : under);
+	return normalize(normal);
+}
+
+float3 tfx_safe_normalize(float3 v) {
+	return v * rsqrt(dot(v, v) + 1e-16);
+}
+
+//--- Graph_lookups
+
+//Graph lookups for the GPU kernels. Mirrors tfx__sample_wide_graph: one segment, easing, then bezier or linear, then the oscillator
+
+static const int tfx_graph_use_bezier_sampling = 1;
+static const int tfx_graph_enable_oscillator = 2;
+
+static const int tfx_easing_constant = 0;
+static const int tfx_easing_in = 4;
+static const int tfx_easing_out = 5;
+static const int tfx_easing_in_out = 6;
+static const int tfx_easing_smoothstep = 17;
+static const int tfx_easing_out_in = 18;
+
+//Mirrors tfx_gpu_graph_data_t, one per graph from tfx_GetGPUGraphLookupsBuffer
+struct tfx_gpu_graph_data {
+	float4 node_data;					//from, curve1, curve2, to
+	float4 oscillator;					//frequency, amplitude, offset_x, offset_y
+	int easing_type;
+	int flags;
+	int padding[2];
+};
+
+float tfx_apply_easing(int easing_type, float t) {
+	switch (easing_type) {
+		case tfx_easing_constant: return 0.0;
+		case tfx_easing_in: return t * t * t;
+		case tfx_easing_out: {
+			float inverse = 1.0 - t;
+			return 1.0 - inverse * inverse * inverse;
+		}
+		case tfx_easing_in_out: {
+			float t3 = -2.0 * t + 2.0;
+			t3 = t3 * t3 * t3;
+			return t <= 0.5 ? 4.0 * t * t * t : 1.0 - t3 * 0.5;
+		}
+		case tfx_easing_smoothstep: return t * t * (3.0 - 2.0 * t);
+		case tfx_easing_out_in: return t <= 0.5 ? t * (2.0 - 2.0 * t) : 2.0 * (t - 0.5) * (t - 0.5) + 0.5;
+		default: return t;
+	}
+}
+
+//Constant easing samples t = 0, which is why the CPU skips the bezier and the oscillator for it, and so does this
+float tfx_sample_graph(tfx_gpu_graph_data graph, float t) {
+	const float time = tfx_apply_easing(graph.easing_type, t);
+	const bool constant = graph.easing_type == tfx_easing_constant;
+	float value;
+	if ((graph.flags & tfx_graph_use_bezier_sampling) != 0 && !constant) {
+		const float inverse = 1.0 - time;
+		const float weight1 = inverse * inverse * inverse;
+		const float weight2 = 3.0 * inverse * inverse * time;
+		const float weight3 = 3.0 * inverse * time * time;
+		const float weight4 = time * time * time;
+		value = weight1 * graph.node_data.x + weight2 * graph.node_data.y + weight3 * graph.node_data.z + weight4 * graph.node_data.w;
+	} else {
+		value = graph.node_data.x + (graph.node_data.w - graph.node_data.x) * time;
+	}
+	if ((graph.flags & tfx_graph_enable_oscillator) != 0 && !constant && graph.oscillator.x != 0.0 && graph.oscillator.y != 0.0) {
+		const float oscillator = 0.5 + sin((time + graph.oscillator.z) * graph.oscillator.x * tfx_two_pi) * graph.oscillator.y;
+		value *= oscillator + graph.oscillator.w;
+	}
+	return value;
+}
+
+//--- Value_noise
+
+//tfx__wide_value_noise_3d, which the kernel's noise force and the ribbon noise both sample
+float3 tfx_value_noise_corner(uint lattice_x, uint lattice_y, uint lattice_z) {
+	const uint h = tfx_seedgen((lattice_x + lattice_y) ^ lattice_z);
+	return float3(float((h >> 20) & 0x3FFu), float((h >> 10) & 0x3FFu), float(h & 0x3FFu)) * (1.0 / 511.0) - 1.0;
+}
+
+float3 tfx_value_noise_lerp(float3 a, float3 b, float t) {
+	return t * (b - a) + a;
+}
+
+float3 tfx_value_noise_3d(float3 position) {
+	const float3 floor_position = floor(position);
+	float3 fade = position - floor_position;
+	fade = fade * fade * (3.0 - 2.0 * fade);
+
+	const uint3 primes = uint3(1619u, 31337u, 6971u);
+	const uint3 lattice0 = uint3(int3(floor_position)) * primes;
+	const uint3 lattice1 = lattice0 + primes;
+
+	float3 edge = tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice0.y, lattice0.z), tfx_value_noise_corner(lattice1.x, lattice0.y, lattice0.z), fade.x);
+	const float3 slice = tfx_value_noise_lerp(edge, tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice1.y, lattice0.z), tfx_value_noise_corner(lattice1.x, lattice1.y, lattice0.z), fade.x), fade.y);
+	edge = tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice0.y, lattice1.z), tfx_value_noise_corner(lattice1.x, lattice0.y, lattice1.z), fade.x);
+	return tfx_value_noise_lerp(slice, tfx_value_noise_lerp(edge, tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice1.y, lattice1.z), tfx_value_noise_corner(lattice1.x, lattice1.y, lattice1.z), fade.x), fade.y), fade.z);
+}
+
+//--- Render_rows
+
+//The rows the draw, ribbon and baked playback passes read and the instance the kernel writes, each the byte for byte mirror of its C struct, padded where C pads
+
+//Mirrors tfx_instance_t
+struct tfx_instance {
+	float4 position;					//Stretch in w
+	uint2 quaternion;					//16 bit snorm: .x = X|Y, .y = Z|W
+	uint size;
+	uint alignment;
+	uint intensity_gradient_map;
+	uint curved_alpha_life;
+	uint indexes;						//[gpu property index << 16, capture flag << 15, image frame in the low 13 bits]
+	uint captured_index;				//Low 28 bits, only read when the capture flag is set
+};
+
+//Mirrors tfx_gpu_image_data_t
+struct tfx_image_data {
+	float4 uv;
+	uint2 uv_packed;
+	float2 image_size;
+	uint texture_array_index;			//[bindless image index << 16 | animation frame]
+	float animation_frames;
+	float padding[2];
+};
+
+//Mirrors tfx_gpu_particle_properties_t
+struct tfx_emitter_properties {
+	float2 image_handle;
+	uint color_ramp_indexes;			//[color ramp layer << 8 | color ramp row]
+	uint flags;							//The billboard alignment in the lowest 2 bits
+	uint start_frame_index;
+	float animation_frames;
+	float alpha_threshold;
+	uint lighting;						//[wrap unorm8 << 16 | roundness unorm8 << 8], for the lit entry points
+};
+
+//Mirrors tfx_uniform_buffer_data_t. column_major because the Slang API's sessions default to row major, where slangc defaults to column major
+struct tfx_view_uniforms {
+	column_major float4x4 view;
+	column_major float4x4 projection;
+	float2 screen_size;
+	uint milliseconds;
+	float timer_lerp;
+	float update_time;
+};
+
+//tfx_view_uniforms followed by the tfx_view_light_t at tfxVIEW_LIGHT_OFFSET, which only the lit fragments read. The pads are scalars because
+//std140 and WGSL align a float3 to 16 where D3D doesn't
+struct tfx_lit_view_uniforms {
+	column_major float4x4 view;
+	column_major float4x4 projection;
+	float2 screen_size;
+	uint milliseconds;
+	float timer_lerp;
+	float update_time;
+	float light_padding0;
+	float light_padding1;
+	float light_padding2;
+	float4 light_direction;				//Unit length, towards the light
+	float4 light_color;					//Times its intensity
+	float4 sky_color;
+	float4 ground_color;
+};
+
+//Mirrors tfx_ribbon_t
+struct tfx_ribbon {
+	float3 position;
+	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
+	uint2 quaternion;					//16 bit snorm: .x = X|Y, .y = Z|W
+	uint start_index_flags;				//Segment start index in the low 24 bits, flags in the top 8
+	uint emitter_index_phase_seed;		//Emitter index in the low 16 bits, phase offset seed in the high 16
+	uint texture_indexes;				//[color ramp row << 24 | color ramp layer << 16 | image frame]
+	uint intensity_gradient_map;		//Two 16 bit sscaled values
+	uint curved_alpha;					//Curved alpha and sharpness, two 16 bit sscaled values
+	uint scale;							//The parent effect's overall scale as a half float in the low 16 bits
+};
+
+//Mirrors tfx_ribbon_vertex_t
+struct tfx_ribbon_vertex_row {
+	float3 position;
+	uint segment_index;					//[tessellation << 29 | tessellation index << 26 | side << 25 | position along the ribbon << 12], low 12 bits unused
+	float2 uv_offset_scale;
+	uint ribbon_index;
+	uint normal;						//Octahedral unit normal as two snorm16s, for tfx_ribbon_lit_vertex
+};
+
+//Mirrors tfx_gpu_ribbon_emitter_t, 96 bytes
+struct tfx_ribbon_emitter {
+	uint2 quaternion;
+	uint lookup_offset;
+	uint angle_type;					//[lighting << 8 | angle type]
+	float3 position;
+	float age;
+	float3 captured_position;
+	uint morph_segment_start_index;		//tfx_invalid_index when the emitter doesn't morph
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	float3 fixed_angle_normal;
+	uint sample_count_noise;			//[noise algorithm and octaves << 24 | sample count]
+	uint start_frame_index;
+	float lag_time;						//0 when the emitter isn't lagging, and lag_block must not be read
+	uint lag_block;						//The lag ring's header row in the bucket's segments
+	float alpha_threshold;
+};
+
+//Mirrors tfx_animation_instance_t
+struct tfx_animation_instance {
+	float3 position;
+	float scale;
+	uint sprite_count;
+	uint ribbon_count;
+	uint frame_count;
+	uint offset_into_sprite_data;
+	uint offset_into_ribbon_data;
+	uint info_index;
+	float current_time;
+	float animation_length_in_time;
+	float tween;
+	uint flags;
+	uint frame;
+	uint padding1;
+};
+
+//Mirrors tfx_ribbon_instance_data_t, a baked ribbon
+struct tfx_ribbon_instance_data {
+	float4 position;					//w is the normalised age
+	float width;
+	uint start_index;
+	uint flags;
+	uint captured_index;				//The same ribbon in the previous frame, tfx_invalid_index in its first
+	uint2 quaternion;
+	float scale;
+	uint texture_indexes;
+	uint intensity_gradient_map;
+	uint curved_alpha;
+	uint additional;					//[property index << 16 | lerp offset as a unorm16]
+	uint phase_seed;
+};
+
+//Mirrors tfx_animation_ribbon_properties_t
+struct tfx_animation_ribbon_properties {
+	uint segment_count;
+	uint sample_count;
+	uint tessellation;
+	uint shader_type;					//[lighting << 8 | angle type]
+	uint color_ramp_index;
+	uint segment_data_offset;
+	float animation_frames;
+	uint start_frame_index;
+	uint flags;
+	uint graph_lookup_offset;
+	uint bucket_index;
+	uint morph_segment_start_index;		//Absolute, tfx_invalid_index when the emitter doesn't morph
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	uint noise_packed;
+	uint layer;
+	float alpha_threshold;
+};
+
+//Mirrors the editor's sprite_data_bb, one box per bounds group
+struct tfx_bounding_box {
+	float3 min_corner;
+	float max_stretch;
+	float3 max_corner;
+	float padding;
+};
+
+//Mirrors tfx_push_constants_t in zest's impl_timelinefx.h, the live billboard draw's push constants
+struct tfx_billboard_push {
+	uint color_ramp_texture_index;
+	uint image_data_index;
+	uint properties_index;
+	uint sampler_index;
+	uint prev_billboards_index;
+	uint index_offset;					//Added to every captured index, for a draw whose previous instances don't start at 0
+	uint uniform_index;
+};
+
+//Mirrors the editor's tfx_sprite_sheet_push_t. It starts with tfx_billboard_push's fields so tfx_billboard_fragment serves both draws
+struct tfx_baked_billboard_push {
+	uint color_ramp_texture_index;
+	uint image_data_index;
+	uint properties_index;
+	uint sampler_index;
+	uint prev_billboards_index;
+	uint index_offset;
+	uint uniform_index;
+	float ndc_offset_x;					//Clip space offsets for drawing a seamless sprite sheet's neighbouring tiles
+	float ndc_offset_y;
+};
+
+//Mirrors tfx_ribbon_bucket_globals_t, the push constants of all three ribbon passes, set per bucket by the library
+struct tfx_ribbon_bucket_globals {
+	float4 camera_position;
+	uint segment_count;
+	uint tessellation;
+	uint index_offset;
+	uint vertex_offset;
+	uint ribbon_count;
+	uint ribbon_offset;
+	uint segment_offset;
+	uint uniform_index;
+	uint emitters_index;
+	uint graphs_index;
+	uint ribbons_index;
+	uint ribbon_segments_index;
+	uint vertexes_index;
+	uint indexes_index;
+	uint image_data_index;
+	uint sampler_index;
+	uint particle_texture_index;
+	uint color_ramp_texture_index;
+	float lerp;
+	float time;
+	float ndc_offset_x;
+	float ndc_offset_y;
+	uint emitter_offset;
+	uint padding;
+};
+
+//Mirrors tfx_sprite_data_push_t, for the sprite playback and the sprite bounds
+struct tfx_sprite_data_push {
+	uint animation_instances_total;
+	uint billboards_total;
+	uint animated_shapes;
+	uint offsets_index;
+	uint animation_instances_index;
+	uint billboards_index;
+	uint sprite_data_index;
+	uint image_data_index;
+	uint emitter_properties_index;
+	uint bounding_boxes_index;
+	uint2 padding;
+};
+
+//Mirrors tfx_ribbon_data_push_t
+struct tfx_ribbon_data_push {
+	uint animation_instances_total;
+	uint ribbons_total;
+	uint offsets_index;
+	uint animation_instances_index;
+	uint ribbon_data_index;
+	uint ribbon_output_index;
+	uint ribbon_properties_index;
+	uint padding;
+};
+
+//Mirrors the editor's ribbon_bb_push_t
+struct tfx_ribbon_bounds_push {
+	uint ribbons_total;
+	uint animation_instances_index;
+	uint ribbon_data_index;
+	uint ribbon_segments_index;
+	uint ribbon_properties_index;
+	uint bounding_boxes_index;
+	uint graphs_index;
+};
+
+//--- Binding_macros
+
+//-D TFX_FIXED_BINDINGS gives every target the four fixed raw buffers WGSL always uses, for D3D11, SDL_gpu, OpenGL and anything else without
+//descriptor arrays. It has no push constants on any target: each block is a uniform buffer
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_FIXED_CASES case wgsl: case hlsl: case glsl: case spirv:
+#define TFX_BINDLESS_ACCESS
+#define TFX_UNIFORM_PUSH_CASES case wgsl: case hlsl: case glsl: case spirv:
+#else
+#define TFX_FIXED_CASES case wgsl:
+//GLSL needs the extension to index runtime descriptor arrays, and Slang only emits it from a function, never from the declarations
+#define TFX_BINDLESS_ACCESS __glsl_extension(GL_EXT_nonuniform_qualifier)
+#define TFX_UNIFORM_PUSH_CASES case wgsl:
+#endif
+
+//OpenGL has only combined image samplers. -D TFX_COMBINED_SAMPLERS gives SPIR-V them too, which SDL_gpu's Vulkan backend needs
+#if defined(TFX_COMBINED_SAMPLERS)
+#define TFX_COMBINED_SAMPLER_CASES case glsl: case spirv:
+#else
+#define TFX_COMBINED_SAMPLER_CASES case glsl:
+#endif
+
+//The fixed binding classes. Slot n of a class is SPIR-V binding <class>_BINDING + n in set <class>_SPACE, and HLSL register <letter>n in
+//space <class>_SPACE. Each entry point's slots in a class count up from 0. The defaults put everything in set and space 0 with no two
+//classes a vertex and fragment pair, or a compute pass, uses sharing a binding. Override any of them with -D
+#ifndef TFX_VERTEX_READ_SPACE
+#define TFX_VERTEX_READ_SPACE 0
+#endif
+#ifndef TFX_VERTEX_READ_BINDING
+#define TFX_VERTEX_READ_BINDING 0
+#endif
+#ifndef TFX_VERTEX_UNIFORM_SPACE
+#define TFX_VERTEX_UNIFORM_SPACE 0
+#endif
+#ifndef TFX_VERTEX_UNIFORM_BINDING
+#define TFX_VERTEX_UNIFORM_BINDING 5
+#endif
+#ifndef TFX_FRAGMENT_TEXTURE_SPACE
+#define TFX_FRAGMENT_TEXTURE_SPACE 0
+#endif
+#ifndef TFX_FRAGMENT_TEXTURE_BINDING
+#define TFX_FRAGMENT_TEXTURE_BINDING 7
+#endif
+#ifndef TFX_FRAGMENT_SAMPLER_SPACE
+#define TFX_FRAGMENT_SAMPLER_SPACE 0
+#endif
+#ifndef TFX_FRAGMENT_SAMPLER_BINDING
+#define TFX_FRAGMENT_SAMPLER_BINDING 9
+#endif
+#ifndef TFX_FRAGMENT_UNIFORM_SPACE
+#define TFX_FRAGMENT_UNIFORM_SPACE 0
+#endif
+#ifndef TFX_FRAGMENT_UNIFORM_BINDING
+#define TFX_FRAGMENT_UNIFORM_BINDING 10
+#endif
+#ifndef TFX_COMPUTE_WRITE_SPACE
+#define TFX_COMPUTE_WRITE_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_WRITE_BINDING
+#define TFX_COMPUTE_WRITE_BINDING 0
+#endif
+#ifndef TFX_COMPUTE_READ_SPACE
+#define TFX_COMPUTE_READ_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_READ_BINDING
+#define TFX_COMPUTE_READ_BINDING 2
+#endif
+#ifndef TFX_COMPUTE_UNIFORM_SPACE
+#define TFX_COMPUTE_UNIFORM_SPACE 0
+#endif
+#ifndef TFX_COMPUTE_UNIFORM_BINDING
+#define TFX_COMPUTE_UNIFORM_BINDING 6
+#endif
+
+#define TFX_PASTE(first, second) first##second
+#define TFX_PASTE_EXPANDED(first, second) TFX_PASTE(first, second)
+//Slang makes register tN, uN and bN all [[buffer(N)]] on Metal, ignoring spaces, so -D TFX_METAL_SLOTS gives the buffer classes that
+//would collide their own tens there: vertex uniforms and compute reads from 10, the compute uniform at 20
+#if defined(TFX_METAL_SLOTS)
+#define TFX_VERTEX_READ_TENS
+#define TFX_VERTEX_UNIFORM_TENS 1
+#define TFX_FRAGMENT_TEXTURE_TENS
+#define TFX_FRAGMENT_SAMPLER_TENS
+#define TFX_FRAGMENT_UNIFORM_TENS
+#define TFX_COMPUTE_WRITE_TENS
+#define TFX_COMPUTE_READ_TENS 1
+#define TFX_COMPUTE_UNIFORM_TENS 2
+#define TFX_FIXED_SLOT(resource_class, slot) TFX_PASTE_EXPANDED(TFX_##resource_class##_TENS, slot)
+#else
+#define TFX_FIXED_SLOT(resource_class, slot) slot
+#endif
+//fxc has no register spaces, but Slang leaves space0 out of what it emits, so the defaults compile for D3D11
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_FIXED_REGISTER(letter, slot, space_index) : register(TFX_PASTE(letter, slot), TFX_PASTE_EXPANDED(space, space_index))
+#else
+#define TFX_FIXED_REGISTER(letter, slot, space_index)
+#endif
+//TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0) is slot 0 of the compute write class, register u0
+#define TFX_FIXED_DECLARE(type, name, resource_class, letter, slot) [[vk::binding(TFX_##resource_class##_BINDING + slot, TFX_##resource_class##_SPACE)]] type name TFX_FIXED_REGISTER(letter, TFX_FIXED_SLOT(resource_class, slot), TFX_##resource_class##_SPACE)
+
+//A kernel's push constants as a uniform buffer, for the targets in TFX_UNIFORM_PUSH_CASES, moved along per dispatch. Host entry points
+//declare their twin with it too. Without the define the register keeps it out of Metal's buffer slots
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_UNIFORM_PUSH(type, name) TFX_FIXED_DECLARE(ConstantBuffer<type>, name, COMPUTE_UNIFORM, b, 0)
+#else
+#define TFX_UNIFORM_PUSH(type, name) [[vk::binding(TFX_COMPUTE_UNIFORM_BINDING, TFX_COMPUTE_UNIFORM_SPACE)]] ConstantBuffer<type> name : register(b15)
+#endif
+
+//The bindless model's D3D registers: each descriptor array at register 0 of its own space, so a root signature can be built from
+//the table in Shaders/readme.md. The render push constants are left to Slang, explicit ones would move Metal's buffer slots
+#if defined(TFX_FIXED_BINDINGS)
+#define TFX_BINDLESS_REGISTER(name, space)
+#else
+#define TFX_BINDLESS_REGISTER(name, space) : register(name, space)
+#endif
+
+//--- Resource_bindings
+
+//Every resource declaration is here, the kernel's first: Metal numbers buffer slots in declaration order, which makes its push constants and table buffer(0) and buffer(1)
+//Bindings are shared on purpose here: the bindless arrays alias each other, and a host entry point's push constants take the library's binding
+#pragma warning(disable: 39001)
+
+//---- The kernel's push constants
+
+//Only the library's entry point reads these, so a host's entry point can declare its own push constants
+[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants TFX_BINDLESS_REGISTER(b0, space0);
+TFX_UNIFORM_PUSH(tfx_gpu_particle_push, tfx_uniform_push_constants);
+
+//---- The kernel's bindless arrays
+
+//The pool's hot, cold and noise sections can be views of one buffer, as can the frame's arrays
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_hot> hot_buffers[] TFX_BINDLESS_REGISTER(u0, space1);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_cold> cold_buffers[] TFX_BINDLESS_REGISTER(u0, space2);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_noise> noise_buffers[] TFX_BINDLESS_REGISTER(u0, space3);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_instance> instance_buffers[] TFX_BINDLESS_REGISTER(u0, space4);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_spawn> spawn_buffers[] TFX_BINDLESS_REGISTER(t0, space2);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[] TFX_BINDLESS_REGISTER(t0, space3);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[] TFX_BINDLESS_REGISTER(t0, space4);
+//The force rows after the tick records, the same buffer as tick_buffers
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[] TFX_BINDLESS_REGISTER(t0, space5);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[] TFX_BINDLESS_REGISTER(t0, space6);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[] TFX_BINDLESS_REGISTER(t0, space7);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[] TFX_BINDLESS_REGISTER(t0, space8);
+//A generated tick's spawn block, runs and multipliers, 64 byte rows of the same buffer as tick_buffers
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[] TFX_BINDLESS_REGISTER(t0, space9);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[] TFX_BINDLESS_REGISTER(t0, space10);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[] TFX_BINDLESS_REGISTER(t0, space11);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[] TFX_BINDLESS_REGISTER(t0, space12);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_e> spawn_block_e_buffers[] TFX_BINDLESS_REGISTER(t0, space13);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[] TFX_BINDLESS_REGISTER(t0, space14);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[] TFX_BINDLESS_REGISTER(t0, space15);
+
+//---- The kernel's Metal buffer table
+
+//Metal has no descriptor arrays: there each push constant buffer index is a slot in this argument buffer of gpuAddress values
+#ifndef TFX_METAL_BUFFER_COUNT
+#define TFX_METAL_BUFFER_COUNT 16
+#endif
+struct tfx_metal_buffer_table {
+	RWByteAddressBuffer buffers[TFX_METAL_BUFFER_COUNT];
+};
+ParameterBlock<tfx_metal_buffer_table> tfx_metal_buffers;
+
+//---- The kernel's fixed raw buffers
+
+//The four buffers of the one-buffer setup, for WGSL (no descriptor arrays, 8 storage buffers) and TFX_FIXED_BINDINGS. These ignore the indexes
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instances, COMPUTE_WRITE, u, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graphs, COMPUTE_READ, t, 0);
+//The frame's upload: dispatches at its start, then the tick, location and spawn arrays at their bases
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_upload, COMPUTE_READ, t, 1);
+
+//The C sizes of the rows the raw paths read, which pack members as C does, whose Load/Store pack members as C does where a Metal float3 would take 16 bytes
+static const uint tfx_hot_row_bytes = 32;
+static const uint tfx_cold_row_bytes = 64;
+static const uint tfx_noise_row_bytes = 16;
+static const uint tfx_instance_row_bytes = 48;
+static const uint tfx_spawn_row_bytes = 112;
+static const uint tfx_spawn_cold_offset = 32;
+static const uint tfx_spawn_noise_offset = 96;
+static const uint tfx_dispatch_row_bytes = 128;
+static const uint tfx_location_row_bytes = 32;
+static const uint tfx_tick_row_bytes = 64;
+static const uint tfx_graph_row_bytes = 48;
+//offsetof(tfx_gpu_spawn_run_t, first_spawn)
+static const uint tfx_spawn_run_first_spawn_offset = 4;
+
+//---- The render passes' push constants, one block per pass
+
+//Under TFX_FIXED_BINDINGS the billboard draws take tfx_fixed_draw in place of theirs, which are all indexes but for the offsets, and the
+//ribbon and playback blocks are uniform buffers in the fixed render bindings
+[[vk::push_constant]] ConstantBuffer<tfx_billboard_push> tfx_billboard_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_baked_billboard_push> tfx_baked_billboard_push_constants;
+#if !defined(TFX_FIXED_BINDINGS)
+[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
+[[vk::push_constant]] ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
+#endif
+[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bounds_push> tfx_ribbon_bounds_push_constants;
+
+//---- The render passes' bindless arrays
+
+//Every buffer, image and push constant block the draw and playback passes use. The descriptor layout is the editor's: samplers at
+//binding 0, images at 3, storage buffers at 5 and uniform buffers at 7, each an array indexed from the push constants
+[[vk::binding(0, 0)]] SamplerState tfx_samplers[] TFX_BINDLESS_REGISTER(s0, space1);
+[[vk::binding(3, 0)]] Texture2DArray tfx_images[] TFX_BINDLESS_REGISTER(t0, space1);
+[[vk::binding(7, 0)]] ConstantBuffer<tfx_view_uniforms> tfx_view_uniform_buffers[] TFX_BINDLESS_REGISTER(b0, space1);
+[[vk::binding(7, 0)]] ConstantBuffer<tfx_lit_view_uniforms> tfx_lit_view_uniform_buffers[] TFX_BINDLESS_REGISTER(b0, space2);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_instance> tfx_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space16);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_image_data> tfx_image_data_buffers[] TFX_BINDLESS_REGISTER(t0, space17);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_emitter_properties> tfx_emitter_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space18);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon> tfx_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space19);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_emitter> tfx_ribbon_emitter_buffers[] TFX_BINDLESS_REGISTER(t0, space20);
+[[vk::binding(5, 0)]] StructuredBuffer<uint4> tfx_ribbon_segment_buffers[] TFX_BINDLESS_REGISTER(t0, space21);
+[[vk::binding(5, 0)]] StructuredBuffer<uint> tfx_offset_buffers[] TFX_BINDLESS_REGISTER(t0, space22);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_instance> tfx_animation_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space23);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_instance_data> tfx_baked_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space24);
+[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_ribbon_properties> tfx_ribbon_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space25);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon> tfx_ribbon_output_buffers[] TFX_BINDLESS_REGISTER(u0, space5);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon_vertex_row> tfx_ribbon_vertex_buffers[] TFX_BINDLESS_REGISTER(u0, space6);
+[[vk::binding(5, 0)]] RWStructuredBuffer<uint> tfx_ribbon_index_buffers[] TFX_BINDLESS_REGISTER(u0, space7);
+[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_bounding_box> tfx_bounding_box_buffers[] TFX_BINDLESS_REGISTER(u0, space8);
+
+//--- Fixed_render_bindings
+
+//Each entry point's own resources under TFX_FIXED_BINDINGS, picked by -D TFX_ENTRY_<entry point>, for example -D TFX_ENTRY_tfx_billboard_vertex.
+//Its slots in each class count up from 0 in the order SDL_gpu wants: textures, then read only buffers, then read write buffers, then
+//uniforms. What an entry point doesn't read is declared without a binding so the module still compiles, and Slang leaves it out. Every
+//buffer is raw, read at the C size of its rows, because some APIs only give raw views (SDL_gpu on D3D12). Every shape is in one atlas, so
+//the bindless image index is ignored
+#if defined(TFX_FIXED_BINDINGS)
+//SV_InstanceID leaves out the draw's first instance on D3D11 and D3D12, and Slang reads it as gl_InstanceIndex - gl_BaseInstance on
+//Vulkan, so it comes in here with the billboard push constants that aren't indexes
+struct tfx_fixed_draw_constants {
+	uint instance_offset;
+	uint index_offset;
+	float ndc_offset_x;
+	float ndc_offset_y;
+};
+
+static const uint tfx_image_data_row_bytes = 48;
+static const uint tfx_emitter_properties_row_bytes = 32;
+static const uint tfx_ribbon_row_bytes = 48;
+static const uint tfx_ribbon_segment_row_bytes = 16;
+static const uint tfx_ribbon_segment_frame_offset = 12;
+static const uint tfx_ribbon_vertex_row_bytes = 32;
+static const uint tfx_ribbon_emitter_row_bytes = 96;
+static const uint tfx_ribbon_alpha_threshold_offset = 92;
+static const uint tfx_ribbon_angle_type_offset = 12;
+static const uint tfx_animation_instance_row_bytes = 64;
+static const uint tfx_baked_ribbon_row_bytes = 64;
+static const uint tfx_ribbon_properties_row_bytes = 76;
+
+#if defined(TFX_ENTRY_tfx_billboard_lit_fragment) || defined(TFX_ENTRY_tfx_billboard_lit_cutout_fragment) || defined(TFX_ENTRY_tfx_ribbon_lit_fragment) || defined(TFX_ENTRY_tfx_ribbon_lit_cutout_fragment)
+#define TFX_LIT_FRAGMENT_ENTRY
+#endif
+
+#if defined(TFX_ENTRY_tfx_billboard_vertex) || defined(TFX_ENTRY_tfx_billboard_lit_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, VERTEX_READ, t, 1);				//The previous instances
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 3);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_DRAW_INSTANCES
+#define TFX_DECLARED_INSTANCE_ROWS
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_DRAW
+#elif defined(TFX_ENTRY_tfx_billboard_baked_vertex) || defined(TFX_ENTRY_tfx_billboard_baked_lit_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_DRAW_INSTANCES
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_DRAW
+#elif defined(TFX_ENTRY_tfx_billboard_fragment) || defined(TFX_ENTRY_tfx_billboard_cutout_fragment) || defined(TFX_ENTRY_tfx_ribbon_fragment) || defined(TFX_ENTRY_tfx_ribbon_cutout_fragment) || defined(TFX_LIT_FRAGMENT_ENTRY)
+//Combined samplers take the texture's slot, and the color ramps get a sampler of their own there though they're only loaded
+TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_particle_images, FRAGMENT_TEXTURE, t, 0);				//The shape atlas
+TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_color_ramps, FRAGMENT_TEXTURE, t, 1);
+TFX_FIXED_DECLARE(SamplerState, tfx_fixed_sampler, FRAGMENT_SAMPLER, s, 0);
+TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_particle_images, FRAGMENT_TEXTURE, t, 0);
+TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_color_ramps, FRAGMENT_TEXTURE, t, 1);
+#define TFX_DECLARED_IMAGES
+#if defined(TFX_LIT_FRAGMENT_ENTRY)
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_lit_view_uniforms>, tfx_fixed_lit_view, FRAGMENT_UNIFORM, b, 0);
+#define TFX_DECLARED_LIT_VIEW
+#endif
+#elif defined(TFX_ENTRY_tfx_ribbon_compute)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, COMPUTE_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_segments, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_vertex_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_index_output, COMPUTE_WRITE, u, 1);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_RIBBON_EMITTERS
+#define TFX_DECLARED_GRAPH_ROWS
+#define TFX_DECLARED_RIBBONS
+#define TFX_DECLARED_RIBBON_SEGMENTS
+#define TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
+#define TFX_DECLARED_RIBBON_PUSH
+#elif defined(TFX_ENTRY_tfx_ribbon_vertex) || defined(TFX_ENTRY_tfx_ribbon_lit_vertex)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_vertices, VERTEX_READ, t, 0);				//The vertexes tfx_ribbon_compute wrote
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, VERTEX_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, VERTEX_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, VERTEX_READ, t, 3);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 4);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, VERTEX_UNIFORM, b, 1);
+#define TFX_DECLARED_RIBBON_VERTICES
+#define TFX_DECLARED_RIBBONS
+#define TFX_DECLARED_RIBBON_EMITTERS
+#define TFX_DECLARED_GRAPH_ROWS
+#define TFX_DECLARED_IMAGE_DATA
+#define TFX_DECLARED_VIEW
+#define TFX_DECLARED_RIBBON_PUSH
+#elif defined(TFX_ENTRY_tfx_sprite_playback)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, COMPUTE_READ, t, 2);				//The baked sprites
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instance_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_sprite_data_push>, tfx_sprite_data_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_OFFSETS
+#define TFX_DECLARED_ANIMATION_INSTANCES
+#define TFX_DECLARED_INSTANCE_ROWS
+#define TFX_DECLARED_EMITTER_PROPERTIES
+#define TFX_DECLARED_INSTANCE_OUTPUT
+#define TFX_DECLARED_SPRITE_DATA_PUSH
+#elif defined(TFX_ENTRY_tfx_ribbon_playback)
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_baked_ribbons, COMPUTE_READ, t, 2);
+TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_properties, COMPUTE_READ, t, 3);
+TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_output, COMPUTE_WRITE, u, 0);
+TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_data_push>, tfx_ribbon_data_push_constants, COMPUTE_UNIFORM, b, 0);
+#define TFX_DECLARED_OFFSETS
+#define TFX_DECLARED_ANIMATION_INSTANCES
+#define TFX_DECLARED_BAKED_RIBBONS
+#define TFX_DECLARED_RIBBON_PROPERTIES
+#define TFX_DECLARED_RIBBON_OUTPUT
+#define TFX_DECLARED_RIBBON_DATA_PUSH
+#endif
+
+#ifndef TFX_DECLARED_DRAW_INSTANCES
+ByteAddressBuffer tfx_fixed_draw_instances;
+#endif
+#ifndef TFX_DECLARED_INSTANCE_ROWS
+ByteAddressBuffer tfx_fixed_instance_rows;
+#endif
+#ifndef TFX_DECLARED_IMAGE_DATA
+ByteAddressBuffer tfx_fixed_image_data;
+#endif
+#ifndef TFX_DECLARED_EMITTER_PROPERTIES
+ByteAddressBuffer tfx_fixed_emitter_properties;
+#endif
+#ifndef TFX_DECLARED_VIEW
+ConstantBuffer<tfx_view_uniforms> tfx_fixed_view;
+#endif
+#ifndef TFX_DECLARED_LIT_VIEW
+ConstantBuffer<tfx_lit_view_uniforms> tfx_fixed_lit_view;
+#endif
+#ifndef TFX_DECLARED_DRAW
+ConstantBuffer<tfx_fixed_draw_constants> tfx_fixed_draw;
+#endif
+#ifndef TFX_DECLARED_IMAGES
+Texture2DArray tfx_fixed_particle_images;
+Texture2DArray tfx_fixed_color_ramps;
+SamplerState tfx_fixed_sampler;
+Sampler2DArray tfx_fixed_combined_particle_images;
+Sampler2DArray tfx_fixed_combined_color_ramps;
+#endif
+#ifndef TFX_DECLARED_RIBBON_EMITTERS
+ByteAddressBuffer tfx_fixed_ribbon_emitters;
+#endif
+#ifndef TFX_DECLARED_GRAPH_ROWS
+ByteAddressBuffer tfx_fixed_graph_rows;
+#endif
+#ifndef TFX_DECLARED_RIBBONS
+ByteAddressBuffer tfx_fixed_ribbons;
+#endif
+#ifndef TFX_DECLARED_RIBBON_SEGMENTS
+ByteAddressBuffer tfx_fixed_ribbon_segments;
+#endif
+#ifndef TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
+RWByteAddressBuffer tfx_fixed_ribbon_vertex_output;
+RWByteAddressBuffer tfx_fixed_ribbon_index_output;
+#endif
+#ifndef TFX_DECLARED_RIBBON_VERTICES
+ByteAddressBuffer tfx_fixed_ribbon_vertices;
+#endif
+#ifndef TFX_DECLARED_OFFSETS
+ByteAddressBuffer tfx_fixed_offsets;
+#endif
+#ifndef TFX_DECLARED_ANIMATION_INSTANCES
+ByteAddressBuffer tfx_fixed_animation_instances;
+#endif
+#ifndef TFX_DECLARED_INSTANCE_OUTPUT
+RWByteAddressBuffer tfx_fixed_instance_output;
+#endif
+#ifndef TFX_DECLARED_BAKED_RIBBONS
+ByteAddressBuffer tfx_fixed_baked_ribbons;
+#endif
+#ifndef TFX_DECLARED_RIBBON_PROPERTIES
+ByteAddressBuffer tfx_fixed_ribbon_properties;
+#endif
+#ifndef TFX_DECLARED_RIBBON_OUTPUT
+RWByteAddressBuffer tfx_fixed_ribbon_output;
+#endif
+#ifndef TFX_DECLARED_RIBBON_PUSH
+ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
+#endif
+#ifndef TFX_DECLARED_SPRITE_DATA_PUSH
+ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
+#endif
+#ifndef TFX_DECLARED_RIBBON_DATA_PUSH
+ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
+#endif
+
+#else
+#define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_ribbon_emitter_buffers[buffer_index][row]
+#endif
+
+//--- Render_access
+
+//The render passes' tfx_load_* and tfx_store_* functions, each holding every binding model
+#if defined(TFX_FIXED_BINDINGS)
+tfx_view_uniforms tfx_load_view(uint buffer_index) {
+	return tfx_fixed_view;
+}
+
+tfx_lit_view_uniforms tfx_load_lit_view(uint buffer_index) {
+	return tfx_fixed_lit_view;
+}
+
+tfx_instance tfx_load_draw_instance(uint instance_id) {
+	return tfx_fixed_draw_instances.Load<tfx_instance>((instance_id + tfx_fixed_draw.instance_offset) * tfx_instance_row_bytes);
+}
+
+tfx_ribbon_vertex_row tfx_load_draw_ribbon_vertex(uint vertex_id) {
+	return tfx_fixed_ribbon_vertices.Load<tfx_ribbon_vertex_row>(vertex_id * tfx_ribbon_vertex_row_bytes);
+}
+
+tfx_instance tfx_load_instance_row(uint buffer_index, uint row) {
+	return tfx_fixed_instance_rows.Load<tfx_instance>(row * tfx_instance_row_bytes);
+}
+
+void tfx_store_instance_row(uint buffer_index, uint row, tfx_instance instance) {
+	tfx_fixed_instance_output.Store<tfx_instance>(row * tfx_instance_row_bytes, instance);
+}
+
+tfx_image_data tfx_load_image_data(uint buffer_index, uint row) {
+	return tfx_fixed_image_data.Load<tfx_image_data>(row * tfx_image_data_row_bytes);
+}
+
+tfx_emitter_properties tfx_load_emitter_properties(uint buffer_index, uint row) {
+	return tfx_fixed_emitter_properties.Load<tfx_emitter_properties>(row * tfx_emitter_properties_row_bytes);
+}
+
+tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
+	return tfx_fixed_graph_rows.Load<tfx_gpu_graph_data>(row * tfx_graph_row_bytes);
+}
+
+tfx_ribbon tfx_load_ribbon(uint buffer_index, uint row) {
+	return tfx_fixed_ribbons.Load<tfx_ribbon>(row * tfx_ribbon_row_bytes);
+}
+
+void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbon ribbon) {
+	tfx_fixed_ribbon_output.Store<tfx_ribbon>(row * tfx_ribbon_row_bytes, ribbon);
+}
+
+float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_segments.Load<float3>(row * tfx_ribbon_segment_row_bytes);
+}
+
+uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_segments.Load<uint>(row * tfx_ribbon_segment_row_bytes + tfx_ribbon_segment_frame_offset);
+}
+
+uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_segments.Load<uint4>(row * tfx_ribbon_segment_row_bytes);
+}
+
+//One of the two 8 byte halves of a segment row
+uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
+	return tfx_fixed_ribbon_segments.Load<uint2>(row * tfx_ribbon_segment_row_bytes + second_half * 8);
+}
+
+void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
+	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
+}
+
+void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
+	tfx_fixed_ribbon_index_output.Store3(row * 4, triangle);
+}
+
+uint tfx_load_offset(uint buffer_index, uint row) {
+	return tfx_fixed_offsets.Load<uint>(row * 4);
+}
+
+tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) {
+	return tfx_fixed_animation_instances.Load<tfx_animation_instance>(row * tfx_animation_instance_row_bytes);
+}
+
+tfx_ribbon_instance_data tfx_load_baked_ribbon(uint buffer_index, uint row) {
+	return tfx_fixed_baked_ribbons.Load<tfx_ribbon_instance_data>(row * tfx_baked_ribbon_row_bytes);
+}
+
+tfx_animation_ribbon_properties tfx_load_ribbon_properties(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_properties.Load<tfx_animation_ribbon_properties>(row * tfx_ribbon_properties_row_bytes);
+}
+
+float4 tfx_sample_particle_image(uint image_index, uint sampler_index, float3 tex_coord) {
+	__target_switch {
+	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_particle_images.Sample(tex_coord);
+	default: return tfx_fixed_particle_images.Sample(tfx_fixed_sampler, tex_coord);
+	}
+}
+
+float4 tfx_load_color_ramp(uint texture_index, int3 texel) {
+	__target_switch {
+	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_color_ramps.Load(int4(texel, 0));
+	default: return tfx_fixed_color_ramps.Load(int4(texel, 0));
+	}
+}
+
+tfx_billboard_push tfx_billboard_entry_push() {
+	tfx_billboard_push push = {};
+	push.index_offset = tfx_fixed_draw.index_offset;
+	return push;
+}
+
+tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
+	tfx_baked_billboard_push push = {};
+	push.ndc_offset_x = tfx_fixed_draw.ndc_offset_x;
+	push.ndc_offset_y = tfx_fixed_draw.ndc_offset_y;
+	return push;
+}
+#else
+TFX_BINDLESS_ACCESS tfx_view_uniforms tfx_load_view(uint buffer_index) {
+	return tfx_view_uniform_buffers[buffer_index];
+}
+
+TFX_BINDLESS_ACCESS tfx_lit_view_uniforms tfx_load_lit_view(uint buffer_index) {
+	return tfx_lit_view_uniform_buffers[buffer_index];
+}
+
+TFX_BINDLESS_ACCESS tfx_instance tfx_load_instance_row(uint buffer_index, uint row) {
+	return tfx_instance_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS void tfx_store_instance_row(uint buffer_index, uint row, tfx_instance instance) {
+	instance_buffers[buffer_index][row] = instance;
+}
+
+TFX_BINDLESS_ACCESS tfx_image_data tfx_load_image_data(uint buffer_index, uint row) {
+	return tfx_image_data_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_emitter_properties tfx_load_emitter_properties(uint buffer_index, uint row) {
+	return tfx_emitter_properties_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
+	return graph_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_ribbon tfx_load_ribbon(uint buffer_index, uint row) {
+	return tfx_ribbon_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbon ribbon) {
+	tfx_ribbon_output_buffers[buffer_index][row] = ribbon;
+}
+
+TFX_BINDLESS_ACCESS float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
+	return asfloat(tfx_ribbon_segment_buffers[buffer_index][row].xyz);
+}
+
+TFX_BINDLESS_ACCESS uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
+	return tfx_ribbon_segment_buffers[buffer_index][row].w;
+}
+
+TFX_BINDLESS_ACCESS uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
+	return tfx_ribbon_segment_buffers[buffer_index][row];
+}
+
+//One of the two 8 byte halves of a segment row
+TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
+	const uint4 segment = tfx_ribbon_segment_buffers[buffer_index][row];
+	return second_half != 0 ? segment.zw : segment.xy;
+}
+
+TFX_BINDLESS_ACCESS void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
+	tfx_ribbon_vertex_buffers[buffer_index][row] = vertex;
+}
+
+TFX_BINDLESS_ACCESS void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
+	tfx_ribbon_index_buffers[buffer_index][row] = triangle.x;
+	tfx_ribbon_index_buffers[buffer_index][row + 1] = triangle.y;
+	tfx_ribbon_index_buffers[buffer_index][row + 2] = triangle.z;
+}
+
+TFX_BINDLESS_ACCESS uint tfx_load_offset(uint buffer_index, uint row) {
+	return tfx_offset_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) {
+	return tfx_animation_instance_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_ribbon_instance_data tfx_load_baked_ribbon(uint buffer_index, uint row) {
+	return tfx_baked_ribbon_buffers[buffer_index][row];
+}
+
+TFX_BINDLESS_ACCESS tfx_animation_ribbon_properties tfx_load_ribbon_properties(uint buffer_index, uint row) {
+	return tfx_ribbon_properties_buffers[buffer_index][row];
+}
+
+//Every shape has its own image, so the index varies per particle rather than per draw and the descriptor read is non uniform
+TFX_BINDLESS_ACCESS float4 tfx_sample_particle_image(uint image_index, uint sampler_index, float3 tex_coord) {
+	return tfx_images[NonUniformResourceIndex(image_index)].Sample(tfx_samplers[sampler_index], tex_coord);
+}
+
+TFX_BINDLESS_ACCESS float4 tfx_load_color_ramp(uint texture_index, int3 texel) {
+	return tfx_images[texture_index].Load(int4(texel, 0));
+}
+
+tfx_billboard_push tfx_billboard_entry_push() {
+	return tfx_billboard_push_constants;
+}
+
+tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
+	return tfx_baked_billboard_push_constants;
+}
+#endif
+
+//The ribbon emitter up to alpha_threshold, as laid out in the row. Bindless reads it field by field, the fixed bindings in one 92 byte load
+struct tfx_ribbon_emitter_frame {
+	uint2 quaternion;
+	uint lookup_offset;
+	uint angle_type;
+	float3 position;
+	float age;
+	float3 captured_position;
+	uint morph_segment_start_index;
+	float noise_frequency;
+	float noise_speed;
+	float noise_phase_range;
+	float noise_lock_rate;
+	float3 fixed_angle_normal;
+	uint sample_count_noise;
+	uint start_frame_index;
+	float lag_time;
+	uint lag_block;
+};
+
+#if defined(TFX_FIXED_BINDINGS)
+tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter_frame>(row * tfx_ribbon_emitter_row_bytes);
+}
+
+//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
+uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
+	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(buffer_index, row);
+	return uint3(emitter.lookup_offset, emitter.start_frame_index, tfx_fixed_ribbon_emitters.Load<uint>(row * tfx_ribbon_emitter_row_bytes + tfx_ribbon_alpha_threshold_offset));
+}
+
+//The emitter's lighting word, which sits above the angle type
+uint tfx_load_ribbon_emitter_lighting(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_emitters.Load<uint>(row * tfx_ribbon_emitter_row_bytes + tfx_ribbon_angle_type_offset) >> 8;
+}
+#else
+TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
+	tfx_ribbon_emitter_frame frame;
+	frame.quaternion = TFX_RIBBON_EMITTER_ROW(buffer_index, row).quaternion;
+	frame.lookup_offset = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset;
+	frame.angle_type = TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type;
+	frame.position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).position;
+	frame.age = TFX_RIBBON_EMITTER_ROW(buffer_index, row).age;
+	frame.captured_position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).captured_position;
+	frame.morph_segment_start_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).morph_segment_start_index;
+	frame.noise_frequency = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_frequency;
+	frame.noise_speed = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_speed;
+	frame.noise_phase_range = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_phase_range;
+	frame.noise_lock_rate = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_lock_rate;
+	frame.fixed_angle_normal = TFX_RIBBON_EMITTER_ROW(buffer_index, row).fixed_angle_normal;
+	frame.sample_count_noise = TFX_RIBBON_EMITTER_ROW(buffer_index, row).sample_count_noise;
+	frame.start_frame_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index;
+	frame.lag_time = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_time;
+	frame.lag_block = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_block;
+	return frame;
+}
+
+//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
+TFX_BINDLESS_ACCESS uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
+	return uint3(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index,
+	             asuint(TFX_RIBBON_EMITTER_ROW(buffer_index, row).alpha_threshold));
+}
+
+//The emitter's lighting word, which sits above the angle type
+TFX_BINDLESS_ACCESS uint tfx_load_ribbon_emitter_lighting(uint buffer_index, uint row) {
+	return TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type >> 8;
+}
+#endif
+
+//The bounds passes are editor only, so they have no fixed binding
+TFX_BINDLESS_ACCESS void tfx_store_bounding_box(uint buffer_index, uint row, tfx_bounding_box box) {
+	tfx_bounding_box_buffers[buffer_index][row] = box;
+}
+
+//--- Billboard_draw
+
+//tfx_instance_t through the pipeline's vertex formats, one per instance
+struct tfx_billboard_input {
+	[[vk::location(0)]] float4 position : POSITION;							//Stretch in w
+	[[vk::location(1)]] float4 quaternion : QUATERNION;						//r16g16b16a16_snorm
+	[[vk::location(2)]] int2 size : SIZE;									//r16g16_sint, because D3D, Metal and WebGPU have no sscaled formats
+	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8a8_snorm
+	[[vk::location(4)]] int2 intensity_gradient_map : INTENSITY;			//r16g16_sint
+	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8a8_unorm
+	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame in the low 13 bits]
+	[[vk::location(7)]] uint captured_index : CAPTURED_INDEX;
+};
+
+//Explicit locations, so the editor's GLSL fragment shaders can take the same varyings. Only the uv is interpolated, the rest is per instance
+struct tfx_billboard_output {
+	float4 position : SV_Position;
+	[[vk::location(0)]] float2 uv : TEXCOORD0;
+	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;						//.x = [bindless image << 16 | image layer], .y = [alpha threshold unorm8 << 16 | color ramp layer << 8 | color ramp row]
+	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;	//Intensity, curved alpha, sharpness, gradient map
+};
+
+//tfx_billboard_output with the quad's world space axes, the normal turned towards the camera
+struct tfx_lit_billboard_output {
+	float4 position : SV_Position;
+	[[vk::location(0)]] float2 uv : TEXCOORD0;
+	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;
+	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;
+	[[vk::location(3)]] float2 quad : TEXCOORD3;										//-1 to 1 across the quad, +y up, for the roundness
+	[[vk::location(4)]] nointerpolation float3 tangent : TEXCOORD4;
+	[[vk::location(5)]] nointerpolation float3 bitangent : TEXCOORD5;
+	[[vk::location(6)]] nointerpolation float3 normal : TEXCOORD6;
+	[[vk::location(7)]] nointerpolation uint lighting : TEXCOORD7;						//The emitter's [wrap << 16 | roundness << 8]
+};
+
+//What the lit vertex shaders need of a billboard draw besides its outputs
+struct tfx_billboard_placement {
+	float3x3 rotation;
+	float3x3 view_rotation;
+	float3 view_centre;
+	bool world_oriented;				//Alignments 1 and 3, where the quad's axes are in world space, not view space
+	uint lighting;
+};
+
+//Everything but the position, which the live and baked billboards share
+tfx_billboard_output tfx_billboard_varyings(float4 clip_position, uint corner, tfx_image_data image, tfx_emitter_properties properties, float2 intensity_gradient_map, float3 curved_alpha_life) {
+	tfx_billboard_output output;
+	output.position = clip_position;
+	output.uv = float2((corner & 1u) != 0 ? image.uv.z : image.uv.x, (corner >> 1) != 0 ? image.uv.w : image.uv.y);
+	output.indexes = uint2(image.texture_array_index, (properties.color_ramp_indexes & 0xFFFFu) | (uint(saturate(properties.alpha_threshold) * 255.0 + 0.5) << 16));
+	output.intensity_curved_alpha_map = float4(intensity_gradient_map.x * tfx_color_unpack_scale, curved_alpha_life.x, curved_alpha_life.y, intensity_gradient_map.y * tfx_color_unpack_scale);
+	return output;
+}
+
+//The live billboard draw. Each instance is interpolated from its captured self in the previous buffer by the uniform buffer's timer_lerp
+tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_input input, uint corner, out tfx_billboard_placement placement) {
+	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
+	const tfx_emitter_properties properties = tfx_load_emitter_properties(push.properties_index, (input.indexes >> 16) & 0xFFFFu);
+
+	const float2 size = float2(input.size) * tfx_size_unpack_scale;
+	const float4 quaternion = normalize(input.quaternion);
+
+	//Not interpolated on a particle's first frame, when it loops back to the start of a path, or when too long has passed, and hidden that frame
+	const float interpolate_is_active = float((input.indexes & tfx_capture_bit) >> 15);
+	//The captured index means nothing without the capture bit, so row 0 keeps that read in range
+	const uint previous_index = interpolate_is_active > 0.0 ? (input.captured_index & 0x0FFFFFFFu) + push.index_offset : 0;
+	const tfx_instance previous = tfx_load_instance_row(push.prev_billboards_index, previous_index);
+
+	const float2 lerped_size = lerp(tfx_unpack_sscaled16x2(previous.size) * tfx_size_unpack_scale, size, camera.timer_lerp) * interpolate_is_active;
+	const float3 lerped_position = lerp(previous.position.xyz, input.position.xyz, camera.timer_lerp);
+	float4 previous_quaternion = tfx_unpack16bit_quaternion(previous.quaternion);
+	//q and -q are the same rotation, and lerping from one to the other passes through zero
+	previous_quaternion = dot(previous_quaternion, quaternion) < 0.0 ? -previous_quaternion : previous_quaternion;
+	const float4 lerped_quaternion = normalize(lerp(previous_quaternion, quaternion, camera.timer_lerp));
+	float3 motion = input.position.xyz - previous.position.xyz;
+	motion.z += 0.000001;
+
+	const bool has_alignment = dot(input.alignment, input.alignment) > 0;
+	const float travel_distance = length(motion);
+	const float stretch_factor = input.position.w * interpolate_is_active;
+	motion = normalize(motion);
+	const float3 final_alignment = has_alignment ? input.alignment : motion;
+
+	const uint align_flags = properties.flags & 0x3u;
+	const bool billboarding = (align_flags & 0x1u) != 0;
+
+	//GLSL's v * inverse(mat3(view)), which is the view rotation times v because a look at view is orthonormal
+	const float3x3 view_rotation = tfx_view_rotation(camera.view);
+	const float3x3 rotation = tfx_billboard_rotation(lerped_quaternion, final_alignment, mul(view_rotation, final_alignment), align_flags);
+
+	float3 position = mul(rotation, tfx_billboard_corner(corner, lerped_size, properties.image_handle));
+
+	//Stretch follows the direction of travel, and a stretch of 1 is the distance travelled in a 60th of a second (position.w has the update length taken out).
+	//Each corner moves along it by its own projection over the quad's projected half extent, which keeps the silhouette continuous as
+	//the direction sweeps past a corner where sign(dot) would snap, and keeps the total elongation at travel_distance
+	const float3 stretch_direction = billboarding ? motion : normalize(mul(view_rotation, motion));
+	float projected_half_extent = 0.0;
+	for (uint quad_corner = 0; quad_corner < 4; ++quad_corner) {
+		projected_half_extent = max(projected_half_extent, abs(dot(mul(rotation, tfx_billboard_corner(quad_corner, lerped_size, properties.image_handle)), stretch_direction)));
+	}
+	const float3 stretch_offset = stretch_direction * (dot(position, stretch_direction) / max(projected_half_extent, 0.00001)) * 0.5 * travel_distance * stretch_factor;
+	position += (travel_distance > 0.00001 && stretch_factor > 0.0) ? stretch_offset : float3(0.0, 0.0, 0.0);
+
+	//A camera facing quad's corners are offsets in view space, the rest are rotated by the view with the centre
+	const float4 view_position = mul(camera.view, float4(lerped_position, 1.0));
+	const float3 view_offset = billboarding ? mul(view_rotation, position) : position;
+	const float4 clip_position = mul(camera.projection, float4(view_position.xyz + view_offset, view_position.w));
+
+	placement.rotation = rotation;
+	placement.view_rotation = view_rotation;
+	placement.view_centre = view_position.xyz;
+	placement.world_oriented = billboarding;
+	placement.lighting = properties.lighting;
+
+	//The sprite holds the animation frame only, the emitter's properties hold where its image starts
+	const tfx_image_data image = tfx_load_image_data(push.image_data_index, properties.start_frame_index + (input.indexes & 0x00001FFFu));
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
+}
+
+tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_input input, uint corner) {
+	tfx_billboard_placement placement;
+	return tfx_live_billboard(push, input, corner, placement);
+}
+
+#if defined(TFX_FIXED_BINDINGS)
+//What the vertex formats do to tfx_instance_t, for the fixed bindings, which read the instance from a buffer
+tfx_billboard_input tfx_unpack_billboard_input(tfx_instance instance) {
+	tfx_billboard_input input;
+	input.position = instance.position;
+	input.quaternion = max(tfx_unpack16bit_quaternion(instance.quaternion), -1.0);
+	input.size = tfx_unpack_sint16x2(instance.size);
+	input.alignment = tfx_unpack_snorm8x3(instance.alignment);
+	input.intensity_gradient_map = tfx_unpack_sint16x2(instance.intensity_gradient_map);
+	input.curved_alpha_life = tfx_unpack_unorm8x4(instance.curved_alpha_life).xyz;
+	input.indexes = instance.indexes;
+	input.captured_index = instance.captured_index;
+	return input;
+}
+#endif
+
+//The baked billboard draw. tfx_sprite_playback has already interpolated, resolved the image frame with its start frame, and baked
+//the stretch into position.w, so nothing here reads a previous buffer
+tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_billboard_input input, uint corner, out tfx_billboard_placement placement) {
+	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
+	const tfx_emitter_properties properties = tfx_load_emitter_properties(push.properties_index, (input.indexes >> 16) & 0xFFFFu);
+
+	const uint align_flags = properties.flags & 0x3u;
+	const bool billboarding = (align_flags & 0x1u) != 0;
+	const float3x3 view_rotation = tfx_view_rotation(camera.view);
+	const float3 camera_relative_alignment = mul(view_rotation, input.alignment);
+	const float3x3 rotation = tfx_billboard_rotation(normalize(input.quaternion), input.alignment, camera_relative_alignment, align_flags);
+
+	float3 position = mul(rotation, tfx_billboard_corner(corner, float2(input.size) * tfx_size_unpack_scale, properties.image_handle));
+
+	//position.w is the baked stretch, half of it forwards along the alignment and half backwards
+	const float3 stretch_direction = billboarding ? input.alignment : normalize(camera_relative_alignment);
+	position += input.position.w > 0.00001 ? stretch_direction * sign(dot(position, stretch_direction)) * 0.5 * input.position.w : float3(0.0, 0.0, 0.0);
+
+	const float4 view_position = mul(camera.view, float4(input.position.xyz, 1.0));
+	const float3 view_offset = billboarding ? mul(view_rotation, position) : position;
+	float4 clip_position = mul(camera.projection, float4(view_position.xyz + view_offset, view_position.w));
+	clip_position.xy += float2(push.ndc_offset_x, push.ndc_offset_y) * clip_position.w;
+
+	placement.rotation = rotation;
+	placement.view_rotation = view_rotation;
+	placement.view_centre = view_position.xyz;
+	placement.world_oriented = billboarding;
+	placement.lighting = properties.lighting;
+
+	const tfx_image_data image = tfx_load_image_data(push.image_data_index, input.indexes & 0x00001FFFu);
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
+}
+
+tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_billboard_input input, uint corner) {
+	tfx_billboard_placement placement;
+	return tfx_baked_billboard(push, input, corner, placement);
+}
+
+tfx_lit_billboard_output tfx_lit_billboard(tfx_billboard_output output, uint corner, tfx_billboard_placement placement) {
+	tfx_lit_billboard_output lit;
+	lit.position = output.position;
+	lit.uv = output.uv;
+	lit.indexes = output.indexes;
+	lit.intensity_curved_alpha_map = output.intensity_curved_alpha_map;
+	lit.quad = float2(float(corner & 1u) * 2.0 - 1.0, 1.0 - float(corner >> 1) * 2.0);
+	lit.lighting = placement.lighting;
+
+	const float3 tangent = mul(placement.rotation, float3(1.0, 0.0, 0.0));
+	const float3 bitangent = mul(placement.rotation, float3(0.0, 1.0, 0.0));
+	const float3 normal = mul(placement.rotation, float3(0.0, 0.0, 1.0));
+	const float3 view_normal = placement.world_oriented ? mul(placement.view_rotation, normal) : normal;
+	//The quad's back faces the camera when its normal points the same way as the centre does from the camera
+	const float facing = dot(view_normal, placement.view_centre) > 0.0 ? -1.0 : 1.0;
+	//Alignments 0 and 2 build the quad in view space, and the view rotation's transpose takes it back to the world
+	lit.tangent = placement.world_oriented ? tangent : mul(tangent, placement.view_rotation);
+	lit.bitangent = placement.world_oriented ? bitangent : mul(bitangent, placement.view_rotation);
+	lit.normal = (placement.world_oriented ? normal : mul(normal, placement.view_rotation)) * facing;
+	return lit;
+}
+
+//--- Ribbon_shape
+
+//The ribbon graphs, noise and path sampling that the ribbon build and the ribbon bounds share
+
+//Graph slots in an emitter's block of the ribbon graph lookups
+static const uint tfx_ribbon_graph_intensity = 0;
+static const uint tfx_ribbon_graph_alpha_sharpness = 1;
+static const uint tfx_ribbon_graph_curved_alpha = 2;
+static const uint tfx_ribbon_graph_gradient_map = 3;
+static const uint tfx_ribbon_graph_width = 4;
+static const uint tfx_ribbon_graph_scale = 5;
+static const uint tfx_ribbon_graph_uv_offset_y = 6;
+static const uint tfx_ribbon_graph_uv_scale_y = 7;
+static const uint tfx_ribbon_graph_clip_offset = 8;
+static const uint tfx_ribbon_graph_clip_size = 9;
+static const uint tfx_ribbon_graph_morph_amount = 10;
+static const uint tfx_ribbon_graph_noise_amount = 11;
+static const uint tfx_ribbon_graph_noise_scroll = 12;
+static const uint tfx_ribbon_graph_lag_amount = 13;
+static const uint tfx_ribbon_graph_intensity_overlength = 14;
+static const uint tfx_ribbon_graph_alpha_sharpness_overlength = 15;
+static const uint tfx_ribbon_graph_curved_alpha_overlength = 16;
+static const uint tfx_ribbon_graph_gradient_map_overlength = 17;
+static const uint tfx_ribbon_graph_width_overlength = 18;
+static const uint tfx_ribbon_graph_fixed_angle = 19;
+static const uint tfx_ribbon_graph_morph_bias = 20;
+static const uint tfx_ribbon_graph_noise_envelope = 21;
+static const uint tfx_ribbon_graph_lag_profile = 22;
+
+//tfx_ribbon_flag_bits
+static const uint tfx_ribbon_active = 1 << 0;
+static const uint tfx_ribbon_relative = 1 << 1;
+static const uint tfx_ribbon_flags_shift = 24;
+static const uint tfx_ribbon_start_index_mask = 0x00FFFFFFu;
+
+//Hash axes of the ribbon noise phase offset, one per field axis. They must differ from each other and from every other axis, or the offsets correlate
+static const uint tfx_ribbon_noise_phase_x_axis = 0x27d4eb2du;
+static const uint tfx_ribbon_noise_phase_y_axis = 0x165667b1u;
+static const uint tfx_ribbon_noise_phase_z_axis = 0x9e3779b1u;
+
+//The noise algorithm in the low 4 bits of a ribbon's packed noise, the octaves in the next 4
+static const uint tfx_ribbon_noise_value = 4u;
+
+float tfx_ribbon_emitter_graph(uint graphs_index, uint lookup_offset, uint slot, float t) {
+	return tfx_sample_graph(tfx_load_graph_row(graphs_index, lookup_offset + slot), t);
+}
+
+//Perlin's gradient select: one of the cube's edge vectors, picked by the low bits of the hash
+float tfx_gradient_dot(uint hash, float3 distance_to_corner) {
+	const uint h = hash & 15u;
+	const float u = h < 8u ? distance_to_corner.x : distance_to_corner.y;
+	const float v = h < 4u ? distance_to_corner.y : ((h == 12u || h == 14u) ? distance_to_corner.x : distance_to_corner.z);
+	return ((h & 1u) == 0u ? u : -u) + ((h & 2u) == 0u ? v : -v);
+}
+
+static const int3 tfx_noise_primes = int3(1619, 31337, 6971);
+
+//One scalar field of gradient noise. The lattice holds zero and the gradient is what's random, so the field crosses a cell boundary
+//with a non zero slope. Value noise stalls at every boundary to stay continuous, which reads as morphing between fixed poses
+float tfx_gradient_noise_field(float3 position, uint seed) {
+	const float3 floor_position = floor(position);
+	const float3 relative = position - floor_position;
+	//Quintic fade: zero first and second derivative at the boundary, so the gradient stays continuous
+	const float3 fade = relative * relative * relative * (relative * (relative * 6.0 - 15.0) + 10.0);
+
+	const int3 lattice0 = int3(floor_position) * tfx_noise_primes;
+	const int3 lattice1 = lattice0 + tfx_noise_primes;
+
+	const float near_lower = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative),
+	                              tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative - float3(1.0, 0.0, 0.0)), fade.x);
+	const float far_lower = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - float3(0.0, 1.0, 0.0)),
+	                             tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - float3(1.0, 1.0, 0.0)), fade.x);
+	const float lower_slice = lerp(near_lower, far_lower, fade.y);
+
+	const float near_upper = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - float3(0.0, 0.0, 1.0)),
+	                              tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - float3(1.0, 0.0, 1.0)), fade.x);
+	const float far_upper = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - float3(0.0, 1.0, 1.0)),
+	                             tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - float3(1.0, 1.0, 1.0)), fade.x);
+	const float upper_slice = lerp(near_upper, far_upper, fade.y);
+
+	return lerp(lower_slice, upper_slice, fade.z);
+}
+
+//Measured so gradient noise lands at the value noise's rms, otherwise switching algorithm would read as an amplitude change
+static const float tfx_gradient_noise_scale = 1.397;
+
+//Three decorrelated fields, three times the work of value noise, which gets all three axes out of one hash
+float3 tfx_gradient_noise_3d(float3 position) {
+	return float3(tfx_gradient_noise_field(position, 0u),
+	              tfx_gradient_noise_field(position, 0x9e3779b9u),
+	              tfx_gradient_noise_field(position, 0x85ebca6bu)) * tfx_gradient_noise_scale;
+}
+
+//Octaves at doubling frequency and halving amplitude, normalised by the root of the summed squares: independent octaves add in
+//variance, so that keeps the apparent amplitude constant as the octave count changes
+float3 tfx_ribbon_noise_octaves(float3 position, uint algorithm, uint octaves) {
+	float3 sum = float3(0.0, 0.0, 0.0);
+	float amplitude = 1.0;
+	float frequency = 1.0;
+	float normalisation = 0.0;
+	for (uint octave = 0u; octave < octaves; ++octave) {
+		sum += amplitude * (algorithm == tfx_ribbon_noise_value ? tfx_value_noise_3d(position * frequency) : tfx_gradient_noise_3d(position * frequency));
+		normalisation += amplitude * amplitude;
+		amplitude *= 0.5;
+		frequency *= 2.0;
+	}
+	return sum * rsqrt(max(normalisation, 1e-8));
+}
+
+//Where along the noise field a ribbon samples: its own phase offset, scrolled by the scroll graph and moved through time
+float3 tfx_ribbon_noise_sample_offset(float age, uint phase_seed, float phase_range, float noise_speed, float noise_lock_rate, float noise_scroll) {
+	float noise_time = age * noise_speed;
+	if (noise_lock_rate > 0.0) {
+		noise_time = floor(noise_time * noise_lock_rate) / noise_lock_rate;
+	}
+	const float3 phase_offset = float3(tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_x_axis),
+	                                   tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_y_axis),
+	                                   tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_z_axis)) * phase_range;
+	return phase_offset + float3(noise_scroll, noise_time, 0.0);
+}
+
+//With a clip size only the clip window from the clip offset is sampled, and all of the ribbon's segments are squeezed into it
+float tfx_ribbon_path_sample_fraction(int segment, uint segment_count, uint sample_count, float clip_offset, float clip_size, out uint first_sample) {
+	const float segment_lerp = float(segment) / float(segment_count - 1);
+	const float stored = clamp(clip_offset + segment_lerp * clip_size, 0.0, 1.0) * float(sample_count - 1);
+	first_sample = min(uint(stored), sample_count - 2);
+	return clamp(stored - float(first_sample), 0.0, 1.0);
+}
+
+float3 tfx_sample_ribbon_path(uint segments_index, int segment, uint segment_count, uint base_index, uint sample_count, float clip_offset, float clip_size) {
+	uint first_sample;
+	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
+	return lerp(tfx_load_ribbon_segment(segments_index, base_index + first_sample), tfx_load_ribbon_segment(segments_index, base_index + first_sample + 1), fraction);
+}
+
+//Path, then morph, then noise. Both paths are stored at the same density, so one sample pair addresses either. The bias is looked up
+//per segment rather than reused from the centre one, otherwise a steep bias flattens the forward vector across the transition band
+float3 tfx_sample_ribbon_shape(uint segments_index, int segment, uint segment_count, uint base_index, uint morph_base_index, uint sample_count,
+                               float clip_offset, float clip_size, float morph_amount, tfx_gpu_graph_data morph_bias_graph, tfx_gpu_graph_data noise_envelope_graph,
+                               float noise_amplitude, float noise_frequency, float3 noise_sample_offset, uint noise_packed) {
+	float3 position = tfx_sample_ribbon_path(segments_index, segment, segment_count, base_index, sample_count, clip_offset, clip_size);
+	const float segment_lerp = float(segment) / float(segment_count - 1);
+	if (morph_base_index != tfx_invalid_index) {
+		const float morph = clamp(morph_amount + tfx_sample_graph(morph_bias_graph, clamp(segment_lerp, 0.0, 1.0)), 0.0, 1.0);
+		position = lerp(position, tfx_sample_ribbon_path(segments_index, segment, segment_count, morph_base_index, sample_count, clip_offset, clip_size), morph);
+	}
+	if (noise_amplitude == 0.0 || noise_packed == 0u) {
+		return position;
+	}
+	const float envelope = tfx_sample_graph(noise_envelope_graph, clamp(segment_lerp, 0.0, 1.0));
+	const float3 sample_position = noise_sample_offset + float3(segment_lerp * noise_frequency, 0.0, 0.0);
+	return position + noise_amplitude * envelope * tfx_ribbon_noise_octaves(sample_position, noise_packed & 0xFu, (noise_packed >> 4) & 0xFu);
+}
+
+//--- Ribbon_draw
+
+//tfx_ribbon_vertex_t through the pipeline's vertex formats
+struct tfx_ribbon_input {
+	[[vk::location(0)]] float3 position : POSITION;
+	[[vk::location(1)]] uint segment_index : SEGMENT_INDEX;
+	[[vk::location(2)]] float2 uv_offset_scale : UV_OFFSET_SCALE;
+	[[vk::location(3)]] uint ribbon_index : RIBBON_INDEX;
+};
+
+struct tfx_ribbon_output {
+	float4 position : SV_Position;
+	[[vk::location(0)]] float3 tex_coord : TEXCOORD0;
+	[[vk::location(1)]] nointerpolation int3 texture_indexes : TEXCOORD1;
+	[[vk::location(2)]] float4 intensity_curved_alpha_map : TEXCOORD2;
+	//The fixed bindings sample one atlas, so there the fragment shader has no use for it
+#if !defined(TFX_FIXED_BINDINGS)
+	[[vk::location(3)]] nointerpolation uint image_index : TEXCOORD3;
+#endif
+	//0 to 1 across the ribbon's width, so its screen space derivative gives the ribbon's width in pixels
+	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
+};
+
+struct tfx_lit_ribbon_output {
+	float4 position : SV_Position;
+	[[vk::location(0)]] float3 tex_coord : TEXCOORD0;
+	[[vk::location(1)]] nointerpolation int3 texture_indexes : TEXCOORD1;
+	[[vk::location(2)]] float4 intensity_curved_alpha_map : TEXCOORD2;
+#if !defined(TFX_FIXED_BINDINGS)
+	[[vk::location(3)]] nointerpolation uint image_index : TEXCOORD3;
+#endif
+	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
+	[[vk::location(5)]] float3 normal : TEXCOORD5;
+	[[vk::location(6)]] nointerpolation uint lighting : TEXCOORD6;						//The emitter's [wrap << 16 | roundness << 8 | normal mode]
+};
+
+tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_input input) {
+	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
+	tfx_ribbon_output output;
+	output.position = mul(camera.projection, mul(camera.view, float4(input.position, 1.0)));
+	output.position.xy += float2(push.ndc_offset_x, push.ndc_offset_y) * output.position.w;
+
+	const float ribbon_position = float((input.segment_index & 0x007FF000u) >> 12) / 2047.0;
+	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
+	const uint3 emitter = tfx_load_ribbon_emitter_draw(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
+	const uint lookup_offset = emitter.x;
+	//The ribbon holds the animation frame, its emitter holds where the image starts
+	const tfx_image_data image = tfx_load_image_data(push.image_data_index, emitter.y + (ribbon.texture_indexes & 0x00001FFFu));
+
+	const float tessellation = float((input.segment_index & 0xE0000000u) >> 29);
+	const float tessellation_index = float((input.segment_index & 0x1C000000u) >> 26);
+	const float side = float((input.segment_index & 0x02000000u) >> 25);
+
+	const float sampled_gradient_map = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_gradient_map_overlength, ribbon_position);
+	const float sampled_intensity = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_intensity_overlength, ribbon_position);
+	const float sampled_curved_alpha = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_curved_alpha_overlength, ribbon_position);
+	const float sampled_alpha_sharpness = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_alpha_sharpness_overlength, ribbon_position);
+
+	//The images are sprite sheets in a texture array, so a texture repeating along the ribbon ping pongs: every other wrap runs backwards,
+	//which leaves no flipped one segment seam where it wraps. The uv rect is the whole of the shape's own image, so a repeat sampler could replace this
+	const float scaled_position = ribbon_position * input.uv_offset_scale.y + input.uv_offset_scale.x;
+	const float wrap_index = floor(scaled_position);
+	float wrap_fraction = frac(scaled_position);
+	//GLSL's mod, which unlike fmod is never negative
+	if (wrap_index - 2.0 * floor(wrap_index * 0.5) == 1.0) {
+		wrap_fraction = 1.0 - wrap_fraction;
+	}
+
+	const float ribbon_across = (tessellation_index / tessellation) * 0.5 + side * 0.5;
+	output.ribbon_across = ribbon_across;
+	const float2 ribbon_intensity_gradient_map = tfx_unpack_sscaled16x2(ribbon.intensity_gradient_map) * tfx_color_unpack_scale;
+	const float2 ribbon_curved_alpha = tfx_unpack_sscaled16x2(ribbon.curved_alpha) * tfx_color_unpack_scale;
+
+#if !defined(TFX_FIXED_BINDINGS)
+	output.image_index = image.texture_array_index >> 16;
+#endif
+	output.tex_coord = float3(wrap_fraction * (image.uv.z - image.uv.x) + image.uv.x, ribbon_across * (image.uv.w - image.uv.y) + image.uv.y, float(image.texture_array_index & 0xFFFFu));
+	//.z is the emitter's alpha threshold for tfx_ribbon_cutout_fragment, 0 to 255
+	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(saturate(asfloat(emitter.z)) * 255.0 + 0.5));
+	output.intensity_curved_alpha_map = float4(sampled_intensity * ribbon_intensity_gradient_map.x, sampled_curved_alpha * ribbon_curved_alpha.x,
+		sampled_alpha_sharpness * ribbon_curved_alpha.y, sampled_gradient_map * ribbon_intensity_gradient_map.y);
+	return output;
+}
+
+//--- Particle_shading
+
+//color is the image times the ramp with intensity, coverage the image's alpha faded by curved alpha, alpha the final alpha with the ramp's
+struct tfx_particle_shade {
+	float3 color;
+	float coverage;
+	float alpha;
+};
+
+//A billboard or ribbon pixel: the image's red picks the color ramp column, and curved alpha fades the image's alpha
+tfx_particle_shade tfx_shade_particle_parts(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+	const float4 texel = tfx_sample_particle_image(image_index, sampler_index, tex_coord);
+	const int ramp_x = int(saturate(texel.r * intensity_curved_alpha_map.w) * 255);
+	float4 ramp_texel = tfx_load_color_ramp(color_ramp_texture_index, int3(ramp_x, texture_indexes.x, texture_indexes.y)) * intensity_curved_alpha_map.x;
+	ramp_texel.a = min(1.0, ramp_texel.a);
+	const float curved_alpha = 1.0 - smoothstep(texel.a * intensity_curved_alpha_map.z, texel.a, 1.0 - intensity_curved_alpha_map.y);
+	tfx_particle_shade shade;
+	shade.color = texel.rgb * ramp_texel.rgb;
+	shade.coverage = texel.a * curved_alpha;
+	shade.alpha = shade.coverage * ramp_texel.a;
+	return shade;
+}
+
+//Premultiplied alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA
+float4 tfx_premultiply(tfx_particle_shade shade) {
+	return float4(shade.color * shade.coverage, shade.alpha);
+}
+
+float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+	return tfx_premultiply(tfx_shade_particle_parts(tex_coord, texture_indexes, intensity_curved_alpha_map, image_index, color_ramp_texture_index, sampler_index));
+}
+
+//A billboard pixel from its varyings, for tfx_billboard_fragment, tfx_billboard_cutout_fragment and a host's own billboard fragments
+[ForceInline]	//Or Slang's WGSL copies the varyings struct with @interpolate and no @location, which naga rejects
+tfx_particle_shade tfx_shade_billboard_parts(tfx_billboard_output input) {
+	const float3 tex_coord = float3(input.uv, float(input.indexes.x & 0xFFFFu));
+	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int((input.indexes.y >> 8) & 0xFFu), 0);
+	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+#else
+	const tfx_billboard_push push = tfx_billboard_entry_push();
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
+#endif
+}
+
+//Below this many pixels across, a ribbon starts dropping fragments because the rasteriser only covers pixels whose centre falls
+//inside it, and a continuous ribbon breaks into dashes. Fading it out as it nears that width trades a tail that vanishes early for one that disintegrates
+static const float tfx_min_ribbon_pixels = 1.5;
+
+//A ribbon pixel from its varyings, for tfx_ribbon_fragment, tfx_ribbon_cutout_fragment and a host's own ribbon fragments
+[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
+tfx_particle_shade tfx_shade_ribbon_parts(tfx_ribbon_output input) {
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+#else
+	const tfx_ribbon_bucket_globals push = tfx_ribbon_push_constants;
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
+#endif
+}
+
+//1 for a ribbon at least tfx_min_ribbon_pixels wide, falling to 0 as it thins
+float tfx_thin_ribbon_fade(float ribbon_across) {
+	//fwidth is how far across the ribbon one pixel steps, so its reciprocal is the ribbon's width in pixels
+	const float across_per_pixel = fwidth(ribbon_across);
+	const float ribbon_pixels = across_per_pixel > 0.0 ? 1.0 / across_per_pixel : tfx_min_ribbon_pixels;
+	return smoothstep(0.0, tfx_min_ribbon_pixels, ribbon_pixels);
+}
+
+//---- Lighting
+
+//The lit twins of the billboard and ribbon draws, for layers with tfxLayerFlags_lit. The color the unlit fragments output becomes the
+//albedo, lit by the tfx_view_light_t in tfx_lit_view_uniforms. Pipeline state is the same as the unlit entry points'
+
+//An albedo lit by wrapped Lambert from the view's light, plus ambient from the sky above and the ground below. Color above 1 is added
+//unlit, so a particle that heat response or intensity pushes past 1 still glows on its shaded side
+float3 tfx_light_particle(tfx_lit_view_uniforms view, float3 color, float3 normal, uint lighting) {
+	const float wrap = float((lighting >> 16) & 0xFFu) * (1.0 / 255.0);
+	const float diffuse = saturate((dot(normal, view.light_direction.xyz) + wrap) / (1.0 + wrap));
+	const float3 ambient = lerp(view.ground_color.rgb, view.sky_color.rgb, normal.y * 0.5 + 0.5);
+	return min(color, 1.0) * (view.light_color.rgb * diffuse + ambient) + max(color - 1.0, 0.0);
+}
+
+//The roundness bends a flat quad's normal into a sphere across it
+[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
+float3 tfx_lit_billboard_normal(tfx_lit_billboard_output input) {
+	const float2 bend = input.quad * (float((input.lighting >> 8) & 0xFFu) * (1.0 / 255.0));
+	return tfx_safe_normalize(input.normal * sqrt(saturate(1.0 - dot(bend, bend))) + input.tangent * bend.x + input.bitangent * bend.y);
+}
+
+[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
+tfx_billboard_output tfx_unlit_billboard(tfx_lit_billboard_output input) {
+	tfx_billboard_output output;
+	output.position = input.position;
+	output.uv = input.uv;
+	output.indexes = input.indexes;
+	output.intensity_curved_alpha_map = input.intensity_curved_alpha_map;
+	return output;
+}
+
+tfx_lit_view_uniforms tfx_lit_billboard_view() {
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_load_lit_view(0);
+#else
+	return tfx_load_lit_view(tfx_billboard_entry_push().uniform_index);
+#endif
+}
+
+[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
+tfx_ribbon_output tfx_unlit_ribbon(tfx_lit_ribbon_output input) {
+	tfx_ribbon_output output;
+	output.position = input.position;
+	output.tex_coord = input.tex_coord;
+	output.texture_indexes = input.texture_indexes;
+	output.intensity_curved_alpha_map = input.intensity_curved_alpha_map;
+#if !defined(TFX_FIXED_BINDINGS)
+	output.image_index = input.image_index;
+#endif
+	output.ribbon_across = input.ribbon_across;
+	return output;
+}
+
+tfx_lit_view_uniforms tfx_lit_ribbon_view() {
+#if defined(TFX_FIXED_BINDINGS)
+	return tfx_load_lit_view(0);
+#else
+	return tfx_load_lit_view(tfx_ribbon_push_constants.uniform_index);
+#endif
+}
+
+//--- Playback_helpers
+
+//The playback passes turn baked frames into live instances, one thread per sprite or ribbon in the frame, interpolating each from its
+//captured self in the frame before
+
+static const uint tfx_playback_group_size = 128;
+
+//The offsets are a running total per animation instance, so the instance a thread is in is the count of totals at or below it
+uint tfx_playback_instance_index(uint offsets_index, uint animation_instances_total, uint index) {
+	uint instance_index = 0;
+	for (uint instance = 0; instance < animation_instances_total; ++instance) {
+		instance_index += uint(tfx_load_offset(offsets_index, instance_index) <= index);
+	}
+	return instance_index;
+}
+
+//How far between this baked frame and the next the animation is, 0 to 1
+float tfx_playback_frame_lerp(tfx_animation_instance animation) {
+	const float frame_time = (animation.current_time / animation.animation_length_in_time) * float(animation.frame_count);
+	return frame_time - floor(frame_time);
+}
+
+//==================================================================================================================================
+//        Compute_Shaders
+//==================================================================================================================================
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        GPU_Simulation
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//The reference GPU particle kernel. One dispatch per tfx_gpu_particle_dispatch_t from tfx_GetGPUParticleFrame, one thread per ring
+//slot. Each thread runs every tick record of the fetch in registers, mirroring the CPU's control, instance and age passes in their
+//order, and writes its instance on the last tick. Ring positions count from the tick's head, so a slot that is bumped and reused
+//within one fetch just ingests its new occupant at the tick it was spawned: from a spawn row, or generated from the tick's spawn block
+//when the tick is flagged generated (see the spawn generation section).
+//Its buffers are declared with every other resource, in the shared code's resource bindings
 
 //--- Buffer_rows
 
@@ -226,18 +2087,6 @@ struct tfx_gpu_particle_vortex_fluctuation {
 	float turn_offset_2;
 };
 
-//Mirrors tfx_instance_t
-struct tfx_instance {
-	float4 position;					//Stretch in w
-	uint2 quaternion;					//16 bit snorm: .x = X|Y, .y = Z|W
-	uint size;
-	uint alignment;
-	uint intensity_gradient_map;
-	uint curved_alpha_life;
-	uint indexes;						//[gpu property index << 16, capture flag << 15, image frame in the low 13 bits]
-	uint captured_index;				//Low 28 bits, only read when the capture flag is set
-};
-
 //Mirrors tfx_gpu_particle_push_t
 struct tfx_gpu_particle_push {
 	uint dispatch_index;
@@ -258,70 +2107,6 @@ struct tfx_gpu_particle_push {
 	uint padding;
 };
 
-//--- Graph_lookups
-
-//Graph lookups for the GPU kernels. Mirrors tfx__sample_wide_graph: one segment, easing, then bezier or linear, then the oscillator
-
-static const int tfx_graph_use_bezier_sampling = 1;
-static const int tfx_graph_enable_oscillator = 2;
-
-static const int tfx_easing_constant = 0;
-static const int tfx_easing_in = 4;
-static const int tfx_easing_out = 5;
-static const int tfx_easing_in_out = 6;
-static const int tfx_easing_smoothstep = 17;
-static const int tfx_easing_out_in = 18;
-
-//Mirrors tfx_gpu_graph_data_t, one per graph from tfx_GetGPUGraphLookupsBuffer
-struct tfx_gpu_graph_data {
-	float4 node_data;					//from, curve1, curve2, to
-	float4 oscillator;					//frequency, amplitude, offset_x, offset_y
-	int easing_type;
-	int flags;
-	int padding[2];
-};
-
-float tfx_apply_easing(int easing_type, float t) {
-	switch (easing_type) {
-		case tfx_easing_constant: return 0.0;
-		case tfx_easing_in: return t * t * t;
-		case tfx_easing_out: {
-			float inverse = 1.0 - t;
-			return 1.0 - inverse * inverse * inverse;
-		}
-		case tfx_easing_in_out: {
-			float t3 = -2.0 * t + 2.0;
-			t3 = t3 * t3 * t3;
-			return t <= 0.5 ? 4.0 * t * t * t : 1.0 - t3 * 0.5;
-		}
-		case tfx_easing_smoothstep: return t * t * (3.0 - 2.0 * t);
-		case tfx_easing_out_in: return t <= 0.5 ? t * (2.0 - 2.0 * t) : 2.0 * (t - 0.5) * (t - 0.5) + 0.5;
-		default: return t;
-	}
-}
-
-//Constant easing samples t = 0, which is why the CPU skips the bezier and the oscillator for it, and so does this
-float tfx_sample_graph(tfx_gpu_graph_data graph, float t) {
-	const float time = tfx_apply_easing(graph.easing_type, t);
-	const bool constant = graph.easing_type == tfx_easing_constant;
-	float value;
-	if ((graph.flags & tfx_graph_use_bezier_sampling) != 0 && !constant) {
-		const float inverse = 1.0 - time;
-		const float weight1 = inverse * inverse * inverse;
-		const float weight2 = 3.0 * inverse * inverse * time;
-		const float weight3 = 3.0 * inverse * time * time;
-		const float weight4 = time * time * time;
-		value = weight1 * graph.node_data.x + weight2 * graph.node_data.y + weight3 * graph.node_data.z + weight4 * graph.node_data.w;
-	} else {
-		value = graph.node_data.x + (graph.node_data.w - graph.node_data.x) * time;
-	}
-	if ((graph.flags & tfx_graph_enable_oscillator) != 0 && !constant && graph.oscillator.x != 0.0 && graph.oscillator.y != 0.0) {
-		const float oscillator = 0.5 + sin((time + graph.oscillator.z) * graph.oscillator.x * tfx_two_pi) * graph.oscillator.y;
-		value *= oscillator + graph.oscillator.w;
-	}
-	return value;
-}
-
 //--- Noise_fields
 
 //Noise fields for the GPU particle kernel, scalar ports of the CPU's wide noise in timelinefx_internal.h. Every hash, prime and
@@ -331,32 +2116,6 @@ static const float tfx_noise_epsilon = 1e-12;
 static const float tfx_noise_offset = 100.0;			//tfxWIDENOISEOFFSET
 static const float tfx_simplex_kernel_radius_squared = 0.5;	//tfxSIMPLEX_KERNEL_RADIUS_SQUARED
 static const float tfx_curl_scale = 30.857;
-
-//---- Value noise, tfx__wide_value_noise_3d
-
-float3 tfx_value_noise_corner(uint lattice_x, uint lattice_y, uint lattice_z) {
-	const uint h = tfx_seedgen((lattice_x + lattice_y) ^ lattice_z);
-	return float3(float((h >> 20) & 0x3FFu), float((h >> 10) & 0x3FFu), float(h & 0x3FFu)) * (1.0 / 511.0) - 1.0;
-}
-
-float3 tfx_value_noise_lerp(float3 a, float3 b, float t) {
-	return t * (b - a) + a;
-}
-
-float3 tfx_value_noise_3d(float3 position) {
-	const float3 floor_position = floor(position);
-	float3 fade = position - floor_position;
-	fade = fade * fade * (3.0 - 2.0 * fade);
-
-	const uint3 primes = uint3(1619u, 31337u, 6971u);
-	const uint3 lattice0 = uint3(int3(floor_position)) * primes;
-	const uint3 lattice1 = lattice0 + primes;
-
-	float3 edge = tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice0.y, lattice0.z), tfx_value_noise_corner(lattice1.x, lattice0.y, lattice0.z), fade.x);
-	const float3 slice = tfx_value_noise_lerp(edge, tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice1.y, lattice0.z), tfx_value_noise_corner(lattice1.x, lattice1.y, lattice0.z), fade.x), fade.y);
-	edge = tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice0.y, lattice1.z), tfx_value_noise_corner(lattice1.x, lattice0.y, lattice1.z), fade.x);
-	return tfx_value_noise_lerp(slice, tfx_value_noise_lerp(edge, tfx_value_noise_lerp(tfx_value_noise_corner(lattice0.x, lattice1.y, lattice1.z), tfx_value_noise_corner(lattice1.x, lattice1.y, lattice1.z), fade.x), fade.y), fade.z);
-}
 
 //---- Simplex noise, tfx__wide_simplex_cell and friends
 
@@ -749,52 +2508,6 @@ uint tfx_pack10bit_unsigned(float3 v) {
 	const uint y = uint(mad(v.y, 511.0, 511.0)) & 0x3FFu;
 	const uint z = uint(mad(v.z, 511.0, 511.0)) & 0x3FFu;
 	return z | (y << 10) | (x << 20);
-}
-
-//tfx__wide_unpack16bit: each lane sign extended, x and y from .x, z and w from .y
-float4 tfx_unpack16bit_quaternion(uint2 packed) {
-	const int4 values = int4(int(packed.x << 16) >> 16, int(packed.x) >> 16, int(packed.y << 16) >> 16, int(packed.y) >> 16);
-	return float4(values) * (1.0 / 32767.0);
-}
-
-//f16tof32 and f32tof16 lower to 16 bit types on SPIR-V, which need shaderInt16 and shaderFloat16. The GLSL.std.450 pair needs neither
-float tfx_half_to_float(uint value) {
-	__target_switch {
-	case spirv:
-		return spirv_asm {
-			%unpacked:$$float2 = OpExtInst glsl450 UnpackHalf2x16 $value;
-			result:$$float = OpCompositeExtract %unpacked 0
-		};
-	default:
-		return f16tof32(value);
-	}
-}
-
-//The half in the low 16 bits, the high 16 bits zero
-uint tfx_float_to_half(float value) {
-	__target_switch {
-	case spirv:
-		float2 packing = float2(value, 0.0);
-		return spirv_asm {
-			result:$$uint = OpExtInst glsl450 PackHalf2x16 $packing
-		};
-	default:
-		return f32tof16(value);
-	}
-}
-
-//The CPU's rotate by quaternion, tfx__wide_transform_quaternion_vec3
-float3 tfx_rotate_vector(float3 v, float4 q) {
-	return v + 2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
-}
-
-//tfx_quaternion_t's operator*, xyzw
-float4 tfx_multiply_quaternions(float4 a, float4 b) {
-	return float4(
-		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z);
 }
 
 //tfx__spin_euler_to_quaternion, angles as pitch, yaw, roll
@@ -1357,193 +3070,8 @@ tfx_generated_spawn tfx_generate_spawn(tfx_gpu_spawn_block_a block_a, tfx_gpu_sp
 
 //--- Buffer_access
 
-//Every buffer access the kernel makes, so a port to another binding model replaces only this section
+//Every buffer access the kernel makes, so a port to another binding model replaces only these and the kernel's resource declarations
 //Rows are relative to their own array and each accessor adds that array's base from the push constants, as tfx_GetGPUParticleFrame lays them out
-//Bindings are shared on purpose here: the bindless arrays alias each other, and a host entry point's push constants take the library's binding
-#pragma warning(disable: 39001)
-
-//--- Binding_macros
-
-//-D TFX_FIXED_BINDINGS gives every target the four fixed raw buffers WGSL always uses, for D3D11, SDL_gpu, OpenGL and anything else without
-//descriptor arrays. It has no push constants on any target: each block is a uniform buffer
-#if defined(TFX_FIXED_BINDINGS)
-#define TFX_FIXED_CASES case wgsl: case hlsl: case glsl: case spirv:
-#define TFX_BINDLESS_ACCESS
-#define TFX_UNIFORM_PUSH_CASES case wgsl: case hlsl: case glsl: case spirv:
-#else
-#define TFX_FIXED_CASES case wgsl:
-//GLSL needs the extension to index runtime descriptor arrays, and Slang only emits it from a function, never from the declarations
-#define TFX_BINDLESS_ACCESS __glsl_extension(GL_EXT_nonuniform_qualifier)
-#define TFX_UNIFORM_PUSH_CASES case wgsl:
-#endif
-
-//OpenGL has only combined image samplers. -D TFX_COMBINED_SAMPLERS gives SPIR-V them too, which SDL_gpu's Vulkan backend needs
-#if defined(TFX_COMBINED_SAMPLERS)
-#define TFX_COMBINED_SAMPLER_CASES case glsl: case spirv:
-#else
-#define TFX_COMBINED_SAMPLER_CASES case glsl:
-#endif
-
-//The fixed binding classes. Slot n of a class is SPIR-V binding <class>_BINDING + n in set <class>_SPACE, and HLSL register <letter>n in
-//space <class>_SPACE. Each entry point's slots in a class count up from 0. The defaults put everything in set and space 0 with no two
-//classes a vertex and fragment pair, or a compute pass, uses sharing a binding. Override any of them with -D
-#ifndef TFX_VERTEX_READ_SPACE
-#define TFX_VERTEX_READ_SPACE 0
-#endif
-#ifndef TFX_VERTEX_READ_BINDING
-#define TFX_VERTEX_READ_BINDING 0
-#endif
-#ifndef TFX_VERTEX_UNIFORM_SPACE
-#define TFX_VERTEX_UNIFORM_SPACE 0
-#endif
-#ifndef TFX_VERTEX_UNIFORM_BINDING
-#define TFX_VERTEX_UNIFORM_BINDING 5
-#endif
-#ifndef TFX_FRAGMENT_TEXTURE_SPACE
-#define TFX_FRAGMENT_TEXTURE_SPACE 0
-#endif
-#ifndef TFX_FRAGMENT_TEXTURE_BINDING
-#define TFX_FRAGMENT_TEXTURE_BINDING 7
-#endif
-#ifndef TFX_FRAGMENT_SAMPLER_SPACE
-#define TFX_FRAGMENT_SAMPLER_SPACE 0
-#endif
-#ifndef TFX_FRAGMENT_SAMPLER_BINDING
-#define TFX_FRAGMENT_SAMPLER_BINDING 9
-#endif
-#ifndef TFX_FRAGMENT_UNIFORM_SPACE
-#define TFX_FRAGMENT_UNIFORM_SPACE 0
-#endif
-#ifndef TFX_FRAGMENT_UNIFORM_BINDING
-#define TFX_FRAGMENT_UNIFORM_BINDING 10
-#endif
-#ifndef TFX_COMPUTE_WRITE_SPACE
-#define TFX_COMPUTE_WRITE_SPACE 0
-#endif
-#ifndef TFX_COMPUTE_WRITE_BINDING
-#define TFX_COMPUTE_WRITE_BINDING 0
-#endif
-#ifndef TFX_COMPUTE_READ_SPACE
-#define TFX_COMPUTE_READ_SPACE 0
-#endif
-#ifndef TFX_COMPUTE_READ_BINDING
-#define TFX_COMPUTE_READ_BINDING 2
-#endif
-#ifndef TFX_COMPUTE_UNIFORM_SPACE
-#define TFX_COMPUTE_UNIFORM_SPACE 0
-#endif
-#ifndef TFX_COMPUTE_UNIFORM_BINDING
-#define TFX_COMPUTE_UNIFORM_BINDING 6
-#endif
-
-#define TFX_PASTE(first, second) first##second
-#define TFX_PASTE_EXPANDED(first, second) TFX_PASTE(first, second)
-//Slang makes register tN, uN and bN all [[buffer(N)]] on Metal, ignoring spaces, so -D TFX_METAL_SLOTS gives the buffer classes that
-//would collide their own tens there: vertex uniforms and compute reads from 10, the compute uniform at 20
-#if defined(TFX_METAL_SLOTS)
-#define TFX_VERTEX_READ_TENS
-#define TFX_VERTEX_UNIFORM_TENS 1
-#define TFX_FRAGMENT_TEXTURE_TENS
-#define TFX_FRAGMENT_SAMPLER_TENS
-#define TFX_FRAGMENT_UNIFORM_TENS
-#define TFX_COMPUTE_WRITE_TENS
-#define TFX_COMPUTE_READ_TENS 1
-#define TFX_COMPUTE_UNIFORM_TENS 2
-#define TFX_FIXED_SLOT(resource_class, slot) TFX_PASTE_EXPANDED(TFX_##resource_class##_TENS, slot)
-#else
-#define TFX_FIXED_SLOT(resource_class, slot) slot
-#endif
-//fxc has no register spaces, but Slang leaves space0 out of what it emits, so the defaults compile for D3D11
-#if defined(TFX_FIXED_BINDINGS)
-#define TFX_FIXED_REGISTER(letter, slot, space_index) : register(TFX_PASTE(letter, slot), TFX_PASTE_EXPANDED(space, space_index))
-#else
-#define TFX_FIXED_REGISTER(letter, slot, space_index)
-#endif
-//TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0) is slot 0 of the compute write class, register u0
-#define TFX_FIXED_DECLARE(type, name, resource_class, letter, slot) [[vk::binding(TFX_##resource_class##_BINDING + slot, TFX_##resource_class##_SPACE)]] type name TFX_FIXED_REGISTER(letter, TFX_FIXED_SLOT(resource_class, slot), TFX_##resource_class##_SPACE)
-
-//--- Push_constants
-
-//A kernel's push constants as a uniform buffer, for the targets in TFX_UNIFORM_PUSH_CASES, moved along per dispatch. Host entry points
-//declare their twin with it too. Without the define the register keeps it out of Metal's buffer slots
-#if defined(TFX_FIXED_BINDINGS)
-#define TFX_UNIFORM_PUSH(type, name) TFX_FIXED_DECLARE(ConstantBuffer<type>, name, COMPUTE_UNIFORM, b, 0)
-#else
-#define TFX_UNIFORM_PUSH(type, name) [[vk::binding(TFX_COMPUTE_UNIFORM_BINDING, TFX_COMPUTE_UNIFORM_SPACE)]] ConstantBuffer<type> name : register(b15)
-#endif
-
-//The bindless model's D3D registers: each descriptor array at register 0 of its own space, so a root signature can be built from
-//the table in Shaders/readme.md. The render push constants are left to Slang, explicit ones would move Metal's buffer slots
-#if defined(TFX_FIXED_BINDINGS)
-#define TFX_BINDLESS_REGISTER(name, space)
-#else
-#define TFX_BINDLESS_REGISTER(name, space) : register(name, space)
-#endif
-
-//Only the library's entry point reads these, so a host's entry point can declare its own push constants
-[[vk::push_constant]] ConstantBuffer<tfx_gpu_particle_push> tfx_push_constants TFX_BINDLESS_REGISTER(b0, space0);
-TFX_UNIFORM_PUSH(tfx_gpu_particle_push, tfx_uniform_push_constants);
-
-//--- Bindless_arrays
-
-//The pool's hot, cold and noise sections can be views of one buffer, as can the frame's arrays
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_hot> hot_buffers[] TFX_BINDLESS_REGISTER(u0, space1);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_cold> cold_buffers[] TFX_BINDLESS_REGISTER(u0, space2);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_gpu_particle_noise> noise_buffers[] TFX_BINDLESS_REGISTER(u0, space3);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_instance> instance_buffers[] TFX_BINDLESS_REGISTER(u0, space4);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_spawn> spawn_buffers[] TFX_BINDLESS_REGISTER(t0, space2);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_dispatch> dispatch_buffers[] TFX_BINDLESS_REGISTER(t0, space3);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_tick> tick_buffers[] TFX_BINDLESS_REGISTER(t0, space4);
-//The force rows after the tick records, the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_force> force_buffers[] TFX_BINDLESS_REGISTER(t0, space5);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_particle_vortex_fluctuation> fluctuation_buffers[] TFX_BINDLESS_REGISTER(t0, space6);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_graph_data> graph_buffers[] TFX_BINDLESS_REGISTER(t0, space7);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_location> location_buffers[] TFX_BINDLESS_REGISTER(t0, space8);
-//A generated tick's spawn block, runs and multipliers, 64 byte rows of the same buffer as tick_buffers
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_a> spawn_block_a_buffers[] TFX_BINDLESS_REGISTER(t0, space9);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_b> spawn_block_b_buffers[] TFX_BINDLESS_REGISTER(t0, space10);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_c> spawn_block_c_buffers[] TFX_BINDLESS_REGISTER(t0, space11);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_d> spawn_block_d_buffers[] TFX_BINDLESS_REGISTER(t0, space12);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_block_e> spawn_block_e_buffers[] TFX_BINDLESS_REGISTER(t0, space13);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_run> spawn_run_buffers[] TFX_BINDLESS_REGISTER(t0, space14);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_gpu_spawn_multipliers> spawn_multipliers_buffers[] TFX_BINDLESS_REGISTER(t0, space15);
-
-//--- Metal_buffer_table
-
-//Metal has no descriptor arrays: there each push constant buffer index is a slot in this argument buffer of gpuAddress values
-#ifndef TFX_METAL_BUFFER_COUNT
-#define TFX_METAL_BUFFER_COUNT 16
-#endif
-struct tfx_metal_buffer_table {
-	RWByteAddressBuffer buffers[TFX_METAL_BUFFER_COUNT];
-};
-ParameterBlock<tfx_metal_buffer_table> tfx_metal_buffers;
-
-//--- Fixed_raw_buffers
-
-//The four buffers of the one-buffer setup, for WGSL (no descriptor arrays, 8 storage buffers) and TFX_FIXED_BINDINGS. These ignore the indexes
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_pool, COMPUTE_WRITE, u, 0);
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instances, COMPUTE_WRITE, u, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graphs, COMPUTE_READ, t, 0);
-//The frame's upload: dispatches at its start, then the tick, location and spawn arrays at their bases
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_upload, COMPUTE_READ, t, 1);
-
-//The C sizes of the rows the raw paths read, which pack members as C does, whose Load/Store pack members as C does where a Metal float3 would take 16 bytes
-static const uint tfx_hot_row_bytes = 32;
-static const uint tfx_cold_row_bytes = 64;
-static const uint tfx_noise_row_bytes = 16;
-static const uint tfx_instance_row_bytes = 48;
-static const uint tfx_spawn_row_bytes = 112;
-static const uint tfx_spawn_cold_offset = 32;
-static const uint tfx_spawn_noise_offset = 96;
-static const uint tfx_dispatch_row_bytes = 128;
-static const uint tfx_location_row_bytes = 32;
-static const uint tfx_tick_row_bytes = 64;
-static const uint tfx_graph_row_bytes = 48;
-//offsetof(tfx_gpu_spawn_run_t, first_spawn)
-static const uint tfx_spawn_run_first_spawn_offset = 4;
-
-//--- Buffer_accessors
 
 //---- The pool, by pool slot
 
@@ -1824,12 +3352,8 @@ static const uint tfx_force_location_delay = 1 << 12;
 
 //Must match tfxDRAG_VARIATION_HASH_AXIS or the drag drawn here won't be the one the CPU draws for the same uid
 static const uint tfx_drag_variation_hash_axis = 0x9e3779b9u;
-static const float tfx_size_packed_scale = 32767.0 / 64.0;
-static const float tfx_color_packed_scale = 32767.0 / 128.0;
-static const uint tfx_capture_bit = 1 << 15;
 //tfxSPAWN_LOCATION_SLOT_MASK
 static const uint tfx_spawn_location_slot_mask = (1u << 20) - 1;
-
 
 tfx_gpu_graph_data tfx_graph(tfx_gpu_particle_push push, uint graph_offset, uint graph) {
 	return tfx_load_graph(push, graph_offset + graph);
@@ -2757,1235 +4281,15 @@ void simulate_particles(uint3 thread_id : SV_DispatchThreadID) {
 	tfx_simulate<tfx_no_particle_update>(thread_id.x, tfx_entry_push_constants(), tfx_no_particle_update());
 }
 
-//--- Render_rows
-
-//The rows the draw, ribbon and baked playback passes read, each the byte for byte mirror of its C struct, padded where C pads
-
-//Mirrors tfx_gpu_image_data_t
-struct tfx_image_data {
-	float4 uv;
-	uint2 uv_packed;
-	float2 image_size;
-	uint texture_array_index;			//[bindless image index << 16 | animation frame]
-	float animation_frames;
-	float padding[2];
-};
-
-//Mirrors tfx_gpu_particle_properties_t
-struct tfx_emitter_properties {
-	float2 image_handle;
-	uint color_ramp_indexes;			//[color ramp layer << 8 | color ramp row]
-	uint flags;							//The billboard alignment in the lowest 2 bits
-	uint start_frame_index;
-	float animation_frames;
-	float alpha_threshold;
-	uint lighting;						//[wrap unorm8 << 16 | roundness unorm8 << 8], for the lit entry points
-};
-
-//Mirrors tfx_uniform_buffer_data_t. column_major because the Slang API's sessions default to row major, where slangc defaults to column major
-struct tfx_view_uniforms {
-	column_major float4x4 view;
-	column_major float4x4 projection;
-	float2 screen_size;
-	uint milliseconds;
-	float timer_lerp;
-	float update_time;
-};
-
-//tfx_view_uniforms followed by the tfx_view_light_t at tfxVIEW_LIGHT_OFFSET, which only the lit fragments read. The pads are scalars because
-//std140 and WGSL align a float3 to 16 where D3D doesn't
-struct tfx_lit_view_uniforms {
-	column_major float4x4 view;
-	column_major float4x4 projection;
-	float2 screen_size;
-	uint milliseconds;
-	float timer_lerp;
-	float update_time;
-	float light_padding0;
-	float light_padding1;
-	float light_padding2;
-	float4 light_direction;				//Unit length, towards the light
-	float4 light_color;					//Times its intensity
-	float4 sky_color;
-	float4 ground_color;
-};
-
-//Mirrors tfx_ribbon_t
-struct tfx_ribbon {
-	float3 position;
-	uint age_width;						//Normalised age as a unorm16 in the low half, width as a half float in the high half
-	uint2 quaternion;					//16 bit snorm: .x = X|Y, .y = Z|W
-	uint start_index_flags;				//Segment start index in the low 24 bits, flags in the top 8
-	uint emitter_index_phase_seed;		//Emitter index in the low 16 bits, phase offset seed in the high 16
-	uint texture_indexes;				//[color ramp row << 24 | color ramp layer << 16 | image frame]
-	uint intensity_gradient_map;		//Two 16 bit sscaled values
-	uint curved_alpha;					//Curved alpha and sharpness, two 16 bit sscaled values
-	uint scale;							//The parent effect's overall scale as a half float in the low 16 bits
-};
-
-//Mirrors tfx_ribbon_vertex_t
-struct tfx_ribbon_vertex_row {
-	float3 position;
-	uint segment_index;					//[tessellation << 29 | tessellation index << 26 | side << 25 | position along the ribbon << 12], low 12 bits unused
-	float2 uv_offset_scale;
-	uint ribbon_index;
-	uint normal;						//Octahedral unit normal as two snorm16s, for tfx_ribbon_lit_vertex
-};
-
-//Mirrors tfx_gpu_ribbon_emitter_t, 96 bytes
-struct tfx_ribbon_emitter {
-	uint2 quaternion;
-	uint lookup_offset;
-	uint angle_type;					//[lighting << 8 | angle type]
-	float3 position;
-	float age;
-	float3 captured_position;
-	uint morph_segment_start_index;		//tfx_invalid_index when the emitter doesn't morph
-	float noise_frequency;
-	float noise_speed;
-	float noise_phase_range;
-	float noise_lock_rate;
-	float3 fixed_angle_normal;
-	uint sample_count_noise;			//[noise algorithm and octaves << 24 | sample count]
-	uint start_frame_index;
-	float lag_time;						//0 when the emitter isn't lagging, and lag_block must not be read
-	uint lag_block;						//The lag ring's header row in the bucket's segments
-	float alpha_threshold;
-};
-
-//Mirrors tfx_animation_instance_t
-struct tfx_animation_instance {
-	float3 position;
-	float scale;
-	uint sprite_count;
-	uint ribbon_count;
-	uint frame_count;
-	uint offset_into_sprite_data;
-	uint offset_into_ribbon_data;
-	uint info_index;
-	float current_time;
-	float animation_length_in_time;
-	float tween;
-	uint flags;
-	uint frame;
-	uint padding1;
-};
-
-//Mirrors tfx_ribbon_instance_data_t, a baked ribbon
-struct tfx_ribbon_instance_data {
-	float4 position;					//w is the normalised age
-	float width;
-	uint start_index;
-	uint flags;
-	uint captured_index;				//The same ribbon in the previous frame, tfx_invalid_index in its first
-	uint2 quaternion;
-	float scale;
-	uint texture_indexes;
-	uint intensity_gradient_map;
-	uint curved_alpha;
-	uint additional;					//[property index << 16 | lerp offset as a unorm16]
-	uint phase_seed;
-};
-
-//Mirrors tfx_animation_ribbon_properties_t
-struct tfx_animation_ribbon_properties {
-	uint segment_count;
-	uint sample_count;
-	uint tessellation;
-	uint shader_type;					//[lighting << 8 | angle type]
-	uint color_ramp_index;
-	uint segment_data_offset;
-	float animation_frames;
-	uint start_frame_index;
-	uint flags;
-	uint graph_lookup_offset;
-	uint bucket_index;
-	uint morph_segment_start_index;		//Absolute, tfx_invalid_index when the emitter doesn't morph
-	float noise_frequency;
-	float noise_speed;
-	float noise_phase_range;
-	float noise_lock_rate;
-	uint noise_packed;
-	uint layer;
-	float alpha_threshold;
-};
-
-//Mirrors the editor's sprite_data_bb, one box per bounds group
-struct tfx_bounding_box {
-	float3 min_corner;
-	float max_stretch;
-	float3 max_corner;
-	float padding;
-};
-
-//Mirrors tfx_push_constants_t in zest's impl_timelinefx.h, the live billboard draw's push constants
-struct tfx_billboard_push {
-	uint color_ramp_texture_index;
-	uint image_data_index;
-	uint properties_index;
-	uint sampler_index;
-	uint prev_billboards_index;
-	uint index_offset;					//Added to every captured index, for a draw whose previous instances don't start at 0
-	uint uniform_index;
-};
-
-//Mirrors the editor's tfx_sprite_sheet_push_t. It starts with tfx_billboard_push's fields so tfx_billboard_fragment serves both draws
-struct tfx_baked_billboard_push {
-	uint color_ramp_texture_index;
-	uint image_data_index;
-	uint properties_index;
-	uint sampler_index;
-	uint prev_billboards_index;
-	uint index_offset;
-	uint uniform_index;
-	float ndc_offset_x;					//Clip space offsets for drawing a seamless sprite sheet's neighbouring tiles
-	float ndc_offset_y;
-};
-
-//Mirrors tfx_ribbon_bucket_globals_t, the push constants of all three ribbon passes, set per bucket by the library
-struct tfx_ribbon_bucket_globals {
-	float4 camera_position;
-	uint segment_count;
-	uint tessellation;
-	uint index_offset;
-	uint vertex_offset;
-	uint ribbon_count;
-	uint ribbon_offset;
-	uint segment_offset;
-	uint uniform_index;
-	uint emitters_index;
-	uint graphs_index;
-	uint ribbons_index;
-	uint ribbon_segments_index;
-	uint vertexes_index;
-	uint indexes_index;
-	uint image_data_index;
-	uint sampler_index;
-	uint particle_texture_index;
-	uint color_ramp_texture_index;
-	float lerp;
-	float time;
-	float ndc_offset_x;
-	float ndc_offset_y;
-	uint emitter_offset;
-	uint padding;
-};
-
-//Mirrors tfx_sprite_data_push_t, for the sprite playback and the sprite bounds
-struct tfx_sprite_data_push {
-	uint animation_instances_total;
-	uint billboards_total;
-	uint animated_shapes;
-	uint offsets_index;
-	uint animation_instances_index;
-	uint billboards_index;
-	uint sprite_data_index;
-	uint image_data_index;
-	uint emitter_properties_index;
-	uint bounding_boxes_index;
-	uint2 padding;
-};
-
-//Mirrors tfx_ribbon_data_push_t
-struct tfx_ribbon_data_push {
-	uint animation_instances_total;
-	uint ribbons_total;
-	uint offsets_index;
-	uint animation_instances_index;
-	uint ribbon_data_index;
-	uint ribbon_output_index;
-	uint ribbon_properties_index;
-	uint padding;
-};
-
-//Mirrors the editor's ribbon_bb_push_t
-struct tfx_ribbon_bounds_push {
-	uint ribbons_total;
-	uint animation_instances_index;
-	uint ribbon_data_index;
-	uint ribbon_segments_index;
-	uint ribbon_properties_index;
-	uint bounding_boxes_index;
-	uint graphs_index;
-};
-
-//--- Render_access
-
-//Every buffer, image and push constant block the draw and playback passes use. The descriptor layout is the editor's: samplers at
-//binding 0, images at 3, storage buffers at 5 and uniform buffers at 7, each an array indexed from the push constants
-
-//---- Push constants, one block per pass
-
-//Under TFX_FIXED_BINDINGS the billboard draws take tfx_fixed_draw in place of theirs, which are all indexes but for the offsets, and the
-//ribbon and playback blocks are uniform buffers in the fixed render bindings
-[[vk::push_constant]] ConstantBuffer<tfx_billboard_push> tfx_billboard_push_constants;
-[[vk::push_constant]] ConstantBuffer<tfx_baked_billboard_push> tfx_baked_billboard_push_constants;
-#if !defined(TFX_FIXED_BINDINGS)
-[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
-[[vk::push_constant]] ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
-[[vk::push_constant]] ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
-#endif
-[[vk::push_constant]] ConstantBuffer<tfx_ribbon_bounds_push> tfx_ribbon_bounds_push_constants;
-
-//---- Bindless arrays
-
-[[vk::binding(0, 0)]] SamplerState tfx_samplers[] TFX_BINDLESS_REGISTER(s0, space1);
-[[vk::binding(3, 0)]] Texture2DArray tfx_images[] TFX_BINDLESS_REGISTER(t0, space1);
-[[vk::binding(7, 0)]] ConstantBuffer<tfx_view_uniforms> tfx_view_uniform_buffers[] TFX_BINDLESS_REGISTER(b0, space1);
-[[vk::binding(7, 0)]] ConstantBuffer<tfx_lit_view_uniforms> tfx_lit_view_uniform_buffers[] TFX_BINDLESS_REGISTER(b0, space2);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_instance> tfx_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space16);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_image_data> tfx_image_data_buffers[] TFX_BINDLESS_REGISTER(t0, space17);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_emitter_properties> tfx_emitter_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space18);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon> tfx_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space19);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_emitter> tfx_ribbon_emitter_buffers[] TFX_BINDLESS_REGISTER(t0, space20);
-[[vk::binding(5, 0)]] StructuredBuffer<uint4> tfx_ribbon_segment_buffers[] TFX_BINDLESS_REGISTER(t0, space21);
-[[vk::binding(5, 0)]] StructuredBuffer<uint> tfx_offset_buffers[] TFX_BINDLESS_REGISTER(t0, space22);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_instance> tfx_animation_instance_buffers[] TFX_BINDLESS_REGISTER(t0, space23);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_ribbon_instance_data> tfx_baked_ribbon_buffers[] TFX_BINDLESS_REGISTER(t0, space24);
-[[vk::binding(5, 0)]] StructuredBuffer<tfx_animation_ribbon_properties> tfx_ribbon_properties_buffers[] TFX_BINDLESS_REGISTER(t0, space25);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon> tfx_ribbon_output_buffers[] TFX_BINDLESS_REGISTER(u0, space5);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_ribbon_vertex_row> tfx_ribbon_vertex_buffers[] TFX_BINDLESS_REGISTER(u0, space6);
-[[vk::binding(5, 0)]] RWStructuredBuffer<uint> tfx_ribbon_index_buffers[] TFX_BINDLESS_REGISTER(u0, space7);
-[[vk::binding(5, 0)]] RWStructuredBuffer<tfx_bounding_box> tfx_bounding_box_buffers[] TFX_BINDLESS_REGISTER(u0, space8);
-
-//--- Fixed_render_bindings
-
-//Each entry point's own resources under TFX_FIXED_BINDINGS, picked by -D TFX_ENTRY_<entry point>, for example -D TFX_ENTRY_tfx_billboard_vertex.
-//Its slots in each class count up from 0 in the order SDL_gpu wants: textures, then read only buffers, then read write buffers, then
-//uniforms. What an entry point doesn't read is declared without a binding so the module still compiles, and Slang leaves it out. Every
-//buffer is raw, read at the C size of its rows, because some APIs only give raw views (SDL_gpu on D3D12). Every shape is in one atlas, so
-//the bindless image index is ignored
-#if defined(TFX_FIXED_BINDINGS)
-//SV_InstanceID leaves out the draw's first instance on D3D11 and D3D12, and Slang reads it as gl_InstanceIndex - gl_BaseInstance on
-//Vulkan, so it comes in here with the billboard push constants that aren't indexes
-struct tfx_fixed_draw_constants {
-	uint instance_offset;
-	uint index_offset;
-	float ndc_offset_x;
-	float ndc_offset_y;
-};
-
-static const uint tfx_image_data_row_bytes = 48;
-static const uint tfx_emitter_properties_row_bytes = 32;
-static const uint tfx_ribbon_row_bytes = 48;
-static const uint tfx_ribbon_segment_row_bytes = 16;
-static const uint tfx_ribbon_segment_frame_offset = 12;
-static const uint tfx_ribbon_vertex_row_bytes = 32;
-static const uint tfx_ribbon_emitter_row_bytes = 96;
-static const uint tfx_ribbon_alpha_threshold_offset = 92;
-static const uint tfx_ribbon_angle_type_offset = 12;
-static const uint tfx_animation_instance_row_bytes = 64;
-static const uint tfx_baked_ribbon_row_bytes = 64;
-static const uint tfx_ribbon_properties_row_bytes = 76;
-
-#if defined(TFX_ENTRY_tfx_billboard_lit_fragment) || defined(TFX_ENTRY_tfx_billboard_lit_cutout_fragment) || defined(TFX_ENTRY_tfx_ribbon_lit_fragment) || defined(TFX_ENTRY_tfx_ribbon_lit_cutout_fragment)
-#define TFX_LIT_FRAGMENT_ENTRY
-#endif
-
-#if defined(TFX_ENTRY_tfx_billboard_vertex) || defined(TFX_ENTRY_tfx_billboard_lit_vertex)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, VERTEX_READ, t, 1);				//The previous instances
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 2);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 3);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
-#define TFX_DECLARED_DRAW_INSTANCES
-#define TFX_DECLARED_INSTANCE_ROWS
-#define TFX_DECLARED_IMAGE_DATA
-#define TFX_DECLARED_EMITTER_PROPERTIES
-#define TFX_DECLARED_VIEW
-#define TFX_DECLARED_DRAW
-#elif defined(TFX_ENTRY_tfx_billboard_baked_vertex) || defined(TFX_ENTRY_tfx_billboard_baked_lit_vertex)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_draw_instances, VERTEX_READ, t, 0);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, VERTEX_READ, t, 2);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_fixed_draw_constants>, tfx_fixed_draw, VERTEX_UNIFORM, b, 1);
-#define TFX_DECLARED_DRAW_INSTANCES
-#define TFX_DECLARED_IMAGE_DATA
-#define TFX_DECLARED_EMITTER_PROPERTIES
-#define TFX_DECLARED_VIEW
-#define TFX_DECLARED_DRAW
-#elif defined(TFX_ENTRY_tfx_billboard_fragment) || defined(TFX_ENTRY_tfx_billboard_cutout_fragment) || defined(TFX_ENTRY_tfx_ribbon_fragment) || defined(TFX_ENTRY_tfx_ribbon_cutout_fragment) || defined(TFX_LIT_FRAGMENT_ENTRY)
-//Combined samplers take the texture's slot, and the color ramps get a sampler of their own there though they're only loaded
-TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_particle_images, FRAGMENT_TEXTURE, t, 0);				//The shape atlas
-TFX_FIXED_DECLARE(Texture2DArray, tfx_fixed_color_ramps, FRAGMENT_TEXTURE, t, 1);
-TFX_FIXED_DECLARE(SamplerState, tfx_fixed_sampler, FRAGMENT_SAMPLER, s, 0);
-TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_particle_images, FRAGMENT_TEXTURE, t, 0);
-TFX_FIXED_DECLARE(Sampler2DArray, tfx_fixed_combined_color_ramps, FRAGMENT_TEXTURE, t, 1);
-#define TFX_DECLARED_IMAGES
-#if defined(TFX_LIT_FRAGMENT_ENTRY)
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_lit_view_uniforms>, tfx_fixed_lit_view, FRAGMENT_UNIFORM, b, 0);
-#define TFX_DECLARED_LIT_VIEW
-#endif
-#elif defined(TFX_ENTRY_tfx_ribbon_compute)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, COMPUTE_READ, t, 0);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, COMPUTE_READ, t, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, COMPUTE_READ, t, 2);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_segments, COMPUTE_READ, t, 3);
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_vertex_output, COMPUTE_WRITE, u, 0);
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_index_output, COMPUTE_WRITE, u, 1);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, COMPUTE_UNIFORM, b, 0);
-#define TFX_DECLARED_RIBBON_EMITTERS
-#define TFX_DECLARED_GRAPH_ROWS
-#define TFX_DECLARED_RIBBONS
-#define TFX_DECLARED_RIBBON_SEGMENTS
-#define TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
-#define TFX_DECLARED_RIBBON_PUSH
-#elif defined(TFX_ENTRY_tfx_ribbon_vertex) || defined(TFX_ENTRY_tfx_ribbon_lit_vertex)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_vertices, VERTEX_READ, t, 0);				//The vertexes tfx_ribbon_compute wrote
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbons, VERTEX_READ, t, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_emitters, VERTEX_READ, t, 2);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_graph_rows, VERTEX_READ, t, 3);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_image_data, VERTEX_READ, t, 4);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_view_uniforms>, tfx_fixed_view, VERTEX_UNIFORM, b, 0);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_bucket_globals>, tfx_ribbon_push_constants, VERTEX_UNIFORM, b, 1);
-#define TFX_DECLARED_RIBBON_VERTICES
-#define TFX_DECLARED_RIBBONS
-#define TFX_DECLARED_RIBBON_EMITTERS
-#define TFX_DECLARED_GRAPH_ROWS
-#define TFX_DECLARED_IMAGE_DATA
-#define TFX_DECLARED_VIEW
-#define TFX_DECLARED_RIBBON_PUSH
-#elif defined(TFX_ENTRY_tfx_sprite_playback)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_instance_rows, COMPUTE_READ, t, 2);				//The baked sprites
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_emitter_properties, COMPUTE_READ, t, 3);
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_instance_output, COMPUTE_WRITE, u, 0);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_sprite_data_push>, tfx_sprite_data_push_constants, COMPUTE_UNIFORM, b, 0);
-#define TFX_DECLARED_OFFSETS
-#define TFX_DECLARED_ANIMATION_INSTANCES
-#define TFX_DECLARED_INSTANCE_ROWS
-#define TFX_DECLARED_EMITTER_PROPERTIES
-#define TFX_DECLARED_INSTANCE_OUTPUT
-#define TFX_DECLARED_SPRITE_DATA_PUSH
-#elif defined(TFX_ENTRY_tfx_ribbon_playback)
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_offsets, COMPUTE_READ, t, 0);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_animation_instances, COMPUTE_READ, t, 1);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_baked_ribbons, COMPUTE_READ, t, 2);
-TFX_FIXED_DECLARE(ByteAddressBuffer, tfx_fixed_ribbon_properties, COMPUTE_READ, t, 3);
-TFX_FIXED_DECLARE(RWByteAddressBuffer, tfx_fixed_ribbon_output, COMPUTE_WRITE, u, 0);
-TFX_FIXED_DECLARE(ConstantBuffer<tfx_ribbon_data_push>, tfx_ribbon_data_push_constants, COMPUTE_UNIFORM, b, 0);
-#define TFX_DECLARED_OFFSETS
-#define TFX_DECLARED_ANIMATION_INSTANCES
-#define TFX_DECLARED_BAKED_RIBBONS
-#define TFX_DECLARED_RIBBON_PROPERTIES
-#define TFX_DECLARED_RIBBON_OUTPUT
-#define TFX_DECLARED_RIBBON_DATA_PUSH
-#endif
-
-#ifndef TFX_DECLARED_DRAW_INSTANCES
-ByteAddressBuffer tfx_fixed_draw_instances;
-#endif
-#ifndef TFX_DECLARED_INSTANCE_ROWS
-ByteAddressBuffer tfx_fixed_instance_rows;
-#endif
-#ifndef TFX_DECLARED_IMAGE_DATA
-ByteAddressBuffer tfx_fixed_image_data;
-#endif
-#ifndef TFX_DECLARED_EMITTER_PROPERTIES
-ByteAddressBuffer tfx_fixed_emitter_properties;
-#endif
-#ifndef TFX_DECLARED_VIEW
-ConstantBuffer<tfx_view_uniforms> tfx_fixed_view;
-#endif
-#ifndef TFX_DECLARED_LIT_VIEW
-ConstantBuffer<tfx_lit_view_uniforms> tfx_fixed_lit_view;
-#endif
-#ifndef TFX_DECLARED_DRAW
-ConstantBuffer<tfx_fixed_draw_constants> tfx_fixed_draw;
-#endif
-#ifndef TFX_DECLARED_IMAGES
-Texture2DArray tfx_fixed_particle_images;
-Texture2DArray tfx_fixed_color_ramps;
-SamplerState tfx_fixed_sampler;
-Sampler2DArray tfx_fixed_combined_particle_images;
-Sampler2DArray tfx_fixed_combined_color_ramps;
-#endif
-#ifndef TFX_DECLARED_RIBBON_EMITTERS
-ByteAddressBuffer tfx_fixed_ribbon_emitters;
-#endif
-#ifndef TFX_DECLARED_GRAPH_ROWS
-ByteAddressBuffer tfx_fixed_graph_rows;
-#endif
-#ifndef TFX_DECLARED_RIBBONS
-ByteAddressBuffer tfx_fixed_ribbons;
-#endif
-#ifndef TFX_DECLARED_RIBBON_SEGMENTS
-ByteAddressBuffer tfx_fixed_ribbon_segments;
-#endif
-#ifndef TFX_DECLARED_RIBBON_GEOMETRY_OUTPUT
-RWByteAddressBuffer tfx_fixed_ribbon_vertex_output;
-RWByteAddressBuffer tfx_fixed_ribbon_index_output;
-#endif
-#ifndef TFX_DECLARED_RIBBON_VERTICES
-ByteAddressBuffer tfx_fixed_ribbon_vertices;
-#endif
-#ifndef TFX_DECLARED_OFFSETS
-ByteAddressBuffer tfx_fixed_offsets;
-#endif
-#ifndef TFX_DECLARED_ANIMATION_INSTANCES
-ByteAddressBuffer tfx_fixed_animation_instances;
-#endif
-#ifndef TFX_DECLARED_INSTANCE_OUTPUT
-RWByteAddressBuffer tfx_fixed_instance_output;
-#endif
-#ifndef TFX_DECLARED_BAKED_RIBBONS
-ByteAddressBuffer tfx_fixed_baked_ribbons;
-#endif
-#ifndef TFX_DECLARED_RIBBON_PROPERTIES
-ByteAddressBuffer tfx_fixed_ribbon_properties;
-#endif
-#ifndef TFX_DECLARED_RIBBON_OUTPUT
-RWByteAddressBuffer tfx_fixed_ribbon_output;
-#endif
-#ifndef TFX_DECLARED_RIBBON_PUSH
-ConstantBuffer<tfx_ribbon_bucket_globals> tfx_ribbon_push_constants;
-#endif
-#ifndef TFX_DECLARED_SPRITE_DATA_PUSH
-ConstantBuffer<tfx_sprite_data_push> tfx_sprite_data_push_constants;
-#endif
-#ifndef TFX_DECLARED_RIBBON_DATA_PUSH
-ConstantBuffer<tfx_ribbon_data_push> tfx_ribbon_data_push_constants;
-#endif
-
-#else
-#define TFX_RIBBON_EMITTER_ROW(buffer_index, row) tfx_ribbon_emitter_buffers[buffer_index][row]
-#endif
-
-//---- Accessors
-
-#if defined(TFX_FIXED_BINDINGS)
-tfx_view_uniforms tfx_load_view(uint buffer_index) {
-	return tfx_fixed_view;
-}
-
-tfx_lit_view_uniforms tfx_load_lit_view(uint buffer_index) {
-	return tfx_fixed_lit_view;
-}
-
-tfx_instance tfx_load_draw_instance(uint instance_id) {
-	return tfx_fixed_draw_instances.Load<tfx_instance>((instance_id + tfx_fixed_draw.instance_offset) * tfx_instance_row_bytes);
-}
-
-tfx_ribbon_vertex_row tfx_load_draw_ribbon_vertex(uint vertex_id) {
-	return tfx_fixed_ribbon_vertices.Load<tfx_ribbon_vertex_row>(vertex_id * tfx_ribbon_vertex_row_bytes);
-}
-
-tfx_instance tfx_load_instance_row(uint buffer_index, uint row) {
-	return tfx_fixed_instance_rows.Load<tfx_instance>(row * tfx_instance_row_bytes);
-}
-
-void tfx_store_instance_row(uint buffer_index, uint row, tfx_instance instance) {
-	tfx_fixed_instance_output.Store<tfx_instance>(row * tfx_instance_row_bytes, instance);
-}
-
-tfx_image_data tfx_load_image_data(uint buffer_index, uint row) {
-	return tfx_fixed_image_data.Load<tfx_image_data>(row * tfx_image_data_row_bytes);
-}
-
-tfx_emitter_properties tfx_load_emitter_properties(uint buffer_index, uint row) {
-	return tfx_fixed_emitter_properties.Load<tfx_emitter_properties>(row * tfx_emitter_properties_row_bytes);
-}
-
-tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
-	return tfx_fixed_graph_rows.Load<tfx_gpu_graph_data>(row * tfx_graph_row_bytes);
-}
-
-tfx_ribbon tfx_load_ribbon(uint buffer_index, uint row) {
-	return tfx_fixed_ribbons.Load<tfx_ribbon>(row * tfx_ribbon_row_bytes);
-}
-
-void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbon ribbon) {
-	tfx_fixed_ribbon_output.Store<tfx_ribbon>(row * tfx_ribbon_row_bytes, ribbon);
-}
-
-float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_segments.Load<float3>(row * tfx_ribbon_segment_row_bytes);
-}
-
-uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_segments.Load<uint>(row * tfx_ribbon_segment_row_bytes + tfx_ribbon_segment_frame_offset);
-}
-
-uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_segments.Load<uint4>(row * tfx_ribbon_segment_row_bytes);
-}
-
-//One of the two 8 byte halves of a segment row
-uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
-	return tfx_fixed_ribbon_segments.Load<uint2>(row * tfx_ribbon_segment_row_bytes + second_half * 8);
-}
-
-void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
-	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
-}
-
-void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
-	tfx_fixed_ribbon_index_output.Store3(row * 4, triangle);
-}
-
-uint tfx_load_offset(uint buffer_index, uint row) {
-	return tfx_fixed_offsets.Load<uint>(row * 4);
-}
-
-tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) {
-	return tfx_fixed_animation_instances.Load<tfx_animation_instance>(row * tfx_animation_instance_row_bytes);
-}
-
-tfx_ribbon_instance_data tfx_load_baked_ribbon(uint buffer_index, uint row) {
-	return tfx_fixed_baked_ribbons.Load<tfx_ribbon_instance_data>(row * tfx_baked_ribbon_row_bytes);
-}
-
-tfx_animation_ribbon_properties tfx_load_ribbon_properties(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_properties.Load<tfx_animation_ribbon_properties>(row * tfx_ribbon_properties_row_bytes);
-}
-
-float4 tfx_sample_particle_image(uint image_index, uint sampler_index, float3 tex_coord) {
-	__target_switch {
-	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_particle_images.Sample(tex_coord);
-	default: return tfx_fixed_particle_images.Sample(tfx_fixed_sampler, tex_coord);
-	}
-}
-
-float4 tfx_load_color_ramp(uint texture_index, int3 texel) {
-	__target_switch {
-	TFX_COMBINED_SAMPLER_CASES return tfx_fixed_combined_color_ramps.Load(int4(texel, 0));
-	default: return tfx_fixed_color_ramps.Load(int4(texel, 0));
-	}
-}
-
-tfx_billboard_push tfx_billboard_entry_push() {
-	tfx_billboard_push push = {};
-	push.index_offset = tfx_fixed_draw.index_offset;
-	return push;
-}
-
-tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
-	tfx_baked_billboard_push push = {};
-	push.ndc_offset_x = tfx_fixed_draw.ndc_offset_x;
-	push.ndc_offset_y = tfx_fixed_draw.ndc_offset_y;
-	return push;
-}
-#else
-TFX_BINDLESS_ACCESS tfx_view_uniforms tfx_load_view(uint buffer_index) {
-	return tfx_view_uniform_buffers[buffer_index];
-}
-
-TFX_BINDLESS_ACCESS tfx_lit_view_uniforms tfx_load_lit_view(uint buffer_index) {
-	return tfx_lit_view_uniform_buffers[buffer_index];
-}
-
-TFX_BINDLESS_ACCESS tfx_instance tfx_load_instance_row(uint buffer_index, uint row) {
-	return tfx_instance_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS void tfx_store_instance_row(uint buffer_index, uint row, tfx_instance instance) {
-	instance_buffers[buffer_index][row] = instance;
-}
-
-TFX_BINDLESS_ACCESS tfx_image_data tfx_load_image_data(uint buffer_index, uint row) {
-	return tfx_image_data_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_emitter_properties tfx_load_emitter_properties(uint buffer_index, uint row) {
-	return tfx_emitter_properties_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_gpu_graph_data tfx_load_graph_row(uint buffer_index, uint row) {
-	return graph_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_ribbon tfx_load_ribbon(uint buffer_index, uint row) {
-	return tfx_ribbon_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS void tfx_store_ribbon(uint buffer_index, uint row, tfx_ribbon ribbon) {
-	tfx_ribbon_output_buffers[buffer_index][row] = ribbon;
-}
-
-TFX_BINDLESS_ACCESS float3 tfx_load_ribbon_segment(uint buffer_index, uint row) {
-	return asfloat(tfx_ribbon_segment_buffers[buffer_index][row].xyz);
-}
-
-TFX_BINDLESS_ACCESS uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
-	return tfx_ribbon_segment_buffers[buffer_index][row].w;
-}
-
-TFX_BINDLESS_ACCESS uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
-	return tfx_ribbon_segment_buffers[buffer_index][row];
-}
-
-//One of the two 8 byte halves of a segment row
-TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
-	const uint4 segment = tfx_ribbon_segment_buffers[buffer_index][row];
-	return second_half != 0 ? segment.zw : segment.xy;
-}
-
-TFX_BINDLESS_ACCESS void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
-	tfx_ribbon_vertex_buffers[buffer_index][row] = vertex;
-}
-
-TFX_BINDLESS_ACCESS void tfx_store_ribbon_triangle(uint buffer_index, uint row, uint3 triangle) {
-	tfx_ribbon_index_buffers[buffer_index][row] = triangle.x;
-	tfx_ribbon_index_buffers[buffer_index][row + 1] = triangle.y;
-	tfx_ribbon_index_buffers[buffer_index][row + 2] = triangle.z;
-}
-
-TFX_BINDLESS_ACCESS uint tfx_load_offset(uint buffer_index, uint row) {
-	return tfx_offset_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_animation_instance tfx_load_animation_instance(uint buffer_index, uint row) {
-	return tfx_animation_instance_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_ribbon_instance_data tfx_load_baked_ribbon(uint buffer_index, uint row) {
-	return tfx_baked_ribbon_buffers[buffer_index][row];
-}
-
-TFX_BINDLESS_ACCESS tfx_animation_ribbon_properties tfx_load_ribbon_properties(uint buffer_index, uint row) {
-	return tfx_ribbon_properties_buffers[buffer_index][row];
-}
-
-//Every shape has its own image, so the index varies per particle rather than per draw and the descriptor read is non uniform
-TFX_BINDLESS_ACCESS float4 tfx_sample_particle_image(uint image_index, uint sampler_index, float3 tex_coord) {
-	return tfx_images[NonUniformResourceIndex(image_index)].Sample(tfx_samplers[sampler_index], tex_coord);
-}
-
-TFX_BINDLESS_ACCESS float4 tfx_load_color_ramp(uint texture_index, int3 texel) {
-	return tfx_images[texture_index].Load(int4(texel, 0));
-}
-
-tfx_billboard_push tfx_billboard_entry_push() {
-	return tfx_billboard_push_constants;
-}
-
-tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
-	return tfx_baked_billboard_push_constants;
-}
-#endif
-
-//The ribbon emitter up to alpha_threshold, as laid out in the row. Bindless reads it field by field, the fixed bindings in one 92 byte load
-struct tfx_ribbon_emitter_frame {
-	uint2 quaternion;
-	uint lookup_offset;
-	uint angle_type;
-	float3 position;
-	float age;
-	float3 captured_position;
-	uint morph_segment_start_index;
-	float noise_frequency;
-	float noise_speed;
-	float noise_phase_range;
-	float noise_lock_rate;
-	float3 fixed_angle_normal;
-	uint sample_count_noise;
-	uint start_frame_index;
-	float lag_time;
-	uint lag_block;
-};
-
-#if defined(TFX_FIXED_BINDINGS)
-tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_emitters.Load<tfx_ribbon_emitter_frame>(row * tfx_ribbon_emitter_row_bytes);
-}
-
-//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
-uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
-	const tfx_ribbon_emitter_frame emitter = tfx_load_ribbon_emitter_frame(buffer_index, row);
-	return uint3(emitter.lookup_offset, emitter.start_frame_index, tfx_fixed_ribbon_emitters.Load<uint>(row * tfx_ribbon_emitter_row_bytes + tfx_ribbon_alpha_threshold_offset));
-}
-
-//The emitter's lighting word, which sits above the angle type
-uint tfx_load_ribbon_emitter_lighting(uint buffer_index, uint row) {
-	return tfx_fixed_ribbon_emitters.Load<uint>(row * tfx_ribbon_emitter_row_bytes + tfx_ribbon_angle_type_offset) >> 8;
-}
-#else
-TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint buffer_index, uint row) {
-	tfx_ribbon_emitter_frame frame;
-	frame.quaternion = TFX_RIBBON_EMITTER_ROW(buffer_index, row).quaternion;
-	frame.lookup_offset = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset;
-	frame.angle_type = TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type;
-	frame.position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).position;
-	frame.age = TFX_RIBBON_EMITTER_ROW(buffer_index, row).age;
-	frame.captured_position = TFX_RIBBON_EMITTER_ROW(buffer_index, row).captured_position;
-	frame.morph_segment_start_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).morph_segment_start_index;
-	frame.noise_frequency = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_frequency;
-	frame.noise_speed = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_speed;
-	frame.noise_phase_range = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_phase_range;
-	frame.noise_lock_rate = TFX_RIBBON_EMITTER_ROW(buffer_index, row).noise_lock_rate;
-	frame.fixed_angle_normal = TFX_RIBBON_EMITTER_ROW(buffer_index, row).fixed_angle_normal;
-	frame.sample_count_noise = TFX_RIBBON_EMITTER_ROW(buffer_index, row).sample_count_noise;
-	frame.start_frame_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index;
-	frame.lag_time = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_time;
-	frame.lag_block = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_block;
-	return frame;
-}
-
-//What the ribbon vertex shader needs of the emitter: .x = lookup_offset, .y = start_frame_index, .z = alpha_threshold as uint bits
-TFX_BINDLESS_ACCESS uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint row) {
-	return uint3(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lookup_offset, TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index,
-	             asuint(TFX_RIBBON_EMITTER_ROW(buffer_index, row).alpha_threshold));
-}
-
-//The emitter's lighting word, which sits above the angle type
-TFX_BINDLESS_ACCESS uint tfx_load_ribbon_emitter_lighting(uint buffer_index, uint row) {
-	return TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type >> 8;
-}
-#endif
-
-//The bounds passes are editor only, so they have no fixed binding
-TFX_BINDLESS_ACCESS void tfx_store_bounding_box(uint buffer_index, uint row, tfx_bounding_box box) {
-	tfx_bounding_box_buffers[buffer_index][row] = box;
-}
-
-//--- Render_math
-
-static const uint tfx_invalid_index = 0xFFFFFFFFu;
-static const uint tfx_quad_indexes[6] = { 0, 1, 2, 2, 1, 3 };
-//The epsilon keeps cross(up, alignment) from reaching zero for an alignment straight up or down, which is why the alignment frame needs no fallback
-static const float3 tfx_billboard_up = float3(0, 1, 0.00001);
-static const float tfx_size_unpack_scale = 64.0 / 32767.0;
-static const float tfx_color_unpack_scale = 128.0 / 32767.0;
-//tfxReverseAnimationFlag in the emitter properties flags
-static const uint tfx_reverse_animation_flag = 8192;
-
-//The r16g16_sscaled vertex format: two sign extended 16 bit halves
-float2 tfx_unpack_sscaled16x2(uint packed) {
-	return float2(float(int(packed << 16) >> 16), float(int(packed) >> 16));
-}
-
-//The r16g16_sint vertex format
-int2 tfx_unpack_sint16x2(uint packed) {
-	return int2(int(packed << 16) >> 16, int(packed) >> 16);
-}
-
-//Two unsigned 16 bit halves
-float2 tfx_unpack_uscaled16x2(uint packed) {
-	return float2(float(packed & 0xFFFFu), float(packed >> 16));
-}
-
-//GLSL's unpackSnorm4x8, xyz of it
-float3 tfx_unpack_snorm8x3(uint packed) {
-	const int3 value = int3(int(packed << 24) >> 24, int(packed << 16) >> 24, int(packed << 8) >> 24);
-	return max(float3(value) / 127.0, -1.0);
-}
-
-//GLSL's unpackUnorm4x8
-float4 tfx_unpack_unorm8x4(uint packed) {
-	return float4(float(packed & 0xFFu), float((packed >> 8) & 0xFFu), float((packed >> 16) & 0xFFu), float(packed >> 24)) / 255.0;
-}
-
-//GLSL's packUnorm4x8
-uint tfx_pack_unorm8x4(float4 value) {
-	const uint4 scaled = uint4(round(saturate(value) * 255.0));
-	return scaled.x | (scaled.y << 8) | (scaled.z << 16) | (scaled.w << 24);
-}
-
-//GLSL's packSnorm4x8
-uint tfx_pack_snorm8x4(float4 value) {
-	const int4 scaled = int4(round(clamp(value, -1.0, 1.0) * 127.0));
-	return (uint(scaled.x) & 0xFFu) | ((uint(scaled.y) & 0xFFu) << 8) | ((uint(scaled.z) & 0xFFu) << 16) | ((uint(scaled.w) & 0xFFu) << 24);
-}
-
-//GLSL's packSnorm2x16
-uint tfx_pack_snorm16x2(float2 value) {
-	const int2 scaled = int2(round(clamp(value, -1.0, 1.0) * 32767.0));
-	return (uint(scaled.x) & 0xFFFFu) | (uint(scaled.y) << 16);
-}
-
-//GLSL's mat3(a, b, c) takes columns, Slang's float3x3(a, b, c) takes rows. Built element by element, because Metal's vertex stage has no transpose
-float3x3 tfx_matrix_from_columns(float3 first, float3 second, float3 third) {
-	return float3x3(first.x, second.x, third.x,
-	                first.y, second.y, third.y,
-	                first.z, second.z, third.z);
-}
-
-float3x3 tfx_view_rotation(float4x4 view) {
-	return float3x3(view[0].xyz, view[1].xyz, view[2].xyz);
-}
-
-float3x3 tfx_quaternion_to_matrix(float4 q) {
-	const float xx = q.x * q.x; const float xy = q.x * q.y; const float xz = q.x * q.z; const float xw = q.x * q.w;
-	const float yy = q.y * q.y; const float yz = q.y * q.z; const float yw = q.y * q.w;
-	const float zz = q.z * q.z; const float zw = q.z * q.w;
-	return float3x3(
-		1.0 - 2.0 * (yy + zz), 2.0 * (xy - zw), 2.0 * (xz + yw),
-		2.0 * (xy + zw), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - xw),
-		2.0 * (xz - yw), 2.0 * (yz + xw), 1.0 - 2.0 * (xx + yy));
-}
-
-//The world frame of a quad aligned to the vector: tangent, bitangent and the alignment as its columns
-float3x3 tfx_alignment_frame(float3 alignment) {
-	const float3 normal = normalize(alignment);
-	const float3 tangent = normalize(cross(tfx_billboard_up, normal));
-	const float3 bitangent = normalize(cross(normal, tangent));
-	return tfx_matrix_from_columns(tangent, bitangent, normal);
-}
-
-//The quad's rotation for its alignment mode, from the lowest 2 bits of the emitter properties flags:
-//00 faces the camera, 01 doesn't, 10 faces the camera and rolls to the alignment, 11 aligns to the vector with no camera facing
-float3x3 tfx_billboard_rotation(float4 quaternion, float3 alignment, float3 camera_relative_alignment, uint align_flags) {
-	const float3x3 spin = tfx_quaternion_to_matrix(quaternion);
-	const float3x3 align_matrix = tfx_alignment_frame(alignment);
-	//The roll that turns the view's up, (0, 1), to the alignment projected onto the view plane
-	const float2 align_xy = normalize(camera_relative_alignment.xy + 0.00001);
-	const float roll_cos = align_xy.y;
-	const float roll_sin = -align_xy.x;
-	const float3x3 roll_matrix = tfx_matrix_from_columns(float3(roll_cos, roll_sin, 0.0), float3(-roll_sin, roll_cos, 0.0), float3(0.0, 0.0, 1.0));
-	if (align_flags == 0x3u) {
-		return mul(align_matrix, spin);
-	} else if (align_flags == 0x2u) {
-		return mul(roll_matrix, spin);
-	}
-	return spin;
-}
-
-//A quad corner before rotation, corners 0 to 3 being top left, top right, bottom left, bottom right
-float3 tfx_billboard_corner(uint corner, float2 size, float2 handle) {
-	const float2 corner_position = float2(float(corner & 1u), float(corner >> 1));
-	return float3(size.x * (corner_position.x - handle.x), -size.y * (corner_position.y - handle.y), 0);
-}
-
-//A unit normal folded onto the octahedron as two snorm16s, x in the low half
-uint tfx_pack_octahedral_normal(float3 normal) {
-	normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
-	float2 folded = normal.xy;
-	if (normal.z < 0.0) {
-		folded = (1.0 - abs(normal.yx)) * float2(normal.x >= 0.0 ? 1.0 : -1.0, normal.y >= 0.0 ? 1.0 : -1.0);
-	}
-	const int2 quantised = int2(round(clamp(folded, -1.0, 1.0) * 32767.0));
-	return (uint(quantised.x) & 0xFFFFu) | (uint(quantised.y) << 16);
-}
-
-float3 tfx_unpack_octahedral_normal(uint packed) {
-	const float2 folded = float2(float(int(packed << 16) >> 16), float(int(packed) >> 16)) * (1.0 / 32767.0);
-	float3 normal = float3(folded, 1.0 - abs(folded.x) - abs(folded.y));
-	const float under = saturate(-normal.z);
-	normal.xy += float2(normal.x >= 0.0 ? -under : under, normal.y >= 0.0 ? -under : under);
-	return normalize(normal);
-}
-
-//What the lit vertex shaders need of a billboard draw besides its outputs
-struct tfx_billboard_placement {
-	float3x3 rotation;
-	float3x3 view_rotation;
-	float3 view_centre;
-	bool world_oriented;				//Alignments 1 and 3, where the quad's axes are in world space, not view space
-	uint lighting;
-};
-
-//--- Billboard_vertex
-
-//tfx_instance_t through the pipeline's vertex formats, one per instance
-struct tfx_billboard_input {
-	[[vk::location(0)]] float4 position : POSITION;							//Stretch in w
-	[[vk::location(1)]] float4 quaternion : QUATERNION;						//r16g16b16a16_snorm
-	[[vk::location(2)]] int2 size : SIZE;									//r16g16_sint, because D3D, Metal and WebGPU have no sscaled formats
-	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8a8_snorm
-	[[vk::location(4)]] int2 intensity_gradient_map : INTENSITY;			//r16g16_sint
-	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8a8_unorm
-	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame in the low 13 bits]
-	[[vk::location(7)]] uint captured_index : CAPTURED_INDEX;
-};
-
-//Explicit locations, so the editor's GLSL fragment shaders can take the same varyings. Only the uv is interpolated, the rest is per instance
-struct tfx_billboard_output {
-	float4 position : SV_Position;
-	[[vk::location(0)]] float2 uv : TEXCOORD0;
-	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;						//.x = [bindless image << 16 | image layer], .y = [alpha threshold unorm8 << 16 | color ramp layer << 8 | color ramp row]
-	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;	//Intensity, curved alpha, sharpness, gradient map
-};
-
-//Everything but the position, which the live and baked billboards share
-tfx_billboard_output tfx_billboard_varyings(float4 clip_position, uint corner, tfx_image_data image, tfx_emitter_properties properties, float2 intensity_gradient_map, float3 curved_alpha_life) {
-	tfx_billboard_output output;
-	output.position = clip_position;
-	output.uv = float2((corner & 1u) != 0 ? image.uv.z : image.uv.x, (corner >> 1) != 0 ? image.uv.w : image.uv.y);
-	output.indexes = uint2(image.texture_array_index, (properties.color_ramp_indexes & 0xFFFFu) | (uint(saturate(properties.alpha_threshold) * 255.0 + 0.5) << 16));
-	output.intensity_curved_alpha_map = float4(intensity_gradient_map.x * tfx_color_unpack_scale, curved_alpha_life.x, curved_alpha_life.y, intensity_gradient_map.y * tfx_color_unpack_scale);
-	return output;
-}
-
-//The live billboard draw. Each instance is interpolated from its captured self in the previous buffer by the uniform buffer's timer_lerp
-tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_input input, uint corner, out tfx_billboard_placement placement) {
-	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
-	const tfx_emitter_properties properties = tfx_load_emitter_properties(push.properties_index, (input.indexes >> 16) & 0xFFFFu);
-
-	const float2 size = float2(input.size) * tfx_size_unpack_scale;
-	const float4 quaternion = normalize(input.quaternion);
-
-	//Not interpolated on a particle's first frame, when it loops back to the start of a path, or when too long has passed, and hidden that frame
-	const float interpolate_is_active = float((input.indexes & tfx_capture_bit) >> 15);
-	//The captured index means nothing without the capture bit, so row 0 keeps that read in range
-	const uint previous_index = interpolate_is_active > 0.0 ? (input.captured_index & 0x0FFFFFFFu) + push.index_offset : 0;
-	const tfx_instance previous = tfx_load_instance_row(push.prev_billboards_index, previous_index);
-
-	const float2 lerped_size = lerp(tfx_unpack_sscaled16x2(previous.size) * tfx_size_unpack_scale, size, camera.timer_lerp) * interpolate_is_active;
-	const float3 lerped_position = lerp(previous.position.xyz, input.position.xyz, camera.timer_lerp);
-	float4 previous_quaternion = tfx_unpack16bit_quaternion(previous.quaternion);
-	//q and -q are the same rotation, and lerping from one to the other passes through zero
-	previous_quaternion = dot(previous_quaternion, quaternion) < 0.0 ? -previous_quaternion : previous_quaternion;
-	const float4 lerped_quaternion = normalize(lerp(previous_quaternion, quaternion, camera.timer_lerp));
-	float3 motion = input.position.xyz - previous.position.xyz;
-	motion.z += 0.000001;
-
-	const bool has_alignment = dot(input.alignment, input.alignment) > 0;
-	const float travel_distance = length(motion);
-	const float stretch_factor = input.position.w * interpolate_is_active;
-	motion = normalize(motion);
-	const float3 final_alignment = has_alignment ? input.alignment : motion;
-
-	const uint align_flags = properties.flags & 0x3u;
-	const bool billboarding = (align_flags & 0x1u) != 0;
-
-	//GLSL's v * inverse(mat3(view)), which is the view rotation times v because a look at view is orthonormal
-	const float3x3 view_rotation = tfx_view_rotation(camera.view);
-	const float3x3 rotation = tfx_billboard_rotation(lerped_quaternion, final_alignment, mul(view_rotation, final_alignment), align_flags);
-
-	float3 position = mul(rotation, tfx_billboard_corner(corner, lerped_size, properties.image_handle));
-
-	//Stretch follows the direction of travel, and a stretch of 1 is the distance travelled in a 60th of a second (position.w has the update length taken out).
-	//Each corner moves along it by its own projection over the quad's projected half extent, which keeps the silhouette continuous as
-	//the direction sweeps past a corner where sign(dot) would snap, and keeps the total elongation at travel_distance
-	const float3 stretch_direction = billboarding ? motion : normalize(mul(view_rotation, motion));
-	float projected_half_extent = 0.0;
-	for (uint quad_corner = 0; quad_corner < 4; ++quad_corner) {
-		projected_half_extent = max(projected_half_extent, abs(dot(mul(rotation, tfx_billboard_corner(quad_corner, lerped_size, properties.image_handle)), stretch_direction)));
-	}
-	const float3 stretch_offset = stretch_direction * (dot(position, stretch_direction) / max(projected_half_extent, 0.00001)) * 0.5 * travel_distance * stretch_factor;
-	position += (travel_distance > 0.00001 && stretch_factor > 0.0) ? stretch_offset : float3(0.0, 0.0, 0.0);
-
-	//A camera facing quad's corners are offsets in view space, the rest are rotated by the view with the centre
-	const float4 view_position = mul(camera.view, float4(lerped_position, 1.0));
-	const float3 view_offset = billboarding ? mul(view_rotation, position) : position;
-	const float4 clip_position = mul(camera.projection, float4(view_position.xyz + view_offset, view_position.w));
-
-	placement.rotation = rotation;
-	placement.view_rotation = view_rotation;
-	placement.view_centre = view_position.xyz;
-	placement.world_oriented = billboarding;
-	placement.lighting = properties.lighting;
-
-	//The sprite holds the animation frame only, the emitter's properties hold where its image starts
-	const tfx_image_data image = tfx_load_image_data(push.image_data_index, properties.start_frame_index + (input.indexes & 0x00001FFFu));
-	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
-}
-
-tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_input input, uint corner) {
-	tfx_billboard_placement placement;
-	return tfx_live_billboard(push, input, corner, placement);
-}
-
-#if defined(TFX_FIXED_BINDINGS)
-//What the vertex formats do to tfx_instance_t, for the fixed bindings, which read the instance from a buffer
-tfx_billboard_input tfx_unpack_billboard_input(tfx_instance instance) {
-	tfx_billboard_input input;
-	input.position = instance.position;
-	input.quaternion = max(tfx_unpack16bit_quaternion(instance.quaternion), -1.0);
-	input.size = tfx_unpack_sint16x2(instance.size);
-	input.alignment = tfx_unpack_snorm8x3(instance.alignment);
-	input.intensity_gradient_map = tfx_unpack_sint16x2(instance.intensity_gradient_map);
-	input.curved_alpha_life = tfx_unpack_unorm8x4(instance.curved_alpha_life).xyz;
-	input.indexes = instance.indexes;
-	input.captured_index = instance.captured_index;
-	return input;
-}
-
-[shader("vertex")]
-tfx_billboard_output tfx_billboard_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
-	return tfx_live_billboard(tfx_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), tfx_quad_indexes[vertex_id]);
-}
-#else
-[shader("vertex")]
-tfx_billboard_output tfx_billboard_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
-	return tfx_live_billboard(tfx_billboard_entry_push(), input, tfx_quad_indexes[vertex_id]);
-}
-#endif
-
-//--- Billboard_baked_vertex
-
-//The baked billboard draw. tfx_sprite_playback has already interpolated, resolved the image frame with its start frame, and baked
-//the stretch into position.w, so nothing here reads a previous buffer
-tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_billboard_input input, uint corner, out tfx_billboard_placement placement) {
-	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
-	const tfx_emitter_properties properties = tfx_load_emitter_properties(push.properties_index, (input.indexes >> 16) & 0xFFFFu);
-
-	const uint align_flags = properties.flags & 0x3u;
-	const bool billboarding = (align_flags & 0x1u) != 0;
-	const float3x3 view_rotation = tfx_view_rotation(camera.view);
-	const float3 camera_relative_alignment = mul(view_rotation, input.alignment);
-	const float3x3 rotation = tfx_billboard_rotation(normalize(input.quaternion), input.alignment, camera_relative_alignment, align_flags);
-
-	float3 position = mul(rotation, tfx_billboard_corner(corner, float2(input.size) * tfx_size_unpack_scale, properties.image_handle));
-
-	//position.w is the baked stretch, half of it forwards along the alignment and half backwards
-	const float3 stretch_direction = billboarding ? input.alignment : normalize(camera_relative_alignment);
-	position += input.position.w > 0.00001 ? stretch_direction * sign(dot(position, stretch_direction)) * 0.5 * input.position.w : float3(0.0, 0.0, 0.0);
-
-	const float4 view_position = mul(camera.view, float4(input.position.xyz, 1.0));
-	const float3 view_offset = billboarding ? mul(view_rotation, position) : position;
-	float4 clip_position = mul(camera.projection, float4(view_position.xyz + view_offset, view_position.w));
-	clip_position.xy += float2(push.ndc_offset_x, push.ndc_offset_y) * clip_position.w;
-
-	placement.rotation = rotation;
-	placement.view_rotation = view_rotation;
-	placement.view_centre = view_position.xyz;
-	placement.world_oriented = billboarding;
-	placement.lighting = properties.lighting;
-
-	const tfx_image_data image = tfx_load_image_data(push.image_data_index, input.indexes & 0x00001FFFu);
-	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
-}
-
-tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_billboard_input input, uint corner) {
-	tfx_billboard_placement placement;
-	return tfx_baked_billboard(push, input, corner, placement);
-}
-
-#if defined(TFX_FIXED_BINDINGS)
-[shader("vertex")]
-tfx_billboard_output tfx_billboard_baked_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
-	return tfx_baked_billboard(tfx_baked_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), tfx_quad_indexes[vertex_id]);
-}
-#else
-[shader("vertex")]
-tfx_billboard_output tfx_billboard_baked_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
-	return tfx_baked_billboard(tfx_baked_billboard_entry_push(), input, tfx_quad_indexes[vertex_id]);
-}
-#endif
-
-//--- Particle_shading
-
-//color is the image times the ramp with intensity, coverage the image's alpha faded by curved alpha, alpha the final alpha with the ramp's
-struct tfx_particle_shade {
-	float3 color;
-	float coverage;
-	float alpha;
-};
-
-//A billboard or ribbon pixel: the image's red picks the color ramp column, and curved alpha fades the image's alpha
-tfx_particle_shade tfx_shade_particle_parts(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
-	const float4 texel = tfx_sample_particle_image(image_index, sampler_index, tex_coord);
-	const int ramp_x = int(saturate(texel.r * intensity_curved_alpha_map.w) * 255);
-	float4 ramp_texel = tfx_load_color_ramp(color_ramp_texture_index, int3(ramp_x, texture_indexes.x, texture_indexes.y)) * intensity_curved_alpha_map.x;
-	ramp_texel.a = min(1.0, ramp_texel.a);
-	const float curved_alpha = 1.0 - smoothstep(texel.a * intensity_curved_alpha_map.z, texel.a, 1.0 - intensity_curved_alpha_map.y);
-	tfx_particle_shade shade;
-	shade.color = texel.rgb * ramp_texel.rgb;
-	shade.coverage = texel.a * curved_alpha;
-	shade.alpha = shade.coverage * ramp_texel.a;
-	return shade;
-}
-
-//Premultiplied alpha, so blend with ONE, ONE_MINUS_SRC_ALPHA
-float4 tfx_premultiply(tfx_particle_shade shade) {
-	return float4(shade.color * shade.coverage, shade.alpha);
-}
-
-float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
-	return tfx_premultiply(tfx_shade_particle_parts(tex_coord, texture_indexes, intensity_curved_alpha_map, image_index, color_ramp_texture_index, sampler_index));
-}
-
-//A billboard pixel from its varyings, for tfx_billboard_fragment, tfx_billboard_cutout_fragment and a host's own billboard fragments
-[ForceInline]	//Or Slang's WGSL copies the varyings struct with @interpolate and no @location, which naga rejects
-tfx_particle_shade tfx_shade_billboard_parts(tfx_billboard_output input) {
-	const float3 tex_coord = float3(input.uv, float(input.indexes.x & 0xFFFFu));
-	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int((input.indexes.y >> 8) & 0xFFu), 0);
-	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
-#if defined(TFX_FIXED_BINDINGS)
-	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
-#else
-	const tfx_billboard_push push = tfx_billboard_entry_push();
-	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
-#endif
-}
-
-[shader("fragment")]
-float4 tfx_billboard_fragment(tfx_billboard_output input) : SV_Target {
-	return tfx_premultiply(tfx_shade_billboard_parts(input));
-}
-
-//Layers that write depth: cut at the emitter's alpha threshold and opaque, so draw with blending off and depth write on, before the rest
-[shader("fragment")]
-float4 tfx_billboard_cutout_fragment(tfx_billboard_output input) : SV_Target {
-	const tfx_particle_shade shade = tfx_shade_billboard_parts(input);
-	if (shade.alpha < float(input.indexes.y >> 16) * (1.0 / 255.0)) discard;
-	return float4(shade.color, 1.0);
-}
-
-//Below this many pixels across, a ribbon starts dropping fragments because the rasteriser only covers pixels whose centre falls
-//inside it, and a continuous ribbon breaks into dashes. Fading it out as it nears that width trades a tail that vanishes early for one that disintegrates
-static const float tfx_min_ribbon_pixels = 1.5;
-
-//A ribbon pixel from its varyings, for tfx_ribbon_fragment, tfx_ribbon_cutout_fragment and a host's own ribbon fragments
-[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
-tfx_particle_shade tfx_shade_ribbon_parts(tfx_ribbon_output input) {
-#if defined(TFX_FIXED_BINDINGS)
-	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
-#else
-	const tfx_ribbon_bucket_globals push = tfx_ribbon_push_constants;
-	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
-#endif
-}
-
-//1 for a ribbon at least tfx_min_ribbon_pixels wide, falling to 0 as it thins
-float tfx_thin_ribbon_fade(float ribbon_across) {
-	//fwidth is how far across the ribbon one pixel steps, so its reciprocal is the ribbon's width in pixels
-	const float across_per_pixel = fwidth(ribbon_across);
-	const float ribbon_pixels = across_per_pixel > 0.0 ? 1.0 / across_per_pixel : tfx_min_ribbon_pixels;
-	return smoothstep(0.0, tfx_min_ribbon_pixels, ribbon_pixels);
-}
-
-[shader("fragment")]
-float4 tfx_ribbon_fragment(tfx_ribbon_output input) : SV_Target {
-	return tfx_premultiply(tfx_shade_ribbon_parts(input)) * tfx_thin_ribbon_fade(input.ribbon_across);
-}
-
-//Ribbons on layers that write depth: the thin-ribbon fade goes into the alpha before the threshold test, so a tapering ribbon ends instead of dashing
-[shader("fragment")]
-float4 tfx_ribbon_cutout_fragment(tfx_ribbon_output input) : SV_Target {
-	const tfx_particle_shade shade = tfx_shade_ribbon_parts(input);
-	if (shade.alpha * tfx_thin_ribbon_fade(input.ribbon_across) < float(input.texture_indexes.z) * (1.0 / 255.0)) discard;
-	return float4(shade.color, 1.0);
-}
-
-//--- Ribbon_shape
-
-//The ribbon graphs, noise and path sampling that the ribbon build and the ribbon bounds share
-
-//Graph slots in an emitter's block of the ribbon graph lookups
-static const uint tfx_ribbon_graph_intensity = 0;
-static const uint tfx_ribbon_graph_alpha_sharpness = 1;
-static const uint tfx_ribbon_graph_curved_alpha = 2;
-static const uint tfx_ribbon_graph_gradient_map = 3;
-static const uint tfx_ribbon_graph_width = 4;
-static const uint tfx_ribbon_graph_scale = 5;
-static const uint tfx_ribbon_graph_uv_offset_y = 6;
-static const uint tfx_ribbon_graph_uv_scale_y = 7;
-static const uint tfx_ribbon_graph_clip_offset = 8;
-static const uint tfx_ribbon_graph_clip_size = 9;
-static const uint tfx_ribbon_graph_morph_amount = 10;
-static const uint tfx_ribbon_graph_noise_amount = 11;
-static const uint tfx_ribbon_graph_noise_scroll = 12;
-static const uint tfx_ribbon_graph_lag_amount = 13;
-static const uint tfx_ribbon_graph_intensity_overlength = 14;
-static const uint tfx_ribbon_graph_alpha_sharpness_overlength = 15;
-static const uint tfx_ribbon_graph_curved_alpha_overlength = 16;
-static const uint tfx_ribbon_graph_gradient_map_overlength = 17;
-static const uint tfx_ribbon_graph_width_overlength = 18;
-static const uint tfx_ribbon_graph_fixed_angle = 19;
-static const uint tfx_ribbon_graph_morph_bias = 20;
-static const uint tfx_ribbon_graph_noise_envelope = 21;
-static const uint tfx_ribbon_graph_lag_profile = 22;
-
-//tfx_ribbon_flag_bits
-static const uint tfx_ribbon_active = 1 << 0;
-static const uint tfx_ribbon_relative = 1 << 1;
-static const uint tfx_ribbon_flags_shift = 24;
-static const uint tfx_ribbon_start_index_mask = 0x00FFFFFFu;
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Generation
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//tfx_ribbon_compute builds the vertex and index buffers of a bucket's ribbons, one thread per segment. Every ribbon in a bucket has the
+//same segment count, which is always a multiple of 32, so a warp never spans two ribbons and the angle type and easing branches stay uniform
+
+//Measured 2.5x faster than 1024 groups
+static const uint tfx_ribbon_group_size = 256;
 
 static const uint tfx_angle_type_face_camera = 0;
 static const uint tfx_angle_type_fixed_angle = 1;
@@ -3997,151 +4301,6 @@ static const uint tfx_ribbon_normal_radial = 0;
 static const uint tfx_ribbon_normal_surface = 1;
 //tfxLIGHTING_UNLIT_LAYER, in the lighting word of a ribbon emitter whose layer isn't lit
 static const uint tfx_lighting_unlit_layer = 1u << 7;
-
-//Hash axes of the ribbon noise phase offset, one per field axis. They must differ from each other and from every other axis, or the offsets correlate
-static const uint tfx_ribbon_noise_phase_x_axis = 0x27d4eb2du;
-static const uint tfx_ribbon_noise_phase_y_axis = 0x165667b1u;
-static const uint tfx_ribbon_noise_phase_z_axis = 0x9e3779b1u;
-
-//The noise algorithm in the low 4 bits of a ribbon's packed noise, the octaves in the next 4
-static const uint tfx_ribbon_noise_value = 4u;
-
-float tfx_ribbon_emitter_graph(uint graphs_index, uint lookup_offset, uint slot, float t) {
-	return tfx_sample_graph(tfx_load_graph_row(graphs_index, lookup_offset + slot), t);
-}
-
-//Perlin's gradient select: one of the cube's edge vectors, picked by the low bits of the hash
-float tfx_gradient_dot(uint hash, float3 distance_to_corner) {
-	const uint h = hash & 15u;
-	const float u = h < 8u ? distance_to_corner.x : distance_to_corner.y;
-	const float v = h < 4u ? distance_to_corner.y : ((h == 12u || h == 14u) ? distance_to_corner.x : distance_to_corner.z);
-	return ((h & 1u) == 0u ? u : -u) + ((h & 2u) == 0u ? v : -v);
-}
-
-static const int3 tfx_noise_primes = int3(1619, 31337, 6971);
-
-//One scalar field of gradient noise. The lattice holds zero and the gradient is what's random, so the field crosses a cell boundary
-//with a non zero slope. Value noise stalls at every boundary to stay continuous, which reads as morphing between fixed poses
-float tfx_gradient_noise_field(float3 position, uint seed) {
-	const float3 floor_position = floor(position);
-	const float3 relative = position - floor_position;
-	//Quintic fade: zero first and second derivative at the boundary, so the gradient stays continuous
-	const float3 fade = relative * relative * relative * (relative * (relative * 6.0 - 15.0) + 10.0);
-
-	const int3 lattice0 = int3(floor_position) * tfx_noise_primes;
-	const int3 lattice1 = lattice0 + tfx_noise_primes;
-
-	const float near_lower = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative),
-	                              tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice0.y) ^ uint(lattice0.z) ^ seed), relative - float3(1.0, 0.0, 0.0)), fade.x);
-	const float far_lower = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - float3(0.0, 1.0, 0.0)),
-	                             tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice1.y) ^ uint(lattice0.z) ^ seed), relative - float3(1.0, 1.0, 0.0)), fade.x);
-	const float lower_slice = lerp(near_lower, far_lower, fade.y);
-
-	const float near_upper = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - float3(0.0, 0.0, 1.0)),
-	                              tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice0.y) ^ uint(lattice1.z) ^ seed), relative - float3(1.0, 0.0, 1.0)), fade.x);
-	const float far_upper = lerp(tfx_gradient_dot(tfx_seedgen(uint(lattice0.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - float3(0.0, 1.0, 1.0)),
-	                             tfx_gradient_dot(tfx_seedgen(uint(lattice1.x + lattice1.y) ^ uint(lattice1.z) ^ seed), relative - float3(1.0, 1.0, 1.0)), fade.x);
-	const float upper_slice = lerp(near_upper, far_upper, fade.y);
-
-	return lerp(lower_slice, upper_slice, fade.z);
-}
-
-//Measured so gradient noise lands at the value noise's rms, otherwise switching algorithm would read as an amplitude change
-static const float tfx_gradient_noise_scale = 1.397;
-
-//Three decorrelated fields, three times the work of value noise, which gets all three axes out of one hash
-float3 tfx_gradient_noise_3d(float3 position) {
-	return float3(tfx_gradient_noise_field(position, 0u),
-	              tfx_gradient_noise_field(position, 0x9e3779b9u),
-	              tfx_gradient_noise_field(position, 0x85ebca6bu)) * tfx_gradient_noise_scale;
-}
-
-//Octaves at doubling frequency and halving amplitude, normalised by the root of the summed squares: independent octaves add in
-//variance, so that keeps the apparent amplitude constant as the octave count changes
-float3 tfx_ribbon_noise_octaves(float3 position, uint algorithm, uint octaves) {
-	float3 sum = float3(0.0, 0.0, 0.0);
-	float amplitude = 1.0;
-	float frequency = 1.0;
-	float normalisation = 0.0;
-	for (uint octave = 0u; octave < octaves; ++octave) {
-		sum += amplitude * (algorithm == tfx_ribbon_noise_value ? tfx_value_noise_3d(position * frequency) : tfx_gradient_noise_3d(position * frequency));
-		normalisation += amplitude * amplitude;
-		amplitude *= 0.5;
-		frequency *= 2.0;
-	}
-	return sum * rsqrt(max(normalisation, 1e-8));
-}
-
-//Where along the noise field a ribbon samples: its own phase offset, scrolled by the scroll graph and moved through time
-float3 tfx_ribbon_noise_sample_offset(float age, uint phase_seed, float phase_range, float noise_speed, float noise_lock_rate, float noise_scroll) {
-	float noise_time = age * noise_speed;
-	if (noise_lock_rate > 0.0) {
-		noise_time = floor(noise_time * noise_lock_rate) / noise_lock_rate;
-	}
-	const float3 phase_offset = float3(tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_x_axis),
-	                                   tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_y_axis),
-	                                   tfx_white_unit(phase_seed, tfx_ribbon_noise_phase_z_axis)) * phase_range;
-	return phase_offset + float3(noise_scroll, noise_time, 0.0);
-}
-
-//With a clip size only the clip window from the clip offset is sampled, and all of the ribbon's segments are squeezed into it
-float tfx_ribbon_path_sample_fraction(int segment, uint segment_count, uint sample_count, float clip_offset, float clip_size, out uint first_sample) {
-	const float segment_lerp = float(segment) / float(segment_count - 1);
-	const float stored = clamp(clip_offset + segment_lerp * clip_size, 0.0, 1.0) * float(sample_count - 1);
-	first_sample = min(uint(stored), sample_count - 2);
-	return clamp(stored - float(first_sample), 0.0, 1.0);
-}
-
-float3 tfx_sample_ribbon_path(uint segments_index, int segment, uint segment_count, uint base_index, uint sample_count, float clip_offset, float clip_size) {
-	uint first_sample;
-	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
-	return lerp(tfx_load_ribbon_segment(segments_index, base_index + first_sample), tfx_load_ribbon_segment(segments_index, base_index + first_sample + 1), fraction);
-}
-
-float3 tfx_sample_ribbon_path_frame(uint segments_index, uint base_index, uint first_sample, float fraction) {
-	return lerp(tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample)),
-	            tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample + 1)), fraction);
-}
-
-//Path, then morph, then noise. Both paths are stored at the same density, so one sample pair addresses either. The bias is looked up
-//per segment rather than reused from the centre one, otherwise a steep bias flattens the forward vector across the transition band
-float3 tfx_sample_ribbon_shape(uint segments_index, int segment, uint segment_count, uint base_index, uint morph_base_index, uint sample_count,
-                               float clip_offset, float clip_size, float morph_amount, tfx_gpu_graph_data morph_bias_graph, tfx_gpu_graph_data noise_envelope_graph,
-                               float noise_amplitude, float noise_frequency, float3 noise_sample_offset, uint noise_packed) {
-	float3 position = tfx_sample_ribbon_path(segments_index, segment, segment_count, base_index, sample_count, clip_offset, clip_size);
-	const float segment_lerp = float(segment) / float(segment_count - 1);
-	if (morph_base_index != tfx_invalid_index) {
-		const float morph = clamp(morph_amount + tfx_sample_graph(morph_bias_graph, clamp(segment_lerp, 0.0, 1.0)), 0.0, 1.0);
-		position = lerp(position, tfx_sample_ribbon_path(segments_index, segment, segment_count, morph_base_index, sample_count, clip_offset, clip_size), morph);
-	}
-	if (noise_amplitude == 0.0 || noise_packed == 0u) {
-		return position;
-	}
-	const float envelope = tfx_sample_graph(noise_envelope_graph, clamp(segment_lerp, 0.0, 1.0));
-	const float3 sample_position = noise_sample_offset + float3(segment_lerp * noise_frequency, 0.0, 0.0);
-	return position + noise_amplitude * envelope * tfx_ribbon_noise_octaves(sample_position, noise_packed & 0xFu, (noise_packed >> 4) & 0xFu);
-}
-
-//The path's rotation minimising frame normal where tfx_sample_ribbon_shape samples, morphed the same way. Not unit length
-float3 tfx_sample_ribbon_frame(uint segments_index, int segment, uint segment_count, uint base_index, uint morph_base_index, uint sample_count,
-                               float clip_offset, float clip_size, float morph_amount, tfx_gpu_graph_data morph_bias_graph) {
-	uint first_sample;
-	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
-	const float3 frame = tfx_sample_ribbon_path_frame(segments_index, base_index, first_sample, fraction);
-	if (morph_base_index == tfx_invalid_index) {
-		return frame;
-	}
-	const float morph = clamp(morph_amount + tfx_sample_graph(morph_bias_graph, clamp(float(segment) / float(segment_count - 1), 0.0, 1.0)), 0.0, 1.0);
-	return lerp(frame, tfx_sample_ribbon_path_frame(segments_index, morph_base_index, first_sample, fraction), morph);
-}
-
-//--- Ribbon_build
-
-//tfx_ribbon_compute builds the vertex and index buffers of a bucket's ribbons, one thread per segment. Every ribbon in a bucket has the
-//same segment count, which is always a multiple of 32, so a warp never spans two ribbons and the angle type and easing branches stay uniform
-
-//Measured 2.5x faster than 1024 groups
-static const uint tfx_ribbon_group_size = 256;
 
 struct tfx_lag_transform {
 	float3 position;
@@ -4212,10 +4371,6 @@ float3 tfx_ribbon_world_position(float3 segment_position, float scale, float4 ri
 	return tfx_rotate_vector(tfx_rotate_vector(segment_position * scale, ribbon_quaternion) + ribbon_position, emitter_quaternion) + emitter_position;
 }
 
-float3 tfx_safe_normalize(float3 v) {
-	return v * rsqrt(dot(v, v) + 1e-16);
-}
-
 uint tfx_pack_segment_data(uint ribbon_lerp, uint tessellation, uint tessellation_index, uint side) {
 	return (tessellation << 29) | (tessellation_index << 26) | (side << 25) | (ribbon_lerp << 12);
 }
@@ -4226,6 +4381,24 @@ uint tfx_bent_ribbon_normal(float3 face_normal, float3 right, float angle) {
 	float bend_cos;
 	sincos(angle, bend_sin, bend_cos);
 	return tfx_pack_octahedral_normal(tfx_safe_normalize(face_normal * bend_cos + right * bend_sin));
+}
+
+float3 tfx_sample_ribbon_path_frame(uint segments_index, uint base_index, uint first_sample, float fraction) {
+	return lerp(tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample)),
+	            tfx_unpack_octahedral_normal(tfx_load_ribbon_segment_frame(segments_index, base_index + first_sample + 1)), fraction);
+}
+
+//The path's rotation minimising frame normal where tfx_sample_ribbon_shape samples, morphed the same way. Not unit length
+float3 tfx_sample_ribbon_frame(uint segments_index, int segment, uint segment_count, uint base_index, uint morph_base_index, uint sample_count,
+                               float clip_offset, float clip_size, float morph_amount, tfx_gpu_graph_data morph_bias_graph) {
+	uint first_sample;
+	const float fraction = tfx_ribbon_path_sample_fraction(segment, segment_count, sample_count, clip_offset, clip_size, first_sample);
+	const float3 frame = tfx_sample_ribbon_path_frame(segments_index, base_index, first_sample, fraction);
+	if (morph_base_index == tfx_invalid_index) {
+		return frame;
+	}
+	const float morph = clamp(morph_amount + tfx_sample_graph(morph_bias_graph, clamp(float(segment) / float(segment_count - 1), 0.0, 1.0)), 0.0, 1.0);
+	return lerp(frame, tfx_sample_ribbon_path_frame(segments_index, morph_base_index, first_sample, fraction), morph);
 }
 
 void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index) {
@@ -4413,337 +4586,12 @@ void tfx_ribbon_compute(uint3 thread_id : SV_DispatchThreadID) {
 	tfx_build_ribbon_segment(tfx_ribbon_push_constants, thread_id.x);
 }
 
-//--- Ribbon_draw
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Baked_Playback
+//----------------------------------------------------------------------------------------------------------------------------------
 
-//tfx_ribbon_vertex_t through the pipeline's vertex formats
-struct tfx_ribbon_input {
-	[[vk::location(0)]] float3 position : POSITION;
-	[[vk::location(1)]] uint segment_index : SEGMENT_INDEX;
-	[[vk::location(2)]] float2 uv_offset_scale : UV_OFFSET_SCALE;
-	[[vk::location(3)]] uint ribbon_index : RIBBON_INDEX;
-};
-
-struct tfx_ribbon_output {
-	float4 position : SV_Position;
-	[[vk::location(0)]] float3 tex_coord : TEXCOORD0;
-	[[vk::location(1)]] nointerpolation int3 texture_indexes : TEXCOORD1;
-	[[vk::location(2)]] float4 intensity_curved_alpha_map : TEXCOORD2;
-	//The fixed bindings sample one atlas, so there the fragment shader has no use for it
-#if !defined(TFX_FIXED_BINDINGS)
-	[[vk::location(3)]] nointerpolation uint image_index : TEXCOORD3;
-#endif
-	//0 to 1 across the ribbon's width, so its screen space derivative gives the ribbon's width in pixels
-	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
-};
-
-tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_input input) {
-	const tfx_view_uniforms camera = tfx_load_view(push.uniform_index);
-	tfx_ribbon_output output;
-	output.position = mul(camera.projection, mul(camera.view, float4(input.position, 1.0)));
-	output.position.xy += float2(push.ndc_offset_x, push.ndc_offset_y) * output.position.w;
-
-	const float ribbon_position = float((input.segment_index & 0x007FF000u) >> 12) / 2047.0;
-	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
-	const uint3 emitter = tfx_load_ribbon_emitter_draw(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
-	const uint lookup_offset = emitter.x;
-	//The ribbon holds the animation frame, its emitter holds where the image starts
-	const tfx_image_data image = tfx_load_image_data(push.image_data_index, emitter.y + (ribbon.texture_indexes & 0x00001FFFu));
-
-	const float tessellation = float((input.segment_index & 0xE0000000u) >> 29);
-	const float tessellation_index = float((input.segment_index & 0x1C000000u) >> 26);
-	const float side = float((input.segment_index & 0x02000000u) >> 25);
-
-	const float sampled_gradient_map = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_gradient_map_overlength, ribbon_position);
-	const float sampled_intensity = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_intensity_overlength, ribbon_position);
-	const float sampled_curved_alpha = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_curved_alpha_overlength, ribbon_position);
-	const float sampled_alpha_sharpness = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_alpha_sharpness_overlength, ribbon_position);
-
-	//The images are sprite sheets in a texture array, so a texture repeating along the ribbon ping pongs: every other wrap runs backwards,
-	//which leaves no flipped one segment seam where it wraps. The uv rect is the whole of the shape's own image, so a repeat sampler could replace this
-	const float scaled_position = ribbon_position * input.uv_offset_scale.y + input.uv_offset_scale.x;
-	const float wrap_index = floor(scaled_position);
-	float wrap_fraction = frac(scaled_position);
-	//GLSL's mod, which unlike fmod is never negative
-	if (wrap_index - 2.0 * floor(wrap_index * 0.5) == 1.0) {
-		wrap_fraction = 1.0 - wrap_fraction;
-	}
-
-	const float ribbon_across = (tessellation_index / tessellation) * 0.5 + side * 0.5;
-	output.ribbon_across = ribbon_across;
-	const float2 ribbon_intensity_gradient_map = tfx_unpack_sscaled16x2(ribbon.intensity_gradient_map) * tfx_color_unpack_scale;
-	const float2 ribbon_curved_alpha = tfx_unpack_sscaled16x2(ribbon.curved_alpha) * tfx_color_unpack_scale;
-
-#if !defined(TFX_FIXED_BINDINGS)
-	output.image_index = image.texture_array_index >> 16;
-#endif
-	output.tex_coord = float3(wrap_fraction * (image.uv.z - image.uv.x) + image.uv.x, ribbon_across * (image.uv.w - image.uv.y) + image.uv.y, float(image.texture_array_index & 0xFFFFu));
-	//.z is the emitter's alpha threshold for tfx_ribbon_cutout_fragment, 0 to 255
-	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(saturate(asfloat(emitter.z)) * 255.0 + 0.5));
-	output.intensity_curved_alpha_map = float4(sampled_intensity * ribbon_intensity_gradient_map.x, sampled_curved_alpha * ribbon_curved_alpha.x,
-		sampled_alpha_sharpness * ribbon_curved_alpha.y, sampled_gradient_map * ribbon_intensity_gradient_map.y);
-	return output;
-}
-
-#if defined(TFX_FIXED_BINDINGS)
-//The vertexes tfx_ribbon_compute built, read from the buffer it wrote
-[shader("vertex")]
-tfx_ribbon_output tfx_ribbon_vertex(uint vertex_id : SV_VertexID) {
-	const tfx_ribbon_vertex_row vertex = tfx_load_draw_ribbon_vertex(vertex_id);
-	tfx_ribbon_input input;
-	input.position = vertex.position;
-	input.segment_index = vertex.segment_index;
-	input.uv_offset_scale = vertex.uv_offset_scale;
-	input.ribbon_index = vertex.ribbon_index;
-	return tfx_ribbon_draw(tfx_ribbon_push_constants, input);
-}
-#else
-[shader("vertex")]
-tfx_ribbon_output tfx_ribbon_vertex(tfx_ribbon_input input) {
-	return tfx_ribbon_draw(tfx_ribbon_push_constants, input);
-}
-#endif
-
-//--- Lit_particles
-
-//The lit twins of the billboard and ribbon draws, for layers with tfxLayerFlags_lit. The color the unlit fragments output becomes the
-//albedo, lit by the tfx_view_light_t in tfx_lit_view_uniforms. Pipeline state is the same as the unlit entry points'
-
-//tfx_billboard_output with the quad's world space axes, the normal turned towards the camera
-struct tfx_lit_billboard_output {
-	float4 position : SV_Position;
-	[[vk::location(0)]] float2 uv : TEXCOORD0;
-	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;
-	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;
-	[[vk::location(3)]] float2 quad : TEXCOORD3;										//-1 to 1 across the quad, +y up, for the roundness
-	[[vk::location(4)]] nointerpolation float3 tangent : TEXCOORD4;
-	[[vk::location(5)]] nointerpolation float3 bitangent : TEXCOORD5;
-	[[vk::location(6)]] nointerpolation float3 normal : TEXCOORD6;
-	[[vk::location(7)]] nointerpolation uint lighting : TEXCOORD7;						//The emitter's [wrap << 16 | roundness << 8]
-};
-
-tfx_lit_billboard_output tfx_lit_billboard(tfx_billboard_output output, uint corner, tfx_billboard_placement placement) {
-	tfx_lit_billboard_output lit;
-	lit.position = output.position;
-	lit.uv = output.uv;
-	lit.indexes = output.indexes;
-	lit.intensity_curved_alpha_map = output.intensity_curved_alpha_map;
-	lit.quad = float2(float(corner & 1u) * 2.0 - 1.0, 1.0 - float(corner >> 1) * 2.0);
-	lit.lighting = placement.lighting;
-
-	const float3 tangent = mul(placement.rotation, float3(1.0, 0.0, 0.0));
-	const float3 bitangent = mul(placement.rotation, float3(0.0, 1.0, 0.0));
-	const float3 normal = mul(placement.rotation, float3(0.0, 0.0, 1.0));
-	const float3 view_normal = placement.world_oriented ? mul(placement.view_rotation, normal) : normal;
-	//The quad's back faces the camera when its normal points the same way as the centre does from the camera
-	const float facing = dot(view_normal, placement.view_centre) > 0.0 ? -1.0 : 1.0;
-	//Alignments 0 and 2 build the quad in view space, and the view rotation's transpose takes it back to the world
-	lit.tangent = placement.world_oriented ? tangent : mul(tangent, placement.view_rotation);
-	lit.bitangent = placement.world_oriented ? bitangent : mul(bitangent, placement.view_rotation);
-	lit.normal = (placement.world_oriented ? normal : mul(normal, placement.view_rotation)) * facing;
-	return lit;
-}
-
-#if defined(TFX_FIXED_BINDINGS)
-[shader("vertex")]
-tfx_lit_billboard_output tfx_billboard_lit_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
-	const uint corner = tfx_quad_indexes[vertex_id];
-	tfx_billboard_placement placement;
-	const tfx_billboard_output output = tfx_live_billboard(tfx_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), corner, placement);
-	return tfx_lit_billboard(output, corner, placement);
-}
-
-[shader("vertex")]
-tfx_lit_billboard_output tfx_billboard_baked_lit_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
-	const uint corner = tfx_quad_indexes[vertex_id];
-	tfx_billboard_placement placement;
-	const tfx_billboard_output output = tfx_baked_billboard(tfx_baked_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), corner, placement);
-	return tfx_lit_billboard(output, corner, placement);
-}
-#else
-[shader("vertex")]
-tfx_lit_billboard_output tfx_billboard_lit_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
-	const uint corner = tfx_quad_indexes[vertex_id];
-	tfx_billboard_placement placement;
-	const tfx_billboard_output output = tfx_live_billboard(tfx_billboard_entry_push(), input, corner, placement);
-	return tfx_lit_billboard(output, corner, placement);
-}
-
-[shader("vertex")]
-tfx_lit_billboard_output tfx_billboard_baked_lit_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
-	const uint corner = tfx_quad_indexes[vertex_id];
-	tfx_billboard_placement placement;
-	const tfx_billboard_output output = tfx_baked_billboard(tfx_baked_billboard_entry_push(), input, corner, placement);
-	return tfx_lit_billboard(output, corner, placement);
-}
-#endif
-
-//tfx_ribbon_input with the normal tfx_ribbon_compute wrote, which the pipeline's vertex format has to include at location 4
-struct tfx_lit_ribbon_input {
-	[[vk::location(0)]] float3 position : POSITION;
-	[[vk::location(1)]] uint segment_index : SEGMENT_INDEX;
-	[[vk::location(2)]] float2 uv_offset_scale : UV_OFFSET_SCALE;
-	[[vk::location(3)]] uint ribbon_index : RIBBON_INDEX;
-	[[vk::location(4)]] uint normal : NORMAL;
-};
-
-struct tfx_lit_ribbon_output {
-	float4 position : SV_Position;
-	[[vk::location(0)]] float3 tex_coord : TEXCOORD0;
-	[[vk::location(1)]] nointerpolation int3 texture_indexes : TEXCOORD1;
-	[[vk::location(2)]] float4 intensity_curved_alpha_map : TEXCOORD2;
-#if !defined(TFX_FIXED_BINDINGS)
-	[[vk::location(3)]] nointerpolation uint image_index : TEXCOORD3;
-#endif
-	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
-	[[vk::location(5)]] float3 normal : TEXCOORD5;
-	[[vk::location(6)]] nointerpolation uint lighting : TEXCOORD6;						//The emitter's [wrap << 16 | roundness << 8 | normal mode]
-};
-
-tfx_lit_ribbon_output tfx_lit_ribbon(tfx_ribbon_bucket_globals push, tfx_ribbon_input input, uint packed_normal) {
-	const tfx_ribbon_output output = tfx_ribbon_draw(push, input);
-	tfx_lit_ribbon_output lit;
-	lit.position = output.position;
-	lit.tex_coord = output.tex_coord;
-	lit.texture_indexes = output.texture_indexes;
-	lit.intensity_curved_alpha_map = output.intensity_curved_alpha_map;
-#if !defined(TFX_FIXED_BINDINGS)
-	lit.image_index = output.image_index;
-#endif
-	lit.ribbon_across = output.ribbon_across;
-	lit.normal = tfx_unpack_octahedral_normal(packed_normal);
-	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
-	lit.lighting = tfx_load_ribbon_emitter_lighting(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
-	return lit;
-}
-
-#if defined(TFX_FIXED_BINDINGS)
-[shader("vertex")]
-tfx_lit_ribbon_output tfx_ribbon_lit_vertex(uint vertex_id : SV_VertexID) {
-	const tfx_ribbon_vertex_row vertex = tfx_load_draw_ribbon_vertex(vertex_id);
-	tfx_ribbon_input input;
-	input.position = vertex.position;
-	input.segment_index = vertex.segment_index;
-	input.uv_offset_scale = vertex.uv_offset_scale;
-	input.ribbon_index = vertex.ribbon_index;
-	return tfx_lit_ribbon(tfx_ribbon_push_constants, input, vertex.normal);
-}
-#else
-[shader("vertex")]
-tfx_lit_ribbon_output tfx_ribbon_lit_vertex(tfx_lit_ribbon_input lit_input) {
-	tfx_ribbon_input input;
-	input.position = lit_input.position;
-	input.segment_index = lit_input.segment_index;
-	input.uv_offset_scale = lit_input.uv_offset_scale;
-	input.ribbon_index = lit_input.ribbon_index;
-	return tfx_lit_ribbon(tfx_ribbon_push_constants, input, lit_input.normal);
-}
-#endif
-
-//An albedo lit by wrapped Lambert from the view's light, plus ambient from the sky above and the ground below. Color above 1 is added
-//unlit, so a particle that heat response or intensity pushes past 1 still glows on its shaded side
-float3 tfx_light_particle(tfx_lit_view_uniforms view, float3 color, float3 normal, uint lighting) {
-	const float wrap = float((lighting >> 16) & 0xFFu) * (1.0 / 255.0);
-	const float diffuse = saturate((dot(normal, view.light_direction.xyz) + wrap) / (1.0 + wrap));
-	const float3 ambient = lerp(view.ground_color.rgb, view.sky_color.rgb, normal.y * 0.5 + 0.5);
-	return min(color, 1.0) * (view.light_color.rgb * diffuse + ambient) + max(color - 1.0, 0.0);
-}
-
-//The roundness bends a flat quad's normal into a sphere across it
-[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
-float3 tfx_lit_billboard_normal(tfx_lit_billboard_output input) {
-	const float2 bend = input.quad * (float((input.lighting >> 8) & 0xFFu) * (1.0 / 255.0));
-	return tfx_safe_normalize(input.normal * sqrt(saturate(1.0 - dot(bend, bend))) + input.tangent * bend.x + input.bitangent * bend.y);
-}
-
-[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
-tfx_billboard_output tfx_unlit_billboard(tfx_lit_billboard_output input) {
-	tfx_billboard_output output;
-	output.position = input.position;
-	output.uv = input.uv;
-	output.indexes = input.indexes;
-	output.intensity_curved_alpha_map = input.intensity_curved_alpha_map;
-	return output;
-}
-
-tfx_lit_view_uniforms tfx_lit_billboard_view() {
-#if defined(TFX_FIXED_BINDINGS)
-	return tfx_load_lit_view(0);
-#else
-	return tfx_load_lit_view(tfx_billboard_entry_push().uniform_index);
-#endif
-}
-
-[shader("fragment")]
-float4 tfx_billboard_lit_fragment(tfx_lit_billboard_output input) : SV_Target {
-	tfx_particle_shade shade = tfx_shade_billboard_parts(tfx_unlit_billboard(input));
-	shade.color = tfx_light_particle(tfx_lit_billboard_view(), shade.color, tfx_lit_billboard_normal(input), input.lighting);
-	return tfx_premultiply(shade);
-}
-
-[shader("fragment")]
-float4 tfx_billboard_lit_cutout_fragment(tfx_lit_billboard_output input) : SV_Target {
-	const tfx_particle_shade shade = tfx_shade_billboard_parts(tfx_unlit_billboard(input));
-	if (shade.alpha < float(input.indexes.y >> 16) * (1.0 / 255.0)) discard;
-	return float4(tfx_light_particle(tfx_lit_billboard_view(), shade.color, tfx_lit_billboard_normal(input), input.lighting), 1.0);
-}
-
-[ForceInline]	//For WGSL, see tfx_shade_billboard_parts
-tfx_ribbon_output tfx_unlit_ribbon(tfx_lit_ribbon_output input) {
-	tfx_ribbon_output output;
-	output.position = input.position;
-	output.tex_coord = input.tex_coord;
-	output.texture_indexes = input.texture_indexes;
-	output.intensity_curved_alpha_map = input.intensity_curved_alpha_map;
-#if !defined(TFX_FIXED_BINDINGS)
-	output.image_index = input.image_index;
-#endif
-	output.ribbon_across = input.ribbon_across;
-	return output;
-}
-
-tfx_lit_view_uniforms tfx_lit_ribbon_view() {
-#if defined(TFX_FIXED_BINDINGS)
-	return tfx_load_lit_view(0);
-#else
-	return tfx_load_lit_view(tfx_ribbon_push_constants.uniform_index);
-#endif
-}
-
-[shader("fragment")]
-float4 tfx_ribbon_lit_fragment(tfx_lit_ribbon_output input) : SV_Target {
-	tfx_particle_shade shade = tfx_shade_ribbon_parts(tfx_unlit_ribbon(input));
-	shade.color = tfx_light_particle(tfx_lit_ribbon_view(), shade.color, tfx_safe_normalize(input.normal), input.lighting);
-	return tfx_premultiply(shade) * tfx_thin_ribbon_fade(input.ribbon_across);
-}
-
-[shader("fragment")]
-float4 tfx_ribbon_lit_cutout_fragment(tfx_lit_ribbon_output input) : SV_Target {
-	const tfx_particle_shade shade = tfx_shade_ribbon_parts(tfx_unlit_ribbon(input));
-	if (shade.alpha * tfx_thin_ribbon_fade(input.ribbon_across) < float(input.texture_indexes.z) * (1.0 / 255.0)) discard;
-	return float4(tfx_light_particle(tfx_lit_ribbon_view(), shade.color, tfx_safe_normalize(input.normal), input.lighting), 1.0);
-}
-
-//--- Sprite_playback
-
-//The playback passes turn baked frames into live instances, one thread per sprite or ribbon in the frame, interpolating each from its
-//captured self in the frame before
-
-static const uint tfx_playback_group_size = 128;
-
-//The offsets are a running total per animation instance, so the instance a thread is in is the count of totals at or below it
-uint tfx_playback_instance_index(uint offsets_index, uint animation_instances_total, uint index) {
-	uint instance_index = 0;
-	for (uint instance = 0; instance < animation_instances_total; ++instance) {
-		instance_index += uint(tfx_load_offset(offsets_index, instance_index) <= index);
-	}
-	return instance_index;
-}
-
-//How far between this baked frame and the next the animation is, 0 to 1
-float tfx_playback_frame_lerp(tfx_animation_instance animation) {
-	const float frame_time = (animation.current_time / animation.animation_length_in_time) * float(animation.frame_count);
-	return frame_time - floor(frame_time);
-}
+//tfxReverseAnimationFlag in the emitter properties flags
+static const uint tfx_reverse_animation_flag = 8192;
 
 [shader("compute")]
 [numthreads(tfx_playback_group_size, 1, 1)]
@@ -4811,7 +4659,9 @@ void tfx_sprite_playback(uint3 thread_id : SV_DispatchThreadID) {
 	tfx_store_instance_row(push.billboards_index, index, sprite);
 }
 
-//--- Ribbon_playback
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Baked_Playback
+//----------------------------------------------------------------------------------------------------------------------------------
 
 [shader("compute")]
 [numthreads(tfx_playback_group_size, 1, 1)]
@@ -4860,7 +4710,9 @@ void tfx_ribbon_playback(uint3 thread_id : SV_DispatchThreadID) {
 	tfx_store_ribbon(push.ribbon_output_index, index, ribbon);
 }
 
-//--- Bounds_reduction
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Baked_Bounding_boxes
+//----------------------------------------------------------------------------------------------------------------------------------
 
 //The bounding box of a baked frame, for export and the auto fit camera. Each thread bounds two sprites or ribbons, half a group apart,
 //so a dispatch is half as many groups as there are group sized blocks, then the group reduces to one box and the CPU reduces the groups' boxes
@@ -4987,4 +4839,250 @@ void tfx_ribbon_bounds(uint3 group_thread_id : SV_GroupThreadID, uint3 group_id 
 	tfx_add_ribbon_bounds(push, frame_offset + min(ribbon_in_frame, last_ribbon_in_frame), min_vertex, max_vertex);
 	tfx_add_ribbon_bounds(push, frame_offset + min(ribbon_in_frame + tfx_bounds_group_size, last_ribbon_in_frame), min_vertex, max_vertex);
 	tfx_reduce_bounds(local_index, group_id.x, min_vertex, max_vertex, push.bounding_boxes_index);
+}
+
+//==================================================================================================================================
+//        Vertex_Shaders
+//==================================================================================================================================
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+#if defined(TFX_FIXED_BINDINGS)
+[shader("vertex")]
+tfx_billboard_output tfx_billboard_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+	return tfx_live_billboard(tfx_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), tfx_quad_indexes[vertex_id]);
+}
+#else
+[shader("vertex")]
+tfx_billboard_output tfx_billboard_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
+	return tfx_live_billboard(tfx_billboard_entry_push(), input, tfx_quad_indexes[vertex_id]);
+}
+#endif
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Lit_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+#if defined(TFX_FIXED_BINDINGS)
+[shader("vertex")]
+tfx_lit_billboard_output tfx_billboard_lit_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+	const uint corner = tfx_quad_indexes[vertex_id];
+	tfx_billboard_placement placement;
+	const tfx_billboard_output output = tfx_live_billboard(tfx_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), corner, placement);
+	return tfx_lit_billboard(output, corner, placement);
+}
+#else
+[shader("vertex")]
+tfx_lit_billboard_output tfx_billboard_lit_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
+	const uint corner = tfx_quad_indexes[vertex_id];
+	tfx_billboard_placement placement;
+	const tfx_billboard_output output = tfx_live_billboard(tfx_billboard_entry_push(), input, corner, placement);
+	return tfx_lit_billboard(output, corner, placement);
+}
+#endif
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Baked_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+#if defined(TFX_FIXED_BINDINGS)
+[shader("vertex")]
+tfx_billboard_output tfx_billboard_baked_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+	return tfx_baked_billboard(tfx_baked_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), tfx_quad_indexes[vertex_id]);
+}
+#else
+[shader("vertex")]
+tfx_billboard_output tfx_billboard_baked_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
+	return tfx_baked_billboard(tfx_baked_billboard_entry_push(), input, tfx_quad_indexes[vertex_id]);
+}
+#endif
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Baked_Lit_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+#if defined(TFX_FIXED_BINDINGS)
+[shader("vertex")]
+tfx_lit_billboard_output tfx_billboard_baked_lit_vertex(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID) {
+	const uint corner = tfx_quad_indexes[vertex_id];
+	tfx_billboard_placement placement;
+	const tfx_billboard_output output = tfx_baked_billboard(tfx_baked_billboard_entry_push(), tfx_unpack_billboard_input(tfx_load_draw_instance(instance_id)), corner, placement);
+	return tfx_lit_billboard(output, corner, placement);
+}
+#else
+[shader("vertex")]
+tfx_lit_billboard_output tfx_billboard_baked_lit_vertex(tfx_billboard_input input, uint vertex_id : SV_VertexID) {
+	const uint corner = tfx_quad_indexes[vertex_id];
+	tfx_billboard_placement placement;
+	const tfx_billboard_output output = tfx_baked_billboard(tfx_baked_billboard_entry_push(), input, corner, placement);
+	return tfx_lit_billboard(output, corner, placement);
+}
+#endif
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+#if defined(TFX_FIXED_BINDINGS)
+//The vertexes tfx_ribbon_compute built, read from the buffer it wrote
+[shader("vertex")]
+tfx_ribbon_output tfx_ribbon_vertex(uint vertex_id : SV_VertexID) {
+	const tfx_ribbon_vertex_row vertex = tfx_load_draw_ribbon_vertex(vertex_id);
+	tfx_ribbon_input input;
+	input.position = vertex.position;
+	input.segment_index = vertex.segment_index;
+	input.uv_offset_scale = vertex.uv_offset_scale;
+	input.ribbon_index = vertex.ribbon_index;
+	return tfx_ribbon_draw(tfx_ribbon_push_constants, input);
+}
+#else
+[shader("vertex")]
+tfx_ribbon_output tfx_ribbon_vertex(tfx_ribbon_input input) {
+	return tfx_ribbon_draw(tfx_ribbon_push_constants, input);
+}
+#endif
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Lit_Vertex
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//tfx_ribbon_input with the normal tfx_ribbon_compute wrote, which the pipeline's vertex format has to include at location 4
+struct tfx_lit_ribbon_input {
+	[[vk::location(0)]] float3 position : POSITION;
+	[[vk::location(1)]] uint segment_index : SEGMENT_INDEX;
+	[[vk::location(2)]] float2 uv_offset_scale : UV_OFFSET_SCALE;
+	[[vk::location(3)]] uint ribbon_index : RIBBON_INDEX;
+	[[vk::location(4)]] uint normal : NORMAL;
+};
+
+tfx_lit_ribbon_output tfx_lit_ribbon(tfx_ribbon_bucket_globals push, tfx_ribbon_input input, uint packed_normal) {
+	const tfx_ribbon_output output = tfx_ribbon_draw(push, input);
+	tfx_lit_ribbon_output lit;
+	lit.position = output.position;
+	lit.tex_coord = output.tex_coord;
+	lit.texture_indexes = output.texture_indexes;
+	lit.intensity_curved_alpha_map = output.intensity_curved_alpha_map;
+#if !defined(TFX_FIXED_BINDINGS)
+	lit.image_index = output.image_index;
+#endif
+	lit.ribbon_across = output.ribbon_across;
+	lit.normal = tfx_unpack_octahedral_normal(packed_normal);
+	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
+	lit.lighting = tfx_load_ribbon_emitter_lighting(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);
+	return lit;
+}
+
+#if defined(TFX_FIXED_BINDINGS)
+[shader("vertex")]
+tfx_lit_ribbon_output tfx_ribbon_lit_vertex(uint vertex_id : SV_VertexID) {
+	const tfx_ribbon_vertex_row vertex = tfx_load_draw_ribbon_vertex(vertex_id);
+	tfx_ribbon_input input;
+	input.position = vertex.position;
+	input.segment_index = vertex.segment_index;
+	input.uv_offset_scale = vertex.uv_offset_scale;
+	input.ribbon_index = vertex.ribbon_index;
+	return tfx_lit_ribbon(tfx_ribbon_push_constants, input, vertex.normal);
+}
+#else
+[shader("vertex")]
+tfx_lit_ribbon_output tfx_ribbon_lit_vertex(tfx_lit_ribbon_input lit_input) {
+	tfx_ribbon_input input;
+	input.position = lit_input.position;
+	input.segment_index = lit_input.segment_index;
+	input.uv_offset_scale = lit_input.uv_offset_scale;
+	input.ribbon_index = lit_input.ribbon_index;
+	return tfx_lit_ribbon(tfx_ribbon_push_constants, input, lit_input.normal);
+}
+#endif
+
+//==================================================================================================================================
+//        Fragment_Shaders
+//==================================================================================================================================
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_billboard_fragment(tfx_billboard_output input) : SV_Target {
+	return tfx_premultiply(tfx_shade_billboard_parts(input));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Cutout_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//Layers that write depth: cut at the emitter's alpha threshold and opaque, so draw with blending off and depth write on, before the rest
+[shader("fragment")]
+float4 tfx_billboard_cutout_fragment(tfx_billboard_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_billboard_parts(input);
+	if (shade.alpha < float(input.indexes.y >> 16) * (1.0 / 255.0)) discard;
+	return float4(shade.color, 1.0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Lit_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_billboard_lit_fragment(tfx_lit_billboard_output input) : SV_Target {
+	tfx_particle_shade shade = tfx_shade_billboard_parts(tfx_unlit_billboard(input));
+	shade.color = tfx_light_particle(tfx_lit_billboard_view(), shade.color, tfx_lit_billboard_normal(input), input.lighting);
+	return tfx_premultiply(shade);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Billboard_Lit_Cutout_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_billboard_lit_cutout_fragment(tfx_lit_billboard_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_billboard_parts(tfx_unlit_billboard(input));
+	if (shade.alpha < float(input.indexes.y >> 16) * (1.0 / 255.0)) discard;
+	return float4(tfx_light_particle(tfx_lit_billboard_view(), shade.color, tfx_lit_billboard_normal(input), input.lighting), 1.0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_ribbon_fragment(tfx_ribbon_output input) : SV_Target {
+	return tfx_premultiply(tfx_shade_ribbon_parts(input)) * tfx_thin_ribbon_fade(input.ribbon_across);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Cutout_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//Ribbons on layers that write depth: the thin-ribbon fade goes into the alpha before the threshold test, so a tapering ribbon ends instead of dashing
+[shader("fragment")]
+float4 tfx_ribbon_cutout_fragment(tfx_ribbon_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_ribbon_parts(input);
+	if (shade.alpha * tfx_thin_ribbon_fade(input.ribbon_across) < float(input.texture_indexes.z) * (1.0 / 255.0)) discard;
+	return float4(shade.color, 1.0);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Lit_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_ribbon_lit_fragment(tfx_lit_ribbon_output input) : SV_Target {
+	tfx_particle_shade shade = tfx_shade_ribbon_parts(tfx_unlit_ribbon(input));
+	shade.color = tfx_light_particle(tfx_lit_ribbon_view(), shade.color, tfx_safe_normalize(input.normal), input.lighting);
+	return tfx_premultiply(shade) * tfx_thin_ribbon_fade(input.ribbon_across);
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//        Ribbon_Lit_Cutout_Fragment
+//----------------------------------------------------------------------------------------------------------------------------------
+
+[shader("fragment")]
+float4 tfx_ribbon_lit_cutout_fragment(tfx_lit_ribbon_output input) : SV_Target {
+	const tfx_particle_shade shade = tfx_shade_ribbon_parts(tfx_unlit_ribbon(input));
+	if (shade.alpha * tfx_thin_ribbon_fade(input.ribbon_across) < float(input.texture_indexes.z) * (1.0 / 255.0)) discard;
+	return float4(tfx_light_particle(tfx_lit_ribbon_view(), shade.color, tfx_safe_normalize(input.normal), input.lighting), 1.0);
 }
