@@ -6442,9 +6442,14 @@ typedef struct tfx_ribbon_soa_s {
 	tfxU32 *uid;
 } tfx_ribbon_soa_t;
 
-#define tfxRIBBON_LAG_SPINE_SAMPLES 16
-#define tfxRIBBON_LAG_HISTORY_ENTRIES (tfxRIBBON_LAG_SPINE_SAMPLES + 4)
-#define tfxRIBBON_LAG_CLOCK_REBASE 1000000.f
+//A lag ring is a block in its bucket's segments: a header row, a position row per sample, then a row per two packed quaternions
+#define tfxRIBBON_LAG_RING_MIN_SIZE_LOG2 4
+#define tfxRIBBON_LAG_RING_MAX_SIZE_LOG2 8
+#define tfxRIBBON_LAG_RING_SIZE_CLASSES (tfxRIBBON_LAG_RING_MAX_SIZE_LOG2 - tfxRIBBON_LAG_RING_MIN_SIZE_LOG2 + 1)
+
+tfxINTERNAL inline tfxU32 tfx__ribbon_lag_block_rows(tfxU32 ring_size) {
+	return 1 + ring_size + ring_size / 2;
+}
 
 typedef struct tfx_gpu_ribbon_emitter_s {
 	tfxU64 quaternion;
@@ -6464,20 +6469,15 @@ typedef struct tfx_gpu_ribbon_emitter_s {
 	//to 8, and the two only agree while the whole thing stays a multiple of 16.
 	tfxU32 sample_count_noise;
 	tfxU32 start_frame_index;
-	float lag_time;
-	float lag_span;
-	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
-	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
-	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
-	float alpha_threshold;			//Fills the gap before the 8 byte aligned quaternions, so there's no implicit padding
-	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
+	float lag_time;							//0 when the emitter isn't lagging, which is the only thing the kernel checks before reading lag_block
+	tfxU32 lag_block;						//The lag ring's header row in the bucket's segments, see tfx__update_ribbon_lag_ring
+	float alpha_threshold;
 } tfx_gpu_ribbon_emitter_t;
 
 //Size must agree with the shader struct size
-tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96 + tfxRIBBON_LAG_SPINE_SAMPLES * 20);
-//The fixed bindings in timelinefx.slang load the lag spine by these offsets
-tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_x) == 92 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_y) == 156);
-tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_position_z) == 220 && offsetof(tfx_gpu_ribbon_emitter_t, alpha_threshold) == 284 && offsetof(tfx_gpu_ribbon_emitter_t, lag_spine_quaternion) == 288);
+tfx__static_assert(sizeof(tfx_gpu_ribbon_emitter_t) == 96);
+//The fixed bindings in timelinefx.slang load these by offset
+tfx__static_assert(offsetof(tfx_gpu_ribbon_emitter_t, angle_type) == 12 && offsetof(tfx_gpu_ribbon_emitter_t, alpha_threshold) == 92);
 
 //---- GPU compute particle buffer management ----
 
@@ -6588,12 +6588,6 @@ tfx__static_assert(sizeof(tfx_gpu_spawn_multipliers_t) == sizeof(tfx_gpu_particl
 tfx__static_assert(sizeof(tfx_gpu_spawn_location_t) == 32);
 //---- end GPU compute particle buffer management ----
 
-typedef struct tfx_ribbon_lag_history_s {
-	float time;
-	tfx_vec3_t position;
-	tfx_quaternion_t rotation;
-} tfx_ribbon_lag_history_t;
-
 typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	//State data
 	double age;
@@ -6647,15 +6641,15 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfxU32 samples_per_segment;						//Derived from the clip size graph, see tfx__get_ribbon_samples_per_segment
 	tfx_vec3_t emitter_size;
 
-	float lag_clock;
-	float lag_span;
-	tfxU32 lag_history_head;
-	tfxU32 lag_history_count;
-	tfx_ribbon_lag_history_t lag_history[tfxRIBBON_LAG_HISTORY_ENTRIES];
-	float lag_spine_position_x[tfxRIBBON_LAG_SPINE_SAMPLES];
-	float lag_spine_position_y[tfxRIBBON_LAG_SPINE_SAMPLES];
-	float lag_spine_position_z[tfxRIBBON_LAG_SPINE_SAMPLES];
-	tfxU64 lag_spine_quaternion[tfxRIBBON_LAG_SPINE_SAMPLES];
+	//The lag ring, see tfx__update_ribbon_lag_ring
+	tfx_quaternion_t lag_previous_rotation;
+	float lag_since_commit;							//Milliseconds from the newest commit to this update
+	float lag_interval;								//Milliseconds between commits
+	float lag_ring_time;							//The lag_time the ring was sized for
+	tfxU32 lag_block_start;							//Header row in the bucket's segments, tfxINVALID when there's no ring
+	tfxU32 lag_ring_size_log2;
+	tfxU32 lag_newest;
+	tfxU32 lag_count;
 } tfx_ribbon_emitter_state_t;
 
 enum tfx_bookmark_flag_bits {
@@ -6979,6 +6973,7 @@ typedef struct tfx_ribbon_bucket_s {
 	//pm->user_spawn_runs that the particle side fills from the single threaded emitter update
 	tfx_vector_t<tfx_user_spawn_run_t> user_spawn_runs;
 	tfx_storage_map_t<tfxU32> cached_static_path_segments;
+	tfx_vector_t<tfxU32> free_lag_blocks[tfxRIBBON_LAG_RING_SIZE_CLASSES];		//Header rows of released lag rings, by ring size
 #else
 	tfx_vector_t segments;
 	tfx_vector_t free_ribbons;
@@ -6986,6 +6981,7 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t control_ribbon_queue;
 	tfx_vector_t user_spawn_runs;
 	tfx_storage_map_t cached_static_path_segments;
+	tfx_vector_t free_lag_blocks[tfxRIBBON_LAG_RING_SIZE_CLASSES];
 #endif
 	tfxRibbonBucketFlags flags;
 	tfxU32 sort_key;
@@ -10049,8 +10045,8 @@ tfxINTERNAL tfx_vec3_t tfx__vector_in_cone(tfx_vec3_t cone_direction, float z, f
 tfxINTERNAL void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon_emitter, float frame_length);
-tfxINTERNAL void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter);
+tfxINTERNAL bool tfx__update_ribbon_lag_ring(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter, float lag_time, bool teleported);
+tfxINTERNAL void tfx__free_ribbon_lag_ring(tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfxU32 ribbon_index, tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL bool tfx__has_single_decay(const tfx_shared_properties_t *shared_properties);

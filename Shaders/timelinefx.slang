@@ -2832,10 +2832,7 @@ struct tfx_ribbon_vertex_row {
 	uint normal;						//Octahedral unit normal as two snorm16s, for tfx_ribbon_lit_vertex
 };
 
-//tfxRIBBON_LAG_SPINE_SAMPLES
-static const int tfx_lag_spine_samples = 16;
-
-//Mirrors tfx_gpu_ribbon_emitter_t, 416 bytes
+//Mirrors tfx_gpu_ribbon_emitter_t, 96 bytes
 struct tfx_ribbon_emitter {
 	uint2 quaternion;
 	uint lookup_offset;
@@ -2851,13 +2848,9 @@ struct tfx_ribbon_emitter {
 	float3 fixed_angle_normal;
 	uint sample_count_noise;			//[noise algorithm and octaves << 24 | sample count]
 	uint start_frame_index;
-	float lag_time;
-	float lag_span;
-	float lag_spine_position_x[tfx_lag_spine_samples];
-	float lag_spine_position_y[tfx_lag_spine_samples];
-	float lag_spine_position_z[tfx_lag_spine_samples];
+	float lag_time;						//0 when the emitter isn't lagging, and lag_block must not be read
+	uint lag_block;						//The lag ring's header row in the bucket's segments
 	float alpha_threshold;
-	uint2 lag_spine_quaternion[tfx_lag_spine_samples];
 };
 
 //Mirrors tfx_animation_instance_t
@@ -3078,14 +3071,8 @@ static const uint tfx_ribbon_row_bytes = 48;
 static const uint tfx_ribbon_segment_row_bytes = 16;
 static const uint tfx_ribbon_segment_frame_offset = 12;
 static const uint tfx_ribbon_vertex_row_bytes = 32;
-static const uint tfx_ribbon_emitter_row_bytes = 416;
-//Where tfx_gpu_ribbon_emitter_t's lag spine arrays start, which timelinefx_internal.h asserts. Loading them by offset reads one sample, where
-//indexing the array in a loaded row would load all of it
-static const uint tfx_lag_spine_position_x_offset = 92;
-static const uint tfx_lag_spine_position_y_offset = 156;
-static const uint tfx_lag_spine_position_z_offset = 220;
-static const uint tfx_lag_spine_quaternion_offset = 288;
-static const uint tfx_ribbon_alpha_threshold_offset = 284;
+static const uint tfx_ribbon_emitter_row_bytes = 96;
+static const uint tfx_ribbon_alpha_threshold_offset = 92;
 static const uint tfx_ribbon_angle_type_offset = 12;
 static const uint tfx_animation_instance_row_bytes = 64;
 static const uint tfx_baked_ribbon_row_bytes = 64;
@@ -3322,6 +3309,15 @@ uint tfx_load_ribbon_segment_frame(uint buffer_index, uint row) {
 	return tfx_fixed_ribbon_segments.Load<uint>(row * tfx_ribbon_segment_row_bytes + tfx_ribbon_segment_frame_offset);
 }
 
+uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
+	return tfx_fixed_ribbon_segments.Load<uint4>(row * tfx_ribbon_segment_row_bytes);
+}
+
+//One of the two 8 byte halves of a segment row
+uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
+	return tfx_fixed_ribbon_segments.Load<uint2>(row * tfx_ribbon_segment_row_bytes + second_half * 8);
+}
+
 void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
 	tfx_fixed_ribbon_vertex_output.Store<tfx_ribbon_vertex_row>(row * tfx_ribbon_vertex_row_bytes, vertex);
 }
@@ -3417,6 +3413,16 @@ TFX_BINDLESS_ACCESS uint tfx_load_ribbon_segment_frame(uint buffer_index, uint r
 	return tfx_ribbon_segment_buffers[buffer_index][row].w;
 }
 
+TFX_BINDLESS_ACCESS uint4 tfx_load_ribbon_segment_row(uint buffer_index, uint row) {
+	return tfx_ribbon_segment_buffers[buffer_index][row];
+}
+
+//One of the two 8 byte halves of a segment row
+TFX_BINDLESS_ACCESS uint2 tfx_load_ribbon_segment_half(uint buffer_index, uint row, uint second_half) {
+	const uint4 segment = tfx_ribbon_segment_buffers[buffer_index][row];
+	return second_half != 0 ? segment.zw : segment.xy;
+}
+
 TFX_BINDLESS_ACCESS void tfx_store_ribbon_vertex(uint buffer_index, uint row, tfx_ribbon_vertex_row vertex) {
 	tfx_ribbon_vertex_buffers[buffer_index][row] = vertex;
 }
@@ -3461,7 +3467,7 @@ tfx_baked_billboard_push tfx_baked_billboard_entry_push() {
 }
 #endif
 
-//The ribbon emitter up to its lag spine, as laid out in the row. Bindless reads it field by field, the fixed bindings in one 92 byte load
+//The ribbon emitter up to alpha_threshold, as laid out in the row. Bindless reads it field by field, the fixed bindings in one 92 byte load
 struct tfx_ribbon_emitter_frame {
 	uint2 quaternion;
 	uint lookup_offset;
@@ -3478,7 +3484,7 @@ struct tfx_ribbon_emitter_frame {
 	uint sample_count_noise;
 	uint start_frame_index;
 	float lag_time;
-	float lag_span;
+	uint lag_block;
 };
 
 #if defined(TFX_FIXED_BINDINGS)
@@ -3514,7 +3520,7 @@ TFX_BINDLESS_ACCESS tfx_ribbon_emitter_frame tfx_load_ribbon_emitter_frame(uint 
 	frame.sample_count_noise = TFX_RIBBON_EMITTER_ROW(buffer_index, row).sample_count_noise;
 	frame.start_frame_index = TFX_RIBBON_EMITTER_ROW(buffer_index, row).start_frame_index;
 	frame.lag_time = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_time;
-	frame.lag_span = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_span;
+	frame.lag_block = TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_block;
 	return frame;
 }
 
@@ -3527,29 +3533,6 @@ TFX_BINDLESS_ACCESS uint3 tfx_load_ribbon_emitter_draw(uint buffer_index, uint r
 //The emitter's lighting word, which sits above the angle type
 TFX_BINDLESS_ACCESS uint tfx_load_ribbon_emitter_lighting(uint buffer_index, uint row) {
 	return TFX_RIBBON_EMITTER_ROW(buffer_index, row).angle_type >> 8;
-}
-#endif
-
-#if defined(TFX_FIXED_BINDINGS)
-float3 tfx_load_lag_spine_position(uint buffer_index, uint row, uint sample_index) {
-	const uint sample_start = row * tfx_ribbon_emitter_row_bytes + sample_index * 4;
-	return float3(tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_x_offset),
-	              tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_y_offset),
-	              tfx_fixed_ribbon_emitters.Load<float>(sample_start + tfx_lag_spine_position_z_offset));
-}
-
-float4 tfx_load_lag_spine_quaternion(uint buffer_index, uint row, uint sample_index) {
-	return tfx_unpack16bit_quaternion(tfx_fixed_ribbon_emitters.Load<uint2>(row * tfx_ribbon_emitter_row_bytes + tfx_lag_spine_quaternion_offset + sample_index * 8));
-}
-#else
-TFX_BINDLESS_ACCESS float3 tfx_load_lag_spine_position(uint buffer_index, uint row, uint sample_index) {
-	return float3(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_position_x[sample_index],
-	              TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_position_y[sample_index],
-	              TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_position_z[sample_index]);
-}
-
-TFX_BINDLESS_ACCESS float4 tfx_load_lag_spine_quaternion(uint buffer_index, uint row, uint sample_index) {
-	return tfx_unpack16bit_quaternion(TFX_RIBBON_EMITTER_ROW(buffer_index, row).lag_spine_quaternion[sample_index]);
 }
 #endif
 
@@ -4165,21 +4148,63 @@ struct tfx_lag_transform {
 	float4 quaternion;
 };
 
-//The emitter's transform depth along the ribbon back in time, from the lag spine of recent emitter transforms
-tfx_lag_transform tfx_emitter_transform_at(uint emitters_index, uint emitter_index, float frame_lerp, float lag_time, float lag_span, float depth) {
-	const float frame_length = lag_span - lag_time;
-	const float distance_back = (1.0 - frame_lerp) * frame_length + depth * lag_time;
-	const float spine_position = clamp(distance_back / lag_span, 0.0, 1.0) * float(tfx_lag_spine_samples - 1);
-	const uint first_sample = min(uint(spine_position), uint(tfx_lag_spine_samples - 2));
-	const float fraction = spine_position - float(first_sample);
+//An emitter's lag ring header from tfx__update_ribbon_lag_ring: slot newest is since_commit ms old and each older slot interval ms more
+struct tfx_lag_ring {
+	uint header_row;
+	float since_commit;
+	float interval;
+	float frame_length;
+	uint newest;
+	uint count;
+	uint mask;
+};
 
-	const float4 first_quaternion = tfx_load_lag_spine_quaternion(emitters_index, emitter_index, first_sample);
-	float4 second_quaternion = tfx_load_lag_spine_quaternion(emitters_index, emitter_index, first_sample + 1);
-	second_quaternion *= dot(first_quaternion, second_quaternion) < 0.0 ? -1.0 : 1.0;
+tfx_lag_ring tfx_load_lag_ring(uint segments_index, uint header_row) {
+	const uint4 header = tfx_load_ribbon_segment_row(segments_index, header_row);
+	tfx_lag_ring ring;
+	ring.header_row = header_row;
+	ring.since_commit = asfloat(header.x);
+	ring.interval = asfloat(header.y);
+	ring.frame_length = asfloat(header.z);
+	ring.newest = header.w & 0xFFu;
+	ring.count = (header.w >> 8) & 0x1FFu;
+	ring.mask = (1u << (header.w >> 17)) - 1u;
+	return ring;
+}
+
+float3 tfx_lag_ring_position(uint segments_index, tfx_lag_ring ring, uint slot) {
+	return tfx_load_ribbon_segment(segments_index, ring.header_row + 1 + slot);
+}
+
+//The quaternions follow the positions, two to a row
+float4 tfx_lag_ring_quaternion(uint segments_index, tfx_lag_ring ring, uint slot) {
+	return tfx_unpack16bit_quaternion(tfx_load_ribbon_segment_half(segments_index, ring.header_row + ring.mask + 2 + (slot >> 1), slot & 1u));
+}
+
+//The emitter's transform depth along the ribbon back in time. The head is the emitter's transform this update, then the ring's commits
+tfx_lag_transform tfx_emitter_transform_at(uint segments_index, tfx_lag_ring ring, float3 head_position, float4 head_quaternion, float frame_lerp, float lag_time, float depth) {
+	const float distance_back = (1.0 - frame_lerp) * ring.frame_length + depth * lag_time;
+	const float steps_back = (distance_back - ring.since_commit) / ring.interval;
+	float3 newer_position = head_position;
+	float4 newer_quaternion = head_quaternion;
+	uint older_slot = ring.newest;
+	float fraction = distance_back / max(ring.since_commit, 1e-6);
+	if (steps_back >= 0.0) {
+		//Held at the oldest commit while the ring is still filling
+		const float clamped_steps = min(steps_back, float(ring.count - 1));
+		const uint step = uint(clamped_steps);
+		const uint newer_slot = (ring.newest - step) & ring.mask;
+		newer_position = tfx_lag_ring_position(segments_index, ring, newer_slot);
+		newer_quaternion = tfx_lag_ring_quaternion(segments_index, ring, newer_slot);
+		older_slot = step + 1 < ring.count ? (newer_slot - 1) & ring.mask : newer_slot;
+		fraction = clamped_steps - float(step);
+	}
+	float4 older_quaternion = tfx_lag_ring_quaternion(segments_index, ring, older_slot);
+	older_quaternion *= dot(newer_quaternion, older_quaternion) < 0.0 ? -1.0 : 1.0;
 
 	tfx_lag_transform result;
-	result.position = lerp(tfx_load_lag_spine_position(emitters_index, emitter_index, first_sample), tfx_load_lag_spine_position(emitters_index, emitter_index, first_sample + 1), fraction);
-	result.quaternion = normalize(lerp(first_quaternion, second_quaternion, fraction));
+	result.position = lerp(newer_position, tfx_lag_ring_position(segments_index, ring, older_slot), fraction);
+	result.quaternion = normalize(lerp(newer_quaternion, older_quaternion, fraction));
 	return result;
 }
 
@@ -4250,8 +4275,9 @@ void tfx_build_ribbon_segment(tfx_ribbon_bucket_globals push, uint global_index)
 		if (lag_amount > 0.0) {
 			const tfx_gpu_graph_data lag_profile_graph = tfx_load_graph_row(push.graphs_index, lookup_offset + tfx_ribbon_graph_lag_profile);
 			const float neighbour_lerp = clamp(float(neighbour_segment_index) / float(push.segment_count - 1), 0.0, 1.0);
-			const tfx_lag_transform centre_transform = tfx_emitter_transform_at(push.emitters_index, emitter_index, push.lerp, emitter.lag_time, emitter.lag_span, lag_amount * tfx_sample_graph(lag_profile_graph, ribbon_lerp));
-			const tfx_lag_transform neighbour_transform = tfx_emitter_transform_at(push.emitters_index, emitter_index, push.lerp, emitter.lag_time, emitter.lag_span, lag_amount * tfx_sample_graph(lag_profile_graph, neighbour_lerp));
+			const tfx_lag_ring lag_ring = tfx_load_lag_ring(push.ribbon_segments_index, push.segment_offset + emitter.lag_block);
+			const tfx_lag_transform centre_transform = tfx_emitter_transform_at(push.ribbon_segments_index, lag_ring, emitter.position, emitter_quaternion, push.lerp, emitter.lag_time, lag_amount * tfx_sample_graph(lag_profile_graph, ribbon_lerp));
+			const tfx_lag_transform neighbour_transform = tfx_emitter_transform_at(push.ribbon_segments_index, lag_ring, emitter.position, emitter_quaternion, push.lerp, emitter.lag_time, lag_amount * tfx_sample_graph(lag_profile_graph, neighbour_lerp));
 			emitter_quaternion = centre_transform.quaternion;
 			emitter_position = centre_transform.position;
 			neighbour_emitter_quaternion = neighbour_transform.quaternion;

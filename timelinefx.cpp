@@ -11297,9 +11297,8 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.ribbon_indexes[0].init();
 	ribbon_emitter.ribbon_indexes[1].init();
 	ribbon_emitter.location_spawn_ordinals.init();
-	ribbon_emitter.lag_clock = 0.f;
-	ribbon_emitter.lag_history_head = 0;
-	ribbon_emitter.lag_history_count = 0;
+	ribbon_emitter.lag_block_start = tfxINVALID;
+	ribbon_emitter.lag_count = 0;
 	ribbon_emitter.state_flags = ribbon_emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? tfxRibbonEmitterStateFlags_orient_to_camera_pending : 0;
 	TFX_ASSERT(ribbon_emitter.state_properties.path_attributes != tfxINVALID);
 	ribbon_emitter.samples_per_segment = tfx__get_ribbon_samples_per_segment(&ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index]);
@@ -11354,6 +11353,7 @@ tfxINTERNAL void tfx__release_stage_effect_emitters(tfx_stage pm, tfxEffectID ef
 				ribbon_emitter.ribbon_indexes[1].clear();
 				ribbon_emitter.active_ribbons = 0;
 				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+				tfx__free_ribbon_lag_ring(&bucket, &ribbon_emitter);
 				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
 			}
 			bucket.ribbon_emitter_indexes[buffer].shrink(keep);
@@ -11614,6 +11614,7 @@ void tfx__purge_expired_effects(tfx_stage pm) {
 			ribbon_emitter.ribbon_indexes[1].clear();
 			ribbon_emitter.active_ribbons = 0;
 			tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+			tfx__free_ribbon_lag_ring(&bucket, &ribbon_emitter);
 			pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
 		}
 	}
@@ -14829,6 +14830,10 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 			bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, ribbon_emitter.morph_segment_start_index + ribbon_emitter.stored_sample_count);
 			bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, ribbon_emitter.morph_segment_start_index);
 		}
+		if (ribbon_emitter.lag_block_start != tfxINVALID) {
+			bucket->highest_segment_index = tfx__Max(bucket->highest_segment_index, ribbon_emitter.lag_block_start + tfx__ribbon_lag_block_rows(1u << ribbon_emitter.lag_ring_size_log2));
+			bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, ribbon_emitter.lag_block_start);
+		}
 	}
 
 	if (bucket->highest_ribbon_index >= bucket->lowest_ribbon_index) {
@@ -15003,6 +15008,7 @@ tfxINTERNAL void tfx__rebucket_effect_ribbon_emitters(tfx_stage pm, tfxU32 effec
 				//Both buffers hold the same emitter indexes, so only collect them once
 				if (buffer == (int)pm->current_ebuff) {
 					TFX_ASSERT(ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size == 0);
+					tfx__free_ribbon_lag_ring(&bucket, &ribbon_emitter);
 					moved_emitters.push_back(ribbon_emitter_index);
 				}
 			}
@@ -15546,6 +15552,9 @@ void tfx_ClearStage(tfx_stage pm, bool free_particle_banks) {
 		ribbon_bucket.ribbon_emitter_indexes[1].free();
 		ribbon_bucket.control_ribbon_queue.free();
 		ribbon_bucket.user_spawn_runs.free();
+		for (tfx_vector_t<tfxU32> &free_lag_blocks : ribbon_bucket.free_lag_blocks) {
+			free_lag_blocks.free();
+		}
 		//Must FreeAll (not Clear) — ribbon_segment_buckets.Clear() below leaves the bucket bytes in
 		//place, and the next Insert overwrites the slot with memcpy of {} which would otherwise drop
 		//these still-live pointers on the floor.
@@ -15663,6 +15672,9 @@ void tfx_FreeStage(tfx_stage pm) {
 		bucket.control_ribbon_queue.free();
 		bucket.user_spawn_runs.free();
 		bucket.cached_static_path_segments.FreeAll();
+		for (tfx_vector_t<tfxU32> &free_lag_blocks : bucket.free_lag_blocks) {
+			free_lag_blocks.free();
+		}
 	}
 	pm->ribbon_segment_buckets.FreeAll();
 	pm->emitters_check_capture.free();
@@ -16127,6 +16139,9 @@ void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_
 	bucket.ribbon_emitter_indexes[0].init();
 	bucket.ribbon_emitter_indexes[1].init();
 	bucket.cached_static_path_segments.init();
+	for (tfx_vector_t<tfxU32> &free_lag_blocks : bucket.free_lag_blocks) {
+		free_lag_blocks.init();
+	}
 	bucket.flags = tfxRibbonBucketFlags_initialised;
 	bucket.globals.ribbon_count = 1;
 	bucket.globals.index_offset = 0;
@@ -16464,6 +16479,7 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 				ribbon_emitter.ribbon_indexes[0].clear();
 				ribbon_emitter.ribbon_indexes[1].clear();
 				ribbon_emitter.active_ribbons = 0;
+				tfx__free_ribbon_lag_ring(ribbon_work_entry->ribbon_bucket, &ribbon_emitter);
 				tfx__sync_lock(&pm->add_effect_mutex);
 				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
 				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
@@ -16481,72 +16497,101 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 	}
 }
 
-tfxINTERNAL inline tfxU32 tfx__ribbon_lag_history_index(tfxU32 head, tfxU32 steps_back) {
-	return (head + tfxRIBBON_LAG_HISTORY_ENTRIES - steps_back) % tfxRIBBON_LAG_HISTORY_ENTRIES;
+tfxINTERNAL void tfx__write_ribbon_lag_sample(tfx_ribbon_segment_t *block, tfxU32 ring_size, tfxU32 slot, const tfx_vec3_t &position, const tfx_quaternion_t &rotation) {
+	block[1 + slot].position = position;
+	tfxU64 packed_rotation = tfx__pack16bit_quaternion_for_gpu(rotation);
+	memcpy((char *)&block[1 + ring_size + (slot >> 1)] + (slot & 1) * sizeof(tfxU64), &packed_rotation, sizeof(tfxU64));
 }
 
-void tfx__push_ribbon_lag_history(tfx_ribbon_emitter_state_t *ribbon_emitter, float frame_length) {
-	ribbon_emitter->lag_clock += frame_length;
-	if (ribbon_emitter->lag_clock > tfxRIBBON_LAG_CLOCK_REBASE) {
-		for (tfxU32 index = 0; index != ribbon_emitter->lag_history_count; ++index) {
-			ribbon_emitter->lag_history[index].time -= ribbon_emitter->lag_clock;
-		}
-		ribbon_emitter->lag_clock = 0.f;
-	}
-	tfx_ribbon_lag_history_t sample;
-	sample.time = ribbon_emitter->lag_clock;
-	sample.position = ribbon_emitter->world_position;
-	sample.rotation = ribbon_emitter->rotation;
-	if (ribbon_emitter->lag_history_count == 0) {
-		ribbon_emitter->lag_history_head = 0;
-		ribbon_emitter->lag_history_count = 1;
-		ribbon_emitter->lag_history[0] = sample;
+void tfx__free_ribbon_lag_ring(tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter) {
+	if (ribbon_emitter->lag_block_start == tfxINVALID) {
 		return;
 	}
-	float spacing = tfx__Max(frame_length, ribbon_emitter->lag_span / (float)(tfxRIBBON_LAG_SPINE_SAMPLES - 1));
-	tfxU32 head = ribbon_emitter->lag_history_head;
-	tfxU32 previous = tfx__ribbon_lag_history_index(head, 1);
-	if (ribbon_emitter->lag_history_count == 1 || ribbon_emitter->lag_history[head].time - ribbon_emitter->lag_history[previous].time >= spacing) {
-		ribbon_emitter->lag_history_head = tfx__ribbon_lag_history_index(head, tfxRIBBON_LAG_HISTORY_ENTRIES - 1);
-		if (ribbon_emitter->lag_history_count < tfxRIBBON_LAG_HISTORY_ENTRIES) {
-			ribbon_emitter->lag_history_count++;
-		}
-	}
-	ribbon_emitter->lag_history[ribbon_emitter->lag_history_head] = sample;
+	bucket->free_lag_blocks[ribbon_emitter->lag_ring_size_log2 - tfxRIBBON_LAG_RING_MIN_SIZE_LOG2].push_back(ribbon_emitter->lag_block_start);
+	ribbon_emitter->lag_block_start = tfxINVALID;
 }
 
-void tfx__resample_ribbon_lag_spine(tfx_ribbon_emitter_state_t *ribbon_emitter) {
-	TFX_ASSERT(ribbon_emitter->lag_history_count > 0);		//The history must be pushed to before the spine is resampled
-	tfxU32 count = ribbon_emitter->lag_history_count;
-	tfxU32 head = ribbon_emitter->lag_history_head;
-	float clock = ribbon_emitter->lag_clock;
-	tfxU32 steps_back = 0;
-	for (tfxU32 sample_index = 0; sample_index != tfxRIBBON_LAG_SPINE_SAMPLES; ++sample_index) {
-		float target_behind = ribbon_emitter->lag_span * ((float)sample_index / (float)(tfxRIBBON_LAG_SPINE_SAMPLES - 1));
-		while (steps_back + 1 < count && clock - ribbon_emitter->lag_history[tfx__ribbon_lag_history_index(head, steps_back + 1)].time <= target_behind) {
-			steps_back++;
-		}
-		const tfx_ribbon_lag_history_t &newer = ribbon_emitter->lag_history[tfx__ribbon_lag_history_index(head, steps_back)];
-		float tween = 0.f;
-		const tfx_ribbon_lag_history_t *older = &newer;
-		if (steps_back + 1 < count) {
-			older = &ribbon_emitter->lag_history[tfx__ribbon_lag_history_index(head, steps_back + 1)];
-			float span = newer.time - older->time;
-			tween = span > 0.f ? (target_behind - (clock - newer.time)) / span : 0.f;
-		}
-		ribbon_emitter->lag_spine_position_x[sample_index] = newer.position.x + (older->position.x - newer.position.x) * tween;
-		ribbon_emitter->lag_spine_position_y[sample_index] = newer.position.y + (older->position.y - newer.position.y) * tween;
-		ribbon_emitter->lag_spine_position_z[sample_index] = newer.position.z + (older->position.z - newer.position.z) * tween;
-		float dot = newer.rotation.w * older->rotation.w + newer.rotation.x * older->rotation.x + newer.rotation.y * older->rotation.y + newer.rotation.z * older->rotation.z;
-		float sign = dot < 0.f ? -1.f : 1.f;
-		tfx_quaternion_t blended;
-		blended.w = newer.rotation.w + (older->rotation.w * sign - newer.rotation.w) * tween;
-		blended.x = newer.rotation.x + (older->rotation.x * sign - newer.rotation.x) * tween;
-		blended.y = newer.rotation.y + (older->rotation.y * sign - newer.rotation.y) * tween;
-		blended.z = newer.rotation.z + (older->rotation.z * sign - newer.rotation.z) * tween;
-		blended = tfx__normalize_quaternion(&blended);
-		ribbon_emitter->lag_spine_quaternion[sample_index] = tfx__pack16bit_quaternion_for_gpu(blended);
+//Commits the emitter's transform at a fixed interval so the kernel can index the ring by time directly. False leaves the ribbon rigid this update
+bool tfx__update_ribbon_lag_ring(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_ribbon_emitter_state_t *ribbon_emitter, float lag_time, bool teleported) {
+	const float frame_length = (float)pm->frame_length;
+	if (ribbon_emitter->lag_block_start != tfxINVALID && ribbon_emitter->lag_ring_time != lag_time) {
+		tfx__free_ribbon_lag_ring(bucket, ribbon_emitter);
 	}
+	if (ribbon_emitter->lag_block_start == tfxINVALID) {
+		if (frame_length <= 0.f) {
+			return false;
+		}
+		//The kernel reaches up to a frame further back than lag_time to tween the head
+		const float reach = lag_time + frame_length;
+		const float wanted_size = reach / frame_length + 2.f;
+		tfxU32 size_log2 = tfxRIBBON_LAG_RING_MIN_SIZE_LOG2;
+		while (size_log2 < tfxRIBBON_LAG_RING_MAX_SIZE_LOG2 && (float)(1u << size_log2) < wanted_size) {
+			size_log2++;
+		}
+		const tfxU32 ring_size = 1u << size_log2;
+		tfx_vector_t<tfxU32> &free_blocks = bucket->free_lag_blocks[size_log2 - tfxRIBBON_LAG_RING_MIN_SIZE_LOG2];
+		if (free_blocks.current_size) {
+			ribbon_emitter->lag_block_start = free_blocks.pop_back();
+		} else {
+			const tfxU32 block_rows = tfx__ribbon_lag_block_rows(ring_size);
+			if (!tfx__reserve_ribbon_budget(&pm->ribbon_path_samples_allocated, block_rows, pm->info.max_ribbon_segments)) {
+				return false;
+			}
+			ribbon_emitter->lag_block_start = bucket->segments.current_size;
+			bucket->segments.resize(bucket->segments.current_size + block_rows);
+		}
+		//Unfilled slots and the spare word of each position row are uploaded too, so they must not be garbage
+		memset(&bucket->segments[ribbon_emitter->lag_block_start], 0, tfx__ribbon_lag_block_rows(ring_size) * sizeof(tfx_ribbon_segment_t));
+		ribbon_emitter->lag_ring_size_log2 = size_log2;
+		ribbon_emitter->lag_ring_time = lag_time;
+		//Longer than the frame length only once the ring is at its largest
+		ribbon_emitter->lag_interval = tfx__Max(frame_length, reach / (float)(ring_size - 2));
+		ribbon_emitter->lag_count = 0;
+	}
+	const tfxU32 ring_size = 1u << ribbon_emitter->lag_ring_size_log2;
+	tfx_ribbon_segment_t *block = &bucket->segments[ribbon_emitter->lag_block_start];
+	if (teleported || ribbon_emitter->lag_count == 0) {
+		ribbon_emitter->lag_newest = 0;
+		ribbon_emitter->lag_count = 1;
+		ribbon_emitter->lag_since_commit = 0.f;
+		tfx__write_ribbon_lag_sample(block, ring_size, 0, ribbon_emitter->world_position, ribbon_emitter->rotation);
+	} else {
+		const float interval = ribbon_emitter->lag_interval;
+		//Commits older than the ring holds would be overwritten in this same update
+		float since_commit = tfx__Min(ribbon_emitter->lag_since_commit + frame_length, interval * (float)ring_size);
+		const tfx_vec3_t &previous_position = ribbon_emitter->captured_position;
+		const tfx_vec3_t &position = ribbon_emitter->world_position;
+		const tfx_quaternion_t &rotation = ribbon_emitter->rotation;
+		tfx_quaternion_t previous_rotation = ribbon_emitter->lag_previous_rotation;
+		if (previous_rotation.w * rotation.w + previous_rotation.x * rotation.x + previous_rotation.y * rotation.y + previous_rotation.z * rotation.z < 0.f) {
+			previous_rotation.w = -previous_rotation.w;
+			previous_rotation.x = -previous_rotation.x;
+			previous_rotation.y = -previous_rotation.y;
+			previous_rotation.z = -previous_rotation.z;
+		}
+		//The tolerance keeps a fixed step host committing every update when its frame length wobbles in the last bits
+		while (since_commit >= interval * 0.999f) {
+			since_commit = tfx__Max(since_commit - interval, 0.f);
+			//Every commit lands between the previous update and this one
+			const float tween = 1.f - since_commit / frame_length;
+			tfx_quaternion_t blended;
+			blended.w = previous_rotation.w + (rotation.w - previous_rotation.w) * tween;
+			blended.x = previous_rotation.x + (rotation.x - previous_rotation.x) * tween;
+			blended.y = previous_rotation.y + (rotation.y - previous_rotation.y) * tween;
+			blended.z = previous_rotation.z + (rotation.z - previous_rotation.z) * tween;
+			ribbon_emitter->lag_newest = (ribbon_emitter->lag_newest + 1) & (ring_size - 1);
+			ribbon_emitter->lag_count = tfx__Min(ribbon_emitter->lag_count + 1, ring_size);
+			tfx__write_ribbon_lag_sample(block, ring_size, ribbon_emitter->lag_newest, previous_position + (position - previous_position) * tween, tfx__normalize_quaternion(&blended));
+		}
+		ribbon_emitter->lag_since_commit = since_commit;
+	}
+	ribbon_emitter->lag_previous_rotation = ribbon_emitter->rotation;
+	tfx_ribbon_segment_t &header = block[0];
+	header.position.x = ribbon_emitter->lag_since_commit;
+	header.position.y = ribbon_emitter->lag_interval;
+	header.position.z = frame_length;
+	header.frame = ribbon_emitter->lag_newest | (ribbon_emitter->lag_count << 8) | (ribbon_emitter->lag_ring_size_log2 << 17);
+	return true;
 }
 
 void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *work_queue, void *data) {
@@ -16612,7 +16657,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	tfx__transform_3d(&local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
 
-	if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_no_tween_this_update) {
+	const bool teleported = (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_no_tween_this_update) != 0;
+	if (teleported) {
 		ribbon_emitter.captured_position = ribbon_emitter.world_position;
 		ribbon_emitter.state_flags &= ~tfxRibbonEmitterStateFlags_no_tween_this_update;
 	}
@@ -16630,18 +16676,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		gpu_emitter.captured_position = tfx_vec3_t();
 	}
 	tfx_ribbon_emitter_properties_t *noise_properties = &library->ribbon_properties[ribbon_emitter.state_properties.property_index];
-	if ((ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_lag) && (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position)) {
-		ribbon_emitter.lag_span = noise_properties->lag_time + (float)pm->frame_length;
-		tfx__push_ribbon_lag_history(&ribbon_emitter, (float)pm->frame_length);
-		tfx__resample_ribbon_lag_spine(&ribbon_emitter);
+	const bool lagging = (ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_enable_lag) && (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) && noise_properties->lag_time > 0.f;
+	if (lagging && tfx__update_ribbon_lag_ring(pm, ribbon_work_entry->ribbon_bucket, &ribbon_emitter, noise_properties->lag_time, teleported)) {
 		gpu_emitter.lag_time = noise_properties->lag_time;
-		gpu_emitter.lag_span = ribbon_emitter.lag_span;
-		memcpy(gpu_emitter.lag_spine_position_x, ribbon_emitter.lag_spine_position_x, sizeof(gpu_emitter.lag_spine_position_x));
-		memcpy(gpu_emitter.lag_spine_position_y, ribbon_emitter.lag_spine_position_y, sizeof(gpu_emitter.lag_spine_position_y));
-		memcpy(gpu_emitter.lag_spine_position_z, ribbon_emitter.lag_spine_position_z, sizeof(gpu_emitter.lag_spine_position_z));
-		memcpy(gpu_emitter.lag_spine_quaternion, ribbon_emitter.lag_spine_quaternion, sizeof(gpu_emitter.lag_spine_quaternion));
+		gpu_emitter.lag_block = ribbon_emitter.lag_block_start;
 	} else {
-		ribbon_emitter.lag_span = 0.f;
+		//So the ring starts again from here if lag comes back on
+		ribbon_emitter.lag_count = 0;
 		gpu_emitter.lag_time = 0.f;
 	}
 	gpu_emitter.noise_frequency = noise_properties->noise_frequency;
