@@ -215,9 +215,9 @@ typedef struct tfx_instance_s {		//48 bytes
 	tfx_float32x4_t position;				//The position of the billboard with stretch in w
 	tfxU64 quaternion;						//Rotation of the billboard stored as a 16-bit snorm quaternion
 	tfx_int16x2_t size;						//Width and height scaled by 32767/64: multiply by 64/32767 to unpack, or call tfx_GetSpriteScale
-	tfx_float8x4_t alignment;				//Normalised alignment vector 3 8bit floats packed into 32 bits. Free byte here.
+	tfx_float8x4_t alignment;				//Normalised alignment vector as snorm8 in xyz, and the hue in w as snorm8 where 1 is 180 degrees
 	tfx_int16x2_t intensity_gradient_map;	//Intensity in x and gradient map in y, scaled by 32767/128: multiply by 128/32767 to unpack
-	tfx_float8x4_t curved_alpha_life;		//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. Free byte here.
+	tfx_float8x4_t curved_alpha_life;		//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms. The w byte holds the lerp offset in baked sprite data
 	tfxU32 indexes;							//GPU property index << 16 | capture flag << 15 | animation frame in the low 13 bits (max 8191), which the shader adds to the emitter's start_frame_index. Bits 13 and 14 are unused. The property index is into tfx_GetGlobalParticlePropertiesBuffer on a stage with global_library_indexes, otherwise into the effect's library
 	tfxU32 captured_index;					//Only meaningful when the capture flag in indexes is set: mask with 0x0FFFFFFF for this instance's index in the previous instance buffer. Bit 30 is which buffer, bit 31 is internal. Without the capture flag the instance is a spawn from this update or a particle that died but still holds its slot, and the reference shaders draw it at zero size that frame
 } tfx_instance_t;
@@ -322,6 +322,7 @@ typedef enum {
 	tfxEffect_global_emitter_width_index,
 	tfxEffect_global_emitter_height_index,
 	tfxEffect_global_emitter_depth_index,
+	tfxEffect_global_hue_index,
 	tfxEffectGraphs_max_index,
 } tfx_global_graph_index;
 
@@ -389,6 +390,9 @@ typedef enum {
 	tfxEmitter_factor_velocity_index,
 	tfxEmitter_factor_intensity_index,
 
+	//Last so that the GPU graph slots before it don't move
+	tfxEmitter_overtime_hue_index,
+
 	tfxEmitterGraphs_max_index,
 } tfx_emitter_graph_index;
 
@@ -439,6 +443,9 @@ typedef enum {
 	tfxRibbon_overlength_noise_envelope_index,
 	tfxRibbon_overlength_lag_profile_index,
 
+	//Last so that the GPU graph slots before them don't move
+	tfxRibbon_overtime_hue_index,
+	tfxRibbon_overlength_hue_index,
 
 	tfxRibbonGraphs_max_index,
 
@@ -805,6 +812,7 @@ typedef enum {
 	tfxGPUParticleDispatchFlags_noise_anisotropic = 1 << 22,			//Split the noise against the particle's heading with the two noise gains
 	tfxGPUParticleDispatchFlags_location_forces = 1 << 23,				//Some force rows are at_location, read the location table by the cold spawn_location. A relative ring's position is already in the frame
 	tfxGPUParticleDispatchFlags_location_forces_rotation = 1 << 24,		//Those locations can have a rotation
+	tfxGPUParticleDispatchFlags_hue = 1 << 25,							//The emitter has a hue graph or an effect hue, so the kernel samples it
 } tfx_gpu_particle_dispatch_flag_bits;
 
 #define tfxGPU_NOISE_ALGORITHM_SHIFT 19
@@ -832,7 +840,7 @@ typedef struct tfx_gpu_particle_dispatch_s {	//128 bytes
 	tfxU32 slot_count;
 	tfxU32 flags;							//tfxGPUParticleDispatchFlags
 	tfxU32 graph_offset;					//Into the graph lookups from tfx_GetGPUGraphLookupsBuffer
-	tfxU32 property_index;					//gpu property index << 16, as tfx_instance_t indexes expects it, so global on a stage with global_library_indexes
+	tfxU32 property_index;					//gpu property index << 16, as tfx_instance_t indexes expects it, so global on a stage with global_library_indexes. The low 16 bits are the effect's hue in turns as snorm16 where 1 is half a turn
 	tfxU32 instance_start;					//Ring position i on the last tick writes instance instance_start + i
 	tfxU32 previous_instance_start;			//Where ring position 0 was written in the previous instance buffer
 	tfxU32 bumped_since_write;				//Particles that left the ring since the previous write
@@ -3683,6 +3691,15 @@ stays until you change it. 1 is no change.
 * @param intensity       The intensity of every particle in the effect, including the ones already alive.
 */
 tfxAPI void tfx_SetEffectIntensityMultiplier(tfx_stage stage, tfxEffectID effect_id, float intensity);
+
+/*
+Rotate the hue of every emitter in an effect. Adds to the effect's own global hue graph, so the authored animation still plays, and stays
+until you change it. Emitters set to exclude themselves from global hue are left alone. 0 is no change.
+* @param stage           A pointer to a tfx_stage_t where the effect is being managed
+* @param effect_id       The id of the effect, returned when you added it to the stage
+* @param degrees         The hue rotation of every particle and ribbon in the effect, including the ones already alive.
+*/
+tfxAPI void tfx_SetEffectHue(tfx_stage stage, tfxEffectID effect_id, float degrees);
 
 /*
 Set the splatter multiplier of an effect. Multiplies on top of the effect's own global graph for it, so the authored animation still plays, and

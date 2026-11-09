@@ -2633,6 +2633,8 @@ typedef enum {
 	tfxRibbonLagAmountPreset,
 	tfxRibbonLagProfilePreset,
 	tfxRibbonClipOffsetPreset,
+	tfxHueOvertimePreset,
+	tfxGlobalHuePreset,
 } tfx_graph_preset;
 
 
@@ -2659,6 +2661,7 @@ typedef enum {
 	tfxGlobal_emitter_width,
 	tfxGlobal_emitter_height,
 	tfxGlobal_emitter_depth,
+	tfxGlobal_hue,
 
 	tfxProperty_emission_pitch,
 	tfxProperty_emission_yaw,
@@ -2728,6 +2731,7 @@ typedef enum {
 	tfxOvertime_noise_amount,
 	tfxOvertime_noise_scroll,
 	tfxOvertime_lag_amount,
+	tfxOvertime_hue,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
@@ -2738,6 +2742,7 @@ typedef enum {
 	tfxOverlength_morph_bias,
 	tfxOverlength_noise_envelope,
 	tfxOverlength_lag_profile,
+	tfxOverlength_hue,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2796,7 +2801,7 @@ typedef enum {
 
 typedef enum {
 	tfxGlobal_start = tfxGlobal_life,
-	tfxGlobal_end = tfxGlobal_emitter_depth,
+	tfxGlobal_end = tfxGlobal_hue,
 	tfxProperty_start = tfxProperty_emission_pitch,
 	tfxProperty_end = tfxProperty_arc_offset,
 	tfxBase_start = tfxBase_life,
@@ -2804,11 +2809,11 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_lag_amount,
+	tfxOvertime_end = tfxOvertime_hue,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_heat_response,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_lag_profile,
+	tfxOverlength_end = tfxOverlength_hue,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -5604,7 +5609,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 9;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely.
+const tfxU32 tfxFILE_VERSION = 10;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely. 10 added the hue graphs, growing each baked ribbon emitter's graph rows from 23 to 25.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6382,6 +6387,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	float noise;
 	float overall_scale;
 	float noise_base_offset;
+	float hue;							//Turns this update, the global hue graph plus hue_offset
+	float hue_offset;					//Turns, set by tfx_SetEffectHue
 	tfxU32 sort_passes;
 	tfxU32 active_emitters;
 	tfxU32 spawning_emitters;			//Emitters with nothing alive that could still spawn. None means an effect with nothing alive is finished
@@ -6420,7 +6427,7 @@ typedef struct tfx_ribbon_s {	//48 bytes
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
-	tfxU32 scale;							//The parent effect's overall_scale as a half float in the low 16 bits, applied to the path segments
+	tfxU32 scale;							//The parent effect's overall_scale as a half float in the low 16 bits, applied to the path segments. The hue overtime plus the effect hue in turns as a half float in the high 16
 } tfx_ribbon_t;
 
 tfxINTERNAL inline tfxU32 tfx__ribbon_start_index(const tfx_ribbon_t &ribbon) {
@@ -6829,7 +6836,7 @@ typedef struct tfx_ribbon_instance_data_s {	//64 bytes, the baked (and recorded)
 	tfx_vec4_t position;						//xyz position, w = normalised age
 	float width;
 	tfxU32 start_index;							//Into shared segment data
-	tfxU32 flags;
+	tfxU32 flags;								//tfx_ribbon_flag_bits in the low 8 bits, the hue overtime plus effect hue in turns as a half float in the high 16
 	tfxU32 captured_index;						//Previous frame ribbon for interpolation (was _padding_pre_quat)
 	tfxU64 quaternion;							//16-bit snorm packed rotation
 	float scale;								//Per frame overall_scale. The emitter index is derived from additional's property index
@@ -7138,6 +7145,7 @@ typedef struct tfx_control_work_entry_s {
 	float global_stretch;
 	float global_intensity;
 	float global_noise;
+	float effect_hue;					//Turns, 0 for an emitter excluded from global hue
 	//Resolved once per emitter per frame by tfx_setup_forces_policy. Lives here rather than in the policy
 	//context so the context stays small enough to keep living in registers across the chain, which is the
 	//cost the force list was always most likely to pay. Only the entries that can contribute are written,
@@ -7830,6 +7838,10 @@ tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0x
 //An effect id is the slot's generation above the slot itself, so an id goes stale when its slot is freed
 tfxINTERNAL inline tfxEffectID tfx__effect_id(tfx_stage pm, tfxU32 slot) { return slot | (pm->effect_generations[slot] << tfxEFFECT_SLOT_BITS); }
 tfxINTERNAL inline tfxU32 tfx__effect_slot(tfxEffectID effect_id) { return effect_id & tfxEFFECT_SLOT_MASK; }
+//The parent effect's hue in turns for an emitter, 0 when the emitter excludes itself from global hue
+tfxINTERNAL inline float tfx__emitter_effect_hue(tfx_stage_t *pm, tfxU32 parent_index, tfxSharedEmitterFlags shared_flags) {
+	return shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments ? 0.f : pm->effects[parent_index].hue;
+}
 //A spawn location id is the effect id in the upper 32 bits, then the slot's generation and the slot itself, so an id goes stale when its slot is reused
 tfxINTERNAL inline tfxU32 tfx__spawn_location_local_id(tfxU32 slot, tfxU32 generation) { return slot | (generation << tfxSPAWN_LOCATION_SLOT_BITS); }
 tfxINTERNAL inline tfxSpawnLocationID tfx__make_spawn_location_id(tfxEffectID effect_id, tfxU32 slot, tfxU32 generation) { return ((tfxU64)effect_id << 32) | tfx__spawn_location_local_id(slot, generation); }
@@ -8685,6 +8697,19 @@ tfxINTERNAL inline tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tf
 	converted_z = tfxWideAndi(converted_z, bits8);
 	converted_z = tfxWideShiftLeft(converted_z, 16);
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+//The effect hue in the low 16 bits of tfx_gpu_particle_dispatch_t::property_index: turns wrapped to +-0.5 as snorm16
+tfxINTERNAL inline tfxU32 tfx__pack_hue16(float hue_turns) {
+	const float wrapped_turns = hue_turns - floorf(hue_turns + 0.5f);
+	return (tfxU32)(int)floorf(wrapped_turns * 65534.f + 0.5f) & 0xFFFF;
+}
+
+//The hue byte of tfx_instance_t::alignment: turns wrapped to +-0.5 as snorm8 in bits 24-31
+tfxINTERNAL inline tfxWideInt tfx__wide_pack_hue8(tfxWideFloat hue_turns) {
+	const tfxWideFloat wrapped_turns = tfxWideSub(hue_turns, tfxWideFloor(tfxWideAdd(hue_turns, tfxWIDEHALF.m)));
+	const tfxWideInt snorm = tfxWideConverti(tfxWideFloor(tfxWideAdd(tfxWideMul(wrapped_turns, tfxWideSetSingle(254.f)), tfxWIDEHALF.m)));
+	return tfxWideShiftLeft(tfxWideAndi(snorm, tfxWideSetSinglei(0xFF)), 24);
 }
 
 
@@ -10155,6 +10180,17 @@ tfxINTERNAL inline bool tfx__graph_can_oscillate(tfx_graph_t *graph) {
 
 tfxINTERNAL inline bool tfx__graph_has_bezier_curves(tfx_graph_t *graph) {
 	return graph->flags & tfxGraphFlags_use_bezier_sampling && graph->easing_type != tfxGraphEasingType_constant;
+}
+
+//Samples 0 everywhere, so whatever it drives can be skipped
+tfxINTERNAL inline bool tfx__graph_is_zero(tfx_graph_t *graph) {
+	for (tfxU32 index = 0; index != graph->nodes.current_size; ++index) {
+		const tfx_attribute_node_t &node = graph->nodes[index];
+		if (node.value != 0.f || node.left.y != 0.f || node.right.y != 0.f) {
+			return false;
+		}
+	}
+	return true;
 }
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);

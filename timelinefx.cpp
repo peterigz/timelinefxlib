@@ -2325,6 +2325,7 @@ void tfx__reset_effect_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index].type = tfxGlobal_emitter_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_height_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_height_index].type = tfxGlobal_emitter_height;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_depth_index], 1.f, tfxGlobalPercentPreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_depth_index].type = tfxGlobal_emitter_depth;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_hue_index], 0.f, tfxGlobalHuePreset, add_node); library->graphs[graph_list_index].graphs[tfxEffect_global_hue_index].type = tfxGlobal_hue;
 }
 
 void tfx__reset_transform_graphs(tfx_effect_descriptor effect, bool add_node) {
@@ -2400,6 +2401,7 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index].type = tfxFactor_velocity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].type = tfxFactor_intensity;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index].type = tfxOvertime_hue;
 }
 
 void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
@@ -2447,6 +2449,8 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index], 0.f, tfxRibbonNoiseScrollPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index].type = tfxOvertime_noise_scroll;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_lag_amount_index], 0.f, tfxRibbonLagAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_lag_amount_index].type = tfxOvertime_lag_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index], 0.f, tfxRibbonLagProfilePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index].type = tfxOverlength_lag_profile;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index].type = tfxOvertime_hue;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index].type = tfxOverlength_hue;
 }
 
 //Reset to a simple constant value
@@ -2513,6 +2517,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_width_index], 1.f, tfxGlobalPercentPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_height_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_height_index], 1.f, tfxGlobalPercentPreset);
 		if (library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_depth_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_emitter_depth_index], 1.f, tfxGlobalPercentPreset);
+		if (library->graphs[graph_list_index].graphs[tfxEffect_global_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEffect_global_hue_index], 0.f, tfxGlobalHuePreset);
 	}
 
 	if (effect->type == tfxEmitterType) {
@@ -2579,6 +2584,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_velocity_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index], 0.f, tfxHueOvertimePreset);
 	}
 
 	if (effect->type == tfxRibbonType) {
@@ -2629,6 +2635,8 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_noise_scroll_index], 0.f, tfxRibbonNoiseScrollPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_lag_amount_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_lag_amount_index], 0.f, tfxRibbonLagAmountPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index], 0.f, tfxRibbonLagProfilePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index], 0.f, tfxHueOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index], 0.f, tfxHueOvertimePreset);
 	}
 }
 
@@ -4940,6 +4948,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("global_emitter_width", tfxEffect_global_emitter_width_index);
 	tfxStore->graph_indexes.Insert("global_emitter_height", tfxEffect_global_emitter_height_index);
 	tfxStore->graph_indexes.Insert("global_emitter_depth", tfxEffect_global_emitter_depth_index);
+	tfxStore->graph_indexes.Insert("global_hue", tfxEffect_global_hue_index);
 
 	//Legacy entries before ribbons were introduced. Can be removed at some point.
 	tfxStore->graph_indexes.Insert("base_life", tfxEmitter_base_life_index);
@@ -5062,6 +5071,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_overtime_direction", tfxEmitter_overtime_direction_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
+	tfxStore->graph_indexes.Insert("emitter_overtime_hue", tfxEmitter_overtime_hue_index);
 
 	tfxStore->graph_indexes.Insert("emitter_factor_life", tfxEmitter_factor_life_index);
 	tfxStore->graph_indexes.Insert("emitter_factor_velocity", tfxEmitter_factor_velocity_index);
@@ -5117,6 +5127,8 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overlength_noise_envelope", tfxRibbon_overlength_noise_envelope_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_lag_amount", tfxRibbon_overtime_lag_amount_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_lag_profile", tfxRibbon_overlength_lag_profile_index);
+	tfxStore->graph_indexes.Insert("ribbon_overtime_hue", tfxRibbon_overtime_hue_index);
+	tfxStore->graph_indexes.Insert("ribbon_overlength_hue", tfxRibbon_overlength_hue_index);
 	//Pre version 4 names. The values they carry are converted by tfx__migrate_ribbon_clip_graphs
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_size_index);
@@ -5306,6 +5318,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("global_emitter_width", tfxAttributeGraph);
 	names_and_types.Insert("global_emitter_height", tfxAttributeGraph);
 	names_and_types.Insert("global_emitter_depth", tfxAttributeGraph);
+	names_and_types.Insert("global_hue", tfxAttributeGraph);
 
 	names_and_types.Insert("property_emission_pitch", tfxAttributeGraph);
 	names_and_types.Insert("property_emission_yaw", tfxAttributeGraph);
@@ -5396,6 +5409,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_noise_envelope", tfxAttributeGraph);
 	names_and_types.Insert("overtime_lag_amount", tfxAttributeGraph);
 	names_and_types.Insert("overlength_lag_profile", tfxAttributeGraph);
+	names_and_types.Insert("overtime_hue", tfxAttributeGraph);
+	names_and_types.Insert("overlength_hue", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_start", tfxAttributeGraph);
@@ -7223,6 +7238,8 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return { 0.f, -4320.f };
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
+	case tfx_graph_preset::tfxHueOvertimePreset:
+	case tfx_graph_preset::tfxGlobalHuePreset:
 		return { 0.f, -1080.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		return { 0.f, -20.f };
@@ -7309,7 +7326,10 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return { 1.f, 4320.f };
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
+	case tfx_graph_preset::tfxHueOvertimePreset:
 		return { 1.f, 1080.f };
+	case tfx_graph_preset::tfxGlobalHuePreset:
+		return { tfxMAX_FRAME, 1080.f };
 	case tfx_graph_preset::tfxSpinOvertimePreset:
 		return { 1.f, 20.f };
 	case tfx_graph_preset::tfxVelocityOvertimePreset:
@@ -8297,6 +8317,27 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	if (ribbon_graph_data && ribbon_graph_data->file_size > 0) {
 		animation_manager->ribbon_graph_data.resize((tfxU32)(ribbon_graph_data->file_size / sizeof(tfx_gpu_graph_data_t)));
 		memcpy(animation_manager->ribbon_graph_data.data, ribbon_graph_data->data.data, ribbon_graph_data->file_size);
+		if (package->header.file_version < 10) {
+			//Before version 10 each ribbon emitter had 23 graph rows, so append the two hue rows to each block. A zeroed row samples 0
+			const tfxU32 rows_before_hue = 23;
+			const tfxU32 rows_with_hue = rows_before_hue + 2;
+			tfx_vector_t<tfx_gpu_graph_data_t> &rows = animation_manager->ribbon_graph_data;
+			TFX_ASSERT(rows.current_size % rows_before_hue == 0);
+			const tfxU32 block_count = rows.current_size / rows_before_hue;
+			tfx_vector_t<tfx_gpu_graph_data_t> old_rows;
+			old_rows.resize(rows.current_size);
+			memcpy(old_rows.data, rows.data, rows.size_in_bytes());
+			rows.resize(block_count * rows_with_hue);
+			memset(rows.data, 0, rows.size_in_bytes());
+			for (tfxU32 block = 0; block != block_count; ++block) {
+				memcpy(&rows[block * rows_with_hue], &old_rows[block * rows_before_hue], rows_before_hue * sizeof(tfx_gpu_graph_data_t));
+			}
+			old_rows.free();
+			for (tfx_animation_ribbon_properties_t &properties : animation_manager->ribbon_properties) {
+				TFX_ASSERT(properties.graph_lookup_offset % rows_before_hue == 0);
+				properties.graph_lookup_offset = properties.graph_lookup_offset / rows_before_hue * rows_with_hue;
+			}
+		}
 	}
 
 	tmpStack(tfx_sprite_data_metrics_t, metrics_stack);
@@ -11184,6 +11225,8 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	effect_state->timeout = 1000.f;
 	effect_state->timeout_counter = 0;
 	effect_state->spawn_multipliers = tfx__unit_spawn_controls();
+	effect_state->hue = 0.f;
+	effect_state->hue_offset = 0.f;
 	float range = effect->noise_base_offset_range;
 	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	effect_state->sort_passes = effect->sort_passes;
@@ -11670,6 +11713,7 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 	tfx_vec3_t local_rotations = effect.local_rotations;
 	tfx_vec3_t emitter_size = effect.emitter_size;
 	tfx_parent_spawn_controls_t spawn_multipliers = effect.spawn_multipliers;
+	float hue_offset = effect.hue_offset;
 	float overall_scale = effect.overall_scale;
 	tfx_quaternion_t rotation = effect.rotation;
 	float noise_base_offset = effect.noise_base_offset;
@@ -11700,6 +11744,7 @@ void tfx__restart_stage_effect(tfx_stage pm, tfxU32 effect_slot) {
 	effect.rotation = rotation;
 	effect.emitter_size = emitter_size;
 	effect.spawn_multipliers = spawn_multipliers;
+	effect.hue_offset = hue_offset;
 	effect.overall_scale = overall_scale;
 	effect.noise_base_offset = noise_base_offset;
 	effect.user_data = user_data;
@@ -12112,6 +12157,7 @@ void tfx__simulate_emitter_control(tfx_stage pm, tfxU32 index, bool is_recording
 		work_entry.global_stretch = parent_effect.stretch;
 		work_entry.global_noise = parent_effect.noise;
 		work_entry.global_intensity = parent_effect.spawn_controls.intensity;
+		work_entry.effect_hue = tfx__emitter_effect_hue(pm, pm->emitters[index].parent_index, pm->emitters[index].state_properties.shared_flags);
 		//Take in to account start_diff when updating the particles_to_udpate and running_sprite_index
 		particles_to_update -= pm->mt_batch_size - work_entry.start_diff;
 		running_sprite_index += pm->mt_batch_size - work_entry.start_diff;
@@ -14073,6 +14119,13 @@ typedef struct tfx_instance_pass_s {
 	tfxU32 wrap_single_sprite;
 	bool is_ordered;
 	bool update_bounding_boxes;
+
+	//----Hue. Last so the fields the passes without hue use keep their offsets
+	tfx_wide_graph_sampler_t hue_sampler;
+	tfxWideFloat effect_hue;
+	tfxWideInt effect_hue_bits;
+	bool has_hue_graph;
+	bool has_effect_hue;
 } tfx_instance_pass_t;
 
 tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, tfx_instance_pass_t *pass) {
@@ -14162,6 +14215,15 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 	pass->curved_alpha_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_curved_alpha_index);
 	pass->alpha_sharpness_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_alpha_sharpness_index);
 	pass->gradient_mapper_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_gradient_mapper_index);
+
+	//----Hue
+	pass->has_hue_graph = !tfx__graph_is_zero(&work_entry->graphs->graphs[tfxEmitter_overtime_hue_index]);
+	pass->has_effect_hue = work_entry->effect_hue != 0.f;
+	pass->effect_hue = tfxWideSetSingle(work_entry->effect_hue);
+	pass->effect_hue_bits = tfx__wide_pack_hue8(pass->effect_hue);
+	if (pass->has_hue_graph) {
+		pass->hue_sampler = tfx__make_wide_graph_sampler(work_entry->graphs, tfxEmitter_overtime_hue_index);
+	}
 
 	//----Image frame
 	TFX_ASSERT(emitter.state_properties.end_frame < tfxMAX_ANIMATION_FRAMES);	//The emitter's shape has more animation frames than an instance can index
@@ -14448,6 +14510,16 @@ tfxINTERNAL inline void tfx__block_particle_color(const tfx_instance_pass_t *pas
 	block->packed_curved_alpha_life.m = tfx__wide_pack8bitunorm_xyz(lookup_curved_alpha, lookup_alpha_sharpness, color_life);
 }
 
+//The hue into the alignment's spare byte, which the transform block left at 0. Only the emitters with a hue graph or an effect hue run it
+tfxINTERNAL inline void tfx__block_particle_hue(const tfx_instance_pass_t *pass, tfxWideFloat life, tfx_instance_block_t *block) {
+	if (pass->has_hue_graph) {
+		const tfxWideFloat hue = tfxWideAdd(tfxWideMul(tfx__sample_wide_graph(&pass->hue_sampler, life), tfxWideSetSingle(1.f / 360.f)), pass->effect_hue);
+		block->packed_alignment.m = tfxWideOri(block->packed_alignment.m, tfx__wide_pack_hue8(hue));
+	} else {
+		block->packed_alignment.m = tfxWideOri(block->packed_alignment.m, pass->effect_hue_bits);
+	}
+}
+
 //Advances the animation frame in the bank and builds the packed image index. Also snapshots the capture
 //flags, which the write helpers turn into the sprite's capture bit and captured_index.
 tfxINTERNAL inline void tfx__block_particle_image_frame(const tfx_instance_pass_t *pass, tfxU32 index, tfx_instance_block_t *block) {
@@ -14572,9 +14644,9 @@ tfxINTERNAL inline void tfx__write_instance_block_ordered(const tfx_instance_pas
 //flags_single_loop_count before the write helpers clear tfxParticleFlags_capture_after_transform, and the
 //image frame block reads image_frame before storing the advanced frame back. Everything else each block
 //touches is local to that block, so no cross-block hazard exists.
-void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+//Instantiated with and without hue, so the emitters without any keep the loop they had before hue existed
+template<bool has_hue>
+tfxINTERNAL void tfx__particle_instance_blocks(tfx_control_work_entry_t *work_entry) {
 	tfx_instance_pass_t pass;
 	tfx__setup_instance_pass(work_entry, &pass);
 
@@ -14593,6 +14665,9 @@ void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
 		tfx__block_particle_spin(&pass, index, life, &block);
 		tfx__block_particle_size(&pass, index, life, &block);
 		tfx__block_particle_color(&pass, index, life, &block);
+		if (has_hue) {
+			tfx__block_particle_hue(&pass, life, &block);
+		}
 		tfx__block_particle_image_frame(&pass, index, &block);
 
 		const tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -14606,6 +14681,17 @@ void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
 		start_diff = 0;
 	}
 }
+
+void tfx__control_particle_instances(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	if (work_entry->effect_hue != 0.f || !tfx__graph_is_zero(&work_entry->graphs->graphs[tfxEmitter_overtime_hue_index])) {
+		tfx__particle_instance_blocks<true>(work_entry);
+	} else {
+		tfx__particle_instance_blocks<false>(work_entry);
+	}
+}
+
 void tfx__control_particle_transform_warmup(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
@@ -14726,6 +14812,14 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 	bool gradient_mapper_is_bezier_graph = tfx__graph_has_bezier_curves(gradient_mapper_graph);
 	bool gradient_mapper_has_oscillator = tfx__graph_can_oscillate(gradient_mapper_graph);
 
+	tfx_graph_t *hue_graph = &graph_list.graphs[tfxRibbon_overtime_hue_index];
+	tfx_easing_function hue_easing = tfx__get_easing_function(hue_graph->easing_type);
+	const bool has_hue = !tfx__graph_is_zero(hue_graph);
+	const bool hue_is_bezier_graph = tfx__graph_has_bezier_curves(hue_graph);
+	const bool hue_has_oscillator = tfx__graph_can_oscillate(hue_graph);
+	const float effect_hue = tfx__emitter_effect_hue(&pm, ribbon_emitter.parent_index, ribbon_emitter.state_properties.shared_flags);
+	const tfxU32 effect_hue_bits = tfx__pack_half_pair(0.f, effect_hue) & 0xFFFF0000;
+
 	for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
 		tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[ribbon_index];
 		float &age = bucket->ribbons.age[ribbon_index];
@@ -14772,6 +14866,20 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 
 		ribbon.intensity_gradient_map = tfx__pack16bit_sscaled(lookup_intensity, lookup_gradient_mapper, 128.f);
 		ribbon.curved_alpha = tfx__pack16bit_sscaled(lookup_curved_alpha, lookup_alpha_sharpness, 128.f);
+
+		//Turns, written even at 0 so a graph edited back to 0 clears it
+		tfxU32 hue_bits = effect_hue_bits;
+		if (has_hue) {
+			const float hue_time = hue_easing(age_lerp);
+			float lookup_hue = hue_is_bezier_graph ?
+				tfx__bezier_sampler(hue_time, hue_graph->nodes[0].value, hue_graph->nodes[0].right.y, hue_graph->nodes[1].left.y, hue_graph->nodes[1].value) :
+				tfx__linear_sampler(hue_graph->nodes[0].value, hue_graph->nodes[1].value, hue_time);
+			if (hue_has_oscillator) {
+				lookup_hue *= (tfxOSCILLATOR_SIN(hue_graph->oscillator.offset_x + hue_time, hue_graph->oscillator.frequency, hue_graph->oscillator.amplitude) + hue_graph->oscillator.offset_y);
+			}
+			hue_bits = tfx__pack_half_pair(0.f, effect_hue + lookup_hue * (1.f / 360.f)) & 0xFFFF0000;
+		}
+		ribbon.scale = (ribbon.scale & 0xFFFF) | hue_bits;
 
 		image_frame += ribbon_emitter.state_properties.image_frame_rate * (float)pm.update_time;
 		if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
@@ -14854,7 +14962,8 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 			work_entry->ribbon_count++;
 			tfx_ribbon_t &ribbon = bucket->ribbons.ribbon_instances[ribbon_index];
 			ribbon.age_width = (ribbon.age_width & 0xFFFF0000) | tfx__pack_ribbon_age(age / max_age);
-			ribbon.scale = packed_scale;
+			//The high half is the hue, written by tfx__control_ribbon_attributes
+			ribbon.scale = (ribbon.scale & 0xFFFF0000) | packed_scale;
 			ribbon_emitter.ribbon_indexes[next_buffer].push_back(ribbon_index);
 		}
 		bucket->highest_ribbon_index = tfx__Max(bucket->highest_ribbon_index, ribbon_index);
@@ -21896,6 +22005,7 @@ void tfx__update_effect_state(tfx_stage pm, tfxU32 index) {
 	spawn_controls.intensity *= spawn_multipliers.intensity;
 	spawn_controls.splatter *= spawn_multipliers.splatter;
 	spawn_controls.weight *= spawn_multipliers.weight;
+	pm->effects[index].hue = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_hue_index], age, oscillator_time) * (1.f / 360.f) + pm->effects[index].hue_offset;
 	noise = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_noise_index], age, oscillator_time);
 	if (!(state_flags & tfxEffectStateFlags_override_width_multiplier)) {
 		emitter_size.x = tfx__sample_multi_node_graph(&graph_list.graphs[tfxEffect_global_emitter_width_index], age, oscillator_time);
@@ -23002,7 +23112,11 @@ bool tfx_GetGPUParticleFrame(tfx_stage pm, tfx_gpu_particle_frame_t *frame) {
 		dispatch.slot_count = tfx__Min(group.bumped_total + group.current_size - group.window_bumped_total, group.capacity);
 		dispatch.flags = tfx__gpu_dispatch_flags(emitter, properties);
 		dispatch.graph_offset = emitter.source_emitter->gpu_lookup_offset;
-		dispatch.property_index = (emitter.state_properties.gpu_property_index + tfx__stage_property_base(pm, emitter.library)) << 16;
+		const float effect_hue = tfx__emitter_effect_hue(pm, emitter.parent_index, emitter.state_properties.shared_flags);
+		dispatch.property_index = ((emitter.state_properties.gpu_property_index + tfx__stage_property_base(pm, emitter.library)) << 16) | tfx__pack_hue16(effect_hue);
+		if (effect_hue != 0.f || !tfx__graph_is_zero(&emitter.library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_overtime_hue_index])) {
+			dispatch.flags |= tfxGPUParticleDispatchFlags_hue;
+		}
 		dispatch.instance_start = group.instance_start;
 		if (can_capture && group.flags & tfxGPUGroupFlags_has_written) {
 			dispatch.flags |= tfxGPUParticleDispatchFlags_capture;
@@ -25765,6 +25879,13 @@ void tfx_SetEffectSpinMultiplier(tfx_stage pm, tfxEffectID effect_index, float s
 void tfx_SetEffectIntensityMultiplier(tfx_stage pm, tfxEffectID effect_index, float intensity) {
 	TFX_VALIDATE_EFFECT(pm, effect_index, );
 	pm->effects[tfx__effect_slot(effect_index)].spawn_multipliers.intensity = intensity;
+}
+
+void tfx_SetEffectHue(tfx_stage pm, tfxEffectID effect_index, float degrees) {
+	TFX_VALIDATE_EFFECT(pm, effect_index, );
+	//Wrapped so the ribbons' half float hue keeps its precision however far a game winds it
+	const float turns = degrees * (1.f / 360.f);
+	pm->effects[tfx__effect_slot(effect_index)].hue_offset = turns - floorf(turns + 0.5f);
 }
 
 void tfx_SetEffectSplatterMultiplier(tfx_stage pm, tfxEffectID effect_index, float splatter) {

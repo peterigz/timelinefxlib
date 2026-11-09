@@ -181,6 +181,12 @@ float3 tfx_unpack_snorm8x3(uint packed) {
 	return max(float3(value) / 127.0, -1.0);
 }
 
+//GLSL's unpackSnorm4x8
+float4 tfx_unpack_snorm8x4(uint packed) {
+	const int4 value = int4(int(packed << 24) >> 24, int(packed << 16) >> 24, int(packed << 8) >> 24, int(packed) >> 24);
+	return max(float4(value) / 127.0, -1.0);
+}
+
 //GLSL's unpackUnorm4x8
 float4 tfx_unpack_unorm8x4(uint packed) {
 	return float4(float(packed & 0xFFu), float((packed >> 8) & 0xFFu), float((packed >> 16) & 0xFFu), float(packed >> 24)) / 255.0;
@@ -446,7 +452,7 @@ struct tfx_ribbon {
 	uint texture_indexes;				//[color ramp row << 24 | color ramp layer << 16 | image frame]
 	uint intensity_gradient_map;		//Two 16 bit sscaled values
 	uint curved_alpha;					//Curved alpha and sharpness, two 16 bit sscaled values
-	uint scale;							//The parent effect's overall scale as a half float in the low 16 bits
+	uint scale;							//The parent effect's overall scale as a half float in the low 16 bits, the ribbon's hue overtime in turns as a half float in the high 16
 };
 
 //Mirrors tfx_ribbon_vertex_t
@@ -502,7 +508,7 @@ struct tfx_ribbon_instance_data {
 	float4 position;					//w is the normalised age
 	float width;
 	uint start_index;
-	uint flags;
+	uint flags;							//tfx_ribbon_flag_bits in the low 8 bits, the hue in turns as a half float in the high 16
 	uint captured_index;				//The same ribbon in the previous frame, tfx_invalid_index in its first
 	uint2 quaternion;
 	float scale;
@@ -1359,7 +1365,7 @@ struct tfx_billboard_input {
 	[[vk::location(0)]] float4 position : POSITION;							//Stretch in w
 	[[vk::location(1)]] float4 quaternion : QUATERNION;						//r16g16b16a16_snorm
 	[[vk::location(2)]] int2 size : SIZE;									//r16g16_sint, because D3D, Metal and WebGPU have no sscaled formats
-	[[vk::location(3)]] float3 alignment : ALIGNMENT;						//r8g8b8a8_snorm
+	[[vk::location(3)]] float4 alignment_hue : ALIGNMENT;					//r8g8b8a8_snorm, the alignment in xyz and the hue in w, where 1 is 180 degrees
 	[[vk::location(4)]] int2 intensity_gradient_map : INTENSITY;			//r16g16_sint
 	[[vk::location(5)]] float3 curved_alpha_life : CURVED_ALPHA;			//r8g8b8a8_unorm
 	[[vk::location(6)]] uint indexes : INDEXES;								//[gpu property index << 16 | capture flag << 15 | image frame in the low 13 bits]
@@ -1372,6 +1378,7 @@ struct tfx_billboard_output {
 	[[vk::location(0)]] float2 uv : TEXCOORD0;
 	[[vk::location(1)]] nointerpolation uint2 indexes : TEXCOORD1;						//.x = [bindless image << 16 | image layer], .y = [alpha threshold unorm8 << 16 | color ramp layer << 8 | color ramp row]
 	[[vk::location(2)]] nointerpolation float4 intensity_curved_alpha_map : TEXCOORD2;	//Intensity, curved alpha, sharpness, gradient map
+	[[vk::location(3)]] nointerpolation float2 hue_coefficients : TEXCOORD3;			//tfx_hue_coefficients
 };
 
 //tfx_billboard_output with the quad's world space axes, the normal turned towards the camera
@@ -1385,6 +1392,7 @@ struct tfx_lit_billboard_output {
 	[[vk::location(5)]] nointerpolation float3 bitangent : TEXCOORD5;
 	[[vk::location(6)]] nointerpolation float3 normal : TEXCOORD6;
 	[[vk::location(7)]] nointerpolation uint lighting : TEXCOORD7;						//The emitter's [wrap << 16 | roundness << 8]
+	[[vk::location(8)]] nointerpolation float2 hue_coefficients : TEXCOORD8;
 };
 
 //What the lit vertex shaders need of a billboard draw besides its outputs
@@ -1397,12 +1405,13 @@ struct tfx_billboard_placement {
 };
 
 //Everything but the position, which the live and baked billboards share
-tfx_billboard_output tfx_billboard_varyings(float4 clip_position, uint corner, tfx_image_data image, tfx_emitter_properties properties, float2 intensity_gradient_map, float3 curved_alpha_life) {
+tfx_billboard_output tfx_billboard_varyings(float4 clip_position, uint corner, tfx_image_data image, tfx_emitter_properties properties, float2 intensity_gradient_map, float3 curved_alpha_life, float hue) {
 	tfx_billboard_output output;
 	output.position = clip_position;
 	output.uv = float2((corner & 1u) != 0 ? image.uv.z : image.uv.x, (corner >> 1) != 0 ? image.uv.w : image.uv.y);
 	output.indexes = uint2(image.texture_array_index, (properties.color_ramp_indexes & 0xFFFFu) | (uint(saturate(properties.alpha_threshold) * 255.0 + 0.5) << 16));
 	output.intensity_curved_alpha_map = float4(intensity_gradient_map.x * tfx_color_unpack_scale, curved_alpha_life.x, curved_alpha_life.y, intensity_gradient_map.y * tfx_color_unpack_scale);
+	output.hue_coefficients = tfx_hue_coefficients(hue * 3.14159265, output.intensity_curved_alpha_map.x);
 	return output;
 }
 
@@ -1429,11 +1438,11 @@ tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_i
 	float3 motion = input.position.xyz - previous.position.xyz;
 	motion.z += 0.000001;
 
-	const bool has_alignment = dot(input.alignment, input.alignment) > 0;
+	const bool has_alignment = dot(input.alignment_hue.xyz, input.alignment_hue.xyz) > 0;
 	const float travel_distance = length(motion);
 	const float stretch_factor = input.position.w * interpolate_is_active;
 	motion = normalize(motion);
-	const float3 final_alignment = has_alignment ? input.alignment : motion;
+	const float3 final_alignment = has_alignment ? input.alignment_hue.xyz : motion;
 
 	const uint align_flags = properties.flags & 0x3u;
 	const bool billboarding = (align_flags & 0x1u) != 0;
@@ -1468,7 +1477,7 @@ tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_i
 
 	//The sprite holds the animation frame only, the emitter's properties hold where its image starts
 	const tfx_image_data image = tfx_load_image_data(push.image_data_index, properties.start_frame_index + (input.indexes & 0x00001FFFu));
-	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life, input.alignment_hue.w);
 }
 
 tfx_billboard_output tfx_live_billboard(tfx_billboard_push push, tfx_billboard_input input, uint corner) {
@@ -1483,7 +1492,7 @@ tfx_billboard_input tfx_unpack_billboard_input(tfx_instance instance) {
 	input.position = instance.position;
 	input.quaternion = max(tfx_unpack16bit_quaternion(instance.quaternion), -1.0);
 	input.size = tfx_unpack_sint16x2(instance.size);
-	input.alignment = tfx_unpack_snorm8x3(instance.alignment);
+	input.alignment_hue = tfx_unpack_snorm8x4(instance.alignment);
 	input.intensity_gradient_map = tfx_unpack_sint16x2(instance.intensity_gradient_map);
 	input.curved_alpha_life = tfx_unpack_unorm8x4(instance.curved_alpha_life).xyz;
 	input.indexes = instance.indexes;
@@ -1501,13 +1510,14 @@ tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_bill
 	const uint align_flags = properties.flags & 0x3u;
 	const bool billboarding = (align_flags & 0x1u) != 0;
 	const float3x3 view_rotation = tfx_view_rotation(camera.view);
-	const float3 camera_relative_alignment = mul(view_rotation, input.alignment);
-	const float3x3 rotation = tfx_billboard_rotation(normalize(input.quaternion), input.alignment, camera_relative_alignment, align_flags);
+	const float3 alignment = input.alignment_hue.xyz;
+	const float3 camera_relative_alignment = mul(view_rotation, alignment);
+	const float3x3 rotation = tfx_billboard_rotation(normalize(input.quaternion), alignment, camera_relative_alignment, align_flags);
 
 	float3 position = mul(rotation, tfx_billboard_corner(corner, float2(input.size) * tfx_size_unpack_scale, properties.image_handle));
 
 	//position.w is the baked stretch, half of it forwards along the alignment and half backwards
-	const float3 stretch_direction = billboarding ? input.alignment : normalize(camera_relative_alignment);
+	const float3 stretch_direction = billboarding ? alignment : normalize(camera_relative_alignment);
 	position += input.position.w > 0.00001 ? stretch_direction * sign(dot(position, stretch_direction)) * 0.5 * input.position.w : float3(0.0, 0.0, 0.0);
 
 	const float4 view_position = mul(camera.view, float4(input.position.xyz, 1.0));
@@ -1522,7 +1532,7 @@ tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_bill
 	placement.lighting = properties.lighting;
 
 	const tfx_image_data image = tfx_load_image_data(push.image_data_index, input.indexes & 0x00001FFFu);
-	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life);
+	return tfx_billboard_varyings(clip_position, corner, image, properties, float2(input.intensity_gradient_map), input.curved_alpha_life, input.alignment_hue.w);
 }
 
 tfx_billboard_output tfx_baked_billboard(tfx_baked_billboard_push push, tfx_billboard_input input, uint corner) {
@@ -1536,6 +1546,7 @@ tfx_lit_billboard_output tfx_lit_billboard(tfx_billboard_output output, uint cor
 	lit.uv = output.uv;
 	lit.indexes = output.indexes;
 	lit.intensity_curved_alpha_map = output.intensity_curved_alpha_map;
+	lit.hue_coefficients = output.hue_coefficients;
 	lit.quad = float2(float(corner & 1u) * 2.0 - 1.0, 1.0 - float(corner >> 1) * 2.0);
 	lit.lighting = placement.lighting;
 
@@ -1580,6 +1591,8 @@ static const uint tfx_ribbon_graph_fixed_angle = 19;
 static const uint tfx_ribbon_graph_morph_bias = 20;
 static const uint tfx_ribbon_graph_noise_envelope = 21;
 static const uint tfx_ribbon_graph_lag_profile = 22;
+//23 is the ribbon's hue overtime, which the CPU samples into tfx_ribbon::scale
+static const uint tfx_ribbon_graph_hue_overlength = 24;
 
 //tfx_ribbon_flag_bits
 static const uint tfx_ribbon_active = 1 << 0;
@@ -1727,6 +1740,7 @@ struct tfx_ribbon_output {
 #endif
 	//0 to 1 across the ribbon's width, so its screen space derivative gives the ribbon's width in pixels
 	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
+	[[vk::location(5)]] float2 hue_coefficients : TEXCOORD5;							//tfx_hue_coefficients
 };
 
 struct tfx_lit_ribbon_output {
@@ -1740,6 +1754,7 @@ struct tfx_lit_ribbon_output {
 	[[vk::location(4)]] float ribbon_across : TEXCOORD4;
 	[[vk::location(5)]] float3 normal : TEXCOORD5;
 	[[vk::location(6)]] nointerpolation uint lighting : TEXCOORD6;						//The emitter's [wrap << 16 | roundness << 8 | normal mode]
+	[[vk::location(7)]] float2 hue_coefficients : TEXCOORD7;
 };
 
 tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_input input) {
@@ -1763,6 +1778,8 @@ tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_inp
 	const float sampled_intensity = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_intensity_overlength, ribbon_position);
 	const float sampled_curved_alpha = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_curved_alpha_overlength, ribbon_position);
 	const float sampled_alpha_sharpness = tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_alpha_sharpness_overlength, ribbon_position);
+	//The ribbon's hue overtime in turns is in the high half of scale, and the hue over length graph is in degrees
+	const float hue_turns = tfx_half_to_float(ribbon.scale >> 16) + tfx_ribbon_emitter_graph(push.graphs_index, lookup_offset, tfx_ribbon_graph_hue_overlength, ribbon_position) * (1.0 / 360.0);
 
 	//The images are sprite sheets in a texture array, so a texture repeating along the ribbon ping pongs: every other wrap runs backwards,
 	//which leaves no flipped one segment seam where it wraps. The uv rect is the whole of the shape's own image, so a repeat sampler could replace this
@@ -1787,6 +1804,7 @@ tfx_ribbon_output tfx_ribbon_draw(tfx_ribbon_bucket_globals push, tfx_ribbon_inp
 	output.texture_indexes = int3(int((ribbon.texture_indexes & 0xFF000000u) >> 24), int((ribbon.texture_indexes & 0x00FF0000u) >> 16), int(saturate(asfloat(emitter.z)) * 255.0 + 0.5));
 	output.intensity_curved_alpha_map = float4(sampled_intensity * ribbon_intensity_gradient_map.x, sampled_curved_alpha * ribbon_curved_alpha.x,
 		sampled_alpha_sharpness * ribbon_curved_alpha.y, sampled_gradient_map * ribbon_intensity_gradient_map.y);
+	output.hue_coefficients = tfx_hue_coefficients(hue_turns * 6.28318531, output.intensity_curved_alpha_map.x);
 	return output;
 }
 
@@ -1799,17 +1817,34 @@ struct tfx_particle_shade {
 	float alpha;
 };
 
+//A grey-axis hue rotation's first two circulant coefficients times intensity; the third is intensity minus both
+float2 tfx_hue_coefficients(float hue_radians, float intensity) {
+	float sine;
+	float cosine;
+	sincos(hue_radians, sine, cosine);
+	const float third = (1.0 - cosine) / 3.0;
+	const float root_third_sine = sine * 0.57735027;
+	return float2(cosine + third, third - root_third_sine) * intensity;
+}
+
+//Rotates the ramp color's hue and applies intensity, with tfx_hue_coefficients. Hue 0 is ramp_rgb * intensity exactly
+float3 tfx_apply_hue(float3 ramp_rgb, float2 hue_coefficients, float intensity) {
+	const float third_coefficient = intensity - hue_coefficients.x - hue_coefficients.y;
+	return max(hue_coefficients.x * ramp_rgb + hue_coefficients.y * ramp_rgb.gbr + third_coefficient * ramp_rgb.brg, 0.0);
+}
+
 //A billboard or ribbon pixel: the image's red picks the color ramp column, and curved alpha fades the image's alpha
-tfx_particle_shade tfx_shade_particle_parts(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+tfx_particle_shade tfx_shade_particle_parts(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, float2 hue_coefficients, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
 	const float4 texel = tfx_sample_particle_image(image_index, sampler_index, tex_coord);
 	const int ramp_x = int(saturate(texel.r * intensity_curved_alpha_map.w) * 255);
-	float4 ramp_texel = tfx_load_color_ramp(color_ramp_texture_index, int3(ramp_x, texture_indexes.x, texture_indexes.y)) * intensity_curved_alpha_map.x;
-	ramp_texel.a = min(1.0, ramp_texel.a);
+	const float4 ramp_texel = tfx_load_color_ramp(color_ramp_texture_index, int3(ramp_x, texture_indexes.x, texture_indexes.y));
+	const float3 ramp_rgb = tfx_apply_hue(ramp_texel.rgb, hue_coefficients, intensity_curved_alpha_map.x);
+	const float ramp_alpha = min(1.0, ramp_texel.a * intensity_curved_alpha_map.x);
 	const float curved_alpha = 1.0 - smoothstep(texel.a * intensity_curved_alpha_map.z, texel.a, 1.0 - intensity_curved_alpha_map.y);
 	tfx_particle_shade shade;
-	shade.color = texel.rgb * ramp_texel.rgb;
+	shade.color = texel.rgb * ramp_rgb;
 	shade.coverage = texel.a * curved_alpha;
-	shade.alpha = shade.coverage * ramp_texel.a;
+	shade.alpha = shade.coverage * ramp_alpha;
 	return shade;
 }
 
@@ -1818,8 +1853,8 @@ float4 tfx_premultiply(tfx_particle_shade shade) {
 	return float4(shade.color * shade.coverage, shade.alpha);
 }
 
-float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
-	return tfx_premultiply(tfx_shade_particle_parts(tex_coord, texture_indexes, intensity_curved_alpha_map, image_index, color_ramp_texture_index, sampler_index));
+float4 tfx_shade_particle(float3 tex_coord, int3 texture_indexes, float4 intensity_curved_alpha_map, float2 hue_coefficients, uint image_index, uint color_ramp_texture_index, uint sampler_index) {
+	return tfx_premultiply(tfx_shade_particle_parts(tex_coord, texture_indexes, intensity_curved_alpha_map, hue_coefficients, image_index, color_ramp_texture_index, sampler_index));
 }
 
 //A billboard pixel from its varyings, for tfx_billboard_fragment, tfx_billboard_cutout_fragment and a host's own billboard fragments
@@ -1829,10 +1864,10 @@ tfx_particle_shade tfx_shade_billboard_parts(tfx_billboard_output input) {
 	const int3 texture_indexes = int3(int(input.indexes.y & 0xFFu), int((input.indexes.y >> 8) & 0xFFu), 0);
 	//The fixed bindings have no indexes to read, and the draw constants they'd come with are the vertex shader's
 #if defined(TFX_FIXED_BINDINGS)
-	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.hue_coefficients, 0, 0, 0);
 #else
 	const tfx_billboard_push push = tfx_billboard_entry_push();
-	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
+	return tfx_shade_particle_parts(tex_coord, texture_indexes, input.intensity_curved_alpha_map, input.hue_coefficients, input.indexes.x >> 16, push.color_ramp_texture_index, push.sampler_index);
 #endif
 }
 
@@ -1844,10 +1879,10 @@ static const float tfx_min_ribbon_pixels = 1.5;
 [ForceInline]	//For WGSL, see tfx_shade_billboard_parts
 tfx_particle_shade tfx_shade_ribbon_parts(tfx_ribbon_output input) {
 #if defined(TFX_FIXED_BINDINGS)
-	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, 0, 0, 0);
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.hue_coefficients, 0, 0, 0);
 #else
 	const tfx_ribbon_bucket_globals push = tfx_ribbon_push_constants;
-	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.image_index, push.color_ramp_texture_index, push.sampler_index);
+	return tfx_shade_particle_parts(input.tex_coord, input.texture_indexes, input.intensity_curved_alpha_map, input.hue_coefficients, input.image_index, push.color_ramp_texture_index, push.sampler_index);
 #endif
 }
 
@@ -1887,6 +1922,7 @@ tfx_billboard_output tfx_unlit_billboard(tfx_lit_billboard_output input) {
 	output.uv = input.uv;
 	output.indexes = input.indexes;
 	output.intensity_curved_alpha_map = input.intensity_curved_alpha_map;
+	output.hue_coefficients = input.hue_coefficients;
 	return output;
 }
 
@@ -1909,6 +1945,7 @@ tfx_ribbon_output tfx_unlit_ribbon(tfx_lit_ribbon_output input) {
 	output.image_index = input.image_index;
 #endif
 	output.ribbon_across = input.ribbon_across;
+	output.hue_coefficients = input.hue_coefficients;
 	return output;
 }
 
@@ -2032,7 +2069,7 @@ struct tfx_gpu_particle_dispatch {
 	uint slot_count;
 	uint flags;
 	uint graph_offset;
-	uint property_index;
+	uint property_index;				//gpu property index << 16 | the effect hue as snorm16 in the low 16 bits, see tfx_dispatch_effect_hue
 	uint instance_start;
 	uint previous_instance_start;
 	uint bumped_since_write;
@@ -3297,6 +3334,7 @@ static const uint tfx_graph_stretch = 11;
 static const uint tfx_graph_velocity_turbulance = 12;
 static const uint tfx_graph_noise_resolution = 15;
 static const uint tfx_graph_motion_randomness = 16;
+static const uint tfx_graph_hue = 21;
 
 //tfx_gpu_particle_dispatch_flag_bits
 static const uint tfx_dispatch_capture = 1 << 0;
@@ -3321,6 +3359,7 @@ static const uint tfx_dispatch_noise_algorithm_shift = 19;
 static const uint tfx_dispatch_noise_anisotropic = 1 << 22;
 static const uint tfx_dispatch_location_forces = 1 << 23;
 static const uint tfx_dispatch_location_forces_rotation = 1 << 24;
+static const uint tfx_dispatch_hue = 1 << 25;
 
 //The noise algorithm bits, tfx_noise_type - tfxWhiteNoise
 static const uint tfx_noise_white = 0;
@@ -3364,6 +3403,17 @@ tfx_gpu_graph_data tfx_graph(tfx_gpu_particle_push push, uint graph_offset, uint
 //The pack helpers truncate like _mm_cvttps_epi32, and mask the two's complement bits as the CPU does
 uint tfx_pack16bit_2sscaled(float x, float y, float max_value) {
 	return (uint(int(x * max_value)) & 0xFFFFu) | ((uint(int(y * max_value)) & 0xFFFFu) << 16);
+}
+
+//The hue byte of tfx_instance::alignment: turns wrapped to +-0.5 as snorm8 in bits 24-31, as tfx__wide_pack_hue8
+uint tfx_pack_hue8(float hue_turns) {
+	const float wrapped_turns = hue_turns - floor(hue_turns + 0.5);
+	return (uint(int(floor(wrapped_turns * 254.0 + 0.5))) & 0xFFu) << 24;
+}
+
+//The effect hue in turns from the low 16 bits of the dispatch's property_index, see tfx__pack_hue16
+float tfx_dispatch_effect_hue(uint property_index) {
+	return float(int(property_index << 16) >> 16) * (1.0 / 65534.0);
 }
 
 uint tfx_pack8bit_xyz(float3 v) {
@@ -3804,7 +3854,7 @@ struct tfx_no_particle_update : ITfxParticleUpdate {
 //What a spawn hook sees of the particle's ring, tick and spawn location
 struct tfx_spawn_context {
 	tfx_gpu_particle_push push;
-	tfx_gpu_particle_dispatch dispatch;	//key and property_index tell a host's User emitters apart. property_index is global on a stage with global_library_indexes
+	tfx_gpu_particle_dispatch dispatch;	//key and property_index >> 16 tell a host's User emitters apart, the low 16 bits are the effect hue. property_index is global on a stage with global_library_indexes
 	tfx_gpu_particle_tick tick;
 	uint location_id;					//slot | generation, the low 32 bits of the tfxSpawnLocationID
 	uint user_data;						//tfx_SetSpawnLocationUserData
@@ -3837,6 +3887,7 @@ struct tfx_particle_draw {
 	float gradient_map;					//Where the color ramp is sampled
 	float curved_alpha;
 	float alpha_sharpness;
+	float hue;							//Turns, the emitter's hue graph plus the effect's, wrapped when packed. A write hook can set it
 	uint image_frame;					//Must stay below the emitter's frame count
 };
 
@@ -3992,7 +4043,7 @@ void tfx_write_empty_instance(tfx_gpu_particle_push push, tfx_gpu_particle_dispa
 	instance.alignment = 0;
 	instance.intensity_gradient_map = 0;
 	instance.curved_alpha_life = 0;
-	instance.indexes = dispatch.property_index;
+	instance.indexes = dispatch.property_index & 0xFFFF0000u;
 	instance.captured_index = instance_index;
 	tfx_store_instance(push, instance_index, instance);
 }
@@ -4061,6 +4112,7 @@ void tfx_write_particle_instance<TWrite : ITfxParticleWrite>(tfx_particle_contex
 	draw.curved_alpha = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_curved_alpha), life);
 	draw.alpha_sharpness = tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_alpha_sharpness), life);
 	draw.gradient_map = (flags & tfx_dispatch_random_color) != 0 ? cold.random_color : tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_gradient_mapper), life);
+	draw.hue = (flags & tfx_dispatch_hue) != 0 ? tfx_sample_graph(tfx_graph(push, graph_offset, tfx_graph_hue), life) * (1.0 / 360.0) + tfx_dispatch_effect_hue(dispatch.property_index) : 0.0;
 	draw.image_frame = tfx_particle_image_frame(dispatch, cold, hot, tick);
 
 	write_hook.before_write(draw, hot, cold, context);
@@ -4069,14 +4121,15 @@ void tfx_write_particle_instance<TWrite : ITfxParticleWrite>(tfx_particle_contex
 	instance.position = float4(draw.position, draw.stretch);
 	instance.quaternion = tfx_pack16bit_quaternion(draw.rotation);
 	instance.size = tfx_pack16bit_2sscaled(draw.size.x, draw.size.y, tfx_size_packed_scale);
-	instance.alignment = tfx_pack8bit_xyz(draw.alignment);
+	instance.alignment = tfx_pack8bit_xyz(draw.alignment) | tfx_pack_hue8(draw.hue);
 	instance.intensity_gradient_map = tfx_pack16bit_2sscaled(draw.intensity, draw.gradient_map, tfx_color_packed_scale);
 	instance.curved_alpha_life = tfx_pack8bitunorm_xyz(float3(draw.curved_alpha, draw.alpha_sharpness, life));
 
 	//----Image frame and interpolation. Only particles that were in the ring at the previous write have somewhere to come from
 	const uint instance_index = dispatch.instance_start + ring_position;
 	const bool capture = (flags & tfx_dispatch_capture) != 0 && ring_position + dispatch.spawned_since_write < tick.count;
-	instance.indexes = dispatch.property_index | draw.image_frame | (capture ? tfx_capture_bit : 0);
+	//The low 16 bits of property_index are the effect hue
+	instance.indexes = (dispatch.property_index & 0xFFFF0000u) | draw.image_frame | (capture ? tfx_capture_bit : 0);
 	instance.captured_index = capture ? dispatch.previous_instance_start + ring_position + dispatch.bumped_since_write : instance_index;
 
 	tfx_store_instance(push, instance_index, instance);
@@ -4651,7 +4704,8 @@ void tfx_sprite_playback(uint3 thread_id : SV_DispatchThreadID) {
 	sprite.position = float4(lerped_position, lerped_stretch);
 	sprite.quaternion = uint2(tfx_pack_snorm16x2(lerped_quaternion.xy), tfx_pack_snorm16x2(lerped_quaternion.zw));
 	sprite.size = (uint(lerped_scale.y * tfx_size_packed_scale) << 16) + uint(lerped_scale.x * tfx_size_packed_scale);
-	sprite.alignment = tfx_pack_snorm8x4(float4(lerped_alignment, 0));
+	//The hue wraps, so it's taken from the current sprite rather than interpolated
+	sprite.alignment = tfx_pack_snorm8x4(float4(lerped_alignment, 0)) | (current.alignment & 0xFF000000u);
 	sprite.intensity_gradient_map = (uint(lerped_intensity_gradient_map.y * tfx_color_packed_scale) << 16) + uint(lerped_intensity_gradient_map.x * tfx_color_packed_scale);
 	sprite.curved_alpha_life = tfx_pack_unorm8x4(float4(lerped_curved_alpha_life, 0));
 	sprite.indexes = indexes;
@@ -4700,13 +4754,17 @@ void tfx_ribbon_playback(uint3 thread_id : SV_DispatchThreadID) {
 	ribbon.position = lerp(captured.position.xyz, current.position.xyz, lerp_amount) * animation.scale + animation.position;
 	ribbon.age_width = uint(saturate(lerped_age) * 65535.0 + 0.5) | (tfx_float_to_half(lerped_width) << 16);
 	ribbon.quaternion = uint2(tfx_pack_snorm16x2(lerped_quaternion.xy), tfx_pack_snorm16x2(lerped_quaternion.zw));
-	ribbon.start_index_flags = (current.start_index & tfx_ribbon_start_index_mask) | (current.flags << tfx_ribbon_flags_shift);
+	ribbon.start_index_flags = (current.start_index & tfx_ribbon_start_index_mask) | ((current.flags & 0xFFu) << tfx_ribbon_flags_shift);
 	//The baked emitter buffer has one row per ribbon property, so the property index is the emitter index. The seed is a per ribbon constant
 	ribbon.emitter_index_phase_seed = (property_index & 0xFFFFu) | (current.phase_seed << 16);
 	ribbon.texture_indexes = (current.texture_indexes & 0xFFFFE000u) | tfx_load_ribbon_properties(push.ribbon_properties_index, property_index).start_frame_index;
 	ribbon.intensity_gradient_map = (uint(lerped_intensity_gradient_map.y * tfx_color_packed_scale) << 16) + uint(lerped_intensity_gradient_map.x * tfx_color_packed_scale);
 	ribbon.curved_alpha = (uint(int(lerped_curved_alpha.x)) & 0xFFFFu) | (uint(int(lerped_curved_alpha.y)) << 16);
-	ribbon.scale = tfx_float_to_half(lerp(captured.scale, current.scale, lerp_amount));
+	//The hue in the high half of flags in turns, interpolated the shortest way round so a loop seam doesn't sweep a whole turn
+	const float captured_hue = tfx_half_to_float(captured.flags >> 16);
+	const float hue_delta = tfx_half_to_float(current.flags >> 16) - captured_hue;
+	const float lerped_hue = captured_hue + (hue_delta - round(hue_delta)) * lerp_amount;
+	ribbon.scale = tfx_float_to_half(lerp(captured.scale, current.scale, lerp_amount)) | (tfx_float_to_half(lerped_hue) << 16);
 	tfx_store_ribbon(push.ribbon_output_index, index, ribbon);
 }
 
@@ -4968,6 +5026,7 @@ tfx_lit_ribbon_output tfx_lit_ribbon(tfx_ribbon_bucket_globals push, tfx_ribbon_
 	lit.image_index = output.image_index;
 #endif
 	lit.ribbon_across = output.ribbon_across;
+	lit.hue_coefficients = output.hue_coefficients;
 	lit.normal = tfx_unpack_octahedral_normal(packed_normal);
 	const tfx_ribbon ribbon = tfx_load_ribbon(push.ribbons_index, input.ribbon_index);
 	lit.lighting = tfx_load_ribbon_emitter_lighting(push.emitters_index, (ribbon.emitter_index_phase_seed & 0xFFFFu) + push.emitter_offset);

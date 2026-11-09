@@ -103,10 +103,10 @@ The two vertex inputs are vertex buffers:
 
 | Draw | Buffer | Locations and formats |
 | --- | --- | --- |
-| Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sint, 3 `alignment` r8g8b8a8_snorm, 4 `intensity_gradient_map` r16g16_sint, 5 `curved_alpha_life` r8g8b8a8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
+| Billboards | `tfx_instance_t`, instance rate | 0 `position` r32g32b32a32_sfloat, 1 `quaternion` r16g16b16a16_snorm, 2 `size` r16g16_sint, 3 `alignment` r8g8b8a8_snorm (the alignment in xyz, the hue in w where 1 is 180 degrees), 4 `intensity_gradient_map` r16g16_sint, 5 `curved_alpha_life` r8g8b8a8_unorm, 6 `indexes` r32_uint, 7 `captured_index` r32_uint |
 | Ribbons | `tfx_ribbon_vertex_t`, vertex rate | 0 `position` r32g32b32_sfloat, 1 `segment_index` r32_uint, 2 `uv_offset_scale` r32g32_sfloat, 3 `ribbon_index` r32_uint, and for `tfx_ribbon_lit_vertex` only, 4 `normal` r32_uint |
 
-These formats exist on every API. `size` and `intensity_gradient_map` are signed 16-bit integers the shader converts to float, because D3D, Metal and WebGPU have no scaled formats, and `alignment` and `curved_alpha_life` read four bytes because D3D and WebGPU have no three byte formats. The fourth byte is spare.
+These formats exist on every API. `size` and `intensity_gradient_map` are signed 16-bit integers the shader converts to float, because D3D, Metal and WebGPU have no scaled formats, and `alignment` and `curved_alpha_life` read four bytes because D3D and WebGPU have no three byte formats. The fourth byte of `alignment` is the hue (snorm8, 1 is 180 degrees), and the fourth byte of `curved_alpha_life` holds the lerp offset in baked sprite data.
 
 #### Bindless on Vulkan
 

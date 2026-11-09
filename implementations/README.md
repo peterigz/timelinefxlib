@@ -709,6 +709,8 @@ with `-D TFX_METAL_SLOTS`, as the Metal backend does.
 - [ ] If you write your own billboard shader, decode `indexes` and `captured_index` as their comments in `tfx_instance_t`
       say: read the previous instance only when the capture flag (bit 15) is set, and draw the instance at zero size
       when it isn't: a particle's first frame, a loop back to the start of its path, or after too long a gap.
+- [ ] If you write your own billboard or ribbon fragment shader, rotate the colour ramp texel's hue with `tfx_apply_hue`
+      and the `hue_coefficients` varying. The billboard hue is `alignment.w * pi` radians, as `tfx_billboard_varyings` does.
 - [ ] Premultiplied blending (ONE / ONE_MINUS_SRC_ALPHA), depth test on, depth write off.
 - [ ] Check: the torch circles with its smoke trailing behind, the sparks stretch along their motion, the leaves tumble,
       and running at 20 and 400 updates a second looks the same as 60 (integration checks 1 and 5).
