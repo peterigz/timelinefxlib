@@ -1141,10 +1141,14 @@ float tfx__interpolate_float(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
+void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_quaternion_t *creation_rotation, tfx_effect_state_t *parent) {
 	*out_q = tfx__euler_to_quaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
 	*out_scale = parent->overall_scale;
 
+	//Composed rather than added to the euler angles so the graphs turn the emitter about its own axes inside the facing, without gimbal lock
+	if (creation_rotation) {
+		*out_q = *out_q * *creation_rotation;
+	}
 	*out_q = *out_q * parent->rotation;
 	tfx_vec3_t translated_vec = *out_local_position + *out_translation;
 	tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&parent->rotation, translated_vec);
@@ -1195,9 +1199,31 @@ tfxINTERNAL void tfx__solve_face_rotations(tfx_vec3_t direction, tfx_effect_face
 	}
 }
 
-//Solves the orient to camera rotations for an emitter at local_position (translation included) under parent_effect.
+//The rotation that tfx__rotate_vector_quaternion takes local x, y and z onto the given orthonormal, right handed axes with
+tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_basis(const tfx_vec3_t &x_axis, const tfx_vec3_t &y_axis, const tfx_vec3_t &z_axis) {
+	float trace = x_axis.x + y_axis.y + z_axis.z;
+	tfx_quaternion_t q;
+	if (trace > 0.f) {
+		float s = sqrtf(trace + 1.f) * 2.f;
+		q = tfx_quaternion_t(.25f * s, (y_axis.z - z_axis.y) / s, (z_axis.x - x_axis.z) / s, (x_axis.y - y_axis.x) / s);
+	} else if (x_axis.x > y_axis.y && x_axis.x > z_axis.z) {
+		float s = sqrtf(1.f + x_axis.x - y_axis.y - z_axis.z) * 2.f;
+		q = tfx_quaternion_t((y_axis.z - z_axis.y) / s, .25f * s, (y_axis.x + x_axis.y) / s, (z_axis.x + x_axis.z) / s);
+	} else if (y_axis.y > z_axis.z) {
+		float s = sqrtf(1.f + y_axis.y - x_axis.x - z_axis.z) * 2.f;
+		q = tfx_quaternion_t((z_axis.x - x_axis.z) / s, (y_axis.x + x_axis.y) / s, .25f * s, (z_axis.y + y_axis.z) / s);
+	} else {
+		float s = sqrtf(1.f + z_axis.z - x_axis.x - y_axis.y) * 2.f;
+		q = tfx_quaternion_t((x_axis.y - y_axis.x) / s, (z_axis.x + x_axis.z) / s, (z_axis.y + y_axis.z) / s, .25f * s);
+	}
+	//tfx__rotate_vector_quaternion turns by the conjugate
+	return tfx_quaternion_t(q.w, -q.x, -q.y, -q.z);
+}
+
+//Solves the orient to camera rotation for an emitter at local_position (translation included) under parent_effect. Local +Y faces the camera
+//and local -Z points as close to world up as it can, the way a flat emitter stands up, so its shape reads the same as it does lying flat.
 //Returns false while the emitter sits on the camera so the latch can wait for a usable direction.
-tfxINTERNAL bool tfx__solve_camera_facing_rotations(tfx_stage pm, tfx_effect_state_t &parent_effect, tfx_vec3_t local_position, tfx_vec3_t *creation_rotations) {
+tfxINTERNAL bool tfx__solve_camera_facing_rotation(tfx_stage pm, tfx_effect_state_t &parent_effect, tfx_vec3_t local_position, tfx_quaternion_t *creation_rotation) {
 	//The emitter's world position doesn't depend on its own rotation, so it can be resolved before the transform
 	tfx_vec3_t world_position = parent_effect.world_position + tfx__rotate_vector_quaternion(&parent_effect.rotation, local_position);
 	tfx_vec3_t direction = pm->camera_position - world_position;
@@ -1205,11 +1231,17 @@ tfxINTERNAL bool tfx__solve_camera_facing_rotations(tfx_stage pm, tfx_effect_sta
 	if (distance <= 0.f) {
 		return false;
 	}
+	direction = direction / distance;
+	//Straight above or below there's no up to keep, so -Z keeps pointing away from the default camera as it does lying flat
+	tfx_vec3_t world_up = fabsf(direction.y) > .9999f ? tfx_vec3_t(0.f, 0.f, -1.f) : tfx_vec3_t(0.f, 1.f, 0.f);
 	//Solve in the parent's local space so the aim survives whatever rotation the effect has
 	tfx_quaternion_t inverse_parent_rotation = tfx_quaternion_t(parent_effect.rotation.w, -parent_effect.rotation.x, -parent_effect.rotation.y, -parent_effect.rotation.z);
-	tfx_vec3_t local_direction = tfx__rotate_vector_quaternion(&inverse_parent_rotation, direction / distance);
-	*creation_rotations = tfx_vec3_t();
-	tfx__solve_face_rotations(local_direction, tfxEffectFace_up, creation_rotations);
+	tfx_vec3_t facing = tfx__rotate_vector_quaternion(&inverse_parent_rotation, direction);
+	tfx_vec3_t up = tfx__rotate_vector_quaternion(&inverse_parent_rotation, world_up);
+	tfx_vec3_t right = tfx__cross_product_vec3(up, facing);
+	right = tfx__normalize_vec3(&right);
+	tfx_vec3_t screen_up = tfx__cross_product_vec3(facing, right);
+	*creation_rotation = tfx__quaternion_from_basis(right, facing, -screen_up);
 	return true;
 }
 
@@ -2110,8 +2142,8 @@ tfx_vec3_t tfx__orient_emission_direction(const tfx_particle_emitter_state_t &em
 		v = tfx__apply_emission_step(direction, fan_axis, emission_step);
 	}
 	if (tfx__is_point_emission(emission_type) && emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera) {
-		//Camera facing turns local +Y to the camera with -X as screen up, so remap to look like an unrotated emitter seen from its +Z side
-		v = tfx_vec3_t(-v.y, v.z, -v.x);
+		//Camera facing turns local +Y to the camera with -Z as screen up, so remap to look like an unrotated emitter seen from its +Z side
+		v = tfx_vec3_t(v.x, v.z, -v.y);
 	}
 	//Non relative particles live in world space so the emitter rotation is baked in here. A user location's own rotation goes on
 	//top later in tfx__spawn_particle_user_location_tweaks.
@@ -4378,12 +4410,13 @@ void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map) {
 	}
 	spawn_map->points.free();
 	spawn_map->points.resize(point_count);
-	spawn_map->edge_count = edge_count;
+	spawn_map->edge_points.free();
+	spawn_map->edge_points.resize(edge_count);
 	spawn_map->inverse_width = 1.f / (float)width;
 	spawn_map->inverse_height = 1.f / (float)height;
 	spawn_map->coverage = (float)point_count / (float)(width * height);
+	tfxU32 point_cursor = 0;
 	tfxU32 edge_cursor = 0;
-	tfxU32 interior_cursor = edge_count;
 	for (int y = 0; y != height; ++y) {
 		for (int x = 0; x != width; ++x) {
 			if (!values[y * width + x]) continue;
@@ -4391,7 +4424,7 @@ void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map) {
 				|| !values[y * width + x - 1] || !values[y * width + x + 1] || !values[(y - 1) * width + x] || !values[(y + 1) * width + x];
 			tfxU32 packed = (tfxU32)x | ((tfxU32)y << 12);
 			if (!on_edge) {
-				spawn_map->points[interior_cursor++] = packed;
+				spawn_map->points[point_cursor++] = packed;
 				continue;
 			}
 			int samples[3][3];
@@ -4411,7 +4444,9 @@ void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map) {
 				if (angle < 0.f) angle += tfxPI2;
 				angle_index = (tfxU32)(angle * (256.f / tfxPI2) + .5f) & 255;
 			}
-			spawn_map->points[edge_cursor++] = packed | (angle_index << 24);
+			packed |= angle_index << 24;
+			spawn_map->points[point_cursor++] = packed;
+			spawn_map->edge_points[edge_cursor++] = packed;
 		}
 	}
 }
@@ -4453,6 +4488,7 @@ void tfx__free_spawn_maps(tfx_library library) {
 	for (tfx_spawn_map_t &spawn_map : library->spawn_maps.data) {
 		spawn_map.values.free();
 		spawn_map.points.free();
+		spawn_map.edge_points.free();
 	}
 	library->spawn_maps.FreeAll();
 }
@@ -11210,7 +11246,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.amount_remainder = 0.f;
 	emitter.qty_step_size = 0.f;
 	emitter.emitter_size = 0.f;
-	emitter.creation_rotations = tfx_vec3_t();
+	emitter.creation_rotation = tfx_quaternion_t(1.f, 0.f, 0.f, 0.f);
 	emitter.seed_index = (*seed_index)++;
 	emitter.spawn_counter = 0;
 	emitter.single_decay_age = 0.f;
@@ -11287,7 +11323,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.source_ribbon = src_emitter;
 	ribbon_emitter.local_position = tfx_vec3_t();
 	ribbon_emitter.local_rotations = tfx_vec3_t();
-	ribbon_emitter.creation_rotations = tfx_vec3_t();
+	ribbon_emitter.creation_rotation = tfx_quaternion_t(1.f, 0.f, 0.f, 0.f);
 	ribbon_emitter.age = 0.f;
 	ribbon_emitter.ribbon_property_flags = src_emitter->ribbon_flags;
 	ribbon_emitter.library = effect_state.library;
@@ -16649,13 +16685,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	ribbon_work_entry->graphs = &ribbon_emitter.library->graphs[ribbon_emitter.state_properties.graph_list_index];
 
 	if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_orient_to_camera_pending) {
-		if (tfx__solve_camera_facing_rotations(pm, parent_effect, ribbon_emitter.local_position + translation, &ribbon_emitter.creation_rotations)) {
+		if (tfx__solve_camera_facing_rotation(pm, parent_effect, ribbon_emitter.local_position + translation, &ribbon_emitter.creation_rotation)) {
 			ribbon_emitter.state_flags &= ~tfxRibbonEmitterStateFlags_orient_to_camera_pending;
 		}
 	}
-	local_rotations += ribbon_emitter.creation_rotations;
+	const tfx_quaternion_t *ribbon_creation_rotation = ribbon_emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? &ribbon_emitter.creation_rotation : nullptr;
 
-	tfx__transform_3d(&local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
+	tfx__transform_3d(&local_rotations, &ribbon_work_entry->overall_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, ribbon_creation_rotation, &parent_effect);
 
 	const bool teleported = (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_no_tween_this_update) != 0;
 	if (teleported) {
@@ -16846,13 +16882,13 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	//Transformed before the spawn count so spawn distance spacing can measure this update's travel
 	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
-		if (tfx__solve_camera_facing_rotations(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotations)) {
+		if (tfx__solve_camera_facing_rotation(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotation)) {
 			emitter.state_flags &= ~tfxEmitterStateFlags_orient_to_camera_pending;
 		}
 	}
-	local_rotations += emitter.creation_rotations;
+	const tfx_quaternion_t *creation_rotation = emitter.state_properties.property_flags & tfxEmitterPropertyFlags_orient_to_camera ? &emitter.creation_rotation : nullptr;
 
-	tfx__transform_3d(&local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
+	tfx__transform_3d(&local_rotations, &spawn_work_entry->overall_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, creation_rotation, &parent_effect);
 
 	if (shared_properties.emission_type == tfxSpawnOnRibbon && emitter.state_flags & tfxEmitterStateFlags_src_ribbon_is_also_relative && emitter.other_emitter_index != tfxINVALID) {
 		//Spawn-on-ribbon where both this emitter and the ribbon are relative: adopt the ribbon emitter's world rotation
@@ -17091,7 +17127,7 @@ tfxINTERNAL tfxU32 tfx__bitmap_point_count(tfx_library library, tfxSharedEmitter
 	if (!spawn_map) {
 		return 0;
 	}
-	return (shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? spawn_map->points.current_size : spawn_map->edge_count;
+	return (shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? spawn_map->points.current_size : spawn_map->edge_points.current_size;
 }
 
 //The amount a single emitter with match_amount_to_grid_points spawns so that every grid point gets one particle
@@ -19965,7 +20001,8 @@ void tfx__spawn_particle_bitmap(tfx_work_queue_t *queue, void *data) {
 	tfx_AlterRandomSeedU32(&random, 15 + emitter.seed_index);
 	const tfx_spawn_map_t *spawn_map = tfx__get_spawn_map(emitter.library, entry->shared_properties->spawn_map_hash);
 	const tfxSharedEmitterFlags shared_flags = emitter.state_properties.shared_flags;
-	const tfxU32 point_count = spawn_map ? ((shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? spawn_map->points.current_size : spawn_map->edge_count) : 0;
+	const tfx_vector_t<tfxU32> *spawn_points = spawn_map ? ((shared_flags & tfxSharedEmitterPropertyFlags_fill_area) ? &spawn_map->points : &spawn_map->edge_points) : nullptr;
+	const tfxU32 point_count = spawn_points ? spawn_points->current_size : 0;
 	if (!point_count) {
 		//tfx__new_sprites_needed spawns none without points, this only keeps the slots defined if a map goes missing mid tick
 		for (tfxU32 i = 0; i != entry->amount_to_spawn; ++i) {
@@ -19982,7 +20019,7 @@ void tfx__spawn_particle_bitmap(tfx_work_queue_t *queue, void *data) {
 	const float depth = emitter.emitter_size.z;
 	const float inverse_width = spawn_map->inverse_width;
 	const float inverse_height = spawn_map->inverse_height;
-	const tfxU32 *points = spawn_map->points.data;
+	const tfxU32 *points = spawn_points->data;
 	const bool relative = (shared_flags & tfxSharedEmitterPropertyFlags_relative_position) != 0;
 	double tween = entry->tween;
 	tfxU32 cursor = (tfxU32)tfx__Max(emitter.grid_coords.x, 0.f) % point_count;

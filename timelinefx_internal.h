@@ -6301,8 +6301,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	tfx_vec3_t captured_position;	
 	tfx_quaternion_t captured_rotation;
 	tfx_quaternion_t rotation;
-	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
-	tfx_vec3_t creation_rotations;
+	//Camera facing rotation latched once at creation, the transform graphs turn the emitter inside it every frame
+	tfx_quaternion_t creation_rotation;
 	tfx_vec3_t user_spawn_offset;					//Where the emitter sits relative to its effect's own position, which every user spawn location carries
 
 	//Indexes
@@ -6604,8 +6604,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfx_vec3_t captured_position;
 	tfx_vec3_t local_rotations;
 	tfx_quaternion_t rotation;
-	//Camera facing rotation latched once at creation, added on top of the transform graphs every frame
-	tfx_vec3_t creation_rotations;
+	//Camera facing rotation latched once at creation, the transform graphs turn the emitter inside it every frame
+	tfx_quaternion_t creation_rotation;
 
 	tfx_bounding_box_t bounding_box;
 
@@ -7667,9 +7667,9 @@ typedef struct tfx_spawn_map_s {
 	tfxU32 width;
 	tfxU32 height;
 	tfx_vector_t<tfxU8> values;
-	//Packed x (12 bits), y (12 bits) and an outward edge angle (8 bits). Edge texels first, each section in row order
+	//Packed x (12 bits), y (12 bits) and an outward edge angle (8 bits, edge texels only), both in row order
 	tfx_vector_t<tfxU32> points;
-	tfxU32 edge_count;
+	tfx_vector_t<tfxU32> edge_points;
 	float inverse_width;
 	float inverse_height;
 	//Share of the grid that spawns, so the spawn ratio follows the visible area rather than the whole rectangle
@@ -7912,7 +7912,7 @@ tfxAPI_EDITOR void tfx__catmull_rom_spline_3d_soa(const float *p_x, const float 
 tfxAPI_EDITOR float tfx__vec3_length_fast(tfx_vec3_t const *v);
 tfxAPI_EDITOR void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
-tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
+tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_quaternion_t *creation_rotation, tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter);
 
 //Reads just the 64 byte header. Reports 0 for a package written before the version was recorded there.
