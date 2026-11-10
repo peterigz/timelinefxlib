@@ -393,6 +393,7 @@ typedef enum {
 	//Last so that the GPU graph slots before it don't move
 	tfxEmitter_overtime_hue_index,
 	tfxEmitter_lod_amount_index,
+	tfxEmitter_lod_size_index,
 
 	tfxEmitterGraphs_max_index,
 } tfx_emitter_graph_index;
@@ -448,6 +449,7 @@ typedef enum {
 	tfxRibbon_overtime_hue_index,
 	tfxRibbon_overlength_hue_index,
 	tfxRibbon_lod_amount_index,
+	tfxRibbon_lod_size_index,
 
 	tfxRibbonGraphs_max_index,
 
