@@ -12758,35 +12758,6 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	pm->current_ebuff = next_buffer;
 
-	if (pm->flags & tfxStageFlags_update_bounding_boxes) {
-		tfxPROFILE_NAMED("Effect Bounding Boxes");
-		for (tfxU32 i = 0; i != pm->effects_in_use[pm->current_ebuff].size(); ++i) {
-			tfx_effect_index_t effect_index = pm->effects_in_use[pm->current_ebuff][i];
-			tfx_effect_state_t &effect = pm->effects[effect_index.index];
-			tfx_bounding_box_t &effect_bb = effect.bounding_box;
-			effect_bb.max_corner.x = -FLT_MAX;
-			effect_bb.max_corner.y = -FLT_MAX;
-			effect_bb.max_corner.z = -FLT_MAX;
-			effect_bb.min_corner.x = FLT_MAX;
-			effect_bb.min_corner.y = FLT_MAX;
-			effect_bb.min_corner.z = FLT_MAX;
-		}
-		for (tfxU32 i = 0; i != pm->effects_in_use[pm->current_ebuff].size(); ++i) {
-			tfx_effect_index_t effect_index = pm->effects_in_use[pm->current_ebuff][i];
-			tfx_effect_state_t &effect = pm->effects[effect_index.index];
-			for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
-				tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
-				tfx_bounding_box_t &effect_bb = pm->effects[emitter.parent_index].bounding_box;
-				effect_bb.max_corner.x = tfx__Max(effect_bb.max_corner.x, emitter.bounding_box.max_corner.x);
-				effect_bb.max_corner.y = tfx__Max(effect_bb.max_corner.y, emitter.bounding_box.max_corner.y);
-				effect_bb.max_corner.z = tfx__Max(effect_bb.max_corner.z, emitter.bounding_box.max_corner.z);
-				effect_bb.min_corner.x = tfx__Min(effect_bb.min_corner.x, emitter.bounding_box.min_corner.x);
-				effect_bb.min_corner.y = tfx__Min(effect_bb.min_corner.y, emitter.bounding_box.min_corner.y);
-				effect_bb.min_corner.z = tfx__Min(effect_bb.min_corner.z, emitter.bounding_box.min_corner.z);
-			}
-		}
-	}
-
 	tfx__complete_all_work(&pm->work_queue);
 
 	pm->current_particle_count = pm->instance_buffer.current_size;
@@ -14219,7 +14190,6 @@ typedef struct tfx_instance_pass_s {
 	tfxU32 instance_offset;
 	tfxU32 wrap_single_sprite;
 	bool is_ordered;
-	bool update_bounding_boxes;
 
 	//----Hue. Last so the fields the passes without hue use keep their offsets
 	tfx_wide_graph_sampler_t hue_sampler;
@@ -14342,7 +14312,6 @@ tfxINTERNAL void tfx__setup_instance_pass(tfx_control_work_entry_t *work_entry, 
 TFX_DISABLE_COMPILER_WARNING("-Walign-mismatch")
 	pass->is_ordered = tfx__is_ordered_effect_state(&pm.effects[emitter.parent_index]);
 TFX_ENABLE_COMPILER_WARNING()
-	pass->update_bounding_boxes = (pm.flags & tfxStageFlags_update_bounding_boxes) != 0;
 }
 
 //World position, stretch and the packed alignment vector. Also maintains the spawn_locations ring for
@@ -14672,15 +14641,6 @@ tfxINTERNAL inline void tfx__write_particle_instance(tfx_instance_t *sprite, con
 	sprite->curved_alpha_life.packed = block->packed_curved_alpha_life.a[j];
 }
 
-tfxINTERNAL inline void tfx__accumulate_bounding_box(tfx_bounding_box_t *bounding_box, const tfx_instance_block_t *block, tfxU32 j) {
-	bounding_box->min_corner.x = tfx__Min(block->position_x.a[j], bounding_box->min_corner.x);
-	bounding_box->min_corner.y = tfx__Min(block->position_y.a[j], bounding_box->min_corner.y);
-	bounding_box->min_corner.z = tfx__Min(block->position_z.a[j], bounding_box->min_corner.z);
-	bounding_box->max_corner.x = tfx__Max(block->position_x.a[j], bounding_box->max_corner.x);
-	bounding_box->max_corner.y = tfx__Max(block->position_y.a[j], bounding_box->max_corner.y);
-	bounding_box->max_corner.z = tfx__Max(block->position_z.a[j], bounding_box->max_corner.z);
-}
-
 //Unordered: instances are written in bank order, so the slot is just the running index.
 tfxINTERNAL inline void tfx__write_instance_block(const tfx_instance_pass_t *pass, const tfx_instance_block_t *block, tfxU32 index, tfxU32 start_diff, tfxU32 end_j, tfxU32 &running_sprite_index) {
 	tfx_particle_soa_t &bank = *pass->bank;
@@ -14700,9 +14660,6 @@ tfxINTERNAL inline void tfx__write_instance_block(const tfx_instance_pass_t *pas
 		sprite->indexes = block->image_indexes.a[j] | capture;
 		bank.flags_single_loop_count[index_j] &= ~tfxParticleFlags_capture_after_transform;
 
-		if (pass->update_bounding_boxes) {
-			tfx__accumulate_bounding_box(&pass->emitter->bounding_box, block, j);
-		}
 		running_sprite_index++;
 	}
 }
@@ -14734,9 +14691,6 @@ tfxINTERNAL inline void tfx__write_instance_block_ordered(const tfx_instance_pas
 		tfx_vec3_t sprite_plus_camera_position = sprite_position - camera_position;
 		(*pass->work_entry->depth_indexes)[particle_depth_index].depth = tfx__length_vec3_nosqr(&sprite_plus_camera_position);
 
-		if (pass->update_bounding_boxes) {
-			tfx__accumulate_bounding_box(&pass->emitter->bounding_box, block, j);
-		}
 		running_sprite_index++;
 	}
 }
@@ -15982,15 +15936,6 @@ void tfx__free_all_spawn_location_lists(tfx_stage pm) {
 void tfx_SoftExpireAll(tfx_stage pm) {
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
 		pm->emitters[effect_index.index].state_flags |= tfxEmitterStateFlags_stop_spawning;
-	}
-}
-
-void tfx_KeepBoundingBoxesUpdated(tfx_stage pm, bool yesno) {
-	if (yesno) {
-		pm->flags |= tfxStageFlags_update_bounding_boxes;
-	}
-	else {
-		pm->flags &= ~tfxStageFlags_update_bounding_boxes;
 	}
 }
 
@@ -22068,12 +22013,6 @@ void tfx__update_ribbon_emitter_state(tfx_stage pm, tfx_ribbon_emitter_state_t &
 	tfxPROFILE;
 
 	tfx_library library = ribbon.library;
-	ribbon.bounding_box.min_corner.x = FLT_MAX;
-	ribbon.bounding_box.min_corner.y = FLT_MAX;
-	ribbon.bounding_box.min_corner.z = FLT_MAX;
-	ribbon.bounding_box.max_corner.x = -FLT_MAX;
-	ribbon.bounding_box.max_corner.y = -FLT_MAX;
-	ribbon.bounding_box.max_corner.z = -FLT_MAX;
 
 	if (entry->shared_properties->emission_type == tfxPoint) {
 		ribbon.emitter_size = tfx_vec3_t();
@@ -22096,12 +22035,6 @@ void tfx__update_emitter_state(tfx_stage pm, tfx_particle_emitter_state_t &emitt
 
 	tfx_library library = emitter.library;
 	tfx_shared_properties_t &shared_properties = *entry->shared_properties;
-	emitter.bounding_box.min_corner.x = FLT_MAX;
-	emitter.bounding_box.min_corner.y = FLT_MAX;
-	emitter.bounding_box.min_corner.z = FLT_MAX;
-	emitter.bounding_box.max_corner.x = -FLT_MAX;
-	emitter.bounding_box.max_corner.y = -FLT_MAX;
-	emitter.bounding_box.max_corner.z = -FLT_MAX;
 
 	tfx_graph_t &emitter_width = library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_width_index];
 	tfx_graph_t &emitter_height = library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_property_height_index];

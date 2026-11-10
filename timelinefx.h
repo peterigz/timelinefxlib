@@ -3199,14 +3199,6 @@ the particle buffer. Only read data that stays put until the update completes, a
 tfxAPI void tfx_SetStageSpawnCallback(tfx_stage stage, tfx_spawn_callback callback, void *user_data);
 
 /*
-Each effect in the stage can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
-extra overhead to keep the bounding boxes updated but that can be made back if you have a number of effect particles offscreen that don't need to be drawn.
-* @param stage					A pointer to a tfx_stage_t where the effect is being managed
-* @param yesno				Set to true or false if you want the bounding boxes to be udpated.
-*/
-tfxAPI void tfx_KeepBoundingBoxesUpdated(tfx_stage stage, bool yesno);
-
-/*
 Set the effect user data for an effect already added to a stage
 * @param stage					A pointer to a tfx_stage_t where the effect is being managed
 * @param effect_id		The id of the effect that you want to expire, returned when you added it to the stage

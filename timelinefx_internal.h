@@ -3126,7 +3126,6 @@ typedef enum {
 	tfxStageFlags_double_buffer_sprites             	= 1 << 13,
 	tfxStageFlags_recording_sprites                 	= 1 << 14,
 	tfxStageFlags_using_uids                        	= 1 << 15,
-	tfxStageFlags_update_bounding_boxes             	= 1 << 17,
 	tfxStageFlags_auto_order_effects                	= 1 << 19,
 	tfxStageFlags_has_ribbons_to_draw               	= 1 << 20,
 	tfxStageFlags_spawn_location_tip_shown          	= 1 << 21,
@@ -6308,7 +6307,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	double spawn_quantity;
 	double qty_step_size;
 	tfx_vec3_t handle;
-	tfx_bounding_box_t bounding_box;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;						
 	tfx_vec3_t world_position;					
@@ -6624,8 +6622,6 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	tfx_quaternion_t rotation;
 	//Camera facing rotation latched once at creation, the transform graphs turn the emitter inside it every frame
 	tfx_quaternion_t creation_rotation;
-
-	tfx_bounding_box_t bounding_box;
 
 	tfx_common_state_properties_t state_properties;
 	tfxIndex seed_index;
