@@ -392,6 +392,7 @@ typedef enum {
 
 	//Last so that the GPU graph slots before it don't move
 	tfxEmitter_overtime_hue_index,
+	tfxEmitter_lod_amount_index,
 
 	tfxEmitterGraphs_max_index,
 } tfx_emitter_graph_index;
@@ -446,6 +447,7 @@ typedef enum {
 	//Last so that the GPU graph slots before them don't move
 	tfxRibbon_overtime_hue_index,
 	tfxRibbon_overlength_hue_index,
+	tfxRibbon_lod_amount_index,
 
 	tfxRibbonGraphs_max_index,
 
@@ -3168,12 +3170,20 @@ More for use in the editor, this function updates emitter base values for any ef
 tfxAPI void tfx_UpdateStageBaseValues(tfx_stage stage);
 
 /*
-Set the stage camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
+Set the stage camera. This is used to calculate particle depth if you're using depth ordered particles, and the distance effects with LoD on measure, so it needs to be updated each frame.
 * @param stage             A pointer to a tfx_stage_t where the effect is being managed
 * @param front            An array of 3 floats representing a normalised 3d vector describing the direction that the camera is pointing
 * @param position        An array of 3 floats representing the position of the camera in 3d space
 */
 tfxAPI void tfx_SetStageCamera(tfx_stage stage, float front[3], float position[3]);
+
+/*
+Multiplies every effect's LoD distances on this stage, for quality settings or a zoomed camera: 2 keeps full detail twice as far out. 0 turns LoD off
+for the stage. Defaults to 1. Call it between updates, as with tfx_SetStageCamera.
+* @param stage           A pointer to a tfx_stage_t
+* @param scale           The multiplier, 0 or more
+*/
+tfxAPI void tfx_SetStageLODDistanceScale(tfx_stage stage, float scale);
 
 /*
 Set the function that places the particles of User emitters, which spawn like a Point and leave the positions to you, whenever the CPU spawns

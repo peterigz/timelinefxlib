@@ -2402,6 +2402,8 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].type = tfxFactor_intensity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index].type = tfxOvertime_hue;
+	if (add_node) tfx__reset_lod_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_lod_amount_index]); else tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_lod_amount_index], 1.f, tfxLODAmountPreset, false);
+	library->graphs[graph_list_index].graphs[tfxEmitter_lod_amount_index].type = tfxLOD_amount;
 }
 
 void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
@@ -2451,6 +2453,8 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index], 0.f, tfxRibbonLagProfilePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index].type = tfxOverlength_lag_profile;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index].type = tfxOvertime_hue;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index], 0.f, tfxHueOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index].type = tfxOverlength_hue;
+	if (add_node) tfx__reset_lod_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_lod_amount_index]); else tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_lod_amount_index], 1.f, tfxLODAmountPreset, false);
+	library->graphs[graph_list_index].graphs[tfxRibbon_lod_amount_index].type = tfxLOD_amount;
 }
 
 //Reset to a simple constant value
@@ -2585,6 +2589,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_size_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_intensity_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_hue_index], 0.f, tfxHueOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxEmitter_lod_amount_index].nodes.size() != tfxLOD_NODE_COUNT) tfx__reset_lod_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_lod_amount_index]);
 	}
 
 	if (effect->type == tfxRibbonType) {
@@ -2637,6 +2642,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_lag_profile_index], 0.f, tfxRibbonLagProfilePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_hue_index], 0.f, tfxHueOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_hue_index], 0.f, tfxHueOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_lod_amount_index].nodes.size() != tfxLOD_NODE_COUNT) tfx__reset_lod_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_lod_amount_index]);
 	}
 }
 
@@ -5072,6 +5078,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_hue", tfxEmitter_overtime_hue_index);
+	tfxStore->graph_indexes.Insert("emitter_lod_amount", tfxEmitter_lod_amount_index);
 
 	tfxStore->graph_indexes.Insert("emitter_factor_life", tfxEmitter_factor_life_index);
 	tfxStore->graph_indexes.Insert("emitter_factor_velocity", tfxEmitter_factor_velocity_index);
@@ -5129,6 +5136,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("ribbon_overlength_lag_profile", tfxRibbon_overlength_lag_profile_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_hue", tfxRibbon_overtime_hue_index);
 	tfxStore->graph_indexes.Insert("ribbon_overlength_hue", tfxRibbon_overlength_hue_index);
+	tfxStore->graph_indexes.Insert("ribbon_lod_amount", tfxRibbon_lod_amount_index);
 	//Pre version 4 names. The values they carry are converted by tfx__migrate_ribbon_clip_graphs
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_start", tfxRibbon_overtime_clip_offset_index);
 	tfxStore->graph_indexes.Insert("ribbon_overtime_clip_end", tfxRibbon_overtime_clip_size_index);
@@ -5182,6 +5190,9 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("color_interpolation_mode", tfxSInt);
 	names_and_types.Insert("delay_spawning", tfxFloat);
 	names_and_types.Insert("warmup_time", tfxFloat);
+	names_and_types.Insert("lod_distance_1", tfxFloat);
+	names_and_types.Insert("lod_distance_2", tfxFloat);
+	names_and_types.Insert("lod_distance_3", tfxFloat);
 	names_and_types.Insert("version", tfxUInt);
 	names_and_types.Insert("grid_rows", tfxFloat);
 	names_and_types.Insert("grid_columns", tfxFloat);
@@ -5260,6 +5271,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("guaranteed_draw_order", tfxBool);
 	names_and_types.Insert("include_in_sprite_data_export", tfxBool);
 	names_and_types.Insert("user_spawn_locations", tfxBool);
+	names_and_types.Insert("lod", tfxBool);
 	names_and_types.Insert("use_path_for_direction", tfxBool);
 	names_and_types.Insert("alt_velocity_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_color_lifetime_sampling", tfxBool);
@@ -5411,6 +5423,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_lag_profile", tfxAttributeGraph);
 	names_and_types.Insert("overtime_hue", tfxAttributeGraph);
 	names_and_types.Insert("overlength_hue", tfxAttributeGraph);
+	names_and_types.Insert("lod_amount", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_offset", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_size", tfxAttributeGraph);
 	names_and_types.Insert("overtime_clip_start", tfxAttributeGraph);
@@ -6091,6 +6104,9 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 	//Descriptor fields
 	if (tfx__property_is(query, "sort_passes")) return tfx__property_u32(out_value, effect->sort_passes);
 	if (tfx__property_is(query, "warmup_time")) return tfx__property_float(out_value, effect->warmup_time);
+	if (tfx__property_is(query, "lod_distance_1")) return tfx__property_float(out_value, effect->lod_distances[0]);
+	if (tfx__property_is(query, "lod_distance_2")) return tfx__property_float(out_value, effect->lod_distances[1]);
+	if (tfx__property_is(query, "lod_distance_3")) return tfx__property_float(out_value, effect->lod_distances[2]);
 	if (tfx__property_is(query, "noise_base_offset_range")) return tfx__property_float(out_value, effect->noise_base_offset_range);
 	if (tfx__property_is(query, "emitter_handle_x")) return tfx__property_float(out_value, effect->emitter_handle.x);
 	if (tfx__property_is(query, "emitter_handle_y")) return tfx__property_float(out_value, effect->emitter_handle.y);
@@ -6109,6 +6125,7 @@ tfxINTERNAL bool tfx__descriptor_property(tfx_effect_descriptor effect, tfx_prop
 	if (tfx__property_is(query, "guaranteed_draw_order")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	if (tfx__property_is(query, "include_in_sprite_data_export")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
 	if (tfx__property_is(query, "user_spawn_locations")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_user_spawn_locations);
+	if (tfx__property_is(query, "lod")) return tfx__property_bool(out_value, effect->effect_flags & tfxEffectPropertyFlags_lod);
 
 	if (tfx__property_is(query, "random_color")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_color);
 	if (tfx__property_is(query, "exclude_from_global_hue")) return tfx__property_bool(out_value, state_properties.shared_flags & tfxSharedEmitterPropertyFlags_exclude_from_hue_adjustments);
@@ -6575,6 +6592,9 @@ void tfx__assign_effector_property(tfx_effect_descriptor effect, tfx_str256_t *f
 	else if (*field == "emitter_handle_z") effect->emitter_handle.z = value;
 	else if (*field == "delay_spawning" && shared_properties) effect->state_properties.delay_spawning = value;
 	else if (*field == "warmup_time") effect->warmup_time = value;
+	else if (*field == "lod_distance_1") effect->lod_distances[0] = tfxMin(tfxMax(value, 0.f), tfxLOD_MAX_DISTANCE);
+	else if (*field == "lod_distance_2") effect->lod_distances[1] = tfxMin(tfxMax(value, effect->lod_distances[0]), tfxLOD_MAX_DISTANCE);
+	else if (*field == "lod_distance_3") effect->lod_distances[2] = tfxMin(tfxMax(value, effect->lod_distances[1]), tfxLOD_MAX_DISTANCE);
 	else if (*field == "grid_rows" && shared_properties) shared_properties->grid_points.x = value;
 	else if (*field == "grid_columns" && shared_properties) shared_properties->grid_points.y = value;
 	else if (*field == "grid_depth" && shared_properties) shared_properties->grid_points.z = value;
@@ -6720,6 +6740,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor effect, tfx_str256
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export; }
 	} else if (*field == "user_spawn_locations") {
 		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_user_spawn_locations; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_user_spawn_locations; }
+	} else if (*field == "lod") {
+		if (value) { effect->effect_flags |= tfxEffectPropertyFlags_lod; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_lod; }
 	} else if (*field == "alt_velocity_lifetime_sampling") {
 		if (value) { effect->state_properties.property_flags |= tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; } else { effect->state_properties.property_flags &= ~tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling; }
 	} else if (*field == "alt_color_lifetime_sampling") {
@@ -7192,6 +7214,15 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	tfx__update_lerp_graph(graph);
 }
 
+void tfx__reset_lod_graph(tfx_graph_t *graph) {
+	tfx__reset_graph(graph, 1.f, tfxLODAmountPreset, false);
+	graph->type = tfxLOD_amount;
+	for (int node_index = 0; node_index != tfxLOD_NODE_COUNT; ++node_index) {
+		tfx__add_graph_node_values(graph, (float)node_index, 1.f);
+	}
+	tfx__update_lerp_graph(graph);
+}
+
 void tfx__update_graph_wide_oscillator(tfx_graph_t *graph) {
 	graph->wide_oscillator.frequency = tfxWideSetSingle(graph->oscillator.frequency);
 	graph->wide_oscillator.amplitude = tfxWideSetSingle(graph->oscillator.amplitude);
@@ -7202,6 +7233,7 @@ void tfx__update_graph_wide_oscillator(tfx_graph_t *graph) {
 tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxLODAmountPreset:
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		return { 0.f, 1.f };
@@ -7291,6 +7323,8 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { tfxMAX_FRAME, 20.f };
 	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		return { tfxMAX_FRAME, 1.f };
+	case tfx_graph_preset::tfxLODAmountPreset:
+		return { tfxLOD_MAX_DISTANCE, 1.f };
 	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
 		return { tfxMAX_FRAME, 20.f };
 	case tfx_graph_preset::tfxAnglePreset:
@@ -7879,6 +7913,42 @@ float tfx__sample_multi_node_graph(tfx_graph_t *graph, float age, double osc_t) 
 		return prev->value * tfx__oscillator_sin(&graph->oscillator, osc_t);
 	}
 	return prev->value;
+}
+
+tfxINTERNAL inline bool tfx__effect_uses_lod(const tfx_stage_t *pm, const tfx_effect_state_t *effect) {
+	return (effect->source_effect->effect_flags & tfxEffectPropertyFlags_lod) && pm->lod_distance_scale > 0.f;
+}
+
+//segment + t across the LoD nodes at 0 and lod_distances, 3 past the last. A zero length segment is skipped, which samples the same value
+tfxINTERNAL float tfx__lod_position(const tfx_stage_t *pm, const tfx_effect_descriptor_t *effect, tfx_vec3_t position) {
+	tfx_vec3_t to_camera = position - pm->camera_position;
+	const float distance = tfx__length_vec3(&to_camera) / pm->lod_distance_scale;
+	float segment_start = 0.f;
+	for (int segment = 0; segment != tfxLOD_NODE_COUNT - 1; ++segment) {
+		const float segment_end = effect->lod_distances[segment];
+		if (distance < segment_end) {
+			return (float)segment + (distance - segment_start) / (segment_end - segment_start);
+		}
+		segment_start = segment_end;
+	}
+	return (float)(tfxLOD_NODE_COUNT - 1);
+}
+
+//The same cubic as tfx__sample_multi_node_graph on the node pair the position falls between, so it matches the graph the editor draws
+tfxINTERNAL float tfx__sample_lod_amount(const tfx_graph_t *graph, float lod_position) {
+	if (graph->nodes.current_size != tfxLOD_NODE_COUNT) {
+		return 1.f;
+	}
+	float value;
+	if (lod_position >= (float)(tfxLOD_NODE_COUNT - 1)) {
+		value = graph->nodes[tfxLOD_NODE_COUNT - 1].value;
+	} else {
+		const tfxU32 segment = (tfxU32)lod_position;
+		const tfx_attribute_node_t &start_node = graph->nodes[segment];
+		const tfx_attribute_node_t &end_node = graph->nodes[segment + 1];
+		value = tfx__bezier_sampler(lod_position - (float)segment, start_node.value, start_node.right.y, end_node.left.y, end_node.value);
+	}
+	return tfxMin(tfxMax(value, 0.f), 1.f);
 }
 
 float tfx__get_max_life(tfx_effect_descriptor emitter) {
@@ -11227,6 +11297,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	effect_state->spawn_multipliers = tfx__unit_spawn_controls();
 	effect_state->hue = 0.f;
 	effect_state->hue_offset = 0.f;
+	effect_state->lod_position = -1.f;
 	float range = effect->noise_base_offset_range;
 	effect_state->noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	effect_state->sort_passes = effect->sort_passes;
@@ -11237,6 +11308,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 	effect_state->emitter_start_size = 0;
 	effect_state->active_emitters = 0;
 	effect_state->spawning_emitters = 0;
+	effect_state->lod_held_emitters = 0;
 
 	//Copied rather than read back through source_effect each frame, and reset here rather than at the add
 	//site so a recycled effect slot cannot inherit the previous occupant's bookmarks or crossed bits.
@@ -11968,6 +12040,14 @@ tfxINTERNAL void tfx__age_user_spawn_locations(tfx_user_spawn_locations_t *user_
 	}
 }
 
+//Its own walk because ageing skips fresh locations, and they spawn on their first tick
+tfxINTERNAL void tfx__update_user_spawn_lod_positions(tfx_stage pm, tfx_effect_state_t &effect) {
+	tfx_user_spawn_locations_t *user_location_list = effect.user_spawn_locations;
+	for (tfxU32 slot : user_location_list->active_slots) {
+		user_location_list->lod_positions[slot] = tfx__lod_position(pm, effect.source_effect, user_location_list->locations[slot].position);
+	}
+}
+
 void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, tfxU32 next_buffer) {
 	tfxPROFILE;
 	bool warming_up = (pm->flags & tfxStageFlags_warming_up) > 0;
@@ -11976,6 +12056,9 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 		//A zero length update spawns nothing, so a fresh location must still be fresh for the next one
 		if (pm->frame_length > 0.0) {
 			tfx__age_user_spawn_locations(effect.user_spawn_locations, pm->frame_length);
+			if (tfx__effect_uses_lod(pm, &effect)) {
+				tfx__update_user_spawn_lod_positions(pm, effect);
+			}
 		}
 	}
 	float &timeout_counter = effect.timeout_counter;
@@ -12026,6 +12109,7 @@ void tfx__simulate_effect_spawn(tfx_stage pm, tfx_effect_index_t effect_index, t
 
 	effect.active_emitters = 0;
 	effect.spawning_emitters = 0;
+	effect.lod_held_emitters = 0;
 
 	//Read once: a removing emitter must not be updated, since that can queue spawn work against the particle bank freed below
 	const bool removing = (effect.state_flags & tfxEmitterStateFlags_remove) > 0;
@@ -16017,6 +16101,11 @@ void tfx_SetStageCamera(tfx_stage pm, float front[3], float position[3]) {
 	pm->camera_position.z = position[2];
 }
 
+void tfx_SetStageLODDistanceScale(tfx_stage pm, float scale) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
+	pm->lod_distance_scale = tfxMax(scale, 0.f);
+}
+
 void tfx_SetStageSpawnCallback(tfx_stage pm, tfx_spawn_callback callback, void *user_data) {
 	TFX_ASSERT_HANDLE(pm);		//Not a valid effect manager
 	//The spawn work reads both, so they can't change under an update in flight
@@ -16347,6 +16436,8 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 		effect.world_position = effect.captured_position + (effect.world_position - effect.captured_position) * (1.f / (float)pm->steps_remaining);
 	}
 
+	effect.lod_position = tfx__effect_uses_lod(pm, &effect) && !(effect.state_flags & tfxEffectStateFlags_user_spawn_locations) ? tfx__lod_position(pm, effect.source_effect, effect.world_position) : -1.f;
+
 	effect.total_age += pm->frame_length;
 	effect.age += pm->frame_length;
 
@@ -16377,7 +16468,8 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 
 	//Having no locations doesn't finish a user spawn effect, only expiring it does
 	bool waiting_for_locations = effect.state_flags & tfxEffectStateFlags_user_spawn_locations && !(effect.state_flags & tfxEmitterStateFlags_stop_spawning);
-	if (effect.active_emitters == 0 && !waiting_for_locations) {
+	//Nothing alive because LoD held the spawns back isn't a gap to wait out, the camera can come back
+	if (effect.active_emitters == 0 && !waiting_for_locations && effect.lod_held_emitters == 0) {
 		//The timeout only waits out spawn gaps, so an effect that can't spawn again goes now
 		effect.timeout_counter = effect.spawning_emitters == 0 ? effect.timeout + 1.f : effect.timeout_counter + (float)pm->frame_length;
 	}
@@ -16413,6 +16505,7 @@ typedef struct tfx_user_spawn_amount_source_s {
 	float distance_max_rate;						//Per second, 0 for no limit
 	float inverse_spawn_ratio_scale;				//Undoes the spawn ratio tfx__new_sprites_needed applies to the whole amount, so distance spawns keep their spacing
 	tfx_vec3_t spawn_ratio_axes;					//1 on each axis the emitter sizes its amount by, else 0, so a resized location keeps the same density
+	const tfx_graph_t *lod_graph;					//The emitter's LoD amount graph, null when the effect doesn't use LoD
 	bool single;
 } tfx_user_spawn_amount_source_t;
 
@@ -16537,6 +16630,9 @@ tfxINTERNAL double tfx__user_spawn_location_runs(tfx_user_spawn_locations_t *use
 				weight += distance_weight * source->inverse_spawn_ratio_scale;
 			}
 			weight *= global_amount;
+		}
+		if (source->lod_graph) {
+			weight *= tfx__sample_lod_amount(source->lod_graph, user_location_list->lod_positions[slot]);
 		}
 		if (weight <= 0.f) {
 			continue;
@@ -16903,6 +16999,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	}
 	if (!tfx__emitter_spawning_finished(ribbon_emitter.state_flags, ribbon_emitter.state_properties.shared_flags, ribbon_work_entry->shared_properties->emission_type, ribbon_emitter.source_ribbon->state_properties.loop_length, 0.f, ribbon_emitter.age, &ribbon_work_entry->graphs->graphs[tfxRibbon_base_amount_index], &ribbon_work_entry->graphs->graphs[tfxRibbon_variation_amount_index])) {
 		parent_effect.spawning_emitters++;
+		parent_effect.lod_held_emitters += (ribbon_emitter.state_flags & tfxEmitterStateFlags_lod_held) ? 1 : 0;
 	}
 }
 
@@ -17118,6 +17215,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		//A GPU ring only takes this update's spawns after the emitters have run
 		if (spawn_work_entry->amount_to_spawn != 0 || !tfx__emitter_spawning_finished(emitter.state_flags, emitter.state_properties.shared_flags, shared_properties.emission_type, emitter.source_emitter->state_properties.loop_length, distance_density, emitter.age, &graph_list.graphs[tfxEmitter_base_amount_index], &graph_list.graphs[tfxEmitter_variation_amount_index])) {
 			parent_effect.spawning_emitters++;
+			parent_effect.lod_held_emitters += (emitter.state_flags & tfxEmitterStateFlags_lod_held) ? 1 : 0;
 		}
 	}
 
@@ -17141,6 +17239,7 @@ tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work
 	source.distance_rate = counts_distance ? tfx__spawn_distance_density(emitter, entry->properties, entry->shared_properties) / ((float)pm->update_time * (float)tfx__Max(pm->manager_work.step_count, (tfxU32)1)) : 0.f;
 	source.distance_max_rate = entry->properties->spawn_distance_max_rate;
 	source.single = (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	source.lod_graph = tfx__effect_uses_lod(pm, parent) ? &graph_list.graphs[tfxEmitter_lod_amount_index] : nullptr;
 	if (source.distance_rate > 0.f) {
 		const float spawn_ratio_scale = tfx__spawn_ratio_scale(emitter, entry->shared_properties->emission_type);
 		source.inverse_spawn_ratio_scale = spawn_ratio_scale > 0.f ? 1.f / spawn_ratio_scale : 0.f;
@@ -17227,6 +17326,7 @@ tfxINTERNAL double tfx__user_spawn_ribbon_weights(tfx_ribbon_work_entry_t *entry
 	source.delay = ribbon_emitter.state_properties.delay_spawning;
 	source.loop_length = ribbon_emitter.source_ribbon->state_properties.loop_length;
 	source.single = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) > 0;
+	source.lod_graph = tfx__effect_uses_lod(entry->pm, parent) ? &graph_list.graphs[tfxRibbon_lod_amount_index] : nullptr;
 	return tfx__user_spawn_location_runs(entry->user_spawn_locations, &entry->ribbon_bucket->user_spawn_runs, &entry->random, &source, &entry->user_spawn_run_start, &entry->user_spawn_run_count);
 }
 
@@ -17489,6 +17589,13 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
 	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], (float)emitter.age, emitter.oscillator_time);
+	float lod_amount = 1.f;
+	if (parent->lod_position >= 0.f) {
+		lod_amount = tfx__sample_lod_amount(&library->graphs[emitter.state_properties.graph_list_index].graphs[tfxEmitter_lod_amount_index], parent->lod_position);
+	}
+	const bool lod_lowered_amount = lod_amount < 1.f && emitter.spawn_quantity * global_amount > 0.0;
+	emitter.state_flags = lod_lowered_amount ? emitter.state_flags | tfxEmitterStateFlags_lod_held : emitter.state_flags & ~tfxEmitterStateFlags_lod_held;
+	global_amount *= lod_amount;
 	emitter.spawn_quantity *= global_amount;
 
 	//An amount for this update rather than per second. User spawn locations add theirs to each location's weight instead
@@ -17500,6 +17607,9 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		const float max_rate = entry->properties->spawn_distance_max_rate;
 		distance_spawns = max_rate > 0.f ? tfx__Min(distance_spawns, max_rate * (float)pm->update_time) : distance_spawns;
 		distance_amount = (double)(distance_spawns * global_amount);
+		if (lod_amount < 1.f && distance_spawns > 0.f) {
+			emitter.state_flags |= tfxEmitterStateFlags_lod_held;
+		}
 	}
 
 	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
@@ -17507,6 +17617,13 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	}
 
 	const bool single_decay = is_single && tfx__has_single_decay(shared_properties);
+	//A burst LoD cut to nothing still counts as fired, or it would go off whenever the camera came back
+	if (is_single && lod_lowered_amount && emitter.spawn_quantity < 1.0 && !single_decay && shared_properties->emission_type != tfxOtherEmitter) {
+		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
+		emitter.state_flags &= ~tfxEmitterStateFlags_lod_held;
+		emitter.spawn_quantity = 0;
+		return 0;
+	}
 	const bool match_grid_points = (emitter.state_properties.property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) && (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid);
 	if (entry->user_spawn_locations) {
 		emitter.spawn_quantity = tfx__user_spawn_location_weights(pm, entry, emitter, parent);
@@ -17622,9 +17739,24 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 		ribbon_emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
 	}
 	float global_amount = tfx__sample_multi_node_graph(&library->graphs[parent->graph_list_index].graphs[tfxEffect_global_amount_index], (float)ribbon_emitter.age, ribbon_emitter.oscillator_time);
+	float lod_amount = 1.f;
+	if (parent->lod_position >= 0.f) {
+		lod_amount = tfx__sample_lod_amount(&library->graphs[ribbon_emitter.state_properties.graph_list_index].graphs[tfxRibbon_lod_amount_index], parent->lod_position);
+	}
+	const bool lod_lowered_amount = lod_amount < 1.f && ribbon_emitter.spawn_quantity * global_amount > 0.0;
+	ribbon_emitter.state_flags = lod_lowered_amount ? ribbon_emitter.state_flags | tfxEmitterStateFlags_lod_held : ribbon_emitter.state_flags & ~tfxEmitterStateFlags_lod_held;
+	global_amount *= lod_amount;
 	ribbon_emitter.spawn_quantity *= global_amount;
 
 	if (ribbon_emitter.state_flags & tfxEmitterStateFlags_single_shot_done || ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
+		return 0;
+	}
+
+	//A burst LoD cut to nothing still counts as fired, or it would go off whenever the camera came back
+	if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && lod_lowered_amount && ribbon_emitter.spawn_quantity < 1.0 && !tfx__has_single_decay(shared_properties)) {
+		ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_single_shot_done;
+		ribbon_emitter.state_flags &= ~tfxEmitterStateFlags_lod_held;
+		ribbon_emitter.spawn_quantity = 0;
 		return 0;
 	}
 
@@ -25023,6 +25155,7 @@ tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
 	pm->free_particle_lists.init();
 	pm->free_particle_location_lists.init();
 	pm->tips_shown.init();
+	pm->lod_distance_scale = 1.f;
 	pm->magic = tfxINIT_MAGIC(tfx_struct_type_stage);
 	//Stable identity for this stage. Assigned from a monotonic counter rather than reusing
 	//a slot index so it stays unique for the life of the process even as stages are freed
@@ -25334,6 +25467,7 @@ void tfx__apply_user_spawn_locations(tfx_stage pm, float frame_length) {
 				memset((void *)&locations[old_size], 0, sizeof(tfx_user_spawn_location_t) * (locations.current_size - old_size));
 				user_location_list->tweaks.resize(locations.current_size);
 				memset((void *)&user_location_list->tweaks[old_size], 0, sizeof(tfx_user_spawn_tweaks_t) * (locations.current_size - old_size));
+				user_location_list->lod_positions.resize(locations.current_size, 0.f);
 			}
 			tfx_user_spawn_location_t &location = locations[slot];
 			tfx_user_spawn_tweaks_t &tweaks = user_location_list->tweaks[slot];
@@ -25389,6 +25523,7 @@ void tfx__free_all_user_spawn_locations(tfx_stage pm) {
 	for (tfx_user_spawn_locations_t *user_location_list : pm->user_spawn_location_lists) {
 		user_location_list->locations.free();
 		user_location_list->tweaks.free();
+		user_location_list->lod_positions.free();
 		user_location_list->active_slots.free();
 		user_location_list->requests.free();
 		user_location_list->requested_tweaks.free();

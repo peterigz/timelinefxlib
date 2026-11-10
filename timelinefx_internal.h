@@ -1626,6 +1626,8 @@ tfx_allocator *tfxGetAllocator();
 #endif
 
 #define tfxMAX_FRAME 20000.f
+#define tfxLOD_NODE_COUNT 4
+#define tfxLOD_MAX_DISTANCE 1000000.f
 #define tfxCOLOR_RAMP_WIDTH 256
 #define tfxINVALID 0xFFFFFFFF
 #define tfxSPAWN_LOCATION_SLOT_BITS 20
@@ -2635,6 +2637,7 @@ typedef enum {
 	tfxRibbonClipOffsetPreset,
 	tfxHueOvertimePreset,
 	tfxGlobalHuePreset,
+	tfxLODAmountPreset,
 } tfx_graph_preset;
 
 
@@ -2758,6 +2761,8 @@ typedef enum {
 	tfxTransform_translate_z,
 
 	tfxForce_profile,
+
+	tfxLOD_amount,
 
 	tfxEmitterGraphMaxIndex,
 
@@ -3198,6 +3203,7 @@ typedef enum {
 	tfxEffectPropertyFlags_marked_for_deletion                  = 1 << 8,		//Marked for deletion after a library refresh
 	tfxEffectPropertyFlags_was_updated 			                = 1 << 9,		//The effect was updated after a library refresh
 	tfxEffectPropertyFlags_user_spawn_locations                 = 1 << 10,		//The effect and it's emitters spawns at locations provided by the user
+	tfxEffectPropertyFlags_lod                                  = 1 << 11,		//Spawn amounts scale with camera distance, see lod_distances
 	tfxEffectPropertyFlags_history_effect					    = 1 << 12,		//Flagged if the effect is just a change in the editor
 	tfxEffectPropertyFlags_shares_color_ramp				    = 1 << 13,		//Template emitter: its ramp row and GPU property entry belong to the library emitter it was cloned from
 	tfxEffectPropertyFlags_shares_graph_lookups				    = 1 << 14,		//Template emitter: gpu_lookup_offset belongs to the library emitter it was cloned from
@@ -3302,6 +3308,7 @@ typedef enum {
 	tfxEmitterStateFlags_has_path                               = 1 << 25,
 	tfxEmitterStateFlags_orient_to_camera_pending               = 1 << 26,      //The camera facing rotation hasn't been latched yet. Cleared on the emitter's first update once the parent effect has a world transform
 	tfxEmitterStateFlags_has_rotated_path                       = 1 << 27,
+	tfxEmitterStateFlags_lod_held                               = 1 << 29,      //LoD lowered this update's spawns, so nothing alive isn't a gap to time the effect out on. Ribbon emitters use the same bit
 	tfxEmitterStateFlags_relative_angle                         = 1 << 28,      //Relative angle on a billboard mode that doesn't take its orientation from the alignment vector, which already carries the emitter rotation
 	tfxEmitterStateFlags_wrap_single_sprite                     = 1 << 30,
 	tfxEmitterStateFlags_src_ribbon_is_also_relative	        = 1 << 31,	    //Flagged when emission type is spawn on ribbon and both the emitter and ribbon emitter are relative.
@@ -5609,7 +5616,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 10;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely. 10 added the hue graphs, growing each baked ribbon emitter's graph rows from 23 to 25.
+const tfxU32 tfxFILE_VERSION = 11;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely. 10 added the hue graphs, growing each baked ribbon emitter's graph rows from 23 to 25. 11 added the effect LoD distances and the emitters' LoD amount graphs.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -6412,6 +6419,8 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 
 	//Owned by the effect slot rather than the effect so it survives the effect expiring and gets reused with the slot
 	struct tfx_user_spawn_locations_s *user_spawn_locations;
+	float lod_position;					//segment + t across the LoD nodes this tick, negative when LoD is off or the effect spawns at user locations
+	tfxU32 lod_held_emitters;			//Emitters with nothing alive that LoD is holding back this update, which keep the effect from timing out
 
 } tfx_effect_state_t;
 
@@ -6706,6 +6715,7 @@ typedef struct tfx_effect_descriptor_s {
 
 	//The amount of time that the effect warms up before rendering. Only relevant for effects.
 	float warmup_time;	//Measured in millisecs
+	float lod_distances[3];	//Where LoD nodes 1 to 3 sit, ascending. Node 0 is always at distance 0
 	tfxU32 gpu_location_count;		//Set by tfx_SetTemplateGPUCapacityForLocations, multiplies its GPU emitters' estimated capacity. 0 is one location
 	float gpu_sizing_update_rate;	//tfx_SetGPUSizingUpdateRate when tfx_GetTemplateGPUPoolSlots last sized the template, so its rings match. 0 uses the global
 
@@ -7448,6 +7458,7 @@ typedef struct tfx_user_spawn_requested_tweaks_s {
 typedef struct tfx_user_spawn_locations_s {
 	tfx_vector_t<tfx_user_spawn_location_t> locations;		//Indexed by slot, so a slot never moves while it's in use
 	tfx_vector_t<tfx_user_spawn_tweaks_t> tweaks;			//Parallel to locations, same slot indexing
+	tfx_vector_t<float> lod_positions;						//Parallel to locations, each one's LoD position this tick when the effect uses LoD
 	tfx_vector_t<tfxU32> active_slots;
 	tfx_vector_t<tfx_user_spawn_location_request_t> requests;			//Indexed by slot, sized by every slot ever handed out
 	tfx_vector_t<tfx_user_spawn_requested_tweaks_t> requested_tweaks;	//Parallel to requests
@@ -7640,6 +7651,7 @@ typedef struct tfx_stage_s {
 	double tick_time;					//Milliseconds of ticks the stage has run, stamps freed particle arrays for tfx_TrimParticleArrays
 	double pending_write_span;			//Milliseconds simulated since the last update that wrote instances, kept on the caller's thread
 	double last_write_span;				//Milliseconds between the instances the last write captured and the ones it wrote, for tfx_GetStageInterpolation
+	float lod_distance_scale;			//tfx_SetStageLODDistanceScale, 0 turns LoD off
 } tfx_stage_t;
 #endif
 
@@ -8024,6 +8036,7 @@ tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_first_node(tfx_graph_t *graph
 tfxAPI_EDITOR float tfx__get_graph_first_value(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_last_value(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__reset_graph(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true, float max_frames = 0);
+tfxAPI_EDITOR void tfx__reset_lod_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__clear_graph_to_one(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void tfx__free_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to, bool include_types);

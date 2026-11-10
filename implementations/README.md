@@ -782,3 +782,11 @@ or records its passes in a cached render graph, has to keep these rules itself:
   particles jump ahead.
 - **Idle frames are idle.** On frames without a stage update the upload and simulate passes have nothing to do. If the
   engine has a GPU profiler, mark them idle rather than timing them as empty, or the averages come out too low.
+
+## Level of Detail
+
+Effects can turn on Level of Detail in the editor, which scales how many particles their emitters spawn by distance from the camera. The library measures that distance from the camera position you pass to `tfx_SetStageCamera`, so set the camera every frame on any stage that plays effects with LoD. An effect at user spawn locations measures each location separately.
+
+`tfx_SetStageLODDistanceScale(stage, scale)` multiplies every effect's LoD distances on the stage: 2 keeps full detail twice as far out, which suits a high quality setting or a zoomed in camera. 0 turns LoD off for the stage, and new stages start at 1. Call it between updates, as with `tfx_SetStageCamera`.
+
+LoD only changes how many new particles spawn, so nothing pops when the camera moves, and an effect spawning nothing in the distance stays alive and starts again when the camera comes back. Run on GPU emitters do less work when LoD thins them out, but their rings keep the same size, so LoD saves GPU time, not GPU memory.
