@@ -336,7 +336,7 @@ A layer that doesn't write depth can have a blend mode, `tfx_GetLayerFlags(libra
 | `tfxLayerFlags_blend_subtract` | ONE, ONE, REVERSE_SUBTRACT | The particle's color, times intensity and coverage, subtracted from what's behind. The ramp's alpha has no effect |
 | `tfxLayerFlags_blend_absorb` | ZERO, ONE_MINUS_SRC_COLOR, ADD | What's behind times one minus the particle's color. Color above 1 goes negative |
 
-They only change what's already in the target, so draw them over your scene. A float target doesn't clamp the blend, so clamp the negative values subtract and absorb can leave before tonemapping. A host that draws one of these layers with the usual blend gets a normal layer.
+They only change what's already in the target, so draw them over your scene. A float target doesn't clamp the blend, so clamp the negative values subtract and absorb can leave before tonemapping. Don't fall back to the usual blend for these layers: subtract and absorb particles are usually authored bright, because that's what removes the most light, so they would glow instead of darkening, and multiply particles would cover what's behind them.
 
 ## Your own fragment shaders
 

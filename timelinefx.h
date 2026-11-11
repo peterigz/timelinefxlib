@@ -1639,7 +1639,8 @@ the unlit entry points'. The lit fragments light the color with the tfx_view_lig
 fill it every frame: a zeroed light draws lit particles black. A host that draws a lit layer with the unlit entry points gets it unlit.
 
 A layer that doesn't write depth can have a blend mode in tfxLayerFlags_blend_mask. It draws with the same shaders and only a different color
-blend, see Blend modes in Shaders/readme.md. A host that draws it with the usual blend gets a normal layer.
+blend, see Blend modes in Shaders/readme.md. Don't fall back to the usual blend: subtract and absorb particles are usually bright, so
+they would glow instead of darkening, and multiply particles would cover what's behind them.
 * @param library		A handle to the library
 * @param layer			The layer, below tfx_GetLayerCount
 * @returns tfxLayerFlags	The layer's tfx_layer_flag_bits

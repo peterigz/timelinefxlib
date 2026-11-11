@@ -240,8 +240,9 @@ layer with one blended, unlit pipeline still shows them, like Default. To add th
   dispatch and skip the buckets whose `dispatch.layer` isn't in it.
 - Baked billboards aren't grouped by layer across instances, so they all draw blended and unlit. Baked ribbon buckets
   are, so they take the cutout and lit shaders.
-- No example draws the blend modes in `tfxLayerFlags_blend_mask` yet, so those layers draw with the usual blend. They
-  need only a different color blend in the blended group's pipelines, see Blend modes in `../Shaders/readme.md`.
+- No example draws the blend modes in `tfxLayerFlags_blend_mask` yet, so those layers draw with the usual blend, which
+  makes subtract and absorb layers, usually authored bright, glow instead of darkening. They need only a different color
+  blend in the blended group's pipelines, see Blend modes in `../Shaders/readme.md`.
 - The lit fragments read `light` in `tfx_impl_uniforms_t`, which is at `tfxVIEW_LIGHT_OFFSET` because `camera_position`
   fills the 12 bytes before it. `tfx_impl_SetUniforms` sets the editor's default preview light, so set your own after
   it. See Lit layers in `../Shaders/readme.md`. Where each example gives the lit fragments the view:
