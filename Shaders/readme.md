@@ -326,6 +326,18 @@ Each emitter's lighting word is `[wrap unorm8 << 16 | roundness unorm8 << 8 | no
 - **Billboards:** the vertex shader passes the quad's world space axes, with the normal turned towards the camera. Roundness bends that normal into a sphere across the quad, so at roundness 0 a camera facing billboard lights evenly.
 - **Ribbons:** `tfx_ribbon_compute` writes an octahedral unit normal into each vertex's `normal` on a lit layer, and 0 on the others. Radial (mode 0) points out from the ribbon's origin, so a ribbon that wraps around it is lit on the side facing the light. Surface (mode 1) is the ribbon's face, turned towards `camera_position`. Roundness bends both towards the edges, so the ribbon shades like a tube.
 
+## Blend modes
+
+A layer that doesn't write depth can have a blend mode, `tfx_GetLayerFlags(library, layer) & tfxLayerFlags_blend_mask`, which darkens what's behind it instead of covering it. The shaders and draw order don't change: each mode is only a different color blend on the same premultiplied output, lit or unlit, billboards and ribbons. Every mode blends alpha with ZERO, ONE, so the target keeps its alpha. A layer with no mode draws with the usual ONE, ONE_MINUS_SRC_ALPHA.
+
+| Mode | Color blend (src, dst, op) | Result |
+| --- | --- | --- |
+| `tfxLayerFlags_blend_multiply` | DST_COLOR, ONE_MINUS_SRC_ALPHA, ADD | What's behind times the particle's color, faded in by its coverage. A color ramp alpha below 1 brightens instead |
+| `tfxLayerFlags_blend_subtract` | ONE, ONE, REVERSE_SUBTRACT | The particle's color, times intensity and coverage, subtracted from what's behind. The ramp's alpha has no effect |
+| `tfxLayerFlags_blend_absorb` | ZERO, ONE_MINUS_SRC_COLOR, ADD | What's behind times one minus the particle's color. Color above 1 goes negative |
+
+They only change what's already in the target, so draw them over your scene. A float target doesn't clamp the blend, so clamp the negative values subtract and absorb can leave before tonemapping. A host that draws one of these layers with the usual blend gets a normal layer.
+
 ## Your own fragment shaders
 
 A layer can mean whatever your game wants. Name it in the editor, match it in your renderer by index or `tfx_GetLayerName`, and draw its range with a fragment shader of your own. The vertex shader, push constants and slots stay the library's, and your fragment starts from the same shading the built-in ones use. The editor previews the layer by its flags, so set Writes Depth and Lit to the nearest look. This one draws a billboard as `tfx_billboard_fragment` does, and also writes the color that heat response and intensity push past 1 to a second target, for a bloom pass that only particles feed:

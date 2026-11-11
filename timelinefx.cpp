@@ -4627,7 +4627,7 @@ bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length, 
 	memcpy(name, cursor, name_length);
 	name[name_length] = '\0';
 	library->layers[layer].name.Set(name);
-	library->layers[layer].flags = flags & (tfxLayerFlags_writes_depth | tfxLayerFlags_lit);
+	library->layers[layer].flags = flags & (tfxLayerFlags_writes_depth | tfxLayerFlags_lit | tfxLayerFlags_blend_mask);
 	return true;
 }
 

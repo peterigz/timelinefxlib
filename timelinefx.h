@@ -1606,6 +1606,10 @@ typedef enum {
 	tfxLayerFlags_none = 0,
 	tfxLayerFlags_writes_depth = 1 << 0,		//Draw with tfx_billboard_cutout_fragment and tfx_ribbon_cutout_fragment, blending off and depth write on, before the layers that don't
 	tfxLayerFlags_lit = 1 << 1,					//Draw with the lit vertex and fragment entry points, which light the particles with the view uniforms' tfx_view_light_t
+	tfxLayerFlags_blend_multiply = 1 << 2,		//Color blend DST_COLOR, ONE_MINUS_SRC_ALPHA: what's behind is multiplied by the particle's color
+	tfxLayerFlags_blend_subtract = 2 << 2,		//Color blend ONE, ONE, REVERSE_SUBTRACT: the particle's color is subtracted from what's behind
+	tfxLayerFlags_blend_absorb = 3 << 2,		//Color blend ZERO, ONE_MINUS_SRC_COLOR: what's behind is multiplied by one minus the particle's color
+	tfxLayerFlags_blend_mask = 3 << 2,			//The blend mode of a layer that doesn't write depth, none for premultiplied. Alpha blends ZERO, ONE in all three
 } tfx_layer_flag_bits;
 
 typedef tfxU32 tfxLayerFlags;					//tfx_layer_flag_bits
@@ -1633,6 +1637,9 @@ A layer with tfxLayerFlags_lit draws with tfx_billboard_lit_vertex, tfx_billboar
 tfx_billboard_lit_fragment and tfx_ribbon_lit_fragment, or their cutouts when the layer writes depth as well. Pipeline state is the same as
 the unlit entry points'. The lit fragments light the color with the tfx_view_light_t your view uniforms hold at tfxVIEW_LIGHT_OFFSET, so
 fill it every frame: a zeroed light draws lit particles black. A host that draws a lit layer with the unlit entry points gets it unlit.
+
+A layer that doesn't write depth can have a blend mode in tfxLayerFlags_blend_mask. It draws with the same shaders and only a different color
+blend, see Blend modes in Shaders/readme.md. A host that draws it with the usual blend gets a normal layer.
 * @param library		A handle to the library
 * @param layer			The layer, below tfx_GetLayerCount
 * @returns tfxLayerFlags	The layer's tfx_layer_flag_bits
