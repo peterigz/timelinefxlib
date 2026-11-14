@@ -124,7 +124,6 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <immintrin.h>
 #elif defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
-#include <mach/mach_time.h>
 #define tfxARM
 #endif
 
