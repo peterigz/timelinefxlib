@@ -5617,7 +5617,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 //The clip window can zoom in at most this far before the stored path samples start to be magnified
 #define tfxRIBBON_MAX_SAMPLES_PER_SEGMENT 8
 
-const tfxU32 tfxFILE_VERSION = 11;	//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely. 10 added the hue graphs, growing each baked ribbon emitter's graph rows from 23 to 25. 11 added the effect LoD distances and the emitters' LoD amount graphs.
+const tfxU32 tfxFILE_VERSION = 12;//Any version before 3 was when 2d effects were still a thing. 4 replaced ribbon clip_start/clip_end with clip_offset/clip_size. 5 added the effect bookmarks block. 6 records a tfx_image_format in the shape row field that used to be import_filter. 7 added the spawn maps block for the Bitmap emission type. 8 added the layers block and the emitters' alpha_threshold. 9 added each layer's max_particles, writes every layer up to the count including Default, Depth and gaps, and stores baked sprite data per layer offsets sparsely. 10 added the hue graphs, growing each baked ribbon emitter's graph rows from 23 to 25. 11 added the effect LoD distances and the emitters' LoD amount graphs. 12 writes block tags such as [effect] in place of the context numbers, and bools as 0 or 1.
 
 #define tfxLIBRARY_DATA_FILE "effects.txt"
 //The first line of effects.txt, and what tells a library folder from any other directory
@@ -7920,6 +7920,12 @@ tfxAPI_EDITOR void tfx__copy_stream(tfx_stream dst, tfx_stream src);
 
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
+//The tag a block is written with, such as "[effect]" for tfxStartEffect and "[/effect]" for tfxEndEffect
+tfxAPI_EDITOR const char *tfx__stream_context_tag(tfxU32 context);
+//The context of a tag this build doesn't know, so the loaders skip its block as they skip an unknown number
+#define tfxUNKNOWN_STREAM_CONTEXT 0xFFFFFFFFu
+//True when the whole line is a block tag or, from files before version 12, the context's number
+tfxAPI_EDITOR bool tfx__read_stream_context_line(const char *line, tfxU32 length, tfxU32 *context);
 tfxAPI_EDITOR tfx_str256_t tfx__get_property_as_string(tfx_effect_descriptor effect, tfx_str256_t property_name);
 tfxAPI_EDITOR void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t property_name, const char *value);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);

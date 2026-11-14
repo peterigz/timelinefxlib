@@ -1745,8 +1745,9 @@ tfxINTERNAL tfxErrorFlags tfx__add_folder_shapes_to_package(const char *path, tf
 	int context = 0;
 	while (!shapes_list->EoF()) {
 		tfx_line_t line = shapes_list->ReadLine();
-		if (tfx__line_is_uint(&line)) {
-			context = atoi(line.start);
+		tfxU32 line_context;
+		if (tfx__read_stream_context_line(line.start, (tfxU32)line.length, &line_context)) {
+			context = (int)line_context;
 			if (context == tfxEndShapes) {
 				break;
 			}
@@ -8225,6 +8226,52 @@ bool tfx__line_is_uint(tfx_line_t *line) {
 	return true;
 }
 
+//In tfx_effect_library_stream_context order, indexed from tfxStartEffect
+static const char *const tfx__stream_context_tags[] = {
+	"[effect]", "[/effect]", "[emitter]", "[/emitter]", "[graphs]", "[/graphs]", "[shapes]", "[/shapes]",
+	"[animation_settings]", "[/animation_settings]", "[image_data]", "[effect_data]", "[end_of_file]",
+	"[folder]", "[/folder]", "[preview_camera_settings]", "[/preview_camera_settings]", "[unused_1]", "[/unused_1]",
+	"[effect_animation_info]", "[/effect_animation_info]", "[frame_meta]", "[/frame_meta]", "[frame_offsets]", "[/frame_offsets]",
+	"[ribbon_emitter]", "[/ribbon_emitter]", "[graph_properties]", "[/graph_properties]", "[path_nodes]", "[/path_nodes]",
+	"[ribbon_frame_meta]", "[/ribbon_frame_meta]", "[ribbon_emitter_count]", "[/ribbon_emitter_count]",
+	"[forces]", "[/forces]", "[force_graphs]", "[/force_graphs]", "[force_graph_properties]", "[/force_graph_properties]",
+	"[morph_path]", "[/morph_path]", "[bookmarks]", "[/bookmarks]", "[spawn_maps]", "[/spawn_maps]", "[layers]", "[/layers]",
+};
+static_assert(sizeof(tfx__stream_context_tags) / sizeof(tfx__stream_context_tags[0]) == tfxEndLayers - tfxStartEffect + 1, "Every stream context needs a tag");
+
+const char *tfx__stream_context_tag(tfxU32 context) {
+	TFX_ASSERT(context >= tfxStartEffect && context <= tfxEndLayers);
+	return tfx__stream_context_tags[context - tfxStartEffect];
+}
+
+bool tfx__read_stream_context_line(const char *line, tfxU32 length, tfxU32 *context) {
+	if (length && line[length - 1] == '\r') length--;
+	if (!length) return false;
+	if (line[0] == '[') {
+		for (tfxU32 index = 0; index != tfxEndLayers - tfxStartEffect + 1; ++index) {
+			const char *tag = tfx__stream_context_tags[index];
+			if (strlen(tag) == length && memcmp(tag, line, length) == 0) {
+				*context = tfxStartEffect + index;
+				return true;
+			}
+		}
+		//A well formed tag from a newer file version, so its block is skipped rather than read into the block around it
+		tfxU32 name_start = length > 1 && line[1] == '/' ? 2 : 1;
+		if (line[length - 1] != ']' || length - 1 <= name_start) return false;
+		for (tfxU32 index = name_start; index != length - 1; ++index) {
+			char character = line[index];
+			if (!((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') || character == '_')) return false;
+		}
+		*context = tfxUNKNOWN_STREAM_CONTEXT;
+		return true;
+	}
+	for (tfxU32 index = 0; index != length; ++index) {
+		if (!isdigit((unsigned char)line[index])) return false;
+	}
+	*context = (tfxU32)atoi(line);
+	return true;
+}
+
 //API Functions
 //Get the number of shapes that are stored in an effects library saved on disk. This can be useful if you need to reserve the space in 
 //a list to store them in your custom ShapeLoader function.
@@ -8252,8 +8299,9 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 		pair.clear();
 		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
-		if (tfx__line_is_uint(&line)) {
-			context = atoi(line.start);
+		tfxU32 line_context;
+		if (tfx__read_stream_context_line(line.start, (tfxU32)line.length, &line_context)) {
+			context = (int)line_context;
 			if (context == tfxEndShapes) {
 				break;
 			}
@@ -8454,8 +8502,9 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			continue;
 		}
 
-		if (tfx__line_is_uint(&line)) {
-			context = atoi(line.start);
+		tfxU32 line_context;
+		if (tfx__read_stream_context_line(line.start, (tfxU32)line.length, &line_context)) {
+			context = (int)line_context;
 			if (context == tfxEndOfFile) {
 				break;
 			}
@@ -8512,6 +8561,9 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						if (pair[0] == "layer_mask") {
 							metrics_stack.back().layer_mask = strtoull(pair[1].c_str(), NULL, 10);
 							metrics_stack.back().layer_count = tfx__count_bits64(metrics_stack.back().layer_mask);
+						}
+						else if (pair[0] == "path_hash") {
+							metrics_stack.back().path_hash = strtoull(pair[1].c_str(), NULL, 10);
 						}
 						break;
 					default:
@@ -8800,8 +8852,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			version_read = true;
 		}
 
-		if (tfx__line_is_uint(&line)) {
-			context = atoi(line.start);
+		tfxU32 line_context;
+		if (tfx__read_stream_context_line(line.start, (tfxU32)line.length, &line_context)) {
+			context = (int)line_context;
 			if (context == tfxEndOfFile) {
 				break;
 			}
@@ -10151,6 +10204,7 @@ void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descr
 	metrics.layer_offsets.copy(sprite_data.compressed.layer_offsets);
 	metrics.per_property_ribbon_counts.init();
 	metrics.name = effect->name;
+	metrics.path_hash = effect->path_hash;
 	if (!external_sprite_data) {
 		metrics.frames_after_compression = settings.frames_after_compression;
 		metrics.real_frames = settings.real_frames;
