@@ -1648,18 +1648,8 @@ tfx_allocator *tfxGetAllocator();
 #define tfxREALLOCATE(ptr, size) tfxReallocate(ptr, size)
 #endif
 
-#ifndef tfxREALLOCATE
-#define tfxALLOCATE(size) malloc(size)
-#define tfxALLOCATE_ALIGNED(size, alignment) malloc(alignment)
-#define tfxREALLOCATE(ptr, size) realloc(ptr, size)
-#endif
-
 #ifndef tfxFREE
 #define tfxFREE(memory) tfx_Free(tfxGetAllocator(), memory)
-#endif
-
-#ifndef tfxFREE
-#define tfxFREE(memory) free(memory)
 #endif
 
 //The most layers a library can define, see timelinefx.h
