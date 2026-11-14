@@ -7899,7 +7899,7 @@ tfxAPI_EDITOR tfx_spawn_map_t *tfx__get_spawn_map(tfx_library library, tfxKey sp
 tfxINTERNAL void tfx__build_spawn_map(tfx_spawn_map_t *spawn_map);
 tfxAPI_EDITOR bool tfx__read_spawn_map_line(tfx_library library, const char *line, tfxU32 length);
 tfxINTERNAL void tfx__set_default_layers(tfx_library library);
-tfxINTERNAL bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length, tfxU32 file_version);
+tfxAPI_EDITOR bool tfx__read_layer_line(tfx_library library, const char *line, tfxU32 length, tfxU32 file_version);
 tfxINTERNAL void tfx__copy_spawn_map(tfx_library source_library, tfx_library destination_library, tfxKey spawn_map_hash);
 tfxINTERNAL void tfx__free_spawn_maps(tfx_library library);
 tfxAPI_EDITOR tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package);
@@ -7919,7 +7919,6 @@ tfxAPI_EDITOR void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfx
 tfxAPI_EDITOR void tfx__copy_stream(tfx_stream dst, tfx_stream src);
 
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
-tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
 //The tag a block is written with, such as "[effect]" for tfxStartEffect and "[/effect]" for tfxEndEffect
 tfxAPI_EDITOR const char *tfx__stream_context_tag(tfxU32 context);
 //The context of a tag this build doesn't know, so the loaders skip its block as they skip an unknown number
@@ -8233,6 +8232,16 @@ tfxAPI_EDITOR void tfx__update_emitter_max_life(tfx_effect_descriptor effect);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_graph_by_index(tfx_effect_descriptor effect, tfxU32 index);
 tfxAPI_EDITOR tfx_graph_list_t *tfx__get_library_graph_list(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect);
+tfxAPI_EDITOR tfx_effect_descriptor tfx__begin_folder_block(tfx_library library, int uid);
+tfxAPI_EDITOR tfx_effect_descriptor tfx__begin_effect_block(tfx_library library, int uid);
+tfxAPI_EDITOR tfx_effect_descriptor tfx__begin_emitter_block(tfx_library library, int uid);
+tfxAPI_EDITOR tfx_effect_descriptor tfx__begin_ribbon_block(tfx_library library, int uid);
+tfxAPI_EDITOR tfxU32 tfx__begin_morph_path_block(tfx_effect_descriptor ribbon);
+tfxAPI_EDITOR void tfx__end_morph_path_block(tfx_effect_descriptor ribbon, tfxU32 primary_path);
+tfxAPI_EDITOR void tfx__end_emitter_block(tfx_effect_descriptor emitter, tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__end_ribbon_block(tfx_effect_descriptor ribbon, tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__end_effect_block(tfx_effect_descriptor effect);
+tfxAPI_EDITOR void tfx__update_library_after_adding_effects(tfx_library library);
 tfxAPI_EDITOR bool tfx__names_match_ignoring_case(const char *left, const char *right);
 tfxAPI_EDITOR tfx_effect_descriptor tfx__clone_effect_into_library(tfx_effect_descriptor effect_to_clone, tfx_effect_descriptor root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__overwrite_effect(tfx_effect_descriptor src, tfx_effect_descriptor *dst);

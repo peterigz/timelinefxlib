@@ -8216,16 +8216,6 @@ void tfx__split_string_stack(const char *str, int length, tfx_vector_t<tfx_str25
 }
 
 
-bool tfx__line_is_uint(tfx_line_t *line) {
-	if (!line->length) return false;
-	for (int i = 0; i != line->length; i++) {
-		if (!isdigit((unsigned char)line->start[i])) {
-			return false;
-		}
-	}
-	return true;
-}
-
 //In tfx_effect_library_stream_context order, indexed from tfxStartEffect
 static const char *const tfx__stream_context_tags[] = {
 	"[effect]", "[/effect]", "[emitter]", "[/emitter]", "[graphs]", "[/graphs]", "[shapes]", "[/shapes]",
@@ -8787,6 +8777,136 @@ tfxINTERNAL bool tfx__is_legacy_sprite_sheet_key(const char *key) {
 	return false;
 }
 
+tfx_effect_descriptor tfx__begin_folder_block(tfx_library library, int uid) {
+	tfx_effect_descriptor folder = tfx_CreateEffectDescriptor(tfxFolder);
+	folder->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
+	folder->library = library;
+	folder->type = tfx_effect_descriptor_type::tfxFolder;
+	folder->uid = uid;
+	return folder;
+}
+
+tfx_effect_descriptor tfx__begin_effect_block(tfx_library library, int uid) {
+	tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
+	effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
+	effect->library = library;
+	tfx__add_library_effect_graphs(library, effect);
+	tfx__reset_effect_graphs(effect, false);
+	effect->state_properties.transform_index = tfx__add_library_transform_graphs(library);
+	tfx__reset_transform_graphs(effect, false);
+	effect->type = tfx_effect_descriptor_type::tfxEffectType;
+	tfx__add_library_sprite_data_settings(library, effect);
+	tfx__add_library_preview_camera_settings_effect(library, effect);
+	effect->uid = uid;
+	return effect;
+}
+
+tfx_effect_descriptor tfx__begin_emitter_block(tfx_library library, int uid) {
+	tfx_effect_descriptor emitter = tfx_CreateEffectDescriptor(tfxEmitterType);
+	emitter->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
+	emitter->state_properties.path_attributes = tfxINVALID;
+	emitter->state_properties.morph_path_attributes = tfxINVALID;
+	emitter->effect_flags = 0;
+	emitter->state_properties.property_flags = 0;
+	emitter->state_properties.shared_flags = 0;
+	emitter->ribbon_flags = 0;
+	emitter->library = library;
+	emitter->state_properties.property_index = tfx__allocate_library_particle_emitter_properties(library);
+	emitter->state_properties.shared_index = tfx__allocate_library_shared_properties(library);
+	emitter->state_properties.gpu_property_index = tfx__allocate_library_particle_gpu_properties(library);
+	emitter->state_properties.graph_list_index = tfx__add_library_graphs(library, tfxEmitterType);
+	emitter->state_properties.transform_index = tfx__add_library_transform_graphs(library);
+	emitter->type = tfx_effect_descriptor_type::tfxEmitterType;
+	tfx__reset_emitter_graphs(emitter, false);
+	tfx__reset_transform_graphs(emitter, false);
+	emitter->uid = uid;
+	return emitter;
+}
+
+tfx_effect_descriptor tfx__begin_ribbon_block(tfx_library library, int uid) {
+	tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
+	ribbon->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
+	ribbon->state_properties.path_attributes = tfxINVALID;
+	ribbon->state_properties.morph_path_attributes = tfxINVALID;
+	ribbon->effect_flags = 0;
+	ribbon->state_properties.property_flags = 0;
+	ribbon->state_properties.shared_flags = 0;
+	//Set before the properties are read so a ribbon saved without a static_ribbon line can still spawn
+	ribbon->ribbon_flags = tfxRibbonPropertyFlags_static;
+	ribbon->library = library;
+	ribbon->state_properties.property_index = tfx__allocate_library_ribbon_emitter_properties(library);
+	ribbon->state_properties.shared_index = tfx__allocate_library_shared_properties(library);
+	ribbon->state_properties.graph_list_index = tfx__add_library_graphs(library, tfxRibbonType);
+	ribbon->state_properties.transform_index = tfx__add_library_transform_graphs(library);
+	ribbon->type = tfx_effect_descriptor_type::tfxRibbonType;
+	tfx__reset_ribbon_graphs(ribbon, false);
+	tfx__reset_transform_graphs(ribbon, false);
+	ribbon->uid = uid;
+	return ribbon;
+}
+
+tfxU32 tfx__begin_morph_path_block(tfx_effect_descriptor ribbon) {
+	tfx_library library = ribbon->library;
+	if (ribbon->state_properties.morph_path_attributes == tfxINVALID) {
+		ribbon->state_properties.morph_path_attributes = tfx__add_emitter_path_attributes(library);
+		//Seeded with preset nodes that would sit in front of the ones about to be read
+		library->paths[ribbon->state_properties.morph_path_attributes].buffers.nodes.clear();
+	}
+	tfxU32 primary_path = ribbon->state_properties.path_attributes;
+	ribbon->state_properties.path_attributes = ribbon->state_properties.morph_path_attributes;
+	return primary_path;
+}
+
+void tfx__end_morph_path_block(tfx_effect_descriptor ribbon, tfxU32 primary_path) {
+	ribbon->state_properties.path_attributes = primary_path;
+}
+
+void tfx__end_emitter_block(tfx_effect_descriptor emitter, tfx_effect_descriptor effect) {
+	TFX_ASSERT(effect);
+	TFX_ASSERT_HANDLE(emitter);
+	tfx__initialise_unitialised_graphs(emitter);
+	tfx__update_emitter_max_life(emitter);
+	tfx__migrate_legacy_noise_to_force(emitter);
+	emitter->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
+	effect->children.push_back(emitter);
+}
+
+void tfx__end_ribbon_block(tfx_effect_descriptor ribbon, tfx_effect_descriptor effect) {
+	TFX_ASSERT(effect);
+	tfx_library library = ribbon->library;
+	//A file written before the morph path was saved carries the flag with nothing behind it, and the UI
+	//only ever creates the path on the toggle, so seed one from the primary to keep the two in step
+	if ((ribbon->ribbon_flags & tfxRibbonPropertyFlags_enable_morph)
+		&& ribbon->state_properties.morph_path_attributes == tfxINVALID
+		&& ribbon->state_properties.path_attributes != tfxINVALID) {
+		tfxU32 morph_path_attributes = tfx__add_emitter_path_attributes(library);
+		tfx__copy_path(&library->paths[ribbon->state_properties.path_attributes], "", &library->paths[morph_path_attributes]);
+		ribbon->state_properties.morph_path_attributes = morph_path_attributes;
+	}
+	tfx__initialise_unitialised_graphs(ribbon);
+	tfx__update_emitter_max_life(ribbon);
+	ribbon->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
+	effect->children.push_back(ribbon);
+}
+
+void tfx__end_effect_block(tfx_effect_descriptor effect) {
+	//The writer packs and sorts them, but a hand edited file could leave a hole or an out of order
+	//row, and everything downstream reads the list as sorted and terminated by the first empty slot.
+	tfx__repack_effect_bookmarks(effect);
+	tfx__reindex_effect(effect);
+	tfx__initialise_unitialised_graphs(effect);
+}
+
+void tfx__update_library_after_adding_effects(tfx_library library) {
+	tfx__update_library_effect_paths(library);
+	tfx__build_all_library_paths(library);
+	tfx__update_library_control_profiles(library);
+	if (library->uv_lookup) {
+		tfx_UpdateLibraryGPUImageData(library);
+	}
+	tfx__update_library_compute_nodes();
+}
+
 tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library lib, tfx_shape_loader shape_loader, tfx_uv_lookup uv_lookup, void *user_data, bool shapes_from_recorded_hashes) {
 	TFX_ASSERT_HANDLE(lib);	//Library is not initialised!
 	if (!tfxStore->data_types.initialised) {
@@ -8861,86 +8981,25 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			context_set = true;
 			if (context == tfxStartFolder) {
-				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxFolder);
-				effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
-				effect->library = lib;
-				effect->type = tfx_effect_descriptor_type::tfxFolder;
-				effect->uid = uid++;
-				effect_stack.push_back(effect);
+				effect_stack.push_back(tfx__begin_folder_block(lib, uid++));
 			} else if (context == tfxStartEffect) {
 				if (current_effect) {
 					sub_effect_depth++;
 					in_sub_effect_header = true;
 					continue;
 				}
-				tfx_effect_descriptor effect = tfx_CreateEffectDescriptor(tfxEffectType);
-				current_effect = effect;
-				effect->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
-				effect->library = lib;
-				if (effect_stack.size() <= 1) { //Only root effects get the global graphs
-					tfx__add_library_effect_graphs(lib, effect);
-					tfx__reset_effect_graphs(effect, false);
-				}
-				effect->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
-				tfx__reset_transform_graphs(effect, false);
-				effect->type = tfx_effect_descriptor_type::tfxEffectType;
-				tfx__add_library_sprite_data_settings(lib, effect);
-				tfx__add_library_preview_camera_settings_effect(lib, effect);
-				effect->uid = uid++;
-				effect_stack.push_back(effect);
+				current_effect = tfx__begin_effect_block(lib, uid++);
+				effect_stack.push_back(current_effect);
 			} else if (context == tfxStartEmitter) {
 				in_sub_effect_header = false;
-				tfx_effect_descriptor emitter = tfx_CreateEffectDescriptor(tfxEmitterType);
-				emitter->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
-				emitter->state_properties.path_attributes = tfxINVALID;
-				emitter->state_properties.morph_path_attributes = tfxINVALID;
-				emitter->effect_flags = 0;
-				emitter->state_properties.property_flags = 0;
-				emitter->state_properties.shared_flags = 0;
-				emitter->ribbon_flags = 0;
-				emitter->library = lib;
-				emitter->state_properties.property_index = tfx__allocate_library_particle_emitter_properties(lib);
-				emitter->state_properties.shared_index = tfx__allocate_library_shared_properties(lib);
-				emitter->state_properties.gpu_property_index = tfx__allocate_library_particle_gpu_properties(lib);
-				emitter->state_properties.graph_list_index = tfx__add_library_graphs(lib, tfxEmitterType);
-				emitter->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
-				emitter->type = tfx_effect_descriptor_type::tfxEmitterType;
-				tfx__reset_emitter_graphs(emitter, false);
-				tfx__reset_transform_graphs(emitter, false);
-				emitter->uid = uid++;
-				effect_stack.push_back(emitter);
+				effect_stack.push_back(tfx__begin_emitter_block(lib, uid++));
 			} else if (context == tfxStartRibbonEmitter) {
 				in_sub_effect_header = false;
-				tfx_effect_descriptor ribbon = tfx_CreateEffectDescriptor(tfxRibbonType);
-				ribbon->magic = tfxINIT_MAGIC(tfx_struct_type_effect_descriptor);
-				ribbon->state_properties.path_attributes = tfxINVALID;
-				ribbon->state_properties.morph_path_attributes = tfxINVALID;
-				ribbon->effect_flags = 0;
-				ribbon->state_properties.property_flags = 0;
-				ribbon->state_properties.shared_flags = 0;
-				//Set before the properties are read so a ribbon saved without a static_ribbon line can still spawn
-				ribbon->ribbon_flags = tfxRibbonPropertyFlags_static;
-				ribbon->library = lib;
-				ribbon->state_properties.property_index = tfx__allocate_library_ribbon_emitter_properties(lib);
-				ribbon->state_properties.shared_index = tfx__allocate_library_shared_properties(lib);
-				ribbon->state_properties.graph_list_index = tfx__add_library_graphs(lib, tfxRibbonType);
-				ribbon->state_properties.transform_index = tfx__add_library_transform_graphs(lib);
-				ribbon->type = tfx_effect_descriptor_type::tfxRibbonType;
-				tfx__reset_ribbon_graphs(ribbon, false);
-				tfx__reset_transform_graphs(ribbon, false);
-				ribbon->uid = uid++;
-				effect_stack.push_back(ribbon);
+				effect_stack.push_back(tfx__begin_ribbon_block(lib, uid++));
 			} else if (context == tfxStartMorphPath && effect_stack.current_size) {
-				tfx_effect_descriptor emitter = effect_stack.back();
-				if (emitter->state_properties.morph_path_attributes == tfxINVALID) {
-					emitter->state_properties.morph_path_attributes = tfx__add_emitter_path_attributes(lib);
-					//Seeded with preset nodes that would sit in front of the ones about to be read
-					lib->paths[emitter->state_properties.morph_path_attributes].buffers.nodes.clear();
-				}
-				morph_path_swap = emitter->state_properties.path_attributes;
-				emitter->state_properties.path_attributes = emitter->state_properties.morph_path_attributes;
+				morph_path_swap = tfx__begin_morph_path_block(effect_stack.back());
 			} else if (context == tfxEndMorphPath && effect_stack.current_size) {
-				effect_stack.back()->state_properties.path_attributes = morph_path_swap;
+				tfx__end_morph_path_block(effect_stack.back(), morph_path_swap);
 				morph_path_swap = tfxINVALID;
 			}
 		}
@@ -9083,31 +9142,13 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 		if (context == tfxEndEmitter) {
 			TFX_ASSERT(current_effect);
-			tfx__initialise_unitialised_graphs(effect_stack.back());
-			tfx__update_emitter_max_life(effect_stack.back());
-			tfx__migrate_legacy_noise_to_force(effect_stack.back());
-			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
-			TFX_ASSERT(current_effect);
-			TFX_ASSERT_HANDLE(effect_stack.back());
-			current_effect->children.push_back(effect_stack.back());
+			tfx__end_emitter_block(effect_stack.back(), current_effect);
 			effect_stack.pop();
 		}
 
 		if (context == tfxEndRibbonEmitter) {
 			TFX_ASSERT(current_effect);
-			//A file written before the morph path was saved carries the flag with nothing behind it, and the UI
-			//only ever creates the path on the toggle, so seed one from the primary to keep the two in step
-			if ((effect_stack.back()->ribbon_flags & tfxRibbonPropertyFlags_enable_morph)
-				&& effect_stack.back()->state_properties.morph_path_attributes == tfxINVALID
-				&& effect_stack.back()->state_properties.path_attributes != tfxINVALID) {
-				tfxU32 morph_path_attributes = tfx__add_emitter_path_attributes(lib);
-				tfx__copy_path(&lib->paths[effect_stack.back()->state_properties.path_attributes], "", &lib->paths[morph_path_attributes]);
-				effect_stack.back()->state_properties.morph_path_attributes = morph_path_attributes;
-			}
-			tfx__initialise_unitialised_graphs(effect_stack.back());
-			tfx__update_emitter_max_life(effect_stack.back());
-			effect_stack.back()->state_properties.shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
-			current_effect->children.push_back(effect_stack.back());
+			tfx__end_ribbon_block(effect_stack.back(), current_effect);
 			effect_stack.pop();
 		}
 
@@ -9115,20 +9156,15 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			sub_effect_depth--;
 			in_sub_effect_header = false;
 		} else if (context == tfxEndEffect) {
-			//The writer packs and sorts them, but a hand edited file could leave a hole or an out of order
-			//row, and everything downstream reads the list as sorted and terminated by the first empty slot.
-			tfx__repack_effect_bookmarks(effect_stack.back());
-			tfx__reindex_effect(effect_stack.back());
+			tfx__end_effect_block(effect_stack.back());
 			if (effect_stack.size() > 1) {
 				//Effects inside a folder.
 				if (effect_stack.parent()->type == tfxFolder) {
-					tfx__initialise_unitialised_graphs(effect_stack.back());
 					effect_stack.parent()->children.push_back(effect_stack.back());
 					effect_stack.pop();
 					current_effect = nullptr;
 				}
 			} else {
-				tfx__initialise_unitialised_graphs(effect_stack.back());
 				lib->effects.push_back(effect_stack.back());
 				current_effect = nullptr;
 				effect_stack.pop();
@@ -9182,14 +9218,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			//Need a better solution for this if for some reason no shapes load. Should be very rare.
 			tfx__update_library_particle_shape_references(lib, first_shape_hash);
 		}
-		tfx__update_library_effect_paths(lib);
-		tfx__build_all_library_paths(lib);
-		tfx__update_library_control_profiles(lib);
 		lib->uv_lookup = uv_lookup;
-		if (uv_lookup) {
-			tfx_UpdateLibraryGPUImageData(lib);
-		}
-		tfx__update_library_compute_nodes();
+		tfx__update_library_after_adding_effects(lib);
 	}
 	lib->uid = uid;
 
