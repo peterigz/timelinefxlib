@@ -6443,6 +6443,7 @@ void tfx__assign_property_from_string(tfx_effect_descriptor effect, tfx_str256_t
 			values.push_back(property_name);
 			tfx__split_string_stack(line.start, line.length, &values);
 			tfx__assign_graph_node_data(effect, &values);
+			values.free();
 			break;
 		}
 		default: break;
@@ -6495,11 +6496,11 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor effect, tfx_str256_
 	else if (*field == "spawn_map_channel" && shared_properties) shared_properties->spawn_map_channel = value;
 	else if (*field == "emission_divisions" && emitter_properties) emitter_properties->emission_steps.divisions = tfx__Max(value, (tfxU32)1);
 	else if (*field == "roll_divisions" && emitter_properties) emitter_properties->roll_steps.divisions = tfx__Max(value, (tfxU32)1);
-	else if (*field == "ribbon_segment_count") ribbon_properties->bucket_info.segment_count = value;
+	else if (*field == "ribbon_segment_count" && ribbon_properties) ribbon_properties->bucket_info.segment_count = value;
 	else if (*field == "ribbon_tessellation" && ribbon_properties) ribbon_properties->bucket_info.tessellation = tfx__Clamp((tfxU32)1, (tfxU32)tfxRIBBON_MAX_TESSELLATION, value);
 	else if (*field == "ribbon_noise_algorithm" && ribbon_properties) ribbon_properties->noise_algorithm = (tfx_noise_type)value;
 	else if (*field == "ribbon_noise_octaves" && ribbon_properties) ribbon_properties->noise_octaves = value;
-	else if (*field == "ribbon_shader_type") ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
+	else if (*field == "ribbon_shader_type" && ribbon_properties) ribbon_properties->angle_type = (tfxRibbonBucketComputeShaderType)value;
 	else if (*field == "ribbon_normal" && ribbon_properties) ribbon_properties->lighting = (ribbon_properties->lighting & ~0xFFu) | (value < tfxRibbonNormal_max ? value : (tfxU32)tfxRibbonNormal_radial);
 	else if (*field == "billboard_option" && gpu_particle_properties) {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
