@@ -389,6 +389,13 @@ static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_th
 	_ReadWriteBarrier();
 	*target = value;
 }
+
+//x86 loads are already acquire ordered, so only the compiler needs fencing
+static inline tfx_thread_access tfx__load_acquire(volatile tfx_thread_access *source) {
+	tfx_thread_access value = *source;
+	_ReadWriteBarrier();
+	return value;
+}
 #endif
 
 #define tfx__writebarrier _WriteBarrier();
@@ -436,6 +443,10 @@ static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_ac
 
 static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_thread_access value) {
 	__atomic_store_n(target, value, __ATOMIC_RELEASE);
+}
+
+static inline tfx_thread_access tfx__load_acquire(volatile tfx_thread_access *source) {
+	return __atomic_load_n(source, __ATOMIC_ACQUIRE);
 }
 
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
@@ -3321,7 +3332,8 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonBucketFlags_none                                   = 0,
-	tfxRibbonBucketFlags_initialised                            = 1 << 1 
+	tfxRibbonBucketFlags_initialised                            = 1 << 1,
+	tfxRibbonBucketFlags_removed_emitters                       = 1 << 2,       //The bucket update removed ribbon emitters whose slots the update thread frees after the pass
 } tfx_ribbon_bucket_flag_bits;
 
 typedef enum {
@@ -4950,6 +4962,7 @@ tfxMAKE_HANDLE(tfx_stream)
 #ifndef tfxMAX_QUEUE_ENTRIES
 #define tfxMAX_QUEUE_ENTRIES 128
 #endif
+static_assert((tfxMAX_QUEUE_ENTRIES & (tfxMAX_QUEUE_ENTRIES - 1)) == 0, "tfxMAX_QUEUE_ENTRIES must be a power of two, because the queue's read and write counts wrap at 2^32");
 
 typedef struct tfx_work_queue_s tfx_work_queue_t;
 
@@ -4964,8 +4977,8 @@ typedef struct tfx_work_queue_entry_s {
 typedef struct tfx_work_queue_s {
 	volatile tfx_uint entry_completion_goal;
 	volatile tfx_uint entry_completion_count;
-	volatile int next_read_entry;
-	volatile int next_write_entry;
+	volatile tfx_thread_access next_read_entry;		//Counts entries claimed and never wraps to the slot, so a claim can't succeed on a slot the producer has reused
+	volatile tfx_thread_access next_write_entry;	//Counts entries published, the slot is the count % tfxMAX_QUEUE_ENTRIES
 	volatile tfx_uint completing_thread_count;	//Debug only
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 } tfx_work_queue_t;
@@ -5177,12 +5190,11 @@ tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_pro
 	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
 
 	if (queue) {
-		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
-
-		if (original_read_entry != (tfxU32)queue->next_write_entry) {
-			if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
-				tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
+		tfx_thread_access read_entry = queue->next_read_entry;
+		if (read_entry != tfx__load_acquire(&queue->next_write_entry)) {
+			//Copied before the claim, because once the read count moves on the producer may write this slot again
+			tfx_work_queue_entry_t entry = queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES];
+			if (tfx__compare_and_exchange(&queue->next_read_entry, read_entry + 1, read_entry) == read_entry) {
 				entry.call_back(queue, entry.data);
 				tfx__atomic_increment(&queue->entry_completion_count);
 			}
@@ -5192,12 +5204,11 @@ tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_pro
 }
 
 tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
-	tfxU32 original_read_entry = queue->next_read_entry;
-	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
-
-	if (original_read_entry != (tfxU32)queue->next_write_entry) {
-		if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
-			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
+	tfx_thread_access read_entry = queue->next_read_entry;
+	if (read_entry != tfx__load_acquire(&queue->next_write_entry)) {
+		//Copied before the claim, because once the read count moves on the producer may write this slot again
+		tfx_work_queue_entry_t entry = queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES];
+		if (tfx__compare_and_exchange(&queue->next_read_entry, read_entry + 1, read_entry) == read_entry) {
 			tfxU32 previous_control_state = tfx__begin_flush_denormals();
 			entry.call_back(queue, entry.data);
 			tfx__end_flush_denormals(previous_control_state);
@@ -5214,19 +5225,19 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 		return;
 	}
 
-	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUE_ENTRIES;
-	while (new_entry_to_write == (tfxU32)queue->next_read_entry) {        //Not enough room in work queue
+	tfx_thread_access write_entry = queue->next_write_entry;
+	while (write_entry - queue->next_read_entry == tfxMAX_QUEUE_ENTRIES) {        //Not enough room in work queue
 		//We can do this because we're single producer
 		tfx__do_next_work_queue_entry(queue);
 	}
-	queue->entries[queue->next_write_entry].data = data;
-	queue->entries[queue->next_write_entry].call_back = call_back;
+	queue->entries[write_entry % tfxMAX_QUEUE_ENTRIES].data = data;
+	queue->entries[write_entry % tfxMAX_QUEUE_ENTRIES].call_back = call_back;
 	tfx__atomic_increment(&queue->entry_completion_goal);
 
 	tfx__writebarrier;
 
 	tfx__push_queue_work(&tfxStore->thread_queues, queue);
-	queue->next_write_entry = new_entry_to_write;
+	tfx__store_release(&queue->next_write_entry, write_entry + 1);
 
 }
 
@@ -9973,10 +9984,12 @@ struct tfx_apply_path_end_loop {
 
 struct tfx_apply_path_position {
 	static inline void apply(tfxU32 index, tfx_stage pm, tfx_particle_soa_t &bank, tfx_position_policy_context &ctx) {
+		//A particle waiting for the head bump keeps ageing past its path's end, and the spline reads nodes index to index + 3, so keep both on it
+		tfxWideFloat sample_position = tfxWideMin(tfxWideMax(ctx.path_position, tfxWideSetZero), ctx.node_count);
 		tfxWideArrayi node_index;
-		node_index.m = tfxWideConverti(ctx.path_position);
+		node_index.m = tfxWideConverti(tfxWideMin(sample_position, tfxWideSub(ctx.node_count, tfxWIDEONE.m)));
 		tfxWideArray t;
-		t.m = tfxWideSub(ctx.path_position, tfxWideConvert(node_index.m));
+		t.m = tfxWideSub(sample_position, tfxWideConvert(node_index.m));
 		tfxWideArray point_x;
 		tfxWideArray point_z;
 		tfx__wide_catmull_rom_spline_3d(&node_index, t.m, ctx.path->buffers.node_soa.x, ctx.path->buffers.node_soa.y, ctx.path->buffers.node_soa.z, &point_x.m, &ctx.position_y.m, &point_z.m);

@@ -12413,6 +12413,27 @@ tfxINTERNAL void tfx__sort_effects_in_use(tfx_stage pm) {
 	}
 }
 
+//Frees the slots of the ribbon emitters the bucket pass removed, in bucket order, so a re-added effect gets the same slots whatever the thread timing
+tfxINTERNAL void tfx__free_removed_ribbon_emitters(tfx_stage pm) {
+	tfx_ribbon_dispatch_t ribbon_dispatch{};
+	while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
+		tfx_ribbon_bucket_t &bucket = *ribbon_dispatch.ribbon_data;
+		if (!(bucket.flags & tfxRibbonBucketFlags_removed_emitters)) {
+			continue;
+		}
+		bucket.flags &= ~tfxRibbonBucketFlags_removed_emitters;
+		tfx__sync_lock(&pm->add_effect_mutex);
+		for (tfxU32 ribbon_emitter_index : bucket.ribbon_emitter_indexes[pm->current_ebuff]) {
+			tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[ribbon_emitter_index];
+			if (ribbon_emitter.state_flags & tfxRibbonEmitterStateFlags_remove) {
+				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
+				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
+			}
+		}
+		tfx__sync_unlock(&pm->add_effect_mutex);
+	}
+}
+
 tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool write_instances) {
 	tfxPROFILE;
 
@@ -12688,6 +12709,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	tfx__complete_all_work(&pm->work_queue);
 	tfx_AdvanceRandom(&pm->threaded_random);
+	tfx__free_removed_ribbon_emitters(pm);
 
 	pm->spawn_work.clear();
 	pm->ribbon_work.clear();
@@ -16403,6 +16425,12 @@ tfxKey tfx__ribbon_path_cache_key(tfx_library library, tfxU32 path_attributes, t
 
 void tfx__init_ribbon_segment_buffer(tfx_stage pm, tfxKey bucket_id, tfx_ribbon_bucket_info_t *bucket_info, tfxU32 sort_key, tfxU32 layer, tfxU32 tessellation) {
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets.Insert(bucket_id, {});
+	//The insert can move every bucket, and each bucket's SoA buffer writes its grown array pointers through a pointer to its own ribbons
+	for (tfx_ribbon_bucket_t &moved_bucket : pm->ribbon_segment_buckets.data) {
+		if (moved_bucket.flags & tfxRibbonBucketFlags_initialised) {
+			moved_bucket.ribbons_buffer.struct_of_arrays = &moved_bucket.ribbons;
+		}
+	}
 	bucket.sort_key = sort_key;
 	bucket.layer = layer;
 	//Buckets are only ever cleared all together, so the count is a unique number until the stage is cleared
@@ -16770,10 +16798,8 @@ void tfx__update_ribbon_bucket_emitters(tfx_work_queue_t *work_queue, void *data
 				ribbon_emitter.ribbon_indexes[1].clear();
 				ribbon_emitter.active_ribbons = 0;
 				tfx__free_ribbon_lag_ring(ribbon_work_entry->ribbon_bucket, &ribbon_emitter);
-				tfx__sync_lock(&pm->add_effect_mutex);
-				tfx__free_gpu_emitter(pm, ribbon_emitter.state_properties.gpu_property_index);
-				pm->free_ribbon_emitters.push_back(ribbon_emitter_index);
-				tfx__sync_unlock(&pm->add_effect_mutex);
+				//Buckets update in parallel, so the stage's free lists are filled after the pass in bucket order (tfx__free_removed_ribbon_emitters)
+				ribbon_work_entry->ribbon_bucket->flags |= tfxRibbonBucketFlags_removed_emitters;
 			}
 			continue;
 		}
