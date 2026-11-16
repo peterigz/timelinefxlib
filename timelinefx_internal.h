@@ -1785,7 +1785,8 @@ tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, 
 	unsigned char *data = (unsigned char *)input;
 	tfxU64 buffer_size = hasher->buffer_size;
 
-	if (buffer_size + length < tfx__HASH_MAX_BUFFER_SIZE)
+	//The length test lets gcc see that a constant length too big for the buffer never takes this branch
+	if (length < tfx__HASH_MAX_BUFFER_SIZE && buffer_size + length < tfx__HASH_MAX_BUFFER_SIZE)
 	{
 		while (length-- > 0)
 			hasher->buffer[buffer_size++] = *data++;

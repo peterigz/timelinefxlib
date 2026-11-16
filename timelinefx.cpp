@@ -16857,7 +16857,7 @@ bool tfx__update_ribbon_lag_ring(tfx_stage pm, tfx_ribbon_bucket_t *bucket, tfx_
 			bucket->segments.resize(bucket->segments.current_size + block_rows);
 		}
 		//Unfilled slots and the spare word of each position row are uploaded too, so they must not be garbage
-		memset(&bucket->segments[ribbon_emitter->lag_block_start], 0, tfx__ribbon_lag_block_rows(ring_size) * sizeof(tfx_ribbon_segment_t));
+		memset((void *)&bucket->segments[ribbon_emitter->lag_block_start], 0, tfx__ribbon_lag_block_rows(ring_size) * sizeof(tfx_ribbon_segment_t));
 		ribbon_emitter->lag_ring_size_log2 = size_log2;
 		ribbon_emitter->lag_ring_time = lag_time;
 		//Longer than the frame length only once the ring is at its largest
