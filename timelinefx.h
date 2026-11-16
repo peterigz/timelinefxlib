@@ -135,6 +135,7 @@ All functions in the library will be marked this way for clarity and naturally t
 #define tfxLINUX
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <float.h>
