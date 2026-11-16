@@ -16045,8 +16045,9 @@ void tfx__free_all_spawn_location_lists(tfx_stage pm) {
 }
 
 void tfx_SoftExpireAll(tfx_stage pm) {
+	TFX_ASSERT_HANDLE(pm);		//Not a valid stage
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[pm->current_ebuff]) {
-		pm->emitters[effect_index.index].state_flags |= tfxEmitterStateFlags_stop_spawning;
+		pm->effects[effect_index.index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 	}
 }
 
