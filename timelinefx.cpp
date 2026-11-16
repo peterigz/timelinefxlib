@@ -10395,6 +10395,8 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_man
 	TFX_ASSERT(start_frame < metrics.frames_after_compression);
 	tfxAnimationID index = tfx__allocate_animation_instance(animation_manager);
 	tfx_animation_instance_t &instance = animation_manager->instances[index];
+	//Hosts upload the whole struct, and a recycled slot still holds the last instance's position
+	instance = {};
 	instance.scale = 1.f;
 	float frame_length = 1000.f / animation_manager->update_frequency;
 	float frame_length_total = float(metrics.real_frames) / float(metrics.frames_after_compression) * frame_length;
@@ -15104,12 +15106,14 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	//Per frame so a long lived ribbon tracks the effect's overall_scale, and so the value is already
 	//in the instance when the sprite data recorder snapshots it
 	const tfxU32 packed_scale = tfx__pack_half_pair(pm.effects[ribbon_emitter.parent_index].overall_scale, 0.f);
+	//As with particles, a single only loops while its emitter is still spawning, so a soft expired effect can finish
+	const bool single_loops = ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && !(ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning) && !(pm.flags & tfxStageFlags_disable_spawning);
 
 	for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
 		float &age = bucket->ribbons.age[ribbon_index];
 		float &max_age = bucket->ribbons.max_age[ribbon_index];
 		age += (float)pm.frame_length;
-		if (age > max_age && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		if (age > max_age && single_loops) {
 			tfxU32 &single_loop_count = bucket->ribbons.single_loop_count[ribbon_index];
 			single_loop_count++;
 			if (shared_properties->single_shot_limit == 0 || single_loop_count < shared_properties->single_shot_limit) {
@@ -17040,7 +17044,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 				ribbon_emitter.amount_remainder = step_size > 0 ? tween + ribbon_work_entry->amount_to_spawn * step_size - 1.0 : 0.0;
 			}
 		} else {
-			ribbon_work_entry->amount_to_spawn = (tfxU32)ribbon_emitter.spawn_quantity;
+			//new_ribbons is 0 once the emitter stops spawning, as max_spawn_count is for particles
+			ribbon_work_entry->amount_to_spawn = tfxMin((tfxU32)ribbon_emitter.spawn_quantity, ribbon_work_entry->new_ribbons);
 		}
 	} else {
 		ribbon_work_entry->tween = ribbon_emitter.amount_remainder;

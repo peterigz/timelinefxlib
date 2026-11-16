@@ -3846,7 +3846,7 @@ Set the user data in a tfx_animation_manager_t which can get passed through to c
 tfxAPI void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, void *user_data);
 
 /*
-Add an animation instance to the animation manager.
+Add an animation instance to the animation manager. It starts at the origin with a scale of 1, so set its position with tfx_SetAnimationPosition.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param path                    tfxKey path hash of the effect name and path: effect.path_hash
 * @param start_frame            Starting frame of the animation
@@ -3856,7 +3856,7 @@ Add an animation instance to the animation manager.
 tfxAPI tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_manager, tfxKey path, tfxU32 start_frame);
 
 /*
-Add an animation instance to the animation manager.
+Add an animation instance to the animation manager. It starts at the origin with a scale of 1, so set its position with tfx_SetAnimationPosition.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param path                    const char * name of the effect. If the effect was in a folder then specify the whole path
 * @param start_frame            Starting frame of the animation

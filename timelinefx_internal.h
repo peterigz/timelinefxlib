@@ -7222,7 +7222,7 @@ typedef struct tfx_animation_instance_ribbon_data_s {
 	tfxU32 offset_into_ribbon_data;     //The starting ofset in the buffer that contains all the ribbon data
 } tfx_animation_instance_ribbon_data_t;
 
-//An anim instance is used to let the gpu know where to draw an animation with sprite data. 48 bytes
+//An anim instance is used to let the gpu know where to draw an animation with sprite data. 64 bytes
 typedef struct tfx_animation_instance_s {
 	tfx_vec3_t position;                //position that the instance should be played at
 	float scale;                        //Scales the overal size of the animation
