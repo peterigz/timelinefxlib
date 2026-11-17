@@ -7970,42 +7970,6 @@ tfxINTERNAL float tfx__sample_lod_size(const tfx_graph_t *graph, float lod_posit
 	return tfxMax(tfx__sample_lod_graph(graph, lod_position), 0.f);
 }
 
-float tfx__get_max_life(tfx_effect_descriptor emitter) {
-	tfx_graph_t &life = emitter->type == tfxEmitterType ? emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_base_life_index] : emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxRibbon_base_life_index];
-	tfx_graph_t &life_variation = emitter->type == tfxEmitterType ? emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_variation_life_index] : emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxRibbon_variation_life_index];
-	float templife = 0;
-	float max_life = 0;
-	float life_last_frame = tfx__get_graph_last_frame(&life, 60.f);
-	float life_variation_last_frame = tfx__get_graph_last_frame(&life_variation, 60.f);
-	float global_adjust = 1.f;
-	float max_life_factor = 1.f;
-	const tfx_emission_type emission_type = tfx__get_shared_emitter_properties(emitter)->emission_type;
-	if (emitter->type == tfxEmitterType && (emission_type == tfxOtherEmitter || emission_type == tfxSpawnOnRibbon)) {
-		max_life_factor = tfx__get_graph_max_value(&emitter->library->graphs[emitter->state_properties.graph_list_index].graphs[tfxEmitter_factor_life_index]);;
-	}
-	if (life_last_frame + life_variation_last_frame > 0) {
-		for (float f = 0; f < fmaxf(life_last_frame, life_variation_last_frame); ++f) {
-			if (emitter->parent) {
-				global_adjust = tfx__get_graph_value_by_age(&emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index].graphs[tfxEffect_global_life_index], f);
-			}
-			templife = tfx__get_graph_value_by_age(&life, f) + tfx__get_graph_value_by_age(&life_variation, f);
-			templife *= global_adjust;
-			if (max_life < templife) {
-				max_life = templife;
-			}
-		}
-	}
-	else {
-		max_life = tfx__get_graph_first_value(&life) + tfx__get_graph_first_value(&life_variation);
-		if (emitter->parent) {
-			global_adjust = tfx__get_graph_max_value(&emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index].graphs[tfxEffect_global_life_index]);
-			max_life *= global_adjust;
-		}
-	}
-
-	return max_life * max_life_factor;
-}
-
 //When the last of the emitter's paths finishes, in emitter age. Grid order depends on the spawn rate, so that is swept at the slowest
 //rate the amount graphs can give, with each slot taking an equal share of it as the spawner does
 tfxINTERNAL float tfx__path_budget_end_time(tfx_effect_descriptor emitter, const tfx_emitter_path_t *path, float step_size, float delay_spawning, tfx_graph_t *global_amount_graph) {
@@ -22343,16 +22307,20 @@ tfxINTERNAL float tfx__peak_graph_sum(tfx_graph_t *base, tfx_graph_t *variation,
 	return tfx__Max(peak, tfx__sample_graph_sum(base, variation, global, last_frame));
 }
 
-//tfx__get_max_life for a particle or ribbon emitter, sampled by tfx__peak_graph_sum
-tfxINTERNAL float tfx__estimate_max_life(tfx_effect_descriptor emitter) {
+//The longest life the emitter gives, with every graph node sampled exactly: the CPU head bump drops particles at this age without testing their life
+tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor emitter) {
 	tfx_graph_list_t &graph_list = emitter->library->graphs[emitter->state_properties.graph_list_index];
 	const bool is_ribbon = emitter->type == tfxRibbonType;
 	tfx_graph_t *life = &graph_list.graphs[is_ribbon ? (tfxU32)tfxRibbon_base_life_index : (tfxU32)tfxEmitter_base_life_index];
 	tfx_graph_t *life_variation = &graph_list.graphs[is_ribbon ? (tfxU32)tfxRibbon_variation_life_index : (tfxU32)tfxEmitter_variation_life_index];
 	tfx_graph_t *global_life = emitter->parent ? &emitter->parent->library->graphs[emitter->parent->state_properties.graph_list_index].graphs[tfxEffect_global_life_index] : nullptr;
-	const float last_frame = tfx__Max(tfx__get_graph_last_frame(life, 60.f), tfx__get_graph_last_frame(life_variation, 60.f));
+	float last_frame = tfx__Max(tfx__get_graph_last_frame(life, 60.f), tfx__get_graph_last_frame(life_variation, 60.f));
 	float max_life;
 	if (last_frame > 0.f) {
+		//The global graph can still raise the life after the emitter's own graphs end
+		if (global_life) {
+			last_frame = tfx__Max(last_frame, tfx__get_graph_last_frame(global_life, 60.f));
+		}
 		max_life = tfx__peak_graph_sum(life, life_variation, global_life, last_frame);
 	} else {
 		max_life = tfx__get_graph_first_value(life) + tfx__get_graph_first_value(life_variation);
@@ -22370,7 +22338,7 @@ tfxINTERNAL float tfx__estimate_max_life(tfx_effect_descriptor emitter) {
 
 //The depth only guards against two other emitters sourcing from each other
 tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child, tfxU32 depth) {
-	float max_life_ms = tfx__estimate_max_life(child);
+	float max_life_ms = tfx__get_max_life(child);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(child);
 	tfx_effect_descriptor source = depth < 4 ? tfx__paired_emitter_source(child) : nullptr;
 	const bool is_single = (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
@@ -22392,7 +22360,7 @@ tfxINTERNAL tfxU32 tfx__estimate_particles_in_flight(tfx_effect_descriptor child
 		total += tfx__has_single_decay(shared_properties) ? (float)shared_properties->single_decay_amount * global_amount : 0.f;
 		if (per_source_particle && !spawns_on_ribbon) {
 			//Every source particle spawns the burst once, and the sources turn over every source life while the burst outlives them
-			float source_life_ms = tfx__Max(tfx__estimate_max_life(source), 1.f);
+			float source_life_ms = tfx__Max(tfx__get_max_life(source), 1.f);
 			//A burst's slots are held up to an update past its life, the + 1 covers a 60Hz update
 			const float extra_hold_ms = tfx__Max(1000.f / tfx__gpu_sizing_rate(child) - 1000.f / 60.f, 0.f);
 			return tfx__Max((tfxU32)ceilf(total * source_particles * ((max_life_ms + extra_hold_ms) / source_life_ms + 1.f)), (tfxU32)1);
