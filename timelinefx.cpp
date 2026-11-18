@@ -11931,6 +11931,15 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor emitter) {
 	if (shared_properties->emission_type == tfxOtherEmitter) {
 		emitter->state_properties.shared_flags &= ~tfxSharedEmitterPropertyFlags_relative_position;
 	}
+	//The grid spawners divide by these, and a file can leave them at 0. An icosphere's x is its subdivision level, 0 to 5, which indexes the point tables
+	tfx_vec3_t &grid_points = shared_properties->grid_points;
+	if (shared_properties->emission_type == tfxIcosphere) {
+		grid_points.x = tfx__Clamp(0.f, 5.f, grid_points.x);
+	} else {
+		grid_points.x = tfxMax(grid_points.x, 1.f);
+	}
+	grid_points.y = tfxMax(grid_points.y, 1.f);
+	grid_points.z = tfxMax(grid_points.z, 1.f);
 	tfx_gpu_particle_properties_t *gpu_properties = tfx__get_gpu_particle_properties(emitter);
 	emitter->state_properties.control_profile = 0;
 	//Keyed on an enabled entry rather than force_count, which is what makes the enabled flag worth having: a list
@@ -14991,21 +15000,13 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 		ribbon.scale = (ribbon.scale & 0xFFFF) | hue_bits;
 
 		image_frame += ribbon_emitter.state_properties.image_frame_rate * (float)pm.update_time;
-		if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation && ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame = state_properties.end_frame - image_frame;
-			image_frame = tfx__Max(image_frame, 0.f);
-		} else if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once) {
-			image_frame = tfx__Min(image_frame, state_properties.end_frame);
-		} else if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation) {
-			image_frame = fmodf(image_frame, frames);
-			image_frame = state_properties.end_frame - image_frame;
-		} else {
-			image_frame = fmodf(image_frame, frames);
-		}
+		//Only the drawn frame is reversed, as for particles: storing it would count the next update on from the reversed frame
+		image_frame = ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_play_once ? tfx__Min(image_frame, state_properties.end_frame) : fmodf(image_frame, frames);
+		const float drawn_frame = ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation ? tfx__Max(state_properties.end_frame - image_frame, 0.f) : image_frame;
 		//The frame only. The base lives on the emitter, which is rewritten every frame, so a shape list that
 		//renumbers is picked up without touching the ribbons at all.
 		ribbon.texture_indexes &= ~0x1FFF;
-		ribbon.texture_indexes += tfxU32(image_frame);
+		ribbon.texture_indexes += tfxU32(drawn_frame);
 	}
 }
 
@@ -17389,7 +17390,8 @@ tfxINTERNAL float tfx__grid_points_spawn_amount(tfx_library library, const tfx_c
 	case tfx_emission_type::tfxLine:
 		return y;
 	case tfx_emission_type::tfxIcosphere:
-		return (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
+		//The subdivision level the spawner uses, where 0 is a level
+		return (float)tfxIcospherePoints[tfxMin((tfxU32)shared_properties->grid_points.x, 5)].current_size;
 	case tfx_emission_type::tfxBitmap:
 		return (float)tfx__bitmap_point_count(library, state_properties.shared_flags, shared_properties);
 	default:
@@ -19932,12 +19934,7 @@ void tfx__spawn_particle_other_ribbon_emitter(tfx_work_queue_t *queue, void *dat
 
 		if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid) {
 			float ribbon_lerp = tfx__ribbon_age_lerp(ribbon_bucket.ribbons.ribbon_instances[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]]);
-			float &grid_coord = ribbon_bucket.ribbons.grid_index[ribbon_emitter.ribbon_indexes[pm.current_ebuff][qi]];
-			if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
-				grid_coord = ribbon_lerp * total_grid_points;
-			} else if (!(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise)) {
-				grid_coord = total_grid_points - (ribbon_lerp * total_grid_points);
-			}
+			const float grid_coord = emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise ? ribbon_lerp * total_grid_points : total_grid_points - ribbon_lerp * total_grid_points;
 			node = (int)grid_coord;
 			t = grid_coord - node;
 			path_position = (float)node + t;
@@ -20408,9 +20405,9 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 						}
 					}
 
-					local_position_x = position.x + (emitter.grid_coords.x * grid_segment_size_x) - half_emitter_size.x;
-					local_position_y = position.y + (emitter.grid_coords.y * grid_segment_size_y) - half_emitter_size.y;
-					local_position_z = position.z + (emitter.grid_coords.z * grid_segment_size_z) - half_emitter_size.z;
+					local_position_x = emitter.grid_coords.x * grid_segment_size_x - half_emitter_size.x;
+					local_position_y = emitter.grid_coords.y * grid_segment_size_y - half_emitter_size.y;
+					local_position_z = emitter.grid_coords.z * grid_segment_size_z - half_emitter_size.z;
 
 					if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise) {
 						emitter.grid_coords.x++;
@@ -20511,9 +20508,9 @@ void tfx__spawn_particle_area(tfx_work_queue_t *queue, void *data) {
 						}
 					}
 
-					local_position_x = position.x + (emitter.grid_coords.x * grid_segment_size_x) - half_emitter_size.x;
-					local_position_y = position.y + (emitter.grid_coords.y * grid_segment_size_y) - half_emitter_size.y;
-					local_position_z = position.z + (emitter.grid_coords.z * grid_segment_size_z) - half_emitter_size.z;
+					local_position_x = emitter.grid_coords.x * grid_segment_size_x - half_emitter_size.x;
+					local_position_y = emitter.grid_coords.y * grid_segment_size_y - half_emitter_size.y;
+					local_position_z = emitter.grid_coords.z * grid_segment_size_z - half_emitter_size.z;
 
 					velocity_normal.x = emitter.grid_coords.x == 0 ? -1.f : (emitter.grid_coords.x == grid_points.x - 1 ? 1.f : 0.f);
 					velocity_normal.y = emitter.grid_coords.y == 0 ? -1.f : (emitter.grid_coords.y == grid_points.y - 1 ? 1.f : 0.f);
@@ -21530,7 +21527,6 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max((life + tfx_RandomRangeZeroToMax(&random, life_variation)) * location_life, 1.f);
 			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
-			ribbon_bucket->ribbons.grid_index[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.uid[ribbon_index] = ribbon_bucket->uid_prefix | (ribbon_bucket->spawned_ribbons++ & 0x00FFFFFF);
 			ribbon.emitter_index_phase_seed = emitter_index | (ribbon_bucket->ribbons.uid[ribbon_index] << 16);
 			ribbon_emitter.active_ribbons++;
@@ -23884,7 +23880,8 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
-	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxStageFlags_disable_spawning)), tfxWideSetZeroi);
+	//The effect's stop too: followers don't take it, so they keep spawning from their sources, but their singles must stop looping or the effect never ends
+	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei((emitter.state_flags | effect.state_flags) & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxStageFlags_disable_spawning)), tfxWideSetZeroi);
 	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_recording_sprites) {
 		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
 	}
@@ -24919,7 +24916,6 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, random_age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, path_index));
-	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, grid_index));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, uid));
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);

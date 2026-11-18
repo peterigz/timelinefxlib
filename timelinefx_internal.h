@@ -6450,7 +6450,6 @@ typedef struct tfx_ribbon_soa_s {
 	float *random_age;
 	float *image_frame;
 	tfxU32 *path_index;
-	float *grid_index;
 	tfxU32 *single_loop_count;
 	tfxU32 *uid;
 } tfx_ribbon_soa_t;
