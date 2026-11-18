@@ -2394,8 +2394,6 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor effect, bool add_node) {
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index].type = tfxOvertime_gradient_mapper;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].type = tfxOvertime_heat_response;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], 30.f, tfxVelocityTurbulancePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index].type = tfxOvertime_velocity_turbulance;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index].type = tfxOvertime_direction_turbulance;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index], 0.f, tfxDirectionOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index].type = tfxOvertime_direction;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index].type = tfxOvertime_noise_resolution;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index].type = tfxOvertime_motion_randomness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_factor_life_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxEmitter_factor_life_index].type = tfxFactor_life;
@@ -2583,9 +2581,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor effect) {
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_gradient_mapper_index], 0.f, tfxGradientMapperOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_heat_response_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index], 0.f, tfxFrameratePreset);
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_turbulance_index], 0.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], 1.f, tfxGlobalPercentPreset);
-		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_direction_index], 0.f, tfxDirectionOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], 0.f, tfxPercentOvertime);
 
@@ -4740,10 +4736,12 @@ void tfx_FreeLibrary(tfx_library library) {
 	tfxFREE(library);
 }
 
-//The graph slots Shaders/timelinefx.slang's kernel reads from a particle emitter's block of the lookups
+//The graph slots Shaders/timelinefx.slang's kernel reads from a particle emitter's block of the lookups. Keep in step with its tfx_graph_* constants
 static const tfx_graph_type tfx__gpu_particle_graph_order[] = {
 	tfxOvertime_intensity, tfxOvertime_alpha_sharpness, tfxOvertime_curved_alpha, tfxOvertime_gradient_mapper, tfxOvertime_velocity, tfxOvertime_width,
 	tfxOvertime_height, tfxOvertime_weight, tfxOvertime_pitch_spin, tfxOvertime_yaw_spin, tfxOvertime_roll_spin, tfxOvertime_stretch,
+	tfxOvertime_velocity_turbulance, tfxOvertime_noise_resolution, tfxOvertime_motion_randomness, tfxFactor_life, tfxFactor_size, tfxFactor_velocity,
+	tfxFactor_intensity, tfxOvertime_hue,
 };
 
 //One segment of a lookup graph. A linear graph's curve points are put on the straight line between its ends, so a kernel that
@@ -5010,9 +5008,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("overtime_gradient_mapper", tfxEmitter_overtime_gradient_mapper_index);
 	tfxStore->graph_indexes.Insert("overtime_heat_response", tfxEmitter_overtime_heat_response_index);
 	tfxStore->graph_indexes.Insert("overtime_velocity_turbulance", tfxEmitter_overtime_velocity_turbulance_index);
-	tfxStore->graph_indexes.Insert("overtime_direction_turbulance", tfxEmitter_overtime_direction_turbulance_index);
 	tfxStore->graph_indexes.Insert("overtime_velocity_adjuster", tfxEmitter_overtime_velocity_adjuster_index);
-	tfxStore->graph_indexes.Insert("overtime_direction", tfxEmitter_overtime_direction_index);
 	tfxStore->graph_indexes.Insert("overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
 
@@ -5079,9 +5075,7 @@ void tfx__initialise_graph_indexes() {
 	tfxStore->graph_indexes.Insert("emitter_overtime_curved_alpha", tfxEmitter_overtime_curved_alpha_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_gradient_mapper", tfxEmitter_overtime_gradient_mapper_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_velocity_turbulance", tfxEmitter_overtime_velocity_turbulance_index);
-	tfxStore->graph_indexes.Insert("emitter_overtime_direction_turbulance", tfxEmitter_overtime_direction_turbulance_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_velocity_adjuster", tfxEmitter_overtime_velocity_adjuster_index);
-	tfxStore->graph_indexes.Insert("emitter_overtime_direction", tfxEmitter_overtime_direction_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_noise_resolution", tfxEmitter_overtime_noise_resolution_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_motion_randomness", tfxEmitter_overtime_motion_randomness_index);
 	tfxStore->graph_indexes.Insert("emitter_overtime_hue", tfxEmitter_overtime_hue_index);
@@ -5404,9 +5398,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_curved_alpha", tfxAttributeGraph);
 	names_and_types.Insert("overtime_gradient_mapper", tfxAttributeGraph);
 	names_and_types.Insert("overtime_velocity_turbulance", tfxAttributeGraph);
-	names_and_types.Insert("overtime_direction_turbulance", tfxAttributeGraph);
 	names_and_types.Insert("overtime_velocity_adjuster", tfxAttributeGraph);
-	names_and_types.Insert("overtime_direction", tfxAttributeGraph);
 	names_and_types.Insert("overtime_noise_resolution", tfxAttributeGraph);
 	names_and_types.Insert("overtime_motion_randomness", tfxAttributeGraph);
 	names_and_types.Insert("overtime_uv_offset_y", tfxAttributeGraph);
@@ -5860,7 +5852,7 @@ void tfx__assign_graph_property_values(tfx_graph_t *graph, tfx_vector_t<tfx_str2
 
 //Any graphs that are no longer used end up here so the loader can ignore them on load
 tfxINTERNAL bool tfx__is_retired_graph_name(tfx_str256_t *graph_name) {
-	return *graph_name == "base_noise_offset" || *graph_name == "variation_noise_offset";
+	return *graph_name == "base_noise_offset" || *graph_name == "variation_noise_offset" || *graph_name == "overtime_direction_turbulance" || *graph_name == "overtime_direction";
 }
 
 void tfx__assign_graph_properties(tfx_effect_descriptor effect, tfx_vector_t<tfx_str256_t> *values) {
@@ -7279,8 +7271,6 @@ tfx_vec2_t tfx__get_min_graph_values(tfx_graph_preset preset) {
 		return { 0.f, 0.f };
 	case tfx_graph_preset::tfxWeightOvertimePreset:
 		return { 0.f, -20.f };
-	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		return { 0.f, -4320.f };
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
 	case tfx_graph_preset::tfxHueOvertimePreset:
 	case tfx_graph_preset::tfxGlobalHuePreset:
@@ -7371,8 +7361,6 @@ tfx_vec2_t tfx__get_max_graph_values(tfx_graph_preset preset) {
 		return { tfxMAX_FRAME, 10000.f };
 	case tfx_graph_preset::tfxWeightOvertimePreset:
 		return { 1.f, 20.f };
-	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		return { 1.f, 4320.f };
 	case tfx_graph_preset::tfxFixedRibbonAnglePreset:
 	case tfx_graph_preset::tfxHueOvertimePreset:
 		return { 1.f, 1080.f };
@@ -13794,13 +13782,6 @@ void tfx_setup_weight_lookup_policy::apply(tfx_control_work_entry_t *work_entry,
 	ctx.weight_easing = tfx__get_wide_easing_function(ctx.weight_graph->easing_type);
 	ctx.flags |= tfx__graph_has_bezier_curves(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_is_bezier_graph : 0;
 	ctx.flags |= tfx__graph_can_oscillate(ctx.weight_graph) ? tfx_ctx_policy_flag_weight_has_oscillator : 0;
-}
-
-void tfx_setup_direction_lookup_policy::apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx) {
-	ctx.direction_graph = &work_entry->graphs->graphs[tfxEmitter_overtime_direction_index];
-	ctx.direction_easing = tfx__get_wide_easing_function(ctx.direction_graph->easing_type);
-	ctx.flags |= tfx__graph_has_bezier_curves(ctx.direction_graph) ? tfx_ctx_policy_flag_direction_is_bezier_graph : 0;
-	ctx.flags |= tfx__graph_can_oscillate(ctx.direction_graph) ? tfx_ctx_policy_flag_direction_has_oscillator : 0;
 }
 
 //Minus three for the same reason the size and colour passes subtract it: path_position runs across segments, not nodes.

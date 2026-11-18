@@ -2613,7 +2613,6 @@ typedef enum {
 	tfxSpinOvertimePreset,
 	tfxVelocityOvertimePreset,
 	tfxWeightOvertimePreset,
-	tfxDirectionOvertimePreset,
 	tfxFixedRibbonAnglePreset,
 	tfxOpacityOvertimePreset,
 	tfxPercentOvertime,
@@ -2725,8 +2724,6 @@ typedef enum {
 	tfxOvertime_roll_spin,
 	tfxOvertime_stretch,
 	tfxOvertime_velocity_turbulance,
-	tfxOvertime_direction_turbulance,
-	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
 	tfxOvertime_uv_offset_y,
@@ -3102,8 +3099,6 @@ typedef enum {
 	tfx_ctx_policy_flag_motion_randomness_has_oscillator    	= 1 << 9,
 	tfx_ctx_policy_flag_is_ordered				              	= 1 << 12,
 	tfx_ctx_policy_flag_transform_relative						= 1 << 13,
-	tfx_ctx_policy_flag_direction_is_bezier_graph            	= 1 << 14,
-	tfx_ctx_policy_flag_direction_has_oscillator             	= 1 << 15,
 	tfx_ctx_policy_flag_anisotropic_noise                    	= 1 << 16,
 	tfx_ctx_policy_flag_forces                               	= 1 << 17,
 	tfx_ctx_policy_flag_spawn_impulse_on_loop                	= 1 << 18,
@@ -8910,13 +8905,11 @@ struct tfx_position_policy_context {
 	tfx_particle_emitter_state_t *emitter;
 	tfx_emitter_path_t *path;
 	tfx_graph_t *velocity_graph;
-	tfx_graph_t *direction_graph;
 	tfx_graph_t *weight_graph;
 	tfx_graph_t *velocity_turbulance_graph;
 	tfx_graph_t *noise_resolution_graph;
 	tfx_graph_t *motion_randomness_graph;
 	tfx_wide_easing_function velocity_easing;
-	tfx_wide_easing_function direction_easing;
 	tfx_wide_easing_function weight_easing;
 	tfx_wide_easing_function velocity_turbulance_easing;
 	tfx_wide_easing_function noise_resolution_easing;
@@ -8933,10 +8926,6 @@ struct tfx_setup_vecolity_lookup_policy {
 };
 
 struct tfx_setup_weight_lookup_policy {
-	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
-};
-
-struct tfx_setup_direction_lookup_policy {
 	static void apply(tfx_control_work_entry_t *work_entry, tfx_position_policy_context &ctx);
 };
 

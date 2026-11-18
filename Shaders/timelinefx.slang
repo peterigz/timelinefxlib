@@ -3332,9 +3332,9 @@ static const uint tfx_graph_yaw_spin = 9;
 static const uint tfx_graph_roll_spin = 10;
 static const uint tfx_graph_stretch = 11;
 static const uint tfx_graph_velocity_turbulance = 12;
-static const uint tfx_graph_noise_resolution = 15;
-static const uint tfx_graph_motion_randomness = 16;
-static const uint tfx_graph_hue = 21;
+static const uint tfx_graph_noise_resolution = 13;
+static const uint tfx_graph_motion_randomness = 14;
+static const uint tfx_graph_hue = 19;
 
 //tfx_gpu_particle_dispatch_flag_bits
 static const uint tfx_dispatch_capture = 1 << 0;

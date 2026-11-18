@@ -380,8 +380,6 @@ typedef enum {
 	tfxEmitter_overtime_roll_spin_index,
 	tfxEmitter_overtime_stretch_index,
 	tfxEmitter_overtime_velocity_turbulance_index,
-	tfxEmitter_overtime_direction_turbulance_index,
-	tfxEmitter_overtime_direction_index,
 	tfxEmitter_overtime_noise_resolution_index,
 	tfxEmitter_overtime_motion_randomness_index,
 
