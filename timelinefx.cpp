@@ -24773,8 +24773,7 @@ void tfx_SuspendTimelineFX(void) {
 	}
 	
 	// Mark that the thread queue will not be doing anymore work
-	tfxStore->thread_queues.end_all_threads = true;
-	tfx__writebarrier;
+	tfx__store_release(&tfxStore->thread_queues.end_all_threads, 1);
 	
 	// Collect all threads and kill them off
 	tfx_work_queue_t end_queue{};

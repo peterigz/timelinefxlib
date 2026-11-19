@@ -396,6 +396,10 @@ static inline tfx_thread_access tfx__load_acquire(volatile tfx_thread_access *so
 	_ReadWriteBarrier();
 	return value;
 }
+
+//For values another thread may write while they're read, ordered by an acquire or release elsewhere
+#define tfx__load_relaxed(source) (*(source))
+#define tfx__store_relaxed(target, value) (*(target) = (value))
 #endif
 
 #define tfx__writebarrier _WriteBarrier();
@@ -448,6 +452,10 @@ static inline void tfx__store_release(volatile tfx_thread_access *target, tfx_th
 static inline tfx_thread_access tfx__load_acquire(volatile tfx_thread_access *source) {
 	return __atomic_load_n(source, __ATOMIC_ACQUIRE);
 }
+
+//For values another thread may write while they're read, ordered by an acquire or release elsewhere
+#define tfx__load_relaxed(source) __atomic_load_n(source, __ATOMIC_RELAXED)
+#define tfx__store_relaxed(target, value) __atomic_store_n(target, value, __ATOMIC_RELAXED)
 
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
@@ -4987,7 +4995,7 @@ typedef struct tfx_work_queue_s {
 typedef struct tfx_queue_processor_s {
 	tfx_sync_t sync;
 	tfx_uint count;
-	volatile bool end_all_threads;
+	volatile tfx_thread_access end_all_threads;
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
 } tfx_queue_processor_t;
 
@@ -5130,7 +5138,7 @@ tfxINTERNAL inline void tfx__cleanup_thread_queues(tfx_queue_processor_t *queues
 tfxINTERNAL inline tfx_work_queue_t *tfx__get_queue_with_work(tfx_queue_processor_t *thread_processor) {
 	tfx__sync_lock(&thread_processor->sync);
 
-	while (thread_processor->count == 0 && !thread_processor->end_all_threads) {
+	while (thread_processor->count == 0 && !tfx__load_acquire(&thread_processor->end_all_threads)) {
 		tfx__sync_wait_full(&thread_processor->sync);
 	}
 
@@ -5187,28 +5195,36 @@ tfxINTERNAL inline void tfx__end_flush_denormals(tfxU32 previous_control_state) 
 #endif
 }
 
+//Field by field, because a claimant that then loses the claim may be copying the slot while the producer writes it again
+tfxINTERNAL inline tfx_work_queue_entry_t tfx__load_work_queue_entry(tfx_work_queue_entry_t *slot) {
+	tfx_work_queue_entry_t entry;
+	entry.call_back = tfx__load_relaxed(&slot->call_back);
+	entry.data = tfx__load_relaxed(&slot->data);
+	return entry;
+}
+
 tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
 	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
 
 	if (queue) {
-		tfx_thread_access read_entry = queue->next_read_entry;
+		tfx_thread_access read_entry = tfx__load_acquire(&queue->next_read_entry);
 		if (read_entry != tfx__load_acquire(&queue->next_write_entry)) {
 			//Copied before the claim, because once the read count moves on the producer may write this slot again
-			tfx_work_queue_entry_t entry = queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES];
+			tfx_work_queue_entry_t entry = tfx__load_work_queue_entry(&queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES]);
 			if (tfx__compare_and_exchange(&queue->next_read_entry, read_entry + 1, read_entry) == read_entry) {
 				entry.call_back(queue, entry.data);
 				tfx__atomic_increment(&queue->entry_completion_count);
 			}
 		}
 	}
-	return queue_processor->end_all_threads;
+	return tfx__load_acquire(&queue_processor->end_all_threads) != 0;
 }
 
 tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
-	tfx_thread_access read_entry = queue->next_read_entry;
+	tfx_thread_access read_entry = tfx__load_acquire(&queue->next_read_entry);
 	if (read_entry != tfx__load_acquire(&queue->next_write_entry)) {
 		//Copied before the claim, because once the read count moves on the producer may write this slot again
-		tfx_work_queue_entry_t entry = queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES];
+		tfx_work_queue_entry_t entry = tfx__load_work_queue_entry(&queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES]);
 		if (tfx__compare_and_exchange(&queue->next_read_entry, read_entry + 1, read_entry) == read_entry) {
 			tfxU32 previous_control_state = tfx__begin_flush_denormals();
 			entry.call_back(queue, entry.data);
@@ -5227,12 +5243,13 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 	}
 
 	tfx_thread_access write_entry = queue->next_write_entry;
-	while (write_entry - queue->next_read_entry == tfxMAX_QUEUE_ENTRIES) {        //Not enough room in work queue
+	while (write_entry - tfx__load_acquire(&queue->next_read_entry) == tfxMAX_QUEUE_ENTRIES) {        //Not enough room in work queue
 		//We can do this because we're single producer
 		tfx__do_next_work_queue_entry(queue);
 	}
-	queue->entries[write_entry % tfxMAX_QUEUE_ENTRIES].data = data;
-	queue->entries[write_entry % tfxMAX_QUEUE_ENTRIES].call_back = call_back;
+	tfx_work_queue_entry_t *slot = &queue->entries[write_entry % tfxMAX_QUEUE_ENTRIES];
+	tfx__store_relaxed(&slot->data, data);
+	tfx__store_relaxed(&slot->call_back, call_back);
 	tfx__atomic_increment(&queue->entry_completion_goal);
 
 	tfx__writebarrier;
@@ -5248,7 +5265,8 @@ tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
 	tfx_uint completing_threads = tfx__atomic_increment(&queue->completing_thread_count);
 	TFX_ASSERT(completing_threads == 1 && "Only the thread that adds work to a queue may complete it");
 #endif
-	while (queue->entry_completion_goal != queue->entry_completion_count) {
+	//Acquire, so the work the entries did is visible once the count is reached
+	while (queue->entry_completion_goal != tfx__load_acquire(&queue->entry_completion_count)) {
 		tfx__do_next_work_queue_entry(queue);
 	}
 	queue->entry_completion_count = 0;
