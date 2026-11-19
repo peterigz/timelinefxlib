@@ -2281,6 +2281,9 @@ const tfxWideArrayi tfxBASEINDEX = { { 0, 1, 2, 3 } };
 
 #endif
 
+//Memory read or written with tfxWideLoad and tfxWideStore must be aligned to this: 32 bytes under tfxUSEAVX, 16 otherwise
+#define tfxWIDE_ALIGNMENT ((tfxU32)alignof(tfxWideFloat))
+
 const tfxWideArrayi tfxWIDEONEi       = tfxWideSetConst(1);
 const tfxWideArray tfxWIDEMINUSONE    = tfxWideSetConst(-1.f);
 const tfxWideArrayi tfxWIDEMINUSONEi  = tfxWideSetConst(-1);
@@ -3844,7 +3847,8 @@ struct tfx_vector_t {
 	typedef value_type *iterator;
 	typedef const value_type *const_iterator;
 
-	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
+	//An empty vector's data can be NULL, and memcpy from or to NULL is undefined even for 0 bytes
+	inline					tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); if (current_size) memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
 	inline					tfx_vector_t() : current_size(0), capacity(0), locked(0), alignment(0), data(nullptr) {}
 	//inline				tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { TFX_ASSERT(0); return *this; }	//Use copy instead. 
 	inline					~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers! Call the_containter.free();
@@ -3871,7 +3875,7 @@ struct tfx_vector_t {
 	inline const T &back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline T &parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
 	inline const T &parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
-	inline void				copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
+	inline void				copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); if (current_size) memcpy((void *)data, (const void *)src.data, (size_t)current_size * sizeof(T)); }
 	inline tfxU32			_grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void				resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void				resize(tfxU32 new_size, const T &v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy((void *)&data[n], (const void *)&v, sizeof(v)); current_size = new_size; }
@@ -4354,6 +4358,8 @@ inline void tfx__finish_soa_buffer_setup(tfx_soa_buffer_t *buffer, void *struct_
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
 	buffer->buffer_amount = buffer_amount;
+	//The capacity must exceed buffer_amount, and a reserve such as a 4 node path is below tfxDataWidth under tfxUSEAVX
+	reserve_amount = tfxMax(reserve_amount, buffer_amount);
 	reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
 	buffer->capacity = reserve_amount;
 	TFX_ASSERT(buffer->capacity > buffer->buffer_amount);	//buffer_amount must be less than the capacity, reserver more than the buffer_amount
@@ -5603,6 +5609,27 @@ struct tfx_mat3_t {
 #define tfxPROFILE_VALUE(value) ((void)0)
 #define tfxPROFILE_TEXT(format, ...) ((void)0)
 
+#endif
+
+//Time spent in each phase of tfx__update_stage_tick, for the tfx_bench_phases target only. Without tfxBENCH_PHASES the macros are nothing.
+//BEGIN and END for a phase go in the same scope
+#ifdef tfxBENCH_PHASES
+typedef enum tfx_bench_phase {
+	tfx_bench_phase_warmup,
+	tfx_bench_phase_spawn,
+	tfx_bench_phase_ribbons,
+	tfx_bench_phase_control,
+	tfx_bench_phase_age,
+	tfx_bench_phase_sort_write,
+	tfx_bench_phase_count
+} tfx_bench_phase;
+extern tfxU64 tfx_bench_phase_totals[tfx_bench_phase_count];	//Nanoseconds, written only by the stage's update thread
+tfxU64 tfx__bench_phase_nanoseconds(void);
+#define tfxBENCH_PHASE_BEGIN(phase) const tfxU64 tfx_bench_phase_start_##phase = tfx__bench_phase_nanoseconds()
+#define tfxBENCH_PHASE_END(phase) tfx_bench_phase_totals[tfx_bench_phase_##phase] += tfx__bench_phase_nanoseconds() - tfx_bench_phase_start_##phase
+#else
+#define tfxBENCH_PHASE_BEGIN(phase) ((void)0)
+#define tfxBENCH_PHASE_END(phase) ((void)0)
 #endif
 
 //-----------------------------------------------------------

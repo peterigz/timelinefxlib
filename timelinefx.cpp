@@ -12397,6 +12397,10 @@ tfxINTERNAL void tfx__free_removed_ribbon_emitters(tfx_stage pm) {
 	}
 }
 
+#ifdef tfxBENCH_PHASES
+tfxU64 tfx_bench_phase_totals[tfx_bench_phase_count];
+#endif
+
 tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool write_instances) {
 	tfxPROFILE;
 
@@ -12437,6 +12441,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	//During warmup current_ebuff is held constant — tfx__simulate_effect_spawn gates all writes to
 	//next_buffer's lists on tfxStageFlags_warming_up so non-warming effects already in
 	//effects_in_use[current_ebuff] are not disturbed and the normal update below picks up where it left off.
+	tfxBENCH_PHASE_BEGIN(warmup);
 	if (pm->warmup_effects[0].current_size > 0) {
 		//Named zone: the loop below runs an arbitrary number of full sim ticks inside this single
 		//tfx__update_stage call, so without its own zone a warmup spike is indistinguishable from a slow frame.
@@ -12625,7 +12630,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 		//frame's age phase will repopulate.
 		tfx__reset_ribbon_buffer_requirements(pm);
 	}
+	tfxBENCH_PHASE_END(warmup);
 
+	tfxBENCH_PHASE_BEGIN(spawn);
 	tfx__set_stage_timings(pm, elapsed_time, pm->max_frame_length);
 	if (!write_instances) {
 		pm->flags |= tfxStageFlags_skip_instance_writes;
@@ -12652,6 +12659,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 		tfx__record_gpu_groups(pm);
 	}
 	pm->user_spawn_runs.clear();
+	tfxBENCH_PHASE_END(spawn);
+
+	tfxBENCH_PHASE_BEGIN(ribbons);
 
 	tfx_ribbon_dispatch_t ribbon_dispatch{};
 	while (tfx__next_ribbon_bucket(pm, &ribbon_dispatch)) {
@@ -12673,6 +12683,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	tfx__complete_all_work(&pm->work_queue);
 	tfx_AdvanceRandom(&pm->threaded_random);
 	tfx__free_removed_ribbon_emitters(pm);
+	tfxBENCH_PHASE_END(ribbons);
+
+	tfxBENCH_PHASE_BEGIN(control);
 
 	pm->spawn_work.clear();
 	pm->ribbon_work.clear();
@@ -12716,6 +12729,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 
 	tfx__complete_all_work(&pm->work_queue);
 	pm->control_work.clear();
+	tfxBENCH_PHASE_END(control);
+
+	tfxBENCH_PHASE_BEGIN(age);
 
 	{
 		for (int index : pm->control_emitter_queue) {
@@ -12738,6 +12754,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	}
 	tfx__complete_all_work(&pm->work_queue);
 	pm->age_work.clear();
+	tfxBENCH_PHASE_END(age);
+
+	tfxBENCH_PHASE_BEGIN(sort_write);
 	//One write after the age phase joins, so tfx_GetRibbonCount never sees a partial tally
 	tfxU32 live_ribbon_count = 0;
 	for (tfx_control_ribbon_work_entry_t &work_entry : pm->ribbon_control_work) {
@@ -12829,6 +12848,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	pm->current_ebuff = next_buffer;
 
 	tfx__complete_all_work(&pm->work_queue);
+	tfxBENCH_PHASE_END(sort_write);
 
 	pm->current_particle_count = pm->instance_buffer.current_size;
 
@@ -15644,7 +15664,10 @@ bool tfx_AddStageToRibbonBatch(tfx_ribbon_batch_t *batch, tfx_stage stage, tfx_r
 		segment_offset += segment_count;
 		ribbon_offset += ribbon_count;
 	}
-	memcpy((tfx_gpu_ribbon_emitter_t *)batch->emitters_dst + totals->emitter_offset, stage->gpu_ribbon_emitters.data, stage->gpu_ribbon_emitters.size_in_bytes());
+	//A stage without ribbon emitters has never allocated them, and memcpy from NULL is undefined even for 0 bytes
+	if (stage->gpu_ribbon_emitters.current_size) {
+		memcpy((tfx_gpu_ribbon_emitter_t *)batch->emitters_dst + totals->emitter_offset, stage->gpu_ribbon_emitters.data, stage->gpu_ribbon_emitters.size_in_bytes());
+	}
 
 	totals->segment_offset += stage_counts.segment_offset;
 	totals->ribbon_offset += stage_counts.ribbon_offset;
@@ -24569,6 +24592,16 @@ tfxU32 tfx_Millisecs(void) {
 	return (tfxU32)ms;
 }
 
+#ifdef tfxBENCH_PHASES
+tfxU64 tfx__bench_phase_nanoseconds(void) {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	//Split so the multiply can't overflow
+	return (tfxU64)(counter.QuadPart / frequency.QuadPart) * 1000000000ull + (tfxU64)(counter.QuadPart % frequency.QuadPart) * 1000000000ull / (tfxU64)frequency.QuadPart;
+}
+#endif
+
 void tfx__cleanup_thread(tfx_storage_t *storage, int thread_index) {
 	if (storage->threads[thread_index]) {
 		WaitForSingleObject(storage->threads[thread_index], INFINITE);
@@ -24615,6 +24648,14 @@ void tfx__thread_sleep_ms(int ms) {
 	ts.tv_nsec = (long)(ms % 1000) * 1000000L;
 	nanosleep(&ts, NULL);
 }
+
+#ifdef tfxBENCH_PHASES
+tfxU64 tfx__bench_phase_nanoseconds(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (tfxU64)now.tv_sec * 1000000000ull + (tfxU64)now.tv_nsec;
+}
+#endif
 
 void tfx__cleanup_thread(tfx_storage_t *storage, int thread_index) {
 	pthread_join(storage->threads[thread_index], NULL);
@@ -24906,7 +24947,7 @@ void tfx__init_particle_soa(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, t
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_roll_spin));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, tfxWIDE_ALIGNMENT, tfxDataWidth);
 }
 
 void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount) {
@@ -24918,7 +24959,7 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, path_index));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, single_loop_count));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, uid));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, tfxWIDE_ALIGNMENT, tfxDataWidth);
 }
 
 void tfx__init_paths_soa(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount) {
@@ -24926,7 +24967,7 @@ void tfx__init_paths_soa(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tf
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, z));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, length));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, tfxWIDE_ALIGNMENT, tfxDataWidth);
 }
 
 void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
@@ -24939,7 +24980,7 @@ void tfx__init_particle_location_soa(tfx_soa_buffer_t *buffer, tfx_spawn_points_
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, single_spawn_age));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_spawn_points_soa_t, single_spawn_amount));
-	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16, tfxDataWidth);
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, tfxWIDE_ALIGNMENT, tfxDataWidth);
 }
 
 void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties) {
@@ -25177,7 +25218,7 @@ void tfx__init_common_stage(tfx_stage pm, tfxU32 max_particles, unsigned int eff
 }
 
 tfx_stage tfx_CreateStage(tfx_stage_info_t info) {
-	tfx_stage pm = tfxNEW_ALIGNED(tfx_stage, 16);
+	tfx_stage pm = tfxNEW_ALIGNED(tfx_stage, alignof(tfx_stage_t));
 	TFX_ASSERT(pm);		//Unable to allocate the particle manager, out of memory?
 	if (!pm) {
 		return nullptr;	//Out of memory. Release builds return null here rather than dereferencing a null pm.
