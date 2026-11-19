@@ -3011,7 +3011,21 @@ run more than once to catch up, use tfx_UpdateStageSubSteps, which runs every ti
 once with the elapsed time multiplied by the number of ticks rather than once per tick. Either way the previous buffer is then all of those ticks
 behind, so your timer's alpha isn't the factor to interpolate with, tfx_GetStageInterpolation turns it into the one that is.
 A single call is also one long update to the rings of Run on GPU emitters, which tfx_SetGPUSizingUpdateRate sizes for, sub-steps aren't.
-An elapsed longer than max_frame_length (240 ms) is cut to it, for spawning, aging and motion alike, so a long stall doesn't burst.
+An elapsed longer than max_frame_length (240 ms) is cut to it, for spawning, aging and motion alike. A long update spawns the right number of
+particles for its length, but it draws the particles that end during it one last time, and the particles it spawns start up to its length
+older than they are, so they end that much early and close together. Neither shows at a normal update length or a catch-up of a few ticks.
+If your game can hitch, on a loading spike for example, and its effects must stay smooth through it, simulate a long elapsed in steps of
+your normal length instead. That costs a simulation of each step in the frame that already ran long, and steps aren't cut at max_frame_length,
+so cap elapsed to what you're willing to simulate:
+
+	elapsed = elapsed < MaxCatchUp ? elapsed : MaxCatchUp;
+	tfxU32 steps = (tfxU32)ceil(elapsed / FrameLength);
+	if (steps > 1) {
+		tfx_UpdateStageSubSteps(stage, elapsed / steps, steps);
+	} else {
+		tfx_UpdateStage(stage, elapsed);
+	}
+
 In pseudo code, where the Timer functions are your own:
 
 	TimerAccumulate(game->timer);
