@@ -3302,7 +3302,6 @@ typedef enum {
 	tfxEmitterStateFlags_loop                                   = 1 << 15,
 	tfxEmitterStateFlags_kill                                   = 1 << 16,
 	tfxEmitterStateFlags_single_shot_done                       = 1 << 17,
-	tfxEmitterStateFlags_is_line_loop_or_kill                   = 1 << 18,
 	tfxEmitterStateFlags_no_tween                               = 1 << 20,
 	tfxEmitterStateFlags_align_with_velocity                    = 1 << 21,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw                 = 1 << 24,      //For 3d emitters that have free alignment and not always facing the camera
@@ -6330,6 +6329,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_particle_emitter_state_s {
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
+	double qty_frame_length;					//The update length amount_remainder and qty_step_size were measured in, milliseconds
 	tfx_vec3_t handle;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;						
@@ -6634,6 +6634,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_ribbon_emitter_state_s {
 	double amount_remainder;
 	double spawn_quantity;
 	double qty_step_size;
+	double qty_frame_length;					//The update length amount_remainder and qty_step_size were measured in, milliseconds
 	float frame;
 	tfx_vec3_t handle;
 	tfxRibbonEmitterFlags ribbon_property_flags;
@@ -7557,7 +7558,6 @@ typedef struct tfx_stage_s {
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[2];
 	tfx_vector_t<tfxU32> control_emitter_queue;
-	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	//Per effect slot, bumped whenever the slot is freed so effect ids from its previous use go stale
 	tfx_vector_t<tfxU32> effect_generations;
@@ -7607,6 +7607,8 @@ typedef struct tfx_stage_s {
 	//The layer limits' budget. Last update's size is never less than what's still alive on the layer
 	tfxU32 previous_layer_sizes[tfxLAYERS];
 	tfxU32 layer_spawns[tfxLAYERS];
+	tfxU32 fixed_buffer_reserved;				//Without dynamic sprite allocation: the particles in the updating banks plus this update's spawns so far
+
 	//Stage wide totals across every ribbon bucket, reserved atomically by the per bucket spawn threads. Rows and path
 	//blocks are never reclaimed before a stage clear, so these only grow and bound what the staging copy can write.
 	volatile tfxU32 ribbon_rows_allocated;
@@ -8110,6 +8112,17 @@ tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_gr
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__color_ramp_layer_changed(tfx_library library, tfxU32 layer);
 tfxINTERNAL void tfx__release_global_ramp_layers(tfx_library library, tfxU32 keep_count, tfxU32 version);
+//Where this update's first spawn falls, as a fraction of the update: one step on from the last spawn, which the remainder places relative to the end of
+//the update it was measured in. An update of another length rescales that, or a long update after short ones spawns only part of its length
+tfxINTERNAL inline double tfx__spawn_tween(double remainder, double previous_step, double previous_frame_length, double step, double frame_length) {
+	if (step == previous_step && frame_length == previous_frame_length) {
+		return remainder;
+	}
+	if (frame_length == previous_frame_length || previous_frame_length <= 0.0 || frame_length <= 0.0) {
+		return remainder - (previous_step - step);
+	}
+	return (remainder - previous_step) * (previous_frame_length / frame_length) + step;
+}
 tfxINTERNAL inline tfxU32 tfx__stage_property_base(tfx_stage pm, tfx_library library) { return pm->info.global_library_indexes ? library->global_property_base : 0; }
 tfxINTERNAL inline tfxU32 tfx__stage_shape_base(tfx_stage pm, tfx_library library) { return pm->info.global_library_indexes ? library->global_shape_base : 0; }
 tfxINTERNAL inline tfxU32 tfx__stage_ramp_layer(tfx_stage pm, tfx_library library, tfxU32 local_layer) {

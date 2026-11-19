@@ -1927,7 +1927,8 @@ bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 		tfxU32 variation_amount_index = is_ribbon ? (tfxU32)tfxRibbon_variation_amount_index : (tfxU32)tfxEmitter_variation_amount_index;
 		float qty = tfx__get_graph_last_value(tfx__get_descriptor_graph(child, base_amount_index)) + tfx__get_graph_last_value(tfx__get_descriptor_graph(child, variation_amount_index));
 		//If the emitter is tfxOtherEmitter or tfxSpawnOnRibbon then how finite it is depends on the source emitter/ribbon.
-		//Its particles can still loop forever though, so the single shot limit check below still applies to it.
+		//A spawn on ribbon single can still loop forever though, so the single shot limit check below still applies to it.
+		//An other emitter's singles never loop.
 		bool spawns_from_paired_source = shared_properties->emission_type == tfxOtherEmitter || shared_properties->emission_type == tfxSpawnOnRibbon;
 		if (child->state_properties.path_attributes != tfxINVALID && shared_properties->emission_type == tfxPath) {
 			if (tfx__path_budget_ends(child, tfx_GetEmitterPath(child))) {
@@ -1937,7 +1938,7 @@ bool tfx__is_finite_effect(tfx_effect_descriptor effect) {
 		if (!(child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) && qty > 0 && !spawns_from_paired_source) {
 			return false;
 		}
-		else if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit == 0) {
+		else if (child->state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && shared_properties->single_shot_limit == 0 && shared_properties->emission_type != tfxOtherEmitter) {
 			return false;
 		}
 	}
@@ -11281,7 +11282,6 @@ void tfx__update_emitter_state_flags(tfx_effect_descriptor emitter) {
 		state_flags |= shared_properties->emission_type == tfxPath && property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
 		state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 		state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
-		state_flags |= shared_properties->emission_type == tfxLine && property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 		state_flags |= (gpu_properties->flags & 0x3) == tfxBillboarding_free_align || ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 		state_flags |= property_flags & tfxEmitterPropertyFlags_relative_angle && ((gpu_properties->flags & 0x3) == tfxBillboarding_align_to_camera || (gpu_properties->flags & 0x3) == tfxBillboarding_free_align) ? tfxEmitterStateFlags_relative_angle : 0;
 		state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
@@ -11416,6 +11416,7 @@ tfxINTERNAL void tfx__reset_particle_emitter_state(tfx_stage pm, tfxU32 emitter_
 	emitter.grid_direction = tfx_vec3_t();
 	emitter.amount_remainder = 0.f;
 	emitter.qty_step_size = 0.f;
+	emitter.qty_frame_length = 0.0;
 	emitter.emitter_size = 0.f;
 	emitter.creation_rotation = tfx_quaternion_t(1.f, 0.f, 0.f, 0.f);
 	emitter.seed_index = (*seed_index)++;
@@ -11490,6 +11491,7 @@ tfxINTERNAL void tfx__reset_ribbon_emitter_state(tfx_stage pm, tfxU32 emitter_in
 	ribbon_emitter.single_decay_age = 0.f;
 	ribbon_emitter.user_spawn_amount_phase = 0.f;
 	ribbon_emitter.qty_step_size = 0.f;
+	ribbon_emitter.qty_frame_length = 0.0;
 	ribbon_emitter.spawn_quantity = 0.f;
 	ribbon_emitter.source_ribbon = src_emitter;
 	ribbon_emitter.local_position = tfx_vec3_t();
@@ -12401,6 +12403,21 @@ tfxINTERNAL void tfx__free_removed_ribbon_emitters(tfx_stage pm) {
 tfxU64 tfx_bench_phase_totals[tfx_bench_phase_count];
 #endif
 
+//Without dynamic sprite allocation every particle already in an updating CPU bank is written this update, warmed up ones included,
+//so they're reserved before any emitter spawns and the spawns only take what's left
+tfxINTERNAL void tfx__reserve_fixed_instance_buffer(tfx_stage pm, tfxU32 effect_count) {
+	pm->fixed_buffer_reserved = 0;
+	for (tfxU32 effect = 0; effect != effect_count; ++effect) {
+		tfx_effect_state_t &effect_state = pm->effects[pm->effects_in_use[pm->current_ebuff][effect].index];
+		for (tfxU32 emitter_index : effect_state.emitter_indexes[pm->current_ebuff]) {
+			const tfx_particle_emitter_state_t &emitter = pm->emitters[emitter_index];
+			if (emitter.particles_index != tfxINVALID && emitter.state_properties.gpu_group_index == tfxINVALID) {
+				pm->fixed_buffer_reserved += pm->particle_array_buffers[emitter.particles_index].current_size;
+			}
+		}
+	}
+}
+
 tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool write_instances) {
 	tfxPROFILE;
 
@@ -12457,6 +12474,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 			pm->control_emitter_queue.clear();
 			pm->spawn_work.clear();
 			pm->instance_buffer.clear();
+			if (!(pm->flags & tfxStageFlags_dynamic_sprite_allocation)) {
+				tfx__reserve_fixed_instance_buffer(pm, effects_start_size);
+			}
 
 			//Spawn phase — issued for every warming effect, runs in parallel
 			for (tfx_warmup_entry_t &entry : pm->warmup_effects[current_warmup_buffer]) {
@@ -12636,6 +12656,9 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 	tfx__set_stage_timings(pm, elapsed_time, pm->max_frame_length);
 	if (!write_instances) {
 		pm->flags |= tfxStageFlags_skip_instance_writes;
+	}
+	if (!(pm->flags & tfxStageFlags_dynamic_sprite_allocation)) {
+		tfx__reserve_fixed_instance_buffer(pm, effects_start_size);
 	}
 
 	//Loop over all the effects and emitters, and add spawn jobs to the worker queue
@@ -15957,7 +15980,6 @@ void tfx_FreeStage(tfx_stage pm) {
 		}
 	}
 	pm->ribbon_segment_buckets.FreeAll();
-	pm->emitters_check_capture.free();
 	pm->free_effects.free();
 	pm->effect_generations.free();
 	pm->free_gpu_ribbon_emitters.free();
@@ -16992,12 +17014,13 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	if (pm->frame_length > 0.0) {
 		double step_size = ribbon_emitter.spawn_quantity > 0 ? 1.0 / ribbon_emitter.spawn_quantity : 0;
 		double tween = 0;
-		if (step_size == ribbon_emitter.qty_step_size || ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+		if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
 			tween = ribbon_emitter.amount_remainder;
 		} else {
-			tween = ribbon_emitter.amount_remainder - (ribbon_emitter.qty_step_size - step_size);
+			tween = tfx__spawn_tween(ribbon_emitter.amount_remainder, ribbon_emitter.qty_step_size, ribbon_emitter.qty_frame_length, step_size, pm->frame_length);
 		}
 		ribbon_emitter.qty_step_size = step_size;
+		ribbon_emitter.qty_frame_length = pm->frame_length;
 
 		ribbon_work_entry->tween = tween;
 		ribbon_work_entry->qty_step_size = step_size;
@@ -17132,10 +17155,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	spawn_work_entry->overall_scale = parent_effect.overall_scale;
 	tfx__update_emitter_state(pm, emitter, emitter.parent_index, spawn_work_entry->parent_spawn_controls, spawn_work_entry);
 
-	if ((emitter.state_flags & tfxEmitterStateFlags_is_line_loop_or_kill && emitter.state_flags & tfxEmitterStateFlags_loop) || (emitter.state_flags & tfxEmitterStateFlags_is_single && shared_properties.single_shot_limit > 1)) {
-		pm->emitters_check_capture.push_back(emitter_index);
-	}
-
 	//Transformed before the spawn count so spawn distance spacing can measure this update's travel
 	if (emitter.state_flags & tfxEmitterStateFlags_orient_to_camera_pending) {
 		if (tfx__solve_camera_facing_rotation(pm, parent_effect, emitter.local_position + translation, &emitter.creation_rotation)) {
@@ -17186,6 +17205,11 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_soa_buffer_t &particle_buffer = pm->particle_array_buffers[emitter.particles_index];
 	emitter.sprites_count = particle_buffer.current_size;
 	const bool skip_instance_accounting = (pm->flags & tfxStageFlags_warming_up) > 0 || on_gpu;
+	//Every existing particle is already in fixed_buffer_reserved, warming ones included, so spawning only into what that leaves can't overrun the buffer
+	const bool fixed_buffer = !(pm->flags & tfxStageFlags_dynamic_sprite_allocation) && !on_gpu;
+	if (fixed_buffer) {
+		max_spawn_count = pm->fixed_buffer_reserved < instance_buffer.capacity ? tfxMin(max_spawn_count, instance_buffer.capacity - pm->fixed_buffer_reserved) : 0;
+	}
 	//During warmup the instance buffer is never written to (control functions skip sprite writes), so the
 	//growth/clamp + cursor accounting around it is unnecessary. We still need max_spawn_count and the actual
 	//tfx__spawn_particles call so the particle bank fills in normally; the post-warmup frame will then
@@ -17204,19 +17228,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 					uid_buffer.reserve(new_size);
 				}
 				instance_buffer.reserve(new_size);
-			}
-		}
-		else {
-			tfxU32 required_space = emitter.sprites_count + instance_buffer.current_size + max_spawn_count;
-			if (required_space >= instance_buffer.capacity) {
-				tfxU32 free_space = instance_buffer.capacity - instance_buffer.current_size;
-				if (free_space > emitter.sprites_count) {
-					max_spawn_count = free_space - emitter.sprites_count;
-				}
-				else {
-					max_spawn_count = tfxMin(free_space, max_spawn_count);
-				}
-				TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 			}
 		}
 
@@ -17238,7 +17249,7 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 spawn_difference = max_spawn_count - spawn_work_entry->amount_to_spawn;
 	if (!skip_instance_accounting) {
 		instance_buffer.current_size -= spawn_difference;
-		TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
+		TFX_ASSERT(instance_buffer.current_size <= instance_buffer.capacity);	//The instance buffer overran, so the spawn limit missed some particles
 		effect_instance_index_point -= spawn_difference;
 		pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
 		pm->layer_spawns[layer] += spawn_work_entry->amount_to_spawn;
@@ -17246,6 +17257,9 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		if (pm->flags & tfxStageFlags_recording_sprites && pm->flags & tfxStageFlags_using_uids) {
 			uid_buffer.current_size = instance_buffer.current_size;
 		}
+	}
+	if (fixed_buffer) {
+		pm->fixed_buffer_reserved += spawn_work_entry->amount_to_spawn;
 	}
 	emitter.sprites_count -= spawn_difference;
 
@@ -17769,9 +17783,12 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 	if (emitter.age == 0.f && emitter.spawn_quantity < 1.0) {
 		emitter.amount_remainder = 1.0;
 		emitter.qty_step_size = step_size;
+		emitter.qty_frame_length = pm->frame_length;
 	}
 
-	return emitter.amount_remainder >= 1.0 ? 0 : tfxU32((1.0 - emitter.amount_remainder) / step_size) + 1;
+	//The first spawn tfx__spawn_particles will use, so the count it's clamped to covers the whole update
+	const double tween = is_single ? emitter.amount_remainder : tfx__spawn_tween(emitter.amount_remainder, emitter.qty_step_size, emitter.qty_frame_length, step_size, pm->frame_length);
+	return tween >= 1.0 ? 0 : tfxU32((1.0 - tween) / step_size) + 1;
 }
 
 tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties) {
@@ -17847,10 +17864,14 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 	if (ribbon_emitter.age == 0.f && ribbon_emitter.spawn_quantity < 1.0) {
 		ribbon_emitter.amount_remainder = 1.0;
 		ribbon_emitter.qty_step_size = step_size;
+		ribbon_emitter.qty_frame_length = pm->frame_length;
 	}
 	TFX_ASSERT(!(ribbon_emitter.amount_remainder != ribbon_emitter.amount_remainder));
 	TFX_ASSERT(step_size > 0);
-	return ribbon_emitter.amount_remainder >= 1.0 ? 0 : tfxU32((1.0 - ribbon_emitter.amount_remainder) / step_size) + 1;
+	//The first spawn the ribbon spawn will use, so the count it's clamped to covers the whole update
+	const bool single = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) != 0;
+	const double tween = single ? ribbon_emitter.amount_remainder : tfx__spawn_tween(ribbon_emitter.amount_remainder, ribbon_emitter.qty_step_size, ribbon_emitter.qty_frame_length, step_size, pm->frame_length);
+	return tween >= 1.0 ? 0 : tfxU32((1.0 - tween) / step_size) + 1;
 }
 
 void tfx_CompleteStageWork(tfx_stage pm) {
@@ -17890,13 +17911,14 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	double step_size = 1.0 / emitter.spawn_quantity;
 	double tween = 0;
-	if (step_size == emitter.qty_step_size || emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
+	if (emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single) {
 		tween = emitter.amount_remainder;
 	}
 	else {
-		tween = emitter.amount_remainder - (emitter.qty_step_size - step_size);
+		tween = tfx__spawn_tween(emitter.amount_remainder, emitter.qty_step_size, emitter.qty_frame_length, step_size, pm->frame_length);
 	}
 	emitter.qty_step_size = step_size;
+	emitter.qty_frame_length = pm->frame_length;
 
 	work_entry->emission_type = shared_properties.emission_type;
 	work_entry->user_spawn_rotation = emitter.rotation;
@@ -23903,10 +23925,14 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
-	//The effect's stop too: followers don't take it, so they keep spawning from their sources, but their singles must stop looping or the effect never ends
+	//The effect's stop too: spawn on ribbon emitters don't take it, so they keep spawning from their ribbons, but their singles must stop looping or the effect never ends
 	tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei((emitter.state_flags | effect.state_flags) & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxStageFlags_disable_spawning)), tfxWideSetZeroi);
 	if (emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite && pm.flags & tfxStageFlags_recording_sprites) {
 		state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite), tfxWideSetZeroi);
+	}
+	//An other emitter's singles fire once per source particle and end with their own life. Looping, the followers of a dead source particle would cycle where they spawned forever
+	if (work_entry->shared_properties->emission_type == tfxOtherEmitter) {
+		state_flags_no_spawning = tfxWideSetSinglei(-1);
 	}
 
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
