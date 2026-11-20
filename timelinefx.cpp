@@ -16992,6 +16992,8 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 
 	tfx_gpu_ribbon_emitter_t &gpu_emitter = pm->gpu_ribbon_emitters[ribbon_emitter.state_properties.gpu_property_index];
 	gpu_emitter.start_frame_index = (ribbon_emitter.state_properties.image ? ribbon_emitter.state_properties.image->compute_shape_index : 0) + tfx__stage_shape_base(pm, ribbon_emitter.library);
+	//Every frame, so a library refresh that rebuilds the graph lookup offsets reaches ribbons it didn't restart
+	gpu_emitter.lookup_offset = ribbon_emitter.source_ribbon->gpu_lookup_offset;
 	if (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_relative_position) {
 		gpu_emitter.position = ribbon_emitter.world_position;
 		gpu_emitter.captured_position = ribbon_emitter.captured_position;
@@ -20974,8 +20976,8 @@ void tfx__spawn_particle_path_start(tfx_work_queue_t *queue, void *data) {
 			float length_squared = point.x * point.x + point.z * point.z;
 			float radius = length_squared == 0.f ? 0.f : 1.f / tfx__quake_sqrt(length_squared);
 			float len = sqrtf(point.x * point.x + point.z * point.z);
-			float norm_x = point.x / len;
-			float norm_z = point.z / len;
+			float norm_x = length_squared == 0.f ? 0.f : point.x / len;
+			float norm_z = length_squared == 0.f ? 0.f : point.z / len;
 			float sin_path_offset = sinf(path_offset);
 			float cos_path_offset = cosf(path_offset);
 			float rx = norm_x * cos_path_offset - norm_z * sin_path_offset;
