@@ -12418,6 +12418,16 @@ tfxINTERNAL void tfx__reserve_fixed_instance_buffer(tfx_stage pm, tfxU32 effect_
 	}
 }
 
+//After the ribbon age work joins, since the particle work running beside it reads the stage flags
+tfxINTERNAL void tfx__flag_ribbons_to_draw(tfx_stage pm) {
+	for (tfx_control_ribbon_work_entry_t &work_entry : pm->ribbon_control_work) {
+		if (work_entry.ribbon_bucket->highest_ribbon_index >= work_entry.ribbon_bucket->lowest_ribbon_index) {
+			pm->flags |= tfxStageFlags_has_ribbons_to_draw;
+			return;
+		}
+	}
+}
+
 tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool write_instances) {
 	tfxPROFILE;
 
@@ -12610,6 +12620,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_ribbons_ages);
 			}
 			tfx__complete_all_work(&pm->work_queue);
+			tfx__flag_ribbons_to_draw(pm);
 			pm->ribbon_control_work.clear();
 
 			//Move ribbon survivors back to ribbon_indexes[current_ebuff] for each warming emitter.
@@ -12786,6 +12797,7 @@ tfxINTERNAL void tfx__update_stage_tick(tfx_stage pm, double elapsed_time, bool 
 		live_ribbon_count += work_entry.ribbon_count;
 	}
 	pm->current_ribbon_count = live_ribbon_count;
+	tfx__flag_ribbons_to_draw(pm);
 	pm->ribbon_control_work.clear();
 
 	tfx__update_ribbon_buffer_requirements(pm);
@@ -15135,10 +15147,6 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 			bucket->lowest_segment_index = tfx__Min(bucket->lowest_segment_index, ribbon_emitter.lag_block_start);
 		}
 	}
-
-	if (bucket->highest_ribbon_index >= bucket->lowest_ribbon_index) {
-		pm.flags |= tfxStageFlags_has_ribbons_to_draw;
-	}
 }
 
 void tfx__control_particle_image_frame_warmup(tfx_work_queue_t *queue, void *data) {
@@ -15928,6 +15936,10 @@ void tfx_FreeStage(tfx_stage pm) {
 	//no longer enough to be rid of it - it has to be told to exit and joined before the
 	//stage memory it holds a pointer to goes away.
 	tfx__shutdown_update_thread(pm);
+	//While suspended there are no workers, and resuming starts the list empty
+	if (tfxStore->thread_count) {
+		tfx__remove_queue_work(&tfxStore->thread_queues, &pm->work_queue);
+	}
 	tfx__free_all_particle_lists(pm);
 	tfx__free_all_spawn_location_lists(pm);
 	tfx__free_gpu_groups(pm);
@@ -16945,7 +16957,7 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	//Each user spawn location waits out the delay from its own age instead
 	if (parent_effect.age < ribbon_emitter.state_properties.delay_spawning && !ribbon_work_entry->user_spawn_locations) {
 		ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_no_tween_this_update;
-		parent_effect.active_emitters++;
+		tfx__atomic_increment(&parent_effect.active_emitters);
 		return;
 	}
 
@@ -17066,13 +17078,16 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	gpu_emitter.morph_segment_start_index = ribbon_emitter.morph_segment_start_index;
 
 	bool single_decay_pending = ribbon_emitter.single_decay_age > 0.f && !(ribbon_emitter.state_flags & tfxEmitterStateFlags_single_shot_done) && !(ribbon_emitter.state_flags & tfxEmitterStateFlags_stop_spawning);
+	//Atomic because an effect's ribbon emitters can sit in different buckets, which update in parallel
 	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size != 0 || single_decay_pending) {
-		parent_effect.active_emitters++;
+		tfx__atomic_increment(&parent_effect.active_emitters);
 		return;
 	}
 	if (!tfx__emitter_spawning_finished(ribbon_emitter.state_flags, ribbon_emitter.state_properties.shared_flags, ribbon_work_entry->shared_properties->emission_type, ribbon_emitter.source_ribbon->state_properties.loop_length, 0.f, ribbon_emitter.age, &ribbon_work_entry->graphs->graphs[tfxRibbon_base_amount_index], &ribbon_work_entry->graphs->graphs[tfxRibbon_variation_amount_index])) {
-		parent_effect.spawning_emitters++;
-		parent_effect.lod_held_emitters += (ribbon_emitter.state_flags & tfxEmitterStateFlags_lod_held) ? 1 : 0;
+		tfx__atomic_increment(&parent_effect.spawning_emitters);
+		if (ribbon_emitter.state_flags & tfxEmitterStateFlags_lod_held) {
+			tfx__atomic_increment(&parent_effect.lod_held_emitters);
+		}
 	}
 }
 
@@ -17188,6 +17203,8 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		//A new emitter's rotation is whatever its slot last held until the transform above, so its first capture would read garbage
 		emitter.captured_rotation = emitter.rotation;
 	}
+	//Cleared before tfx__spawn_particles queues the spawn, whose workers read state_flags
+	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 
 	tfxU32 max_spawn_count = tfx__new_sprites_needed(pm, spawn_work_entry, emitter_index, &parent_effect, &shared_properties);
 	tfx_effect_instance_data_t &instance_data = pm->effects[emitter.parent_index].instance_data;
@@ -17282,8 +17299,6 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 			parent_effect.lod_held_emitters += (emitter.state_flags & tfxEmitterStateFlags_lod_held) ? 1 : 0;
 		}
 	}
-
-	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 }
 
 tfxINTERNAL double tfx__user_spawn_location_weights(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter, tfx_effect_state_t *parent) {
@@ -18063,6 +18078,12 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 
 	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
 
+	//A decaying emitter is marked done by tfx__new_sprites_needed once its tail has run out
+	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations && !tfx__has_single_decay(&shared_properties)) {
+		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
+	}
+
+	//Workers read emitter.state_flags while the spawn runs, so every write to it must come before this
 	if (work_entry->amount_to_spawn > 0) {
 		if (work_entry->root_effect_flags & tfxEffectPropertyFlags_is_ordered) {
 			TFX_ASSERT(work_entry->depth_indexes);	//This must have been set if the effect is ordered!
@@ -18078,11 +18099,6 @@ void tfx__spawn_particles(tfx_stage pm, tfx_spawn_work_entry_t *work_entry) {
 		} else {
 			pm->deffered_spawn_work.push_back(work_entry);
 		}
-	}
-
-	//A decaying emitter is marked done by tfx__new_sprites_needed once its tail has run out
-	if (work_entry->amount_to_spawn > 0 && emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_single && work_entry->emission_type != tfxOtherEmitter && !work_entry->user_spawn_locations && !tfx__has_single_decay(&shared_properties)) {
-		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
 }
 

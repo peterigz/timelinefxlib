@@ -5135,23 +5135,6 @@ tfxINTERNAL inline void tfx__cleanup_thread_queues(tfx_queue_processor_t *queues
 	tfx__sync_cleanup(&queues->sync);
 }
 
-tfxINTERNAL inline tfx_work_queue_t *tfx__get_queue_with_work(tfx_queue_processor_t *thread_processor) {
-	tfx__sync_lock(&thread_processor->sync);
-
-	while (thread_processor->count == 0 && !tfx__load_acquire(&thread_processor->end_all_threads)) {
-		tfx__sync_wait_full(&thread_processor->sync);
-	}
-
-	tfx_work_queue_t *queue = NULL;
-	if (thread_processor->count > 0) {
-		queue = thread_processor->queues[--thread_processor->count];
-		tfx__sync_signal_empty(&thread_processor->sync);
-	}
-
-	tfx__sync_unlock(&thread_processor->sync);
-	return queue;
-}
-
 tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
 	tfx__sync_lock(&thread_processor->sync);
 
@@ -5161,6 +5144,24 @@ tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_proce
 
 	thread_processor->queues[thread_processor->count++] = queue;
 	tfx__sync_signal_full(&thread_processor->sync);
+
+	tfx__sync_unlock(&thread_processor->sync);
+}
+
+//Call before freeing a queue: entries its producer ran itself leave their pointers on the list for a worker to pop later
+tfxINTERNAL inline void tfx__remove_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
+	tfx__sync_lock(&thread_processor->sync);
+
+	tfx_uint kept_count = 0;
+	for (tfx_uint slot = 0; slot != thread_processor->count; ++slot) {
+		if (thread_processor->queues[slot] != queue) {
+			thread_processor->queues[kept_count++] = thread_processor->queues[slot];
+		}
+	}
+	if (kept_count != thread_processor->count) {
+		thread_processor->count = kept_count;
+		tfx__sync_broadcast_empty(&thread_processor->sync);
+	}
 
 	tfx__sync_unlock(&thread_processor->sync);
 }
@@ -5203,19 +5204,38 @@ tfxINTERNAL inline tfx_work_queue_entry_t tfx__load_work_queue_entry(tfx_work_qu
 	return entry;
 }
 
-tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
-	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
+//Pops a queue and claims its next entry under the list lock, so a queue tfx__remove_queue_work took off the list is never read. Returns NULL when nothing was claimed
+tfxINTERNAL inline tfx_work_queue_t *tfx__claim_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_entry_t *out_entry) {
+	tfx__sync_lock(&thread_processor->sync);
 
-	if (queue) {
+	while (thread_processor->count == 0 && !tfx__load_acquire(&thread_processor->end_all_threads)) {
+		tfx__sync_wait_full(&thread_processor->sync);
+	}
+
+	tfx_work_queue_t *claimed_queue = NULL;
+	if (thread_processor->count > 0) {
+		tfx_work_queue_t *queue = thread_processor->queues[--thread_processor->count];
+		tfx__sync_signal_empty(&thread_processor->sync);
 		tfx_thread_access read_entry = tfx__load_acquire(&queue->next_read_entry);
 		if (read_entry != tfx__load_acquire(&queue->next_write_entry)) {
 			//Copied before the claim, because once the read count moves on the producer may write this slot again
-			tfx_work_queue_entry_t entry = tfx__load_work_queue_entry(&queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES]);
+			*out_entry = tfx__load_work_queue_entry(&queue->entries[read_entry % tfxMAX_QUEUE_ENTRIES]);
 			if (tfx__compare_and_exchange(&queue->next_read_entry, read_entry + 1, read_entry) == read_entry) {
-				entry.call_back(queue, entry.data);
-				tfx__atomic_increment(&queue->entry_completion_count);
+				claimed_queue = queue;
 			}
 		}
+	}
+
+	tfx__sync_unlock(&thread_processor->sync);
+	return claimed_queue;
+}
+
+tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
+	tfx_work_queue_entry_t entry;
+	tfx_work_queue_t *queue = tfx__claim_queue_work(queue_processor, &entry);
+	if (queue) {
+		entry.call_back(queue, entry.data);
+		tfx__atomic_increment(&queue->entry_completion_count);
 	}
 	return tfx__load_acquire(&queue_processor->end_all_threads) != 0;
 }
