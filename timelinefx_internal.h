@@ -2230,7 +2230,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideShiftRight vshrq_n_u32
 #define tfxWideShiftLeft vshlq_n_u32
 #define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
-#define tfxWideGreater(a, b) vreinterpretq_s32_u32(vcgeq_f32(a,b))
+#define tfxWideGreater(a, b) vreinterpretq_s32_u32(vcgtq_f32(a,b))
 #define tfxWideGreateri vcgtq_s32
 #define tfxWideLessEqual(a, b) vreinterpretq_f32_u32(vcleq_f32(a, b))
 #define tfxWideLess(a, b) vreinterpretq_f32_u32(vcltq_f32(a, b))
