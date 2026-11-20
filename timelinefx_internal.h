@@ -10063,7 +10063,8 @@ struct tfx_apply_path_position {
 		if (ctx.path->settings.extrusion_type == tfxExtrusionArc) {
 			tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
 			tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
-			radius = tfxWideMul(tfxWideRSqrt(radius), radius);
+			//rsqrt(0) is infinite, so a point on the Y axis would make 0 * inf = NaN
+			radius = tfxWideAnd(length_mask, tfxWideMul(tfxWideRSqrt(radius), radius));
 			tfxWideArray angle;
 			tfxWideArray rx;
 			tfxWideArray rz;
