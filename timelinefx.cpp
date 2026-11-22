@@ -11920,7 +11920,8 @@ void tfx__sanitize_gpu_emitter(tfx_effect_descriptor emitter) {
 		emitter_properties->spawn_distance_max_rate = tfxDEFAULT_SPAWN_DISTANCE_MAX_RATE;
 	}
 	//One instance serving many locations keeps the number of rings and dispatches down, and leaves the kernel one transform model
-	if (emitter->parent && emitter->parent->type == tfxEffectType) {
+	//A hidden emitter is one the editor deleted, so it no longer gets a say in the effect's flags
+	if (emitter->parent && emitter->parent->type == tfxEffectType && !tfx__is_descriptor_hidden(emitter)) {
 		emitter->parent->effect_flags |= tfxEffectPropertyFlags_user_spawn_locations;
 	}
 }
