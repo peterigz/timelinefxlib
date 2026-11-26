@@ -3391,6 +3391,7 @@ typedef enum {
 	tfxEffectStateFlags_warming_up                              = 1 << 11,      //Set on each effect currently being warmed up so shared ribbon-bucket walkers can filter to just the warming subset
 	tfxEffectStateFlags_pending_warmup                          = 1 << 12,      //Set when an effect has a queued entry in pm->warmup_effects[0]; used by tfx__add_warmup_effect to coalesce duplicate adds
 	tfxEffectStateFlags_user_spawn_locations                    = 1 << 13,      //Point emitters spawn at the locations added with tfx_AddSpawnLocation, other shapes don't spawn
+	tfxEffectStateFlags_hold_age                                = 1 << 15,      //Set by tfx__hold_effect_age: the effect and its emitters take their ages from held_age instead of advancing
 	tfxEffectStateFlags_no_tween                                = 1 << 20
 } tfx_effect_state_flag_bits;
 
@@ -6432,6 +6433,7 @@ typedef struct TFX_ALIGN_AFFIX(16) tfx_effect_state_s {
 	tfxEffectPropertyFlags effect_flags;
 	tfxEmitterStateFlags state_flags;
 	float loop_length;
+	float held_age;		//ms on the effect's clock before any loop wrap, read while tfxEffectStateFlags_hold_age is set
 	//Position, scale and rotation values
 	tfx_vec3_t translation;
 	tfx_vec3_t local_position;
@@ -8173,7 +8175,18 @@ tfxINTERNAL inline tfxU32 tfx__stage_ramp_layer(tfx_stage pm, tfx_library librar
 tfxINTERNAL void tfx__copy_emitter_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_ribbon_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_graph_list_t *graph_list);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor e);
-tfxINTERNAL float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, double osc_t);
+tfxAPI_EDITOR float tfx__sample_multi_node_graph(tfx_graph_t *graph, float frame, double osc_t);
+//Editor only. The effect keeps updating as though it were age ms old: its age wraps by its loop length, and each emitter takes
+//max(age - delay_spawning, 0) wrapped by its own loop length. Same threading rule as the other effect setters
+tfxAPI_EDITOR void tfx__hold_effect_age(tfx_stage pm, tfxEffectID effect_id, float age);
+//Editor only. The effect carries on ageing from wherever it was held
+tfxAPI_EDITOR void tfx__release_effect_age(tfx_stage pm, tfxEffectID effect_id);
+//Editor only. An emitter's age at effect_age ms on its effect's clock, before any loop wrap. It waits out delay_spawning at the start of every
+//effect loop with its age standing still, then wraps by its own loop length. Held emitters and the editor's path view both age emitters with it
+tfxAPI_EDITOR float tfx__delayed_emitter_age(float effect_age, float effect_loop_length, float delay_spawning, float emitter_loop_length);
+//Editor only. A path keeps the rotation it started with, so an edit to the path's rotation settings only reaches a running emitter through this.
+//Gives each live path the rotation it would have started with under the current settings. Call after tfx_CompleteStageWork
+tfxAPI_EDITOR void tfx__refresh_path_slot_rotations(tfx_particle_emitter_state_t *emitter);
 
 //---- GPU compute particle buffer management functions ----
 tfxINTERNAL tfxU32 tfx__compute_max_gpu_particles(tfx_effect_descriptor child);

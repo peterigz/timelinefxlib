@@ -2171,21 +2171,16 @@ tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, fl
 		tfx_quaternion_t base_quaternion = yaw_quaternion * pitch_quaternion;
 		if (range != 0) {
 			float half_range = range * 0.5f;
-			// Random roll to randomize path orientation before tilting.
-			// This ensures non-symmetric paths (flat, curved etc.) get full 3D coverage.
-			float roll = tfx_RandomRangeFromTo(random, 0.0f, 2.0f * tfxPI);
-			// Random azimuthal angle (full circle around cone axis)
-			float phi = tfx_RandomRangeFromTo(random, 0.0f, 2.0f * tfxPI);
-			// Cos-weighted polar angle sampling for uniform distribution on spherical cap
-			float cos_half_range = cosf(half_range);
-			float random_cos = tfx_RandomRangeFromTo(random, cos_half_range, 1.0f);
-			float theta = acosf(random_cos);
-			// Build perturbation: roll the path shape around Y, tilt by theta, then distribute azimuthally
-			tfx_quaternion_t roll_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, roll);
-			tfx_quaternion_t perturbation_pitch = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, theta);
-			tfx_quaternion_t perturbation_yaw = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, phi);
-			tfx_quaternion_t perturbation = roll_quaternion * perturbation_pitch * perturbation_yaw;
-			return perturbation * base_quaternion;
+			//The path spins about its own axis by up to half the range, as Y Axis Only turns it, so a full range still reaches every orientation
+			float spin = tfx_RandomRangeFromTo(random, -half_range, half_range);
+			//and its axis tilts up to half the range towards a random direction, cos weighted so the cap is covered evenly
+			float direction = tfx_RandomRangeFromTo(random, 0.0f, 2.0f * tfxPI);
+			float random_cos = tfx_RandomRangeFromTo(random, cosf(half_range), 1.0f);
+			float tilt = acosf(random_cos);
+			tfx_quaternion_t spin_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, spin);
+			tfx_quaternion_t tilt_quaternion = tfx__quaternion_from_axis_angle(cosf(direction), 0.0f, sinf(direction), tilt);
+			//tfx__rotate_vector_quaternion applies the left factor first, so both happen in the path's own frame ahead of the pitch and yaw
+			return spin_quaternion * tilt_quaternion * base_quaternion;
 		}
 		return base_quaternion;
 	}
@@ -11344,6 +11339,7 @@ tfxINTERNAL void tfx__reset_effect_state(tfx_stage pm, tfxU32 effect_slot, tfx_e
 
 	effect_state->age = 0.f;
 	effect_state->total_age = effect_state->age;
+	effect_state->held_age = 0.f;
 	effect_state->state_flags = 0;
 	effect_state->effect_flags = effect->effect_flags;
 	effect_state->local_position = tfx_vec3_t();
@@ -16487,6 +16483,26 @@ void tfx_DisableStageSpawning(tfx_stage pm, bool yesno) {
 	}
 }
 
+//The age a held effect or emitter takes, wrapped the way its own age wraps
+tfxINTERNAL inline double tfx__wrap_held_age(float age, float loop_length) {
+	return loop_length && age > loop_length ? (double)fmodf(age, loop_length) : (double)age;
+}
+
+float tfx__delayed_emitter_age(float effect_age, float effect_loop_length, float delay_spawning, float emitter_loop_length) {
+	float active_age = tfxMax(effect_age - delay_spawning, 0.f);
+	if (effect_loop_length > 0.f && effect_age > effect_loop_length) {
+		//The delay gates the emitter again at the start of every effect loop, and its age stands still while it waits
+		float loops = floorf(effect_age / effect_loop_length);
+		float loop_age = effect_age - loops * effect_loop_length;
+		active_age = loops * tfxMax(effect_loop_length - delay_spawning, 0.f) + tfxMax(loop_age - delay_spawning, 0.f);
+	}
+	return emitter_loop_length > 0.f && active_age > emitter_loop_length ? fmodf(active_age, emitter_loop_length) : active_age;
+}
+
+tfxINTERNAL inline double tfx__held_emitter_age(const tfx_effect_state_t &parent_effect, float delay_spawning, float emitter_loop_length) {
+	return (double)tfx__delayed_emitter_age(parent_effect.held_age, parent_effect.source_effect->state_properties.loop_length, delay_spawning, emitter_loop_length);
+}
+
 void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	tfxPROFILE;
 
@@ -16523,13 +16539,17 @@ void tfx__update_effect(tfx_stage pm, tfxU32 index, tfxU32 parent_index) {
 	effect.lod_position = tfx__effect_uses_lod(pm, &effect) && !(effect.state_flags & tfxEffectStateFlags_user_spawn_locations) ? tfx__lod_position(pm, effect.source_effect, effect.world_position) : -1.f;
 
 	effect.total_age += pm->frame_length;
-	effect.age += pm->frame_length;
 
 	float loop_length = effect.source_effect->state_properties.loop_length;
 	bool looped = false;
-	if (loop_length && effect.age > loop_length) {
-		effect.age -= loop_length;
-		looped = true;
+	if (effect.state_flags & tfxEffectStateFlags_hold_age) {
+		effect.age = tfx__wrap_held_age(effect.held_age, loop_length);
+	} else {
+		effect.age += pm->frame_length;
+		if (loop_length && effect.age > loop_length) {
+			effect.age -= loop_length;
+			looped = true;
+		}
 	}
 
 	if (effect.bookmarks[0] != 0.f) {
@@ -16959,6 +16979,10 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 	if (parent_effect.age < ribbon_emitter.state_properties.delay_spawning && !ribbon_work_entry->user_spawn_locations) {
 		ribbon_emitter.state_flags |= tfxRibbonEmitterStateFlags_no_tween_this_update;
 		tfx__atomic_increment(&parent_effect.active_emitters);
+		//Held while delayed, the emitter still takes the age a looping effect's earlier loops left it at
+		if (parent_effect.state_flags & tfxEffectStateFlags_hold_age) {
+			ribbon_emitter.age = tfx__held_emitter_age(parent_effect, ribbon_emitter.state_properties.delay_spawning, ribbon_emitter.source_ribbon->state_properties.loop_length);
+		}
 		return;
 	}
 
@@ -17069,10 +17093,14 @@ void tfx__update_ribbon_emitter(tfxU32 ribbon_emitter_index, tfx_work_queue_t *w
 		tfx__spawn_static_ribbons(ribbon_emitter_index, &pm->work_queue, data);
 	}
 
-	ribbon_emitter.age += pm->frame_length;
+	if (parent_effect.state_flags & tfxEffectStateFlags_hold_age) {
+		ribbon_emitter.age = tfx__held_emitter_age(parent_effect, ribbon_emitter.state_properties.delay_spawning, ribbon_emitter.source_ribbon->state_properties.loop_length);
+	} else {
+		ribbon_emitter.age += pm->frame_length;
 
-	if (ribbon_emitter.source_ribbon->state_properties.loop_length && ribbon_emitter.age > ribbon_emitter.source_ribbon->state_properties.loop_length) {
-		ribbon_emitter.age -= ribbon_emitter.source_ribbon->state_properties.loop_length;
+		if (ribbon_emitter.source_ribbon->state_properties.loop_length && ribbon_emitter.age > ribbon_emitter.source_ribbon->state_properties.loop_length) {
+			ribbon_emitter.age -= ribbon_emitter.source_ribbon->state_properties.loop_length;
+		}
 	}
 
 	gpu_emitter.age = (float)ribbon_emitter.age;
@@ -17155,6 +17183,10 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 		//world_position isn't updated while delayed, so the first live update mustn't tween or measure travel from the stale one
 		emitter.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
 		parent_effect.active_emitters++;
+		//Held while delayed, the emitter still takes the age a looping effect's earlier loops left it at
+		if (parent_effect.state_flags & tfxEffectStateFlags_hold_age) {
+			emitter.age = tfx__held_emitter_age(parent_effect, emitter.state_properties.delay_spawning, emitter.source_emitter->state_properties.loop_length);
+		}
 		return;
 	}
 	spawn_work_entry->root_effect_flags = pm->effects[emitter.parent_index].effect_flags;
@@ -17283,10 +17315,14 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 	emitter.sprites_count -= spawn_difference;
 
-	emitter.age += pm->frame_length;
+	if (parent_effect.state_flags & tfxEffectStateFlags_hold_age) {
+		emitter.age = tfx__held_emitter_age(parent_effect, emitter.state_properties.delay_spawning, emitter.source_emitter->state_properties.loop_length);
+	} else {
+		emitter.age += pm->frame_length;
 
-	if (emitter.source_emitter->state_properties.loop_length && emitter.age > emitter.source_emitter->state_properties.loop_length)
-		emitter.age -= emitter.source_emitter->state_properties.loop_length;
+		if (emitter.source_emitter->state_properties.loop_length && emitter.age > emitter.source_emitter->state_properties.loop_length)
+			emitter.age -= emitter.source_emitter->state_properties.loop_length;
+	}
 
 	//A sparse decay tail can leave no particles alive between spawns, which must not time the effect out
 	bool single_decay_pending = emitter.single_decay_age > 0.f && !(emitter.state_flags & (tfxEmitterStateFlags_single_shot_done | tfxEmitterStateFlags_stop_spawning));
@@ -17561,6 +17597,21 @@ tfxINTERNAL void tfx__refresh_path_set(tfx_path_set_t *set, tfx_path_slot_t *slo
 	}
 }
 
+void tfx__refresh_path_slot_rotations(tfx_particle_emitter_state_t *emitter) {
+	if (!(emitter->state_flags & tfxEmitterStateFlags_has_rotated_path) || emitter->state_properties.path_attributes == tfxINVALID) return;
+	const tfx_path_settings_t *settings = &emitter->library->paths[emitter->state_properties.path_attributes].settings;
+	const tfxU32 slot_count = emitter->path_slot_count;
+	for (tfxU32 set_index = 0; set_index != emitter->path_sets.current_size; ++set_index) {
+		const tfx_path_set_t &set = emitter->path_sets[set_index];
+		tfx_path_slot_t *slots = &emitter->path_slots[set_index * slot_count];
+		for (tfxU32 slot_index = 0; slot_index != slot_count; ++slot_index) {
+			tfx_path_slot_t &slot = slots[slot_index];
+			if (!tfx__path_slot_is_live(slot, settings->maximum_paths)) continue;
+			slot.rotation = tfx__pack16bit_quaternion(tfx__path_instance_rotation(settings, set.seed, slot_index, slot.instance));
+		}
+	}
+}
+
 //Brings every set this update spawns from up to date and scales the amount by how many of their paths are live, per location when the
 //effect spawns at user locations
 tfxINTERNAL double tfx__update_path_sets(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfx_particle_emitter_state_t &emitter, double spawn_quantity) {
@@ -17797,8 +17848,8 @@ tfxU32 tfx__new_sprites_needed(tfx_stage pm, tfx_spawn_work_entry_t *entry, tfxU
 		step_size = 1.0 / emitter.spawn_quantity;
 	}
 
-	//Below one per update the first spawn waits for the next update
-	if (emitter.age == 0.f && emitter.spawn_quantity < 1.0) {
+	//Below one per update the first spawn waits for the next update. Not while held, or an age held at 0 would wait on every update
+	if (emitter.age == 0.f && emitter.spawn_quantity < 1.0 && !(parent->state_flags & tfxEffectStateFlags_hold_age)) {
 		emitter.amount_remainder = 1.0;
 		emitter.qty_step_size = step_size;
 		emitter.qty_frame_length = pm->frame_length;
@@ -17879,7 +17930,8 @@ tfxU32 tfx__new_ribbons_needed(tfx_stage pm, tfx_ribbon_work_entry_t *entry, tfx
 		step_size = 1.0 / ribbon_emitter.spawn_quantity;
 	}
 
-	if (ribbon_emitter.age == 0.f && ribbon_emitter.spawn_quantity < 1.0) {
+	//Not while held, or an age held at 0 would wait on every update
+	if (ribbon_emitter.age == 0.f && ribbon_emitter.spawn_quantity < 1.0 && !(parent->state_flags & tfxEffectStateFlags_hold_age)) {
 		ribbon_emitter.amount_remainder = 1.0;
 		ribbon_emitter.qty_step_size = step_size;
 		ribbon_emitter.qty_frame_length = pm->frame_length;
@@ -21459,7 +21511,9 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 		tfxU32 run_index = 0;
 		tfxU32 run_spawned = 0;
 		const tfx_angle_steps_t &rotation_steps = path->settings.rotation_steps;
-		const bool stepped_rotation = rotation_steps.distribution != tfxAngleStepDistribution_random;
+		//As for particles, pitch and yaw only apply with a range
+		const bool rotated_path = tfx__path_is_rotated(&path->settings);
+		const bool stepped_rotation = rotated_path && rotation_steps.distribution != tfxAngleStepDistribution_random;
 		const bool restart_rotation_steps = (rotation_steps.flags & tfxAngleStepFlags_restart_each_spawn) > 0;
 		tfx_angle_step_iterator_t rotation_step_iterator = {};
 		tfx_quaternion_t stepped_pitch_quaternion;
@@ -21561,10 +21615,10 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			float image_frame = (ribbon_emitter.state_properties.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && ribbon_emitter.state_properties.image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, ribbon_emitter.state_properties.image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
 			TFX_ASSERT(image_frame < tfxMAX_ANIMATION_FRAMES);	//The ribbon's shape has more animation frames than a ribbon can index
 			tfxU32 texture_indexes = ramp_indexes | tfxU32(image_frame);
-			tfx_quaternion_t q;
+			tfx_quaternion_t q(1.f, 0.f, 0.f, 0.f);
 			if (stepped_rotation) {
 				q = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, tfx__next_angle_step(&rotation_step_iterator, &random)) * stepped_pitch_quaternion;
-			} else {
+			} else if (rotated_path) {
 				q = tfx__get_path_rotation_3d(&random, path->settings.rotation_range, path->settings.rotation_pitch, path->settings.rotation_yaw, ((path->settings.flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			}
 			if (orient_to_surface_normal) {
@@ -26157,6 +26211,21 @@ void tfx_SetEffectOverallScale(tfx_stage pm, tfxEffectID effect_index, float ove
 	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_index)];
 	effect.overall_scale = overall_scale;
 	effect.state_flags |= tfxEffectStateFlags_override_overall_scale;
+}
+
+void tfx__hold_effect_age(tfx_stage pm, tfxEffectID effect_id, float age) {
+	TFX_VALIDATE_EFFECT(pm, effect_id, );
+	tfx_effect_state_t &effect = pm->effects[tfx__effect_slot(effect_id)];
+	effect.held_age = age;
+	//Called every frame while held, so the flags are only written when the hold starts
+	if (!(effect.state_flags & tfxEffectStateFlags_hold_age)) {
+		effect.state_flags |= tfxEffectStateFlags_hold_age;
+	}
+}
+
+void tfx__release_effect_age(tfx_stage pm, tfxEffectID effect_id) {
+	TFX_VALIDATE_EFFECT(pm, effect_id, );
+	pm->effects[tfx__effect_slot(effect_id)].state_flags &= ~tfxEffectStateFlags_hold_age;
 }
 
 void tfx_SetEffectBaseNoiseOffset(tfx_stage pm, tfxEffectID effect_index, float noise_offset) {
